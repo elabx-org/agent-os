@@ -124,8 +124,10 @@ export function listDirectory(
       }
       return a.name.localeCompare(b.name);
     });
-  } catch (error) {
-    console.error(`Failed to list directory ${dirPath}:`, error);
+  } catch (error: unknown) {
+    if (!(error && typeof error === "object" && "code" in error && error.code === "ENOENT")) {
+      console.error(`Failed to list directory ${dirPath}:`, error);
+    }
     return [];
   }
 }

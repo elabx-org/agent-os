@@ -20,7 +20,19 @@ export async function GET(request: NextRequest) {
     // Expand ~ to home directory
     const expandedPath = path.replace(/^~/, process.env.HOME || "");
 
-    const result = readFileContent(expandedPath);
+    let result;
+    try {
+      result = readFileContent(expandedPath);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "";
+      if (msg.includes("ENOENT")) {
+        return NextResponse.json(
+          { error: "File not found", content: null, isBinary: false, size: 0, path: expandedPath },
+          { status: 404 }
+        );
+      }
+      throw err;
+    }
 
     return NextResponse.json({
       ...result,
