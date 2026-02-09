@@ -21,6 +21,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { QuickSwitcher } from "@/components/QuickSwitcher";
+import { UsageMonitor } from "@/components/UsageMonitor";
 import type { ViewProps } from "./types";
 import { fileOpenActions } from "@/stores/fileOpen";
 
@@ -164,6 +165,8 @@ export function DesktopView({
               </div>
             )}
           </div>
+
+          <UsageMonitor />
 
           <div className="flex items-center gap-2">
             <Tooltip>
