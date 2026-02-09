@@ -83,6 +83,7 @@ export const Pane = memo(function Pane({
     addTab,
     closeTab,
     switchTab,
+    attachSession,
     detachSession,
   } = usePanes();
 
@@ -188,6 +189,9 @@ export const Pane = memo(function Pane({
     []
   );
 
+  // Tmux setup commands shared across all attach points
+  const tmuxSetup = `tmux set-option -g mouse on 2>/dev/null; tmux bind-key m display-menu -T "Tmux" -x R -y P "Copy Mode" c copy-mode "Paste Buffer" p paste-buffer "" "" "" "Split Horizontal" h 'split-window -h' "Split Vertical" v 'split-window -v' 2>/dev/null`;
+
   // Create onConnected callback for a specific tab
   const getTerminalConnectedHandler = useCallback(
     (tab: (typeof paneData.tabs)[0]) => () => {
@@ -206,10 +210,18 @@ export const Pane = memo(function Pane({
         : tab.attachedTmux;
 
       if (tmuxName) {
-        setTimeout(() => handle.sendCommand(`tmux set-option -g mouse on 2>/dev/null; tmux bind-key m display-menu -T "Tmux" -x R -y P "Copy Mode" c copy-mode "Paste Buffer" p paste-buffer "" "" "" "Split Horizontal" h 'split-window -h' "Split Vertical" v 'split-window -v' 2>/dev/null; tmux attach -t ${tmuxName}`), 100);
+        // Existing session — re-attach
+        setTimeout(() => handle.sendCommand(`${tmuxSetup}; tmux attach -t ${tmuxName}`), 100);
+      } else {
+        // Bare tab — create a new persistent tmux session
+        const shellTmuxName = `shell-${tab.id}`;
+        setTimeout(() => {
+          handle.sendCommand(`${tmuxSetup}; tmux attach -t ${shellTmuxName} 2>/dev/null || tmux new -s ${shellTmuxName}`);
+          attachSession(paneId, "", shellTmuxName);
+        }, 100);
       }
     },
-    [paneId, sessions, onRegisterTerminal]
+    [paneId, sessions, onRegisterTerminal, attachSession, tmuxSetup]
   );
 
   // Track current tab ID for cleanup
@@ -393,7 +405,7 @@ export const Pane = memo(function Pane({
                   setTimeout(() => {
                     terminalRef?.sendInput("\x15");
                     setTimeout(() => {
-                      terminalRef?.sendCommand(`tmux set-option -g mouse on 2>/dev/null; tmux bind-key m display-menu -T "Tmux" -x R -y P "Copy Mode" c copy-mode "Paste Buffer" p paste-buffer "" "" "" "Split Horizontal" h 'split-window -h' "Split Vertical" v 'split-window -v' 2>/dev/null; tmux attach -t ${sessionName}`);
+                      terminalRef?.sendCommand(`${tmuxSetup}; tmux attach -t ${sessionName}`);
                     }, 50);
                   }, 100);
                 }
@@ -481,7 +493,7 @@ export const Pane = memo(function Pane({
                             terminalRef?.sendInput("\x15");
                             setTimeout(() => {
                               terminalRef?.sendCommand(
-                                `tmux set-option -g mouse on 2>/dev/null; tmux bind-key m display-menu -T "Tmux" -x R -y P "Copy Mode" c copy-mode "Paste Buffer" p paste-buffer "" "" "" "Split Horizontal" h 'split-window -h' "Split Vertical" v 'split-window -v' 2>/dev/null; tmux attach -t ${sessionName}`
+                                `${tmuxSetup}; tmux attach -t ${sessionName}`
                               );
                             }, 50);
                           }, 100);
