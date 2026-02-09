@@ -389,3 +389,85 @@ export function getDefaultBranch(workingDir: string): string {
     return "main";
   }
 }
+
+/**
+ * Get list of local branches and current branch
+ */
+export function getBranchList(workingDir: string): {
+  branches: string[];
+  current: string;
+} {
+  const current = execSync("git branch --show-current", {
+    cwd: workingDir,
+    encoding: "utf-8",
+  }).trim();
+
+  const output = execSync("git branch --format='%(refname:short)'", {
+    cwd: workingDir,
+    encoding: "utf-8",
+  });
+
+  const branches = output
+    .trim()
+    .split("\n")
+    .filter((b) => b);
+
+  return { branches, current: current || "HEAD" };
+}
+
+/**
+ * Switch to an existing branch
+ */
+export function checkoutBranch(workingDir: string, branch: string): void {
+  execSync(`git checkout "${branch}"`, {
+    cwd: workingDir,
+    encoding: "utf-8",
+  });
+}
+
+/**
+ * Fetch from remote, pull changes, then push local commits
+ */
+export function syncBranch(workingDir: string): {
+  fetched: boolean;
+  pulled: boolean;
+  pushed: boolean;
+} {
+  // Fetch
+  execSync("git fetch origin", {
+    cwd: workingDir,
+    encoding: "utf-8",
+    timeout: 30000,
+  });
+
+  // Pull (only if upstream is configured)
+  let pulled = false;
+  if (hasUpstream(workingDir)) {
+    execSync("git pull", {
+      cwd: workingDir,
+      encoding: "utf-8",
+      timeout: 30000,
+    });
+    pulled = true;
+  }
+
+  // Push (set upstream if needed)
+  let pushed = false;
+  const needsUpstream = !hasUpstream(workingDir);
+  const branch = execSync("git branch --show-current", {
+    cwd: workingDir,
+    encoding: "utf-8",
+  }).trim();
+
+  if (branch) {
+    const upstreamFlag = needsUpstream ? `-u origin "${branch}"` : "";
+    execSync(`git push ${upstreamFlag}`, {
+      cwd: workingDir,
+      encoding: "utf-8",
+      timeout: 30000,
+    });
+    pushed = true;
+  }
+
+  return { fetched: true, pulled, pushed };
+}

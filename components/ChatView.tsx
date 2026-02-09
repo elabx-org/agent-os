@@ -1,17 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { Loader2 } from "lucide-react";
 import { ChatMessage } from "./ChatMessage";
 import { ToolCallDisplay } from "./ToolCallDisplay";
 import { MessageInput } from "./MessageInput";
 import { ScrollArea } from "./ui/scroll-area";
 import type { ClientEvent } from "@/lib/claude/types";
-import type { Message } from "@/lib/db";
-
-interface ChatViewProps {
-  sessionId: string;
-  initialMessages?: Message[];
-}
 
 interface DisplayMessage {
   id: string;
@@ -27,27 +22,41 @@ interface DisplayMessage {
   }>;
 }
 
-export function ChatView({ sessionId, initialMessages = [] }: ChatViewProps) {
-  const [messages, setMessages] = useState<DisplayMessage[]>(() =>
-    initialMessages.map((m) => {
-      let content = "";
-      try {
-        const parsed = JSON.parse(m.content);
-        content = parsed
-          .filter((c: { type: string }) => c.type === "text")
-          .map((c: { text: string }) => c.text)
-          .join("");
-      } catch {
-        content = m.content;
-      }
-      return {
-        id: String(m.id),
-        role: m.role,
-        content,
-        timestamp: m.timestamp,
-      };
-    })
-  );
+interface ChatViewProps {
+  sessionId: string;
+}
+
+function parseDbMessage(m: {
+  id: number;
+  role: string;
+  content: string;
+  timestamp: string;
+}): DisplayMessage {
+  let content = "";
+  try {
+    const parsed = JSON.parse(m.content);
+    if (Array.isArray(parsed)) {
+      content = parsed
+        .filter((c: { type: string }) => c.type === "text")
+        .map((c: { text: string }) => c.text)
+        .join("");
+    } else {
+      content = m.content;
+    }
+  } catch {
+    content = m.content;
+  }
+  return {
+    id: String(m.id),
+    role: m.role as "user" | "assistant",
+    content,
+    timestamp: m.timestamp,
+  };
+}
+
+export function ChatView({ sessionId }: ChatViewProps) {
+  const [messages, setMessages] = useState<DisplayMessage[]>([]);
+  const [loading, setLoading] = useState(true);
   const [currentText, setCurrentText] = useState("");
   const [currentToolCalls, setCurrentToolCalls] = useState<
     DisplayMessage["toolCalls"]
@@ -62,39 +71,38 @@ export function ChatView({ sessionId, initialMessages = [] }: ChatViewProps) {
   const currentTextRef = useRef("");
   const currentToolCallsRef = useRef<DisplayMessage["toolCalls"]>([]);
 
-  // Reset messages when session changes
+  // Fetch initial messages from API
   useEffect(() => {
-    setMessages(
-      initialMessages.map((m) => {
-        let content = "";
-        try {
-          const parsed = JSON.parse(m.content);
-          content = parsed
-            .filter((c: { type: string }) => c.type === "text")
-            .map((c: { text: string }) => c.text)
-            .join("");
-        } catch {
-          content = m.content;
-        }
-        return {
-          id: String(m.id),
-          role: m.role,
-          content,
-          timestamp: m.timestamp,
-        };
-      })
-    );
+    let ignore = false;
+    setLoading(true);
+    setMessages([]);
     setCurrentText("");
     setCurrentToolCalls([]);
     currentTextRef.current = "";
     currentToolCallsRef.current = [];
-  }, [sessionId, initialMessages]);
 
+    fetch(`/api/sessions/${sessionId}/messages`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (ignore) return;
+        const msgs = (data.messages || []).map(parseDbMessage);
+        setMessages(msgs);
+        setLoading(false);
+      })
+      .catch(() => {
+        if (!ignore) setLoading(false);
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, [sessionId]);
+
+  // WebSocket connection for real-time streaming
   useEffect(() => {
     let ignore = false;
     let ws: WebSocket | null = null;
 
-    // Connect to Claude WebSocket
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     ws = new WebSocket(
       `${protocol}//${window.location.host}/ws/claude/${sessionId}`
@@ -176,7 +184,6 @@ export function ChatView({ sessionId, initialMessages = [] }: ChatViewProps) {
 
         case "complete":
         case "error": {
-          // Finalize current message using refs (avoids stale closure)
           const finalText = currentTextRef.current;
           const finalToolCalls = currentToolCallsRef.current;
 
@@ -192,7 +199,6 @@ export function ChatView({ sessionId, initialMessages = [] }: ChatViewProps) {
               },
             ]);
           }
-          // Reset state and refs
           setCurrentText("");
           setCurrentToolCalls([]);
           currentTextRef.current = "";
@@ -225,7 +231,6 @@ export function ChatView({ sessionId, initialMessages = [] }: ChatViewProps) {
   const sendMessage = (text: string) => {
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
 
-    // Add user message to display
     setMessages((prev) => [
       ...prev,
       {
@@ -236,7 +241,6 @@ export function ChatView({ sessionId, initialMessages = [] }: ChatViewProps) {
       },
     ]);
 
-    // Send to Claude
     wsRef.current.send(
       JSON.stringify({
         type: "prompt",
@@ -256,24 +260,35 @@ export function ChatView({ sessionId, initialMessages = [] }: ChatViewProps) {
     <div className="flex h-full flex-col">
       <ScrollArea className="flex-1 p-4">
         <div className="space-y-4">
-          {messages.map((msg) => (
-            <div key={msg.id}>
-              <ChatMessage
-                role={msg.role}
-                content={msg.content}
-                timestamp={msg.timestamp}
-              />
-              {msg.toolCalls?.map((tc, i) => (
-                <ToolCallDisplay
-                  key={`${msg.id}-tool-${i}`}
-                  name={tc.name}
-                  input={tc.input}
-                  output={tc.output}
-                  status={tc.status}
-                />
-              ))}
+          {loading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="text-muted-foreground h-6 w-6 animate-spin" />
             </div>
-          ))}
+          ) : messages.length === 0 && !currentText ? (
+            <div className="text-muted-foreground flex flex-col items-center gap-2 py-8 text-center text-sm">
+              <p>No messages yet.</p>
+              <p>Send a message to start a conversation with Claude.</p>
+            </div>
+          ) : (
+            messages.map((msg) => (
+              <div key={msg.id}>
+                <ChatMessage
+                  role={msg.role}
+                  content={msg.content}
+                  timestamp={msg.timestamp}
+                />
+                {msg.toolCalls?.map((tc, i) => (
+                  <ToolCallDisplay
+                    key={`${msg.id}-tool-${i}`}
+                    name={tc.name}
+                    input={tc.input}
+                    output={tc.output}
+                    status={tc.status}
+                  />
+                ))}
+              </div>
+            ))
+          )}
 
           {/* Streaming content */}
           {(currentText ||

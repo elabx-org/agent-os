@@ -3,6 +3,7 @@ import { parse } from "url";
 import next from "next";
 import { WebSocketServer, WebSocket } from "ws";
 import * as pty from "node-pty";
+import { ClaudeProcessManager } from "./lib/claude/process-manager";
 
 const dev = process.env.NODE_ENV !== "production";
 const hostname = "0.0.0.0";
@@ -26,6 +27,10 @@ app.prepare().then(() => {
   // Terminal WebSocket server
   const terminalWss = new WebSocketServer({ noServer: true });
 
+  // Claude chat WebSocket server
+  const claudeWss = new WebSocketServer({ noServer: true });
+  const claudeManager = new ClaudeProcessManager();
+
   // Handle WebSocket upgrades
   server.on("upgrade", (request, socket, head) => {
     const { pathname } = parse(request.url || "");
@@ -33,6 +38,39 @@ app.prepare().then(() => {
     if (pathname === "/ws/terminal") {
       terminalWss.handleUpgrade(request, socket, head, (ws) => {
         terminalWss.emit("connection", ws, request);
+      });
+    } else if (pathname?.startsWith("/ws/claude/")) {
+      const sessionId = pathname.split("/ws/claude/")[1];
+      if (!sessionId) {
+        socket.destroy();
+        return;
+      }
+      claudeWss.handleUpgrade(request, socket, head, (ws) => {
+        claudeManager.registerClient(sessionId, ws);
+
+        ws.on("message", (message: Buffer) => {
+          try {
+            const msg = JSON.parse(message.toString());
+            if (msg.type === "prompt") {
+              claudeManager.sendPrompt(sessionId, msg.prompt, msg.options || {}).catch((err) => {
+                ws.send(JSON.stringify({
+                  type: "error",
+                  sessionId,
+                  timestamp: new Date().toISOString(),
+                  data: { error: err.message },
+                }));
+              });
+            } else if (msg.type === "cancel") {
+              claudeManager.cancelSession(sessionId);
+            }
+          } catch (err) {
+            console.error("Error parsing claude message:", err);
+          }
+        });
+
+        ws.on("close", () => {
+          claudeManager.unregisterClient(sessionId, ws);
+        });
       });
     }
     // Let HMR and other WebSocket connections pass through to Next.js
