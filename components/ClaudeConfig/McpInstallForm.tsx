@@ -24,31 +24,24 @@ interface McpInstallFormProps {
   installing: boolean;
 }
 
-function shellEscape(s: string): string {
-  return `'${s.replace(/'/g, "'\\''")}'`;
-}
-
-// Install an MCP server via `claude mcp add` CLI
+// Install an MCP server via the claude-cli API
 export async function installMcpServer(
   name: string,
   config: McpServerConfig
 ): Promise<boolean> {
-  const parts = ["claude", "mcp", "add", "-s", "user"];
-  if (config.env) {
-    for (const [key, val] of Object.entries(config.env)) {
-      parts.push("-e", `${key}=${val}`);
-    }
-  }
-  parts.push("--", name, config.command);
-  if (config.args && config.args.length > 0) {
-    parts.push(...config.args);
-  }
-
-  const command = parts.map(shellEscape).join(" ");
-  const res = await fetch("/api/exec", {
+  const res = await fetch("/api/claude-cli", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ command }),
+    body: JSON.stringify({
+      action: "mcp-add",
+      args: {
+        name,
+        scope: "user",
+        command: config.command,
+        cmdArgs: config.args,
+        env: config.env,
+      },
+    }),
   });
   const data = await res.json();
   return data.success;

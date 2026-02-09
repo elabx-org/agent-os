@@ -14,17 +14,39 @@ interface UseMcpConfigOptions {
   projectPath?: string;
 }
 
-function shellEscape(s: string): string {
-  return `'${s.replace(/'/g, "'\\''")}'`;
-}
-
-async function execCmd(
-  command: string
+async function claudeMcpAdd(
+  name: string,
+  config: McpServerConfig,
+  scope: McpScope
 ): Promise<{ success: boolean; output: string }> {
-  const res = await fetch("/api/exec", {
+  const res = await fetch("/api/claude-cli", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ command }),
+    body: JSON.stringify({
+      action: "mcp-add",
+      args: {
+        name,
+        scope,
+        command: config.command,
+        cmdArgs: config.args,
+        env: config.env,
+      },
+    }),
+  });
+  return res.json();
+}
+
+async function claudeMcpRemove(
+  name: string,
+  scope: McpScope
+): Promise<{ success: boolean; output: string }> {
+  const res = await fetch("/api/claude-cli", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      action: "mcp-remove",
+      args: { name, scope },
+    }),
   });
   return res.json();
 }
@@ -93,24 +115,6 @@ async function readServers(projectPath?: string): Promise<McpServerEntry[]> {
   } catch {
     return [];
   }
-}
-
-function buildAddCommand(
-  name: string,
-  config: McpServerConfig,
-  scope: McpScope
-): string {
-  const parts = ["claude", "mcp", "add", "-s", scope];
-  if (config.env) {
-    for (const [key, val] of Object.entries(config.env)) {
-      parts.push("-e", `${key}=${val}`);
-    }
-  }
-  parts.push("--", name, config.command);
-  if (config.args && config.args.length > 0) {
-    parts.push(...config.args);
-  }
-  return parts.map(shellEscape).join(" ");
 }
 
 // The `claude mcp add` CLI doesn't support a cwd flag,
@@ -189,16 +193,11 @@ export function useMcpConfig({ open, projectPath }: UseMcpConfigOptions) {
       // Remove existing if present (handles edits)
       const existing = servers.find((s) => s.name === name);
       if (existing) {
-        await execCmd(
-          ["claude", "mcp", "remove", "-s", existing.scope, name]
-            .map(shellEscape)
-            .join(" ")
-        );
+        await claudeMcpRemove(name, existing.scope);
       }
 
       // Add via CLI
-      const addCmd = buildAddCommand(name, config, scope);
-      const result = await execCmd(addCmd);
+      const result = await claudeMcpAdd(name, config, scope);
 
       if (!result.success) {
         throw new Error(result.output || "Failed to add MCP server");
@@ -218,11 +217,7 @@ export function useMcpConfig({ open, projectPath }: UseMcpConfigOptions) {
     async (name: string) => {
       const existing = servers.find((s) => s.name === name);
       const scope = existing?.scope || "user";
-      await execCmd(
-        ["claude", "mcp", "remove", "-s", scope, name]
-          .map(shellEscape)
-          .join(" ")
-      );
+      await claudeMcpRemove(name, scope);
       refresh();
     },
     [servers, refresh]

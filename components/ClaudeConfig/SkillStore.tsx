@@ -316,11 +316,7 @@ async function loadStoreSources(): Promise<StoreSource[]> {
 }
 
 async function saveStoreSources(sources: StoreSource[]): Promise<void> {
-  await fetch("/api/exec", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ command: "mkdir -p ~/.claude" }),
-  });
+  // writeFileContent creates parent directories automatically
   await fetch("/api/files/content", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -376,14 +372,12 @@ async function fetchMcpRegistry(
     data = await res.json();
   } catch {
     try {
-      const proxyRes = await fetch("/api/exec", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ command: `curl -fsSL '${url}'` }),
-      });
+      const proxyRes = await fetch(
+        `/api/github-raw?url=${encodeURIComponent(url)}`
+      );
       if (!proxyRes.ok) return { items: [] };
       const proxyData = await proxyRes.json();
-      data = JSON.parse(proxyData.output || '{"servers":[],"metadata":{}}');
+      data = JSON.parse(proxyData.content || '{"servers":[],"metadata":{}}');
     } catch {
       return { items: [] };
     }
@@ -553,27 +547,33 @@ export function SkillStore({
           item.type === "skill" ? GLOBAL_SKILLS_DIR : GLOBAL_AGENTS_DIR;
         const dirPath = `${baseDir}/${item.dirName}`;
 
-        await fetch("/api/exec", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ command: `mkdir -p '${dirPath}'` }),
-        });
-
         for (const file of item.downloadFiles) {
-          const res = await fetch("/api/exec", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ command: `curl -fsSL '${file.rawUrl}'` }),
-          });
-          if (res.ok) {
-            const data = await res.json();
-            if (data.output && data.success) {
-              await fetch("/api/files/content", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ path: `${dirPath}/${file.name}`, content: data.output }),
-              });
+          // Try direct fetch first, fall back to server proxy for private repos
+          let content: string | null = null;
+          try {
+            const directRes = await fetch(file.rawUrl);
+            if (directRes.ok) {
+              content = await directRes.text();
             }
+          } catch { /* ignore */ }
+
+          if (!content) {
+            const proxyRes = await fetch(
+              `/api/github-raw?url=${encodeURIComponent(file.rawUrl)}`
+            );
+            if (proxyRes.ok) {
+              const data = await proxyRes.json();
+              content = data.content || null;
+            }
+          }
+
+          if (content) {
+            // writeFileContent creates parent directories automatically
+            await fetch("/api/files/content", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ path: `${dirPath}/${file.name}`, content }),
+            });
           }
         }
 

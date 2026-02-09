@@ -57,18 +57,15 @@ async function writeFile(path: string, content: string): Promise<boolean> {
   }
 }
 
-async function execCommand(command: string): Promise<string | null> {
+async function deleteFileOrDir(path: string): Promise<boolean> {
   try {
-    const res = await fetch("/api/exec", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ command }),
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
-    return data.output ?? null;
+    const res = await fetch(
+      `/api/files/content?path=${encodeURIComponent(path)}`,
+      { method: "DELETE" }
+    );
+    return res.ok;
   } catch {
-    return null;
+    return false;
   }
 }
 
@@ -197,8 +194,7 @@ export function useClaudeConfig({ open, projectPath }: UseClaudeConfigOptions) {
       const dirPath = `${baseDir}/${name}`;
       const fileName = type === "skill" ? "SKILL.md" : "AGENT.md";
 
-      // Create directory first (writeFileSync won't create parents)
-      await execCommand(`mkdir -p '${dirPath}'`);
+      // writeFile creates parent directories automatically
       await writeFile(`${dirPath}/${fileName}`, content);
       refresh();
     },
@@ -207,7 +203,7 @@ export function useClaudeConfig({ open, projectPath }: UseClaudeConfigOptions) {
 
   const deleteItem = useCallback(
     async (dirPath: string) => {
-      await execCommand(`rm -rf '${dirPath}'`);
+      await deleteFileOrDir(dirPath);
       refresh();
     },
     [refresh]
@@ -219,9 +215,7 @@ export function useClaudeConfig({ open, projectPath }: UseClaudeConfigOptions) {
         scope === "global"
           ? GLOBAL_CLAUDE_MD
           : projectClaudeMd(projectPath || "");
-      const dir =
-        scope === "global" ? "~/.claude" : `${projectPath || ""}/.claude`;
-      await execCommand(`mkdir -p '${dir}'`);
+      // writeFile creates parent directories automatically
       await writeFile(path, "# CLAUDE.md\n\nProject instructions here.\n");
       refresh();
     },

@@ -13,15 +13,17 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "url parameter required" }, { status: 400 });
   }
 
-  // Validate URL is a GitHub raw content URL
+  // Validate URL is from an allowed domain
+  const ALLOWED_HOSTS = [
+    "raw.githubusercontent.com",
+    "api.github.com",
+    "registry.modelcontextprotocol.io",
+  ];
   try {
     const parsed = new URL(url);
-    if (
-      parsed.hostname !== "raw.githubusercontent.com" &&
-      parsed.hostname !== "api.github.com"
-    ) {
+    if (!ALLOWED_HOSTS.includes(parsed.hostname)) {
       return NextResponse.json(
-        { error: "Only raw.githubusercontent.com and api.github.com URLs are allowed" },
+        { error: `Only ${ALLOWED_HOSTS.join(", ")} URLs are allowed` },
         { status: 400 }
       );
     }

@@ -26,31 +26,20 @@ export function TmuxSessions({ onAttach }: TmuxSessionsProps) {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/exec", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          command:
-            "tmux list-sessions -F '#{session_name}|#{session_windows}|#{session_created}|#{session_attached}' 2>/dev/null || echo ''",
-        }),
-      });
+      const res = await fetch("/api/tmux-sessions");
       const data = await res.json();
 
-      if (data.success && data.output.trim()) {
-        const parsed = data.output
-          .trim()
-          .split("\n")
-          .filter((line: string) => line.includes("|"))
-          .map((line: string) => {
-            const [name, windows, created, attached] = line.split("|");
-            return {
-              name,
-              windows: parseInt(windows),
-              created: new Date(parseInt(created) * 1000).toLocaleString(),
-              attached: attached === "1",
-            };
-          });
-        setSessions(parsed);
+      if (data.sessions && data.sessions.length > 0) {
+        setSessions(
+          data.sessions.map(
+            (s: { name: string; windows: number; created: number; attached: boolean }) => ({
+              name: s.name,
+              windows: s.windows,
+              created: new Date(s.created * 1000).toLocaleString(),
+              attached: s.attached,
+            })
+          )
+        );
       } else {
         setSessions([]);
       }

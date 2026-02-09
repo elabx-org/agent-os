@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { readFileContent, writeFileContent } from "@/lib/files";
+import { rmSync } from "fs";
 
 /**
  * GET /api/files/content?path=...
@@ -82,6 +83,46 @@ export async function POST(request: NextRequest) {
       {
         error: error instanceof Error ? error.message : "Failed to write file",
       },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * DELETE /api/files/content?path=...
+ * Delete a file or directory
+ */
+export async function DELETE(request: NextRequest) {
+  try {
+    const searchParams = request.nextUrl.searchParams;
+    const path = searchParams.get("path");
+
+    if (!path) {
+      return NextResponse.json(
+        { error: "Path parameter is required" },
+        { status: 400 }
+      );
+    }
+
+    // Expand ~ to home directory
+    const expandedPath = path.replace(/^~/, process.env.HOME || "");
+
+    // Safety: refuse to delete critical paths
+    const dangerous = ["/", "/home", "/root", "/etc", "/usr", "/var", "/bin", "/sbin"];
+    if (dangerous.includes(expandedPath) || expandedPath === process.env.HOME) {
+      return NextResponse.json(
+        { error: "Refusing to delete critical system path" },
+        { status: 403 }
+      );
+    }
+
+    rmSync(expandedPath, { recursive: true, force: true });
+
+    return NextResponse.json({ success: true, path: expandedPath });
+  } catch (error) {
+    console.error("Error deleting file:", error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Failed to delete" },
       { status: 500 }
     );
   }
