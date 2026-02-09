@@ -168,15 +168,34 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
       restoreScrollState,
     }));
 
-    // Context menu actions
-    const handleContextCopy = useCallback(async () => {
-      // Try xterm selection first (from Shift+drag)
-      const copied = copySelection();
-      if (copied) {
-        focus();
-        return;
+    // Copy text to clipboard with fallback for non-HTTPS contexts
+    const writeClipboard = useCallback(async (text: string): Promise<boolean> => {
+      try {
+        if (navigator.clipboard?.writeText) {
+          await navigator.clipboard.writeText(text);
+          return true;
+        }
+      } catch {
+        // Clipboard API failed (e.g. HTTP context) — fall through to fallback
       }
-      // Fall back to tmux buffer (from mouse drag selection)
+      // Fallback: use execCommand('copy')
+      try {
+        const textarea = document.createElement("textarea");
+        textarea.value = text;
+        textarea.style.position = "fixed";
+        textarea.style.opacity = "0";
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textarea);
+        return true;
+      } catch {
+        return false;
+      }
+    }, []);
+
+    // Fetch tmux paste buffer contents
+    const getTmuxBuffer = useCallback(async (): Promise<string> => {
       try {
         const res = await fetch("/api/exec", {
           method: "POST",
@@ -185,16 +204,30 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
         });
         if (res.ok) {
           const data = await res.json();
-          const text = (data.stdout || data.output || "").trim();
-          if (text && navigator.clipboard?.writeText) {
-            await navigator.clipboard.writeText(text);
-          }
+          return (data.stdout || data.output || "").trim();
         }
       } catch {
         // tmux buffer not available
       }
+      return "";
+    }, []);
+
+    // Context menu actions
+    const handleContextCopy = useCallback(async () => {
+      // Try xterm selection first (from Shift+drag)
+      const selection = xtermRef.current?.getSelection();
+      if (selection) {
+        await writeClipboard(selection);
+        focus();
+        return;
+      }
+      // Fall back to tmux buffer (from mouse drag selection)
+      const text = await getTmuxBuffer();
+      if (text) {
+        await writeClipboard(text);
+      }
       focus();
-    }, [copySelection, focus]);
+    }, [xtermRef, writeClipboard, getTmuxBuffer, focus]);
 
     const handleContextPaste = useCallback(async () => {
       try {
@@ -203,7 +236,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
           sendInput(text);
         }
       } catch {
-        // Clipboard API not available
+        // Clipboard API not available in non-secure contexts — user can paste via Cmd+V
       }
       focus();
     }, [sendInput, focus]);
@@ -338,27 +371,15 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
         if (distance < 10) return;
 
         // Wait for tmux to process the selection
-        await new Promise((r) => setTimeout(r, 150));
+        await new Promise((r) => setTimeout(r, 200));
 
-        try {
-          const res = await fetch("/api/exec", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              command: "tmux save-buffer - 2>/dev/null",
-            }),
-          });
-          if (res.ok) {
-            const data = await res.json();
-            const text = (data.stdout || data.output || "").trim();
-            if (text && navigator.clipboard?.writeText) {
-              await navigator.clipboard.writeText(text);
-              setCopiedFlash(true);
-              setTimeout(() => setCopiedFlash(false), 1500);
-            }
+        const text = await getTmuxBuffer();
+        if (text) {
+          const ok = await writeClipboard(text);
+          if (ok) {
+            setCopiedFlash(true);
+            setTimeout(() => setCopiedFlash(false), 1500);
           }
-        } catch {
-          /* ignore */
         }
       };
 
@@ -368,7 +389,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
         container.removeEventListener("mousedown", onMouseDown);
         document.removeEventListener("mouseup", onMouseUp);
       };
-    }, [terminalRef]);
+    }, [terminalRef, getTmuxBuffer, writeClipboard]);
 
     return (
       <div
