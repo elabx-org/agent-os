@@ -185,21 +185,57 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
     }, [isMobile]);
 
     // Extract terminal text for select mode overlay
-    const terminalText = useMemo(() => {
-      if (!selectMode || !xtermRef.current) return "";
+    // Select mode: capture full scrollback via tmux capture-pane
+    const [terminalText, setTerminalText] = useState("");
 
-      const term = xtermRef.current;
-      const buffer = term.buffer.active;
-      const startRow = Math.max(0, buffer.baseY - 500);
-      const endRow = buffer.baseY + term.rows;
-      const lines: string[] = [];
-
-      for (let i = startRow; i < endRow; i++) {
-        const line = buffer.getLine(i);
-        if (line) lines.push(line.translateToString(true));
+    useEffect(() => {
+      if (!selectMode) {
+        setTerminalText("");
+        return;
       }
 
-      return lines.join("\n");
+      // Try to get the full tmux scrollback first
+      // Find which tmux session we're attached to
+      const fetchTmuxBuffer = async () => {
+        try {
+          // Use the sessions API to get tmux session info, then capture
+          const res = await fetch("/api/exec", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              command: "tmux capture-pane -p -S -50000 2>/dev/null",
+            }),
+          });
+          if (res.ok) {
+            const data = await res.json();
+            const output = (data.stdout || data.output || "").trim();
+            if (output.length > 0) {
+              setTerminalText(output);
+              return;
+            }
+          }
+        } catch {
+          // Fall through to xterm buffer
+        }
+
+        // Fallback: read from xterm buffer
+        if (xtermRef.current) {
+          const term = xtermRef.current;
+          const buffer = term.buffer.active;
+          const totalRows = buffer.baseY + term.rows;
+          const lines: string[] = [];
+          for (let i = 0; i < totalRows; i++) {
+            const line = buffer.getLine(i);
+            if (line) lines.push(line.translateToString(true));
+          }
+          while (lines.length > 0 && lines[lines.length - 1].trim() === "") {
+            lines.pop();
+          }
+          setTerminalText(lines.join("\n"));
+        }
+      };
+
+      fetchTmuxBuffer();
     }, [selectMode, xtermRef]);
 
     return (

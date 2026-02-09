@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
     try {
       const { stdout, stderr } = await execAsync(command, {
         timeout: TIMEOUT,
-        shell: "/bin/zsh",
+        shell: "/bin/bash",
         env: {
           ...process.env,
           PATH: `/usr/local/bin:/opt/homebrew/bin:${process.env.PATH}`,

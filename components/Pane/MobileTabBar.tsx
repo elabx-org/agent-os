@@ -13,7 +13,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Terminal as TerminalIcon,
-  MessageSquare,
   FolderOpen,
   GitBranch,
   Users,
@@ -24,7 +23,7 @@ import { cn } from "@/lib/utils";
 import type { Session, Project } from "@/lib/db";
 import type { LucideIcon } from "lucide-react";
 
-type ViewMode = "terminal" | "chat" | "files" | "git" | "workers";
+type ViewMode = "terminal" | "files" | "git" | "workers";
 
 interface ViewModeButtonProps {
   mode: ViewMode;
@@ -245,12 +244,6 @@ export function MobileTabBar({
             mode="terminal"
             currentMode={viewMode}
             icon={TerminalIcon}
-            onClick={onViewModeChange}
-          />
-          <ViewModeButton
-            mode="chat"
-            currentMode={viewMode}
-            icon={MessageSquare}
             onClick={onViewModeChange}
           />
           <ViewModeButton

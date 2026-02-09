@@ -9,7 +9,6 @@ import {
   Plus,
   FolderOpen,
   GitBranch,
-  MessageSquare,
   Users,
   Home,
 } from "lucide-react";
@@ -21,7 +20,7 @@ import {
 import { cn } from "@/lib/utils";
 import type { Session } from "@/lib/db";
 
-type ViewMode = "terminal" | "chat" | "files" | "git" | "workers";
+type ViewMode = "terminal" | "files" | "git" | "workers";
 
 interface Tab {
   id: string;
@@ -165,25 +164,6 @@ export function DesktopTabBar({
               </button>
             </TooltipTrigger>
             <TooltipContent>Terminal</TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onViewModeChange("chat");
-                }}
-                className={cn(
-                  "rounded px-2 py-1 transition-colors",
-                  viewMode === "chat"
-                    ? "bg-secondary text-foreground"
-                    : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                <MessageSquare className="h-3.5 w-3.5" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>Chat</TooltipContent>
           </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>

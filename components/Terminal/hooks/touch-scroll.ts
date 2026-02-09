@@ -49,6 +49,19 @@ export function setupTouchScroll(config: TouchScrollConfig): () => void {
       initialX: null as number | null,
       initialY: null as number | null,
       isHorizontal: null as boolean | null,
+      velocityY: 0,
+      lastMoveTime: 0,
+      scrollAccumulator: 0,
+    };
+
+    // Momentum animation state
+    let momentumRaf: number | null = null;
+
+    const stopMomentum = () => {
+      if (momentumRaf !== null) {
+        cancelAnimationFrame(momentumRaf);
+        momentumRaf = null;
+      }
     };
 
     const resetTouchState = () => {
@@ -57,17 +70,62 @@ export function setupTouchScroll(config: TouchScrollConfig): () => void {
         initialX: null,
         initialY: null,
         isHorizontal: null,
+        velocityY: 0,
+        lastMoveTime: 0,
+        scrollAccumulator: 0,
       };
+    };
+
+    // Send mouse wheel escape sequences to the PTY
+    // These are interpreted by tmux (with mouse mode on) to scroll the pane
+    const sendWheelEvents = (lines: number) => {
+      if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+      const absLines = Math.abs(lines);
+      // SGR mouse: \x1b[<65;col;rowM = scroll up, \x1b[<64;col;rowM = scroll down
+      const event = lines < 0 ? "\x1b[<65;1;1M" : "\x1b[<64;1;1M";
+      for (let i = 0; i < absLines; i++) {
+        wsRef.current.send(JSON.stringify({ type: "input", data: event }));
+      }
+    };
+
+    const startMomentum = () => {
+      let velocity = touchState.velocityY;
+      let accumulator = 0;
+      const friction = 0.95;
+      const minVelocity = 0.3;
+
+      const tick = () => {
+        velocity *= friction;
+        if (Math.abs(velocity) < minVelocity) {
+          momentumRaf = null;
+          return;
+        }
+
+        accumulator += velocity;
+        const lines = Math.trunc(accumulator);
+        if (lines !== 0) {
+          accumulator -= lines;
+          sendWheelEvents(lines);
+        }
+
+        momentumRaf = requestAnimationFrame(tick);
+      };
+
+      momentumRaf = requestAnimationFrame(tick);
     };
 
     handleTouchStart = (e: TouchEvent) => {
       if (selectModeRef.current || e.touches.length === 0) return;
+      stopMomentum();
       const touch = e.touches[0];
       touchState = {
         lastY: touch.clientY,
         initialX: touch.clientX,
         initialY: touch.clientY,
         isHorizontal: null,
+        velocityY: 0,
+        lastMoveTime: Date.now(),
+        scrollAccumulator: 0,
       };
     };
 
@@ -81,7 +139,7 @@ export function setupTouchScroll(config: TouchScrollConfig): () => void {
       const deltaY = Math.abs(touch.clientY - initialY);
 
       // Determine swipe direction on first significant movement
-      if (isHorizontal === null && (deltaX > 15 || deltaY > 15)) {
+      if (isHorizontal === null && (deltaX > 10 || deltaY > 10)) {
         touchState.isHorizontal = deltaX > deltaY;
       }
 
@@ -91,30 +149,56 @@ export function setupTouchScroll(config: TouchScrollConfig): () => void {
       e.preventDefault();
       e.stopPropagation();
 
+      const now = Date.now();
       const moveDeltaY = touch.clientY - lastY;
-      if (Math.abs(moveDeltaY) < 25) return;
+      const timeDelta = now - touchState.lastMoveTime;
 
-      const buffer = term.buffer.active;
-
-      if (
-        buffer.type === "alternate" &&
-        wsRef.current?.readyState === WebSocket.OPEN
-      ) {
-        // Send mouse wheel events for alternate buffer (e.g., less, vim)
-        const wheelEvent = moveDeltaY < 0 ? "\x1b[<65;1;1M" : "\x1b[<64;1;1M";
-        wsRef.current.send(JSON.stringify({ type: "input", data: wheelEvent }));
-        touchState.lastY = touch.clientY;
-      } else if (buffer.type !== "alternate") {
-        const scrollAmount = Math.round(moveDeltaY / 15);
-        if (scrollAmount !== 0) {
-          term.scrollLines(scrollAmount);
-          touchState.lastY = touch.clientY;
-        }
+      // Track velocity for momentum
+      if (timeDelta > 0) {
+        const instantVelocity = moveDeltaY / timeDelta;
+        touchState.velocityY = touchState.velocityY * 0.3 + instantVelocity * 0.7;
       }
+
+      // Get the row height to scroll precisely
+      const rowHeight = term.element
+        ? term.element.offsetHeight / term.rows
+        : 16;
+
+      // Accumulate pixel movement and convert to line-based scrolling
+      // Use half a row height as the threshold for responsive feel
+      touchState.scrollAccumulator += moveDeltaY;
+      const linesToScroll = Math.trunc(
+        touchState.scrollAccumulator / (rowHeight * 0.5)
+      );
+
+      if (linesToScroll !== 0) {
+        touchState.scrollAccumulator -= linesToScroll * (rowHeight * 0.5);
+        // Send as mouse wheel events — works for both tmux and non-tmux
+        // Natural scrolling: swipe down = scroll up (view earlier content)
+        sendWheelEvents(linesToScroll);
+      }
+
+      touchState.lastY = touch.clientY;
+      touchState.lastMoveTime = now;
     };
 
-    handleTouchEnd = resetTouchState;
-    handleTouchCancel = resetTouchState;
+    handleTouchEnd = () => {
+      const velocity = touchState.velocityY;
+      if (Math.abs(velocity) > 0.15) {
+        const rowHeight = term.element
+          ? term.element.offsetHeight / term.rows
+          : 16;
+        // Convert px/ms velocity to lines/frame for momentum (natural direction)
+        touchState.velocityY = (velocity * 16) / (rowHeight * 0.5);
+        startMomentum();
+      }
+      resetTouchState();
+    };
+
+    handleTouchCancel = () => {
+      stopMomentum();
+      resetTouchState();
+    };
 
     xtermScreen.addEventListener("touchstart", handleTouchStart, {
       passive: true,

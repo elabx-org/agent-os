@@ -18,7 +18,9 @@ C_PURPLE2=$'\\033[38;5;177m'
 C_PINK=$'\\033[38;5;213m'
 C_MUTED=$'\\033[38;5;245m'
 
-# Configure tmux status bar
+# Configure tmux for scrolling and status bar
+tmux set-option -g mouse on 2>/dev/null
+tmux set-option -g history-limit 50000 2>/dev/null
 tmux set-option status-style 'bg=#1e1e2e,fg=#cdd6f4' 2>/dev/null
 tmux set-option status-left '#[fg=#cba6f7,bold] AgentOS #[fg=#6c7086]| ' 2>/dev/null
 tmux set-option status-left-length 20 2>/dev/null

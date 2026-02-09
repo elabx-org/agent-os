@@ -46,11 +46,6 @@ const GitPanel = dynamic(
   { ssr: false, loading: () => <GitPanelSkeleton /> }
 );
 
-const ChatView = dynamic(
-  () => import("@/components/ChatView").then((mod) => mod.ChatView),
-  { ssr: false }
-);
-
 interface PaneProps {
   paneId: string;
   sessions: Session[];
@@ -64,7 +59,7 @@ interface PaneProps {
   onSelectSession?: (sessionId: string) => void;
 }
 
-type ViewMode = "terminal" | "chat" | "files" | "git" | "workers";
+type ViewMode = "terminal" | "files" | "git" | "workers";
 
 export const Pane = memo(function Pane({
   paneId,
@@ -211,7 +206,7 @@ export const Pane = memo(function Pane({
         : tab.attachedTmux;
 
       if (tmuxName) {
-        setTimeout(() => handle.sendCommand(`tmux attach -t ${tmuxName}`), 100);
+        setTimeout(() => handle.sendCommand(`tmux set-option -g mouse on 2>/dev/null; tmux attach -t ${tmuxName}`), 100);
       }
     },
     [paneId, sessions, onRegisterTerminal]
@@ -364,13 +359,6 @@ export const Pane = memo(function Pane({
             );
           })}
 
-          {/* Chat */}
-          {viewMode === "chat" && session && (
-            <div className="h-full">
-              <ChatView sessionId={session.id} />
-            </div>
-          )}
-
           {/* Files */}
           {session?.working_directory && (
             <div className={viewMode === "files" ? "h-full" : "hidden"}>
@@ -405,7 +393,7 @@ export const Pane = memo(function Pane({
                   setTimeout(() => {
                     terminalRef?.sendInput("\x15");
                     setTimeout(() => {
-                      terminalRef?.sendCommand(`tmux attach -t ${sessionName}`);
+                      terminalRef?.sendCommand(`tmux set-option -g mouse on 2>/dev/null; tmux attach -t ${sessionName}`);
                     }, 50);
                   }, 100);
                 }
@@ -468,13 +456,6 @@ export const Pane = memo(function Pane({
                       </div>
                     );
                   })}
-
-                  {/* Chat */}
-                  {viewMode === "chat" && session && (
-                    <div className="h-full">
-                      <ChatView sessionId={session.id} />
-                    </div>
-                  )}
 
                   {/* Files */}
                   {session?.working_directory && (
