@@ -20,7 +20,6 @@ export interface ClaudeConfigDialogProps {
 export const GLOBAL_SKILLS_DIR = "~/.claude/skills";
 export const GLOBAL_AGENTS_DIR = "~/.claude/agents";
 export const GLOBAL_CLAUDE_MD = "~/.claude/CLAUDE.md";
-export const MCP_CONFIG_PATH = "~/.claude/mcp.json";
 export const STORE_SOURCES_PATH = "~/.claude/store-sources.json";
 
 // MCP types
@@ -29,11 +28,6 @@ export interface McpServerConfig {
   args?: string[];
   cwd?: string;
   env?: Record<string, string>;
-}
-
-export interface McpConfigFile {
-  mcpServers: Record<string, McpServerConfig>;
-  _disabledServers?: Record<string, McpServerConfig>;
 }
 
 // Custom store sources

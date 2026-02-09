@@ -590,7 +590,7 @@ export function SkillStore({
           setMcpInstallTarget(null);
           onInstalled();
         } else {
-          toast.error("Failed to write mcp.json");
+          toast.error("Failed to install MCP server via claude mcp add");
         }
       } catch {
         toast.error("Failed to install MCP server");

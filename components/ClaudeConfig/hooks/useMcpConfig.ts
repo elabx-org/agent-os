@@ -1,91 +1,161 @@
 import { useState, useCallback, useEffect } from "react";
-import type { McpServerConfig, McpConfigFile } from "../ClaudeConfigDialog.types";
+import type { McpServerConfig } from "../ClaudeConfigDialog.types";
+
+export type McpScope = "user" | "local";
 
 export interface McpServerEntry {
   name: string;
   config: McpServerConfig;
-  disabled: boolean;
+  scope: McpScope;
 }
 
 interface UseMcpConfigOptions {
   open: boolean;
+  projectPath?: string;
 }
 
-async function readMcpConfig(): Promise<McpConfigFile> {
+function shellEscape(s: string): string {
+  return `'${s.replace(/'/g, "'\\''")}'`;
+}
+
+async function execCmd(
+  command: string
+): Promise<{ success: boolean; output: string }> {
+  const res = await fetch("/api/exec", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ command }),
+  });
+  return res.json();
+}
+
+interface ClaudeJsonMcpEntry {
+  type?: string;
+  command?: string;
+  args?: string[];
+  cwd?: string;
+  env?: Record<string, string>;
+}
+
+function parseEntry(
+  name: string,
+  raw: ClaudeJsonMcpEntry,
+  scope: McpScope
+): McpServerEntry {
+  return {
+    name,
+    config: {
+      command: raw.command || "",
+      args: raw.args,
+      cwd: raw.cwd,
+      env: raw.env,
+    },
+    scope,
+  };
+}
+
+async function readServers(projectPath?: string): Promise<McpServerEntry[]> {
   try {
     const res = await fetch(
-      `/api/files/content?path=${encodeURIComponent("~/.claude/mcp.json")}`
+      `/api/files/content?path=${encodeURIComponent("~/.claude.json")}`
     );
-    if (!res.ok) return { mcpServers: {} };
+    if (!res.ok) return [];
     const data = await res.json();
-    if (data.isBinary || !data.content) return { mcpServers: {} };
+    if (data.isBinary || !data.content) return [];
     const parsed = JSON.parse(data.content);
-    if (!parsed.mcpServers) parsed.mcpServers = {};
-    return parsed;
+    const entries: McpServerEntry[] = [];
+    const seen = new Set<string>();
+
+    // User-scope servers (root mcpServers)
+    if (parsed.mcpServers && typeof parsed.mcpServers === "object") {
+      for (const [name, cfg] of Object.entries(parsed.mcpServers)) {
+        entries.push(parseEntry(name, cfg as ClaudeJsonMcpEntry, "user"));
+        seen.add(name);
+      }
+    }
+
+    // Local-scope (project-specific) servers
+    if (projectPath && parsed.projects?.[projectPath]?.mcpServers) {
+      for (const [name, cfg] of Object.entries(
+        parsed.projects[projectPath].mcpServers as Record<
+          string,
+          ClaudeJsonMcpEntry
+        >
+      )) {
+        if (!seen.has(name)) {
+          entries.push(parseEntry(name, cfg, "local"));
+        }
+      }
+    }
+
+    entries.sort((a, b) => a.name.localeCompare(b.name));
+    return entries;
   } catch {
-    return { mcpServers: {} };
+    return [];
   }
 }
 
-async function writeMcpConfig(config: McpConfigFile): Promise<boolean> {
-  await fetch("/api/exec", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ command: "mkdir -p ~/.claude" }),
-  });
-  const res = await fetch("/api/files/content", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      path: "~/.claude/mcp.json",
-      content: JSON.stringify(config, null, 2),
-    }),
-  });
-  return res.ok;
+function buildAddCommand(
+  name: string,
+  config: McpServerConfig,
+  scope: McpScope
+): string {
+  const parts = ["claude", "mcp", "add", "-s", scope];
+  if (config.env) {
+    for (const [key, val] of Object.entries(config.env)) {
+      parts.push("-e", `${key}=${val}`);
+    }
+  }
+  parts.push("--", name, config.command);
+  if (config.args && config.args.length > 0) {
+    parts.push(...config.args);
+  }
+  return parts.map(shellEscape).join(" ");
 }
 
-// Claude Code uses settings.local.json to track which mcp.json servers are enabled
-async function readSettingsLocal(): Promise<Record<string, unknown>> {
+// The `claude mcp add` CLI doesn't support a cwd flag,
+// so we patch .claude.json directly after adding.
+async function patchCwd(
+  name: string,
+  cwd: string,
+  scope: McpScope,
+  projectPath?: string
+): Promise<void> {
   try {
     const res = await fetch(
-      `/api/files/content?path=${encodeURIComponent("~/.claude/settings.local.json")}`
+      `/api/files/content?path=${encodeURIComponent("~/.claude.json")}`
     );
-    if (!res.ok) return {};
+    if (!res.ok) return;
     const data = await res.json();
-    if (data.isBinary || !data.content) return {};
-    return JSON.parse(data.content);
+    if (data.isBinary || !data.content) return;
+    const parsed = JSON.parse(data.content);
+
+    if (scope === "user" && parsed.mcpServers?.[name]) {
+      parsed.mcpServers[name].cwd = cwd;
+    } else if (
+      scope === "local" &&
+      projectPath &&
+      parsed.projects?.[projectPath]?.mcpServers?.[name]
+    ) {
+      parsed.projects[projectPath].mcpServers[name].cwd = cwd;
+    } else {
+      return;
+    }
+
+    await fetch("/api/files/content", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        path: "~/.claude.json",
+        content: JSON.stringify(parsed, null, 2),
+      }),
+    });
   } catch {
-    return {};
+    // non-fatal
   }
 }
 
-async function writeSettingsLocal(settings: Record<string, unknown>): Promise<void> {
-  await fetch("/api/files/content", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      path: "~/.claude/settings.local.json",
-      content: JSON.stringify(settings, null, 2),
-    }),
-  });
-}
-
-async function setMcpEnabled(name: string, enabled: boolean): Promise<void> {
-  const settings = await readSettingsLocal();
-  const list: string[] = Array.isArray(settings.enabledMcpjsonServers)
-    ? [...settings.enabledMcpjsonServers]
-    : [];
-  if (enabled && !list.includes(name)) {
-    list.push(name);
-  } else if (!enabled) {
-    const idx = list.indexOf(name);
-    if (idx >= 0) list.splice(idx, 1);
-  }
-  settings.enabledMcpjsonServers = list;
-  await writeSettingsLocal(settings);
-}
-
-export function useMcpConfig({ open }: UseMcpConfigOptions) {
+export function useMcpConfig({ open, projectPath }: UseMcpConfigOptions) {
   const [loading, setLoading] = useState(false);
   const [servers, setServers] = useState<McpServerEntry[]>([]);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -98,22 +168,8 @@ export function useMcpConfig({ open }: UseMcpConfigOptions) {
 
     async function load() {
       setLoading(true);
-      const config = await readMcpConfig();
+      const entries = await readServers(projectPath);
       if (cancelled) return;
-
-      const entries: McpServerEntry[] = [];
-
-      for (const [name, cfg] of Object.entries(config.mcpServers)) {
-        entries.push({ name, config: cfg, disabled: false });
-      }
-
-      if (config._disabledServers) {
-        for (const [name, cfg] of Object.entries(config._disabledServers)) {
-          entries.push({ name, config: cfg, disabled: true });
-        }
-      }
-
-      entries.sort((a, b) => a.name.localeCompare(b.name));
       setServers(entries);
       setLoading(false);
     }
@@ -122,64 +178,55 @@ export function useMcpConfig({ open }: UseMcpConfigOptions) {
     return () => {
       cancelled = true;
     };
-  }, [open, refreshKey]);
+  }, [open, refreshKey, projectPath]);
 
   const saveServer = useCallback(
-    async (name: string, config: McpServerConfig) => {
-      const file = await readMcpConfig();
-      file.mcpServers[name] = config;
-      // Remove from disabled if it was there
-      if (file._disabledServers?.[name]) {
-        delete file._disabledServers[name];
+    async (
+      name: string,
+      config: McpServerConfig,
+      scope: McpScope = "user"
+    ) => {
+      // Remove existing if present (handles edits)
+      const existing = servers.find((s) => s.name === name);
+      if (existing) {
+        await execCmd(
+          ["claude", "mcp", "remove", "-s", existing.scope, name]
+            .map(shellEscape)
+            .join(" ")
+        );
       }
-      await writeMcpConfig(file);
-      await setMcpEnabled(name, true);
+
+      // Add via CLI
+      const addCmd = buildAddCommand(name, config, scope);
+      const result = await execCmd(addCmd);
+
+      if (!result.success) {
+        throw new Error(result.output || "Failed to add MCP server");
+      }
+
+      // Patch cwd if needed (CLI doesn't support cwd flag)
+      if (config.cwd) {
+        await patchCwd(name, config.cwd, scope, projectPath);
+      }
+
       refresh();
     },
-    [refresh]
+    [servers, projectPath, refresh]
   );
 
   const deleteServer = useCallback(
     async (name: string) => {
-      const file = await readMcpConfig();
-      delete file.mcpServers[name];
-      if (file._disabledServers) {
-        delete file._disabledServers[name];
-      }
-      await writeMcpConfig(file);
-      await setMcpEnabled(name, false);
+      const existing = servers.find((s) => s.name === name);
+      const scope = existing?.scope || "user";
+      await execCmd(
+        ["claude", "mcp", "remove", "-s", scope, name]
+          .map(shellEscape)
+          .join(" ")
+      );
       refresh();
     },
-    [refresh]
+    [servers, refresh]
   );
 
-  const toggleServer = useCallback(
-    async (name: string, disable: boolean) => {
-      const file = await readMcpConfig();
-
-      if (disable) {
-        // Move from mcpServers → _disabledServers
-        const cfg = file.mcpServers[name];
-        if (cfg) {
-          if (!file._disabledServers) file._disabledServers = {};
-          file._disabledServers[name] = cfg;
-          delete file.mcpServers[name];
-        }
-      } else {
-        // Move from _disabledServers → mcpServers
-        const cfg = file._disabledServers?.[name];
-        if (cfg) {
-          file.mcpServers[name] = cfg;
-          delete file._disabledServers![name];
-        }
-      }
-
-      await writeMcpConfig(file);
-      await setMcpEnabled(name, !disable);
-      refresh();
-    },
-    [refresh]
-  );
-
-  return { loading, servers, saveServer, deleteServer, toggleServer, refresh };
+  return { loading, servers, saveServer, deleteServer, refresh };
 }

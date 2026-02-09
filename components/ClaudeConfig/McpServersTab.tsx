@@ -3,22 +3,22 @@
 import { useState, useCallback } from "react";
 import { Plus, Trash2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
-import { useMcpConfig } from "./hooks/useMcpConfig";
+import { useMcpConfig, type McpScope } from "./hooks/useMcpConfig";
 import { McpServerEditor } from "./McpServerEditor";
 import type { McpServerConfig } from "./ClaudeConfigDialog.types";
 
 interface McpServersTabProps {
   open: boolean;
+  projectPath?: string;
 }
 
-export function McpServersTab({ open }: McpServersTabProps) {
-  const mcp = useMcpConfig({ open });
+export function McpServersTab({ open, projectPath }: McpServersTabProps) {
+  const mcp = useMcpConfig({ open, projectPath });
   const [editingServer, setEditingServer] = useState<string | null>(null); // name or "__new__"
 
   const handleSave = useCallback(
-    async (name: string, config: McpServerConfig) => {
-      await mcp.saveServer(name, config);
+    async (name: string, config: McpServerConfig, scope: McpScope) => {
+      await mcp.saveServer(name, config, scope);
     },
     [mcp]
   );
@@ -45,6 +45,7 @@ export function McpServersTab({ open }: McpServersTabProps) {
       <McpServerEditor
         name={existing?.name}
         config={existing?.config}
+        scope={existing?.scope}
         onSave={handleSave}
         onBack={handleBack}
       />
@@ -59,7 +60,7 @@ export function McpServersTab({ open }: McpServersTabProps) {
           MCP Servers
         </span>
         <span className="text-muted-foreground text-xs">
-          (~/.claude/mcp.json)
+          (via claude mcp)
         </span>
         <div className="flex-1" />
         <Button
@@ -97,11 +98,15 @@ export function McpServersTab({ open }: McpServersTabProps) {
                   <span className="truncate text-sm font-medium">
                     {server.name}
                   </span>
-                  {server.disabled && (
-                    <span className="text-muted-foreground rounded bg-muted px-1 py-0.5 text-[10px]">
-                      disabled
-                    </span>
-                  )}
+                  <span
+                    className={`rounded px-1 py-0.5 text-[10px] ${
+                      server.scope === "user"
+                        ? "bg-blue-500/10 text-blue-400"
+                        : "bg-amber-500/10 text-amber-400"
+                    }`}
+                  >
+                    {server.scope}
+                  </span>
                 </div>
                 <div className="text-muted-foreground truncate text-xs">
                   {server.config.command}
@@ -112,19 +117,6 @@ export function McpServersTab({ open }: McpServersTabProps) {
                     {envCount} env var{envCount !== 1 ? "s" : ""}
                   </span>
                 )}
-              </div>
-
-              {/* Toggle */}
-              <div
-                onClick={(e) => e.stopPropagation()}
-                className="shrink-0"
-              >
-                <Switch
-                  checked={!server.disabled}
-                  onCheckedChange={(checked) =>
-                    mcp.toggleServer(server.name, !checked)
-                  }
-                />
               </div>
 
               {/* Delete */}

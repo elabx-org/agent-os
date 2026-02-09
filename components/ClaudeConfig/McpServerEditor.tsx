@@ -12,11 +12,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import type { McpServerConfig } from "./ClaudeConfigDialog.types";
+import type { McpScope } from "./hooks/useMcpConfig";
 
 interface McpServerEditorProps {
   name?: string; // undefined = creating new
   config?: McpServerConfig;
-  onSave: (name: string, config: McpServerConfig) => Promise<void>;
+  scope?: McpScope; // undefined = creating new (user picks)
+  onSave: (name: string, config: McpServerConfig, scope: McpScope) => Promise<void>;
   onBack: () => void;
 }
 
@@ -72,6 +74,7 @@ const highlightStyle = HighlightStyle.define([
 export function McpServerEditor({
   name: initialName,
   config: initialConfig,
+  scope: initialScope,
   onSave,
   onBack,
 }: McpServerEditorProps) {
@@ -82,6 +85,7 @@ export function McpServerEditor({
   const [command, setCommand] = useState(initialConfig?.command || "");
   const [args, setArgs] = useState<string[]>(initialConfig?.args || []);
   const [cwd, setCwd] = useState(initialConfig?.cwd || "");
+  const [scope, setScope] = useState<McpScope>(initialScope || "user");
   const [envVars, setEnvVars] = useState<Array<{ key: string; value: string }>>(
     () => {
       if (!initialConfig?.env) return [];
@@ -170,15 +174,15 @@ export function McpServerEditor({
 
     setSaving(true);
     try {
-      await onSave(name, cfg);
+      await onSave(name, cfg, scope);
       toast.success(`Saved "${name}"`);
       onBack();
-    } catch {
-      toast.error("Failed to save");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to save");
     } finally {
       setSaving(false);
     }
-  }, [serverName, jsonMode, jsonContent, command, args, cwd, envVars, onSave, onBack]);
+  }, [serverName, jsonMode, jsonContent, command, args, cwd, envVars, scope, onSave, onBack]);
 
   useEffect(() => {
     setExtensions([
@@ -238,18 +242,51 @@ export function McpServerEditor({
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {/* Server name (always shown) */}
-        <div className="border-b px-3 py-2">
-          <label className="text-muted-foreground mb-1 block text-xs font-medium">
-            Server Name
-          </label>
-          <Input
-            value={serverName}
-            onChange={(e) => setServerName(e.target.value)}
-            placeholder="my-server"
-            className="h-8 text-xs"
-            disabled={!isNew}
-          />
+        {/* Server name + scope */}
+        <div className="border-b px-3 py-2 space-y-2">
+          <div>
+            <label className="text-muted-foreground mb-1 block text-xs font-medium">
+              Server Name
+            </label>
+            <Input
+              value={serverName}
+              onChange={(e) => setServerName(e.target.value)}
+              placeholder="my-server"
+              className="h-8 text-xs"
+              disabled={!isNew}
+            />
+          </div>
+          <div>
+            <label className="text-muted-foreground mb-1 block text-xs font-medium">
+              Scope
+            </label>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => isNew && setScope("user")}
+                className={`rounded px-2 py-1 text-xs font-medium transition-colors ${
+                  scope === "user"
+                    ? "bg-blue-500/20 text-blue-400 ring-1 ring-blue-500/40"
+                    : "bg-muted text-muted-foreground hover:text-foreground"
+                } ${!isNew ? "cursor-default opacity-70" : "cursor-pointer"}`}
+              >
+                user
+                <span className="ml-1 font-normal opacity-70">— all projects</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => isNew && setScope("local")}
+                className={`rounded px-2 py-1 text-xs font-medium transition-colors ${
+                  scope === "local"
+                    ? "bg-amber-500/20 text-amber-400 ring-1 ring-amber-500/40"
+                    : "bg-muted text-muted-foreground hover:text-foreground"
+                } ${!isNew ? "cursor-default opacity-70" : "cursor-pointer"}`}
+              >
+                local
+                <span className="ml-1 font-normal opacity-70">— this project</span>
+              </button>
+            </div>
+          </div>
         </div>
 
         {jsonMode ? (

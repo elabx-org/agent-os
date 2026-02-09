@@ -4,7 +4,7 @@ import { useState, useCallback } from "react";
 import { Loader2, ChevronDown, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import type { McpServerConfig, McpConfigFile } from "./ClaudeConfigDialog.types";
+import type { McpServerConfig } from "./ClaudeConfigDialog.types";
 
 interface EnvVarSpec {
   name: string;
@@ -24,76 +24,34 @@ interface McpInstallFormProps {
   installing: boolean;
 }
 
-async function readMcpConfig(): Promise<McpConfigFile> {
-  try {
-    const res = await fetch(
-      `/api/files/content?path=${encodeURIComponent("~/.claude/mcp.json")}`
-    );
-    if (!res.ok) return { mcpServers: {} };
-    const data = await res.json();
-    if (data.isBinary || !data.content) return { mcpServers: {} };
-    const parsed = JSON.parse(data.content);
-    if (!parsed.mcpServers) parsed.mcpServers = {};
-    return parsed;
-  } catch {
-    return { mcpServers: {} };
-  }
+function shellEscape(s: string): string {
+  return `'${s.replace(/'/g, "'\\''")}'`;
 }
 
-async function writeMcpConfig(config: McpConfigFile): Promise<boolean> {
-  await fetch("/api/exec", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ command: "mkdir -p ~/.claude" }),
-  });
-  const res = await fetch("/api/files/content", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      path: "~/.claude/mcp.json",
-      content: JSON.stringify(config, null, 2),
-    }),
-  });
-  return res.ok;
-}
-
-async function enableInSettingsLocal(name: string): Promise<void> {
-  try {
-    const res = await fetch(
-      `/api/files/content?path=${encodeURIComponent("~/.claude/settings.local.json")}`
-    );
-    let settings: Record<string, unknown> = {};
-    if (res.ok) {
-      const data = await res.json();
-      if (!data.isBinary && data.content) settings = JSON.parse(data.content);
-    }
-    const list: string[] = Array.isArray(settings.enabledMcpjsonServers)
-      ? [...settings.enabledMcpjsonServers]
-      : [];
-    if (!list.includes(name)) list.push(name);
-    settings.enabledMcpjsonServers = list;
-    await fetch("/api/files/content", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        path: "~/.claude/settings.local.json",
-        content: JSON.stringify(settings, null, 2),
-      }),
-    });
-  } catch {
-    // non-fatal
-  }
-}
-
+// Install an MCP server via `claude mcp add` CLI
 export async function installMcpServer(
   name: string,
   config: McpServerConfig
 ): Promise<boolean> {
-  const file = await readMcpConfig();
-  file.mcpServers[name] = config;
-  const ok = await writeMcpConfig(file);
-  if (ok) await enableInSettingsLocal(name);
-  return ok;
+  const parts = ["claude", "mcp", "add", "-s", "user"];
+  if (config.env) {
+    for (const [key, val] of Object.entries(config.env)) {
+      parts.push("-e", `${key}=${val}`);
+    }
+  }
+  parts.push("--", name, config.command);
+  if (config.args && config.args.length > 0) {
+    parts.push(...config.args);
+  }
+
+  const command = parts.map(shellEscape).join(" ");
+  const res = await fetch("/api/exec", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ command }),
+  });
+  const data = await res.json();
+  return data.success;
 }
 
 export function McpInstallForm({
@@ -157,7 +115,7 @@ export function McpInstallForm({
       {/* Server name */}
       <div>
         <label className="text-muted-foreground mb-0.5 block text-[10px]">
-          Server name (in mcp.json)
+          Server name
         </label>
         <Input
           value={name}

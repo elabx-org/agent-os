@@ -45,7 +45,7 @@ export function ClaudeConfigDialog({
   const [showInstaller, setShowInstaller] = useState(false);
 
   const config = useClaudeConfig({ open, projectPath });
-  const mcpConfig = useMcpConfig({ open });
+  const mcpConfig = useMcpConfig({ open, projectPath });
   const installer = useSkillInstaller({
     projectPath,
     onInstalled: () => {
@@ -83,7 +83,6 @@ export function ClaudeConfigDialog({
   const installedMcpIdentifiers = useMemo(
     () =>
       mcpConfig.servers
-        .filter((s) => !s.disabled)
         .map((s) => {
           const args = s.config.args || [];
           if (s.config.command === "npx") {
@@ -196,7 +195,7 @@ export function ClaudeConfigDialog({
 
               {/* MCP Servers tab */}
               {activeTab === "mcp-servers" && (
-                <McpServersTab open={open} />
+                <McpServersTab open={open} projectPath={projectPath} />
               )}
 
               {/* Skills tab */}
