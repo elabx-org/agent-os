@@ -65,25 +65,24 @@ export function useSkillInstaller({
           return;
         }
 
-        // Fetch via server-side curl to avoid CORS
-        const res = await fetch("/api/exec", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            command: `curl -fsSL '${rawUrl}'`,
-          }),
-        });
+        // Fetch via server-side proxy (handles auth for private repos)
+        const res = await fetch(
+          `/api/github-raw?url=${encodeURIComponent(rawUrl)}`
+        );
 
         if (!res.ok) {
-          setError("Failed to fetch from GitHub.");
+          const errData = await res.json().catch(() => ({}));
+          setError(
+            errData.error || "Failed to fetch from GitHub. Check the URL and repo access."
+          );
           setInstalling(false);
           return;
         }
 
         const data = await res.json();
-        const content = (data.output || "").trim();
+        const content = (data.content || "").trim();
 
-        if (!content || !data.success) {
+        if (!content) {
           setError(
             "Could not fetch SKILL.md. Check the URL and ensure the file exists."
           );
@@ -112,14 +111,7 @@ export function useSkillInstaller({
 
         const dirPath = `${baseDir}/${safeName}`;
 
-        // Create dir
-        await fetch("/api/exec", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ command: `mkdir -p '${dirPath}'` }),
-        });
-
-        // Write SKILL.md
+        // Write SKILL.md (parent dirs created automatically)
         const writeRes = await fetch("/api/files/content", {
           method: "POST",
           headers: { "Content-Type": "application/json" },

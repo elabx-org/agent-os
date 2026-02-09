@@ -69,22 +69,20 @@ interface SkillStoreProps {
 
 async function ghApiFetch(url: string): Promise<unknown[] | null> {
   try {
+    // Try direct fetch first (works for public repos)
     const res = await fetch(url, {
       headers: { Accept: "application/vnd.github.v3+json" },
     });
     if (res.ok) return res.json();
 
-    if (res.status === 403 || res.status === 429) {
-      const proxyRes = await fetch("/api/exec", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          command: `curl -fsSL '${url}' -H 'Accept: application/vnd.github.v3+json'`,
-        }),
-      });
+    // On rate-limit or auth failure, proxy through server (has gh token)
+    if (res.status === 403 || res.status === 429 || res.status === 401) {
+      const proxyRes = await fetch(
+        `/api/github-raw?url=${encodeURIComponent(url)}`
+      );
       if (proxyRes.ok) {
         const data = await proxyRes.json();
-        return JSON.parse(data.output || "[]");
+        return JSON.parse(data.content || "[]");
       }
     }
   } catch {
@@ -95,8 +93,18 @@ async function ghApiFetch(url: string): Promise<unknown[] | null> {
 
 async function fetchRaw(url: string): Promise<string | null> {
   try {
+    // Try direct fetch first
     const res = await fetch(url);
     if (res.ok) return res.text();
+
+    // Fallback through server proxy (handles private repos)
+    const proxyRes = await fetch(
+      `/api/github-raw?url=${encodeURIComponent(url)}`
+    );
+    if (proxyRes.ok) {
+      const data = await proxyRes.json();
+      return data.content || null;
+    }
   } catch {
     // ignore
   }

@@ -2,7 +2,8 @@
  * File system utilities for file explorer (server-only)
  */
 
-import { readdirSync, statSync, readFileSync, writeFileSync } from "fs";
+import { readdirSync, statSync, readFileSync, writeFileSync, mkdirSync } from "fs";
+import { dirname } from "path";
 import { join, extname } from "path";
 
 // Re-export client-safe types and utilities
@@ -196,6 +197,8 @@ export function writeFileContent(
   }
 
   try {
+    // Ensure parent directory exists
+    mkdirSync(dirname(filePath), { recursive: true });
     writeFileSync(filePath, content, "utf-8");
     return {
       success: true,
