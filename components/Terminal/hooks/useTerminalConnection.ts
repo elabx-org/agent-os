@@ -142,11 +142,41 @@ export function useTerminalConnection({
     const connectTimeout = setTimeout(() => {
       if (cancelled || !terminalRef.current) return;
 
-      // Initialize terminal
+      // Initialize terminal with copy/paste callbacks
       const { term, fitAddon, searchAddon, cleanup } = createTerminal(
         terminalRef.current,
         isMobile,
-        theme
+        theme,
+        {
+          onPaste: async () => {
+            try {
+              const text = await navigator.clipboard?.readText?.();
+              if (text && wsRef.current?.readyState === WebSocket.OPEN) {
+                wsRef.current.send(JSON.stringify({ type: "input", data: text }));
+              }
+            } catch {
+              // Clipboard API not available or permission denied
+            }
+          },
+          onCopyFallback: async () => {
+            try {
+              const res = await fetch("/api/exec", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ command: "tmux save-buffer - 2>/dev/null" }),
+              });
+              if (res.ok) {
+                const data = await res.json();
+                const text = (data.stdout || data.output || "").trim();
+                if (text && navigator.clipboard?.writeText) {
+                  await navigator.clipboard.writeText(text);
+                }
+              }
+            } catch {
+              // tmux buffer not available
+            }
+          },
+        }
       );
       xtermRef.current = term;
       fitAddonRef.current = fitAddon;

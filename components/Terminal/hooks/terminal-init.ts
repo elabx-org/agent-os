@@ -7,6 +7,13 @@ import { SearchAddon } from "@xterm/addon-search";
 import { CanvasAddon } from "@xterm/addon-canvas";
 import { getTerminalThemeForApp } from "../constants";
 
+export interface TerminalCallbacks {
+  /** Called when paste is requested (Cmd+V or Ctrl+Shift+V) */
+  onPaste?: () => void;
+  /** Called when copy is requested but no xterm selection exists (try tmux buffer) */
+  onCopyFallback?: () => void;
+}
+
 export interface TerminalInstance {
   term: XTerm;
   fitAddon: FitAddon;
@@ -17,7 +24,8 @@ export interface TerminalInstance {
 export function createTerminal(
   container: HTMLElement,
   isMobile: boolean,
-  theme: string
+  theme: string,
+  callbacks?: TerminalCallbacks
 ): TerminalInstance {
   const fontSize = isMobile ? 11 : 14;
   const terminalTheme = getTerminalThemeForApp(theme || "dark");
@@ -75,28 +83,48 @@ export function createTerminal(
     document.body.removeChild(textarea);
   };
 
-  // Handle Cmd+A and Cmd+C via document event listener (more reliable than attachCustomKeyEventHandler)
+  // Handle Cmd+A, Cmd+C, Cmd+V via document event listener (more reliable than attachCustomKeyEventHandler)
   const handleKeyDown = (event: KeyboardEvent) => {
     // Only handle when terminal is focused (xterm creates its textarea inside the container)
     if (!container.contains(document.activeElement)) return;
 
     const key = event.key.toLowerCase();
+    const isMeta = event.metaKey; // Cmd on macOS
+    const isCtrl = event.ctrlKey;
 
     // Cmd+A (macOS) / Ctrl+A for select all
-    if ((event.metaKey || event.ctrlKey) && key === "a") {
+    if ((isMeta || isCtrl) && key === "a") {
       event.preventDefault();
       event.stopPropagation();
       term.selectAll();
       return;
     }
 
-    // Cmd+C (macOS) / Ctrl+C for copy when text is selected
-    if ((event.metaKey || event.ctrlKey) && key === "c") {
-      const selection = term.getSelection();
-      if (selection) {
-        event.preventDefault();
-        event.stopPropagation();
-        copyToClipboard(selection);
+    // Cmd+V (macOS) or Ctrl+Shift+V for paste
+    if ((isMeta && key === "v") || (isCtrl && event.shiftKey && key === "v")) {
+      event.preventDefault();
+      event.stopPropagation();
+      callbacks?.onPaste?.();
+      return;
+    }
+
+    // Cmd+C (macOS) for copy — try xterm selection first, then tmux buffer fallback
+    // Ctrl+Shift+C also copies (Linux convention)
+    // Plain Ctrl+C without selection must pass through as SIGINT
+    if (key === "c") {
+      if (isMeta || (isCtrl && event.shiftKey)) {
+        const selection = term.getSelection();
+        if (selection) {
+          event.preventDefault();
+          event.stopPropagation();
+          copyToClipboard(selection);
+        } else {
+          // No xterm selection — try tmux buffer
+          event.preventDefault();
+          event.stopPropagation();
+          callbacks?.onCopyFallback?.();
+        }
+        return;
       }
     }
   };
