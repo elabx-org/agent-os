@@ -8,6 +8,7 @@ import {
   NewProjectDialog,
   ProjectSettingsDialog,
 } from "@/components/Projects";
+import { ClaudeConfigDialog } from "@/components/ClaudeConfig";
 import { FolderPicker } from "@/components/FolderPicker";
 import { SelectionToolbar } from "./SelectionToolbar";
 import { SessionListHeader } from "./SessionListHeader";
@@ -79,6 +80,7 @@ export function SessionList({
   const [hoveredSession, setHoveredSession] = useState<Session | null>(null);
   const [hoverPosition, setHoverPosition] = useState({ x: 0, y: 0 });
   const [logsServerId, setLogsServerId] = useState<string | null>(null);
+  const [showClaudeConfig, setShowClaudeConfig] = useState(false);
 
   // Use projects if available
   const useProjectsView = projects.length > 0;
@@ -153,6 +155,7 @@ export function SessionList({
         onNewProject={() => setShowNewProjectDialog(true)}
         onOpenProject={() => setShowFolderPicker(true)}
         onKillAll={() => setShowKillAllConfirm(true)}
+        onClaudeConfig={() => setShowClaudeConfig(true)}
       />
 
       {/* Kill All Confirmation */}
@@ -352,6 +355,21 @@ export function SessionList({
         open={editingProject !== null}
         onClose={() => setEditingProject(null)}
         onSave={() => setEditingProject(null)}
+      />
+
+      {/* Claude Config Dialog */}
+      <ClaudeConfigDialog
+        open={showClaudeConfig}
+        onClose={() => setShowClaudeConfig(false)}
+        projectPath={
+          activeSessionId
+            ? projects.find((p) =>
+                sessions.some(
+                  (s) => s.id === activeSessionId && s.project_id === p.id
+                )
+              )?.working_directory
+            : projects.find((p) => !p.is_uncategorized)?.working_directory
+        }
       />
     </div>
   );

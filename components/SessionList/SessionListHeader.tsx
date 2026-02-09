@@ -16,18 +16,21 @@ import {
   FolderOpen,
   MoreHorizontal,
   Trash2,
+  SlidersHorizontal,
 } from "lucide-react";
 
 interface SessionListHeaderProps {
   onNewProject: () => void;
   onOpenProject: () => void;
   onKillAll: () => void;
+  onClaudeConfig: () => void;
 }
 
 export function SessionListHeader({
   onNewProject,
   onOpenProject,
   onKillAll,
+  onClaudeConfig,
 }: SessionListHeaderProps) {
   return (
     <div className="flex items-center justify-between px-3 py-2">
@@ -86,6 +89,10 @@ export function SessionListHeader({
             <TooltipContent>More options</TooltipContent>
           </Tooltip>
           <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={onClaudeConfig}>
+              <SlidersHorizontal className="mr-2 h-3 w-3" />
+              Claude Config
+            </DropdownMenuItem>
             <DropdownMenuItem
               onClick={onKillAll}
               className="text-red-500 focus:text-red-500"
