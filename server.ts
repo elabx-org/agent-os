@@ -42,24 +42,24 @@ app.prepare().then(() => {
   terminalWss.on("connection", (ws: WebSocket) => {
     let ptyProcess: pty.IPty;
     try {
-      const shell = process.env.SHELL || "/bin/zsh";
+      const shell = process.env.SHELL || "/bin/bash";
       // Use minimal env - only essentials for shell to work
       // This lets Next.js/Vite/etc load .env.local without interference from parent process env
       const minimalEnv: { [key: string]: string } = {
-        PATH: process.env.PATH || "/usr/local/bin:/usr/bin:/bin",
-        HOME: process.env.HOME || "/",
-        USER: process.env.USER || "",
+        PATH: process.env.PATH || "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/config/.npm-global/bin:/config/.local/bin",
+        HOME: process.env.HOME || "/config",
+        USER: process.env.USER || "abc",
         SHELL: shell,
         TERM: "xterm-256color",
         COLORTERM: "truecolor",
         LANG: process.env.LANG || "en_US.UTF-8",
       };
 
-      ptyProcess = pty.spawn(shell, [], {
+      ptyProcess = pty.spawn(shell, ["-l"], {
         name: "xterm-256color",
         cols: 80,
         rows: 24,
-        cwd: process.env.HOME || "/",
+        cwd: process.env.HOME || "/config",
         env: minimalEnv,
       });
     } catch (err) {
@@ -104,12 +104,12 @@ app.prepare().then(() => {
     });
 
     ws.on("close", () => {
-      ptyProcess.kill();
+      setTimeout(() => { try { ptyProcess.kill(); } catch(e) {} }, 300000);
     });
 
     ws.on("error", (err) => {
       console.error("WebSocket error:", err);
-      ptyProcess.kill();
+      setTimeout(() => { try { ptyProcess.kill(); } catch(e) {} }, 300000);
     });
   });
 
