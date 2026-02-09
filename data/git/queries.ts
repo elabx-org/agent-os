@@ -275,6 +275,79 @@ export function useCommitFileDiff(
   });
 }
 
+// --- Branches ---
+
+async function fetchBranches(
+  workingDir: string
+): Promise<{ branches: string[]; currentBranch: string }> {
+  const res = await fetch("/api/git/check", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path: workingDir }),
+  });
+  const data = await res.json();
+  if (data.error) throw new Error(data.error);
+  return { branches: data.branches || [], currentBranch: data.currentBranch || "" };
+}
+
+export function useBranches(
+  workingDir: string,
+  options?: { enabled?: boolean }
+) {
+  return useQuery({
+    queryKey: gitKeys.branches(workingDir),
+    queryFn: () => fetchBranches(workingDir),
+    staleTime: 30000,
+    enabled: !!workingDir && (options?.enabled ?? true),
+  });
+}
+
+export function useCheckoutBranch(workingDir: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      branch,
+      force,
+    }: {
+      branch: string;
+      force?: boolean;
+    }) => {
+      const res = await fetch("/api/git/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: workingDir, branch, force }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to switch branch");
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: gitKeys.all });
+    },
+  });
+}
+
+export function useSyncBranch(workingDir: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/git/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: workingDir }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to sync");
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: gitKeys.all });
+    },
+  });
+}
+
 // --- Multi-repo Git Status ---
 
 async function fetchMultiRepoGitStatus(

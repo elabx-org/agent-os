@@ -46,6 +46,11 @@ const GitPanel = dynamic(
   { ssr: false, loading: () => <GitPanelSkeleton /> }
 );
 
+const ChatView = dynamic(
+  () => import("@/components/ChatView").then((mod) => mod.ChatView),
+  { ssr: false }
+);
+
 interface PaneProps {
   paneId: string;
   sessions: Session[];
@@ -59,7 +64,7 @@ interface PaneProps {
   onSelectSession?: (sessionId: string) => void;
 }
 
-type ViewMode = "terminal" | "files" | "git" | "workers";
+type ViewMode = "terminal" | "chat" | "files" | "git" | "workers";
 
 export const Pane = memo(function Pane({
   paneId,
@@ -359,6 +364,13 @@ export const Pane = memo(function Pane({
             );
           })}
 
+          {/* Chat */}
+          {viewMode === "chat" && session && (
+            <div className="h-full">
+              <ChatView sessionId={session.id} />
+            </div>
+          )}
+
           {/* Files */}
           {session?.working_directory && (
             <div className={viewMode === "files" ? "h-full" : "hidden"}>
@@ -456,6 +468,13 @@ export const Pane = memo(function Pane({
                       </div>
                     );
                   })}
+
+                  {/* Chat */}
+                  {viewMode === "chat" && session && (
+                    <div className="h-full">
+                      <ChatView sessionId={session.id} />
+                    </div>
+                  )}
 
                   {/* Files */}
                   {session?.working_directory && (

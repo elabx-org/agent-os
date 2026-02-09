@@ -11,4 +11,6 @@ export const gitKeys = {
     [...gitKeys.all, "commit", workingDir, hash] as const,
   commitFileDiff: (workingDir: string, hash: string, file: string) =>
     [...gitKeys.all, "diff", workingDir, hash, file] as const,
+  branches: (workingDir: string) =>
+    [...gitKeys.all, "branches", workingDir] as const,
 };

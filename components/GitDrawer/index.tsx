@@ -9,6 +9,7 @@ import {
   AlertCircle,
   ArrowUp,
   ArrowDown,
+  ArrowDownUp,
   X,
   AlertTriangle,
   ExternalLink,
@@ -23,9 +24,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { toast } from "sonner";
 import { FileChanges } from "@/components/GitPanel/FileChanges";
 import { CommitForm } from "@/components/GitPanel/CommitForm";
 import { FileEditDialog } from "./FileEditDialog";
+import { BranchSelector } from "./BranchSelector";
 import { cn } from "@/lib/utils";
 import { useDrawerAnimation } from "@/hooks/useDrawerAnimation";
 import {
@@ -35,6 +38,7 @@ import {
   useStageFiles,
   useUnstageFiles,
   useMultiRepoGitStatus,
+  useSyncBranch,
   gitKeys,
 } from "@/data/git/queries";
 import type { GitFile } from "@/lib/git-status";
@@ -123,6 +127,7 @@ export function GitDrawer({
   const createPRMutation = useCreatePR(primaryRepoPath);
   const stageMutation = useStageFiles(primaryRepoPath);
   const unstageMutation = useUnstageFiles(primaryRepoPath);
+  const syncMutation = useSyncBranch(primaryRepoPath);
 
   // Local UI state
   const [selectedFile, setSelectedFile] = useState<
@@ -259,10 +264,16 @@ export function GitDrawer({
             <div className="flex items-center gap-2">
               <span className="text-sm font-medium">Git Changes</span>
               {status && (
-                <span className="bg-muted rounded-full px-2 py-0.5 text-xs">
-                  <GitBranch className="mr-1 inline h-3 w-3" />
-                  {status.branch}
-                </span>
+                <BranchSelector
+                  workingDirectory={primaryRepoPath}
+                  currentBranch={status.branch}
+                  hasChanges={
+                    (status.staged?.length || 0) > 0 ||
+                    (status.unstaged?.length || 0) > 0 ||
+                    (status.untracked?.length || 0) > 0
+                  }
+                  onBranchChanged={() => refetchStatus()}
+                />
               )}
               {existingPR && (
                 <button
@@ -280,9 +291,31 @@ export function GitDrawer({
               <Button
                 variant="ghost"
                 size="icon"
+                onClick={() =>
+                  syncMutation.mutate(undefined, {
+                    onSuccess: () => toast.success("Synced with remote"),
+                    onError: (err) =>
+                      toast.error(err.message || "Sync failed"),
+                  })
+                }
+                disabled={syncMutation.isPending || loading}
+                className="h-7 w-7"
+                title="Sync (fetch, pull, push)"
+              >
+                <ArrowDownUp
+                  className={cn(
+                    "h-3.5 w-3.5",
+                    syncMutation.isPending && "animate-spin"
+                  )}
+                />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
                 onClick={() => refetchStatus()}
                 disabled={isRefetching || loading}
                 className="h-7 w-7"
+                title="Refresh status"
               >
                 <RefreshCw
                   className={cn("h-3.5 w-3.5", isRefetching && "animate-spin")}
