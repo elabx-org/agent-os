@@ -44,6 +44,47 @@ async function writeMcpConfig(config: McpConfigFile): Promise<boolean> {
   return res.ok;
 }
 
+// Claude Code uses settings.local.json to track which mcp.json servers are enabled
+async function readSettingsLocal(): Promise<Record<string, unknown>> {
+  try {
+    const res = await fetch(
+      `/api/files/content?path=${encodeURIComponent("~/.claude/settings.local.json")}`
+    );
+    if (!res.ok) return {};
+    const data = await res.json();
+    if (data.isBinary || !data.content) return {};
+    return JSON.parse(data.content);
+  } catch {
+    return {};
+  }
+}
+
+async function writeSettingsLocal(settings: Record<string, unknown>): Promise<void> {
+  await fetch("/api/files/content", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      path: "~/.claude/settings.local.json",
+      content: JSON.stringify(settings, null, 2),
+    }),
+  });
+}
+
+async function setMcpEnabled(name: string, enabled: boolean): Promise<void> {
+  const settings = await readSettingsLocal();
+  const list: string[] = Array.isArray(settings.enabledMcpjsonServers)
+    ? [...settings.enabledMcpjsonServers]
+    : [];
+  if (enabled && !list.includes(name)) {
+    list.push(name);
+  } else if (!enabled) {
+    const idx = list.indexOf(name);
+    if (idx >= 0) list.splice(idx, 1);
+  }
+  settings.enabledMcpjsonServers = list;
+  await writeSettingsLocal(settings);
+}
+
 export function useMcpConfig({ open }: UseMcpConfigOptions) {
   const [loading, setLoading] = useState(false);
   const [servers, setServers] = useState<McpServerEntry[]>([]);
@@ -92,6 +133,7 @@ export function useMcpConfig({ open }: UseMcpConfigOptions) {
         delete file._disabledServers[name];
       }
       await writeMcpConfig(file);
+      await setMcpEnabled(name, true);
       refresh();
     },
     [refresh]
@@ -105,6 +147,7 @@ export function useMcpConfig({ open }: UseMcpConfigOptions) {
         delete file._disabledServers[name];
       }
       await writeMcpConfig(file);
+      await setMcpEnabled(name, false);
       refresh();
     },
     [refresh]
@@ -132,6 +175,7 @@ export function useMcpConfig({ open }: UseMcpConfigOptions) {
       }
 
       await writeMcpConfig(file);
+      await setMcpEnabled(name, !disable);
       refresh();
     },
     [refresh]

@@ -57,13 +57,43 @@ async function writeMcpConfig(config: McpConfigFile): Promise<boolean> {
   return res.ok;
 }
 
+async function enableInSettingsLocal(name: string): Promise<void> {
+  try {
+    const res = await fetch(
+      `/api/files/content?path=${encodeURIComponent("~/.claude/settings.local.json")}`
+    );
+    let settings: Record<string, unknown> = {};
+    if (res.ok) {
+      const data = await res.json();
+      if (!data.isBinary && data.content) settings = JSON.parse(data.content);
+    }
+    const list: string[] = Array.isArray(settings.enabledMcpjsonServers)
+      ? [...settings.enabledMcpjsonServers]
+      : [];
+    if (!list.includes(name)) list.push(name);
+    settings.enabledMcpjsonServers = list;
+    await fetch("/api/files/content", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        path: "~/.claude/settings.local.json",
+        content: JSON.stringify(settings, null, 2),
+      }),
+    });
+  } catch {
+    // non-fatal
+  }
+}
+
 export async function installMcpServer(
   name: string,
   config: McpServerConfig
 ): Promise<boolean> {
   const file = await readMcpConfig();
   file.mcpServers[name] = config;
-  return writeMcpConfig(file);
+  const ok = await writeMcpConfig(file);
+  if (ok) await enableInSettingsLocal(name);
+  return ok;
 }
 
 export function McpInstallForm({
