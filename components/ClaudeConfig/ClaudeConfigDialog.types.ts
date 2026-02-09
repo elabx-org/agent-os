@@ -1,4 +1,4 @@
-export type ConfigTab = "skills" | "agents" | "claude-md";
+export type ConfigTab = "store" | "skills" | "agents" | "claude-md";
 export type ConfigScope = "global" | "project";
 
 export interface ExtensionItem {

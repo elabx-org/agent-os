@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import {
   Dialog,
   DialogContent,
@@ -14,6 +14,7 @@ import { ItemList } from "./ItemList";
 import { ItemEditor } from "./ItemEditor";
 import { InstallFromGitHub } from "./InstallFromGitHub";
 import { ClaudeMdTab } from "./ClaudeMdTab";
+import { SkillStore } from "./SkillStore";
 import {
   type ConfigTab,
   type ExtensionItem,
@@ -25,6 +26,7 @@ import {
 } from "./ClaudeConfigDialog.types";
 
 const TABS: { key: ConfigTab; label: string }[] = [
+  { key: "store", label: "Store" },
   { key: "skills", label: "Skills" },
   { key: "agents", label: "Agents" },
   { key: "claude-md", label: "CLAUDE.md" },
@@ -35,7 +37,7 @@ export function ClaudeConfigDialog({
   onClose,
   projectPath,
 }: ClaudeConfigDialogProps) {
-  const [activeTab, setActiveTab] = useState<ConfigTab>("skills");
+  const [activeTab, setActiveTab] = useState<ConfigTab>("store");
   const [editingItem, setEditingItem] = useState<ExtensionItem | null>(null);
   const [showInstaller, setShowInstaller] = useState(false);
 
@@ -49,6 +51,19 @@ export function ClaudeConfigDialog({
   });
 
   const hasProject = !!projectPath;
+
+  // Installed skill directory names for the store to check
+  const installedSkillNames = useMemo(
+    () =>
+      config.skills
+        .filter((s) => s.scope === "global")
+        .map((s) => {
+          // Extract directory name from path (last segment of dirPath)
+          const parts = s.dirPath.split("/");
+          return parts[parts.length - 1];
+        }),
+    [config.skills]
+  );
 
   const handleEdit = useCallback((item: ExtensionItem) => {
     setEditingItem(item);
@@ -78,11 +93,7 @@ export function ClaudeConfigDialog({
     (type: "skill" | "agent") =>
       (scope: "global" | "project", name: string) => {
         const template = type === "skill" ? SKILL_TEMPLATE : AGENT_TEMPLATE;
-        // Replace template name with actual name
-        const content = template.replace(
-          /^name: .+$/m,
-          `name: ${name}`
-        );
+        const content = template.replace(/^name: .+$/m, `name: ${name}`);
         config.createItem(type, scope, name, content);
       },
     [config]
@@ -97,19 +108,19 @@ export function ClaudeConfigDialog({
   const handleClose = useCallback(() => {
     setEditingItem(null);
     setShowInstaller(false);
-    setActiveTab("skills");
+    setActiveTab("store");
     onClose();
   }, [onClose]);
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && handleClose()}>
-      <DialogContent className="flex max-h-[80vh] max-w-2xl flex-col overflow-hidden p-0">
-        <DialogHeader className="px-4 pt-4 pb-0">
+      <DialogContent className="flex h-[90vh] w-[95vw] max-w-4xl flex-col overflow-hidden p-0">
+        <DialogHeader className="shrink-0 px-4 pt-4 pb-0">
           <DialogTitle>Claude Config</DialogTitle>
         </DialogHeader>
 
         {/* Tabs */}
-        <div className="border-border/50 flex border-b">
+        <div className="border-border/50 flex shrink-0 border-b">
           {TABS.map((tab) => (
             <button
               key={tab.key}
@@ -138,6 +149,14 @@ export function ClaudeConfigDialog({
             />
           ) : (
             <>
+              {/* Store tab */}
+              {activeTab === "store" && (
+                <SkillStore
+                  installedSkillNames={installedSkillNames}
+                  onInstalled={config.refresh}
+                />
+              )}
+
               {/* Skills tab */}
               {activeTab === "skills" && (
                 <>
