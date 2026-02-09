@@ -31,6 +31,7 @@ export interface UseTerminalConnectionReturn {
   copySelection: () => boolean;
   sendInput: (data: string) => void;
   sendCommand: (command: string) => void;
+  execViaWs: (command: string) => Promise<string>;
   focus: () => void;
   getScrollState: () => TerminalScrollState | null;
   restoreScrollState: (state: TerminalScrollState) => void;

@@ -3,6 +3,7 @@ import { parse } from "url";
 import next from "next";
 import { WebSocketServer, WebSocket } from "ws";
 import * as pty from "node-pty";
+import { exec } from "child_process";
 const dev = process.env.NODE_ENV !== "production";
 const hostname = "0.0.0.0";
 const port = parseInt(process.env.PORT || "3011", 10);
@@ -95,6 +96,22 @@ app.prepare().then(() => {
             break;
           case "command":
             ptyProcess.write(msg.data + "\r");
+            break;
+          case "exec":
+            // Execute a command separately (not through the PTY) and return output
+            if (msg.command && typeof msg.command === "string") {
+              exec(msg.command, { timeout: 5000, shell: "/bin/bash" }, (err, stdout, stderr) => {
+                if (ws.readyState === WebSocket.OPEN) {
+                  ws.send(JSON.stringify({
+                    type: "exec-result",
+                    id: msg.id,
+                    stdout: stdout || "",
+                    stderr: stderr || "",
+                    error: err ? err.message : null,
+                  }));
+                }
+              });
+            }
             break;
         }
       } catch (err) {

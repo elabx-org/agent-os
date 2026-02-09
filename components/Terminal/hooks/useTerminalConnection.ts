@@ -82,6 +82,34 @@ export function useTerminalConnection({
     }
   }, []);
 
+  // Execute a command via WebSocket (bypasses /api/exec which may be blocked by reverse proxy)
+  const execViaWs = useCallback((command: string): Promise<string> => {
+    return new Promise((resolve) => {
+      const ws = wsRef.current;
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        resolve("");
+        return;
+      }
+      const id = Math.random().toString(36).slice(2);
+      const timeout = setTimeout(() => {
+        ws.removeEventListener("message", handler);
+        resolve("");
+      }, 3000);
+      const handler = (event: MessageEvent) => {
+        try {
+          const msg = JSON.parse(event.data);
+          if (msg.type === "exec-result" && msg.id === id) {
+            clearTimeout(timeout);
+            ws.removeEventListener("message", handler);
+            resolve((msg.stdout || "").trim());
+          }
+        } catch { /* ignore */ }
+      };
+      ws.addEventListener("message", handler);
+      ws.send(JSON.stringify({ type: "exec", command, id }));
+    });
+  }, []);
+
   const focus = useCallback(() => xtermRef.current?.focus(), []);
 
   const getScrollState = useCallback((): TerminalScrollState | null => {
@@ -159,35 +187,22 @@ export function useTerminalConnection({
             }
           },
           onCopyFallback: async () => {
-            try {
-              const res = await fetch("/api/exec", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ command: "tmux save-buffer - 2>/dev/null" }),
-              });
-              if (res.ok) {
-                const data = await res.json();
-                const text = (data.stdout || data.output || "").trim();
-                if (text) {
-                  // Try clipboard API first, fall back to execCommand
-                  try {
-                    if (navigator.clipboard?.writeText) {
-                      await navigator.clipboard.writeText(text);
-                      return;
-                    }
-                  } catch { /* fall through */ }
-                  const textarea = document.createElement("textarea");
-                  textarea.value = text;
-                  textarea.style.position = "fixed";
-                  textarea.style.opacity = "0";
-                  document.body.appendChild(textarea);
-                  textarea.select();
-                  document.execCommand("copy");
-                  document.body.removeChild(textarea);
+            const text = await execViaWs("tmux save-buffer - 2>/dev/null");
+            if (text) {
+              try {
+                if (navigator.clipboard?.writeText) {
+                  await navigator.clipboard.writeText(text);
+                  return;
                 }
-              }
-            } catch {
-              // tmux buffer not available
+              } catch { /* fall through */ }
+              const textarea = document.createElement("textarea");
+              textarea.value = text;
+              textarea.style.position = "fixed";
+              textarea.style.opacity = "0";
+              document.body.appendChild(textarea);
+              textarea.select();
+              document.execCommand("copy");
+              document.body.removeChild(textarea);
             }
           },
         }
@@ -317,6 +332,7 @@ export function useTerminalConnection({
     copySelection,
     sendInput,
     sendCommand,
+    execViaWs,
     focus,
     getScrollState,
     restoreScrollState,

@@ -98,6 +98,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
       copySelection,
       sendInput,
       sendCommand,
+      execViaWs,
       focus,
       getScrollState,
       restoreScrollState,
@@ -194,23 +195,10 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
       }
     }, []);
 
-    // Fetch tmux paste buffer contents
+    // Fetch tmux paste buffer contents via WebSocket (bypasses reverse proxy 403)
     const getTmuxBuffer = useCallback(async (): Promise<string> => {
-      try {
-        const res = await fetch("/api/exec", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ command: "tmux save-buffer - 2>/dev/null" }),
-        });
-        if (res.ok) {
-          const data = await res.json();
-          return (data.stdout || data.output || "").trim();
-        }
-      } catch {
-        // tmux buffer not available
-      }
-      return "";
-    }, []);
+      return execViaWs("tmux save-buffer - 2>/dev/null");
+    }, [execViaWs]);
 
     // Context menu actions
     const handleContextCopy = useCallback(async () => {
@@ -303,27 +291,11 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
       }
 
       // Try to get the full tmux scrollback first
-      // Find which tmux session we're attached to
       const fetchTmuxBuffer = async () => {
-        try {
-          // Use the sessions API to get tmux session info, then capture
-          const res = await fetch("/api/exec", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              command: "tmux capture-pane -p -S -50000 2>/dev/null",
-            }),
-          });
-          if (res.ok) {
-            const data = await res.json();
-            const output = (data.stdout || data.output || "").trim();
-            if (output.length > 0) {
-              setTerminalText(output);
-              return;
-            }
-          }
-        } catch {
-          // Fall through to xterm buffer
+        const output = await execViaWs("tmux capture-pane -p -S -50000 2>/dev/null");
+        if (output.length > 0) {
+          setTerminalText(output);
+          return;
         }
 
         // Fallback: read from xterm buffer
