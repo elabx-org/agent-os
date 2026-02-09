@@ -27,6 +27,7 @@ export const STORE_SOURCES_PATH = "~/.claude/store-sources.json";
 export interface McpServerConfig {
   command: string;
   args?: string[];
+  cwd?: string;
   env?: Record<string, string>;
 }
 

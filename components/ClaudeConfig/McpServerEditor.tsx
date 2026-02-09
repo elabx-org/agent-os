@@ -81,6 +81,7 @@ export function McpServerEditor({
   const [serverName, setServerName] = useState(initialName || "");
   const [command, setCommand] = useState(initialConfig?.command || "");
   const [args, setArgs] = useState<string[]>(initialConfig?.args || []);
+  const [cwd, setCwd] = useState(initialConfig?.cwd || "");
   const [envVars, setEnvVars] = useState<Array<{ key: string; value: string }>>(
     () => {
       if (!initialConfig?.env) return [];
@@ -101,13 +102,14 @@ export function McpServerEditor({
   const formToJson = useCallback(() => {
     const cfg: McpServerConfig = { command };
     if (args.length > 0) cfg.args = args;
+    if (cwd.trim()) cfg.cwd = cwd.trim();
     const env: Record<string, string> = {};
     for (const { key, value } of envVars) {
       if (key.trim()) env[key.trim()] = value;
     }
     if (Object.keys(env).length > 0) cfg.env = env;
     return JSON.stringify(cfg, null, 2);
-  }, [command, args, envVars]);
+  }, [command, args, cwd, envVars]);
 
   // Sync JSON → form when switching to form mode
   const jsonToForm = useCallback(() => {
@@ -115,6 +117,7 @@ export function McpServerEditor({
       const cfg = JSON.parse(jsonContent) as McpServerConfig;
       setCommand(cfg.command || "");
       setArgs(cfg.args || []);
+      setCwd(cfg.cwd || "");
       setEnvVars(
         cfg.env
           ? Object.entries(cfg.env).map(([key, value]) => ({ key, value }))
@@ -152,6 +155,7 @@ export function McpServerEditor({
     } else {
       cfg = { command };
       if (args.length > 0) cfg.args = args.filter((a) => a !== "");
+      if (cwd.trim()) cfg.cwd = cwd.trim();
       const env: Record<string, string> = {};
       for (const { key, value } of envVars) {
         if (key.trim()) env[key.trim()] = value;
@@ -174,7 +178,7 @@ export function McpServerEditor({
     } finally {
       setSaving(false);
     }
-  }, [serverName, jsonMode, jsonContent, command, args, envVars, onSave, onBack]);
+  }, [serverName, jsonMode, jsonContent, command, args, cwd, envVars, onSave, onBack]);
 
   useEffect(() => {
     setExtensions([
@@ -323,6 +327,20 @@ export function McpServerEditor({
                   Add argument
                 </Button>
               </div>
+            </div>
+
+            {/* Working Directory */}
+            <div>
+              <label className="text-muted-foreground mb-1 block text-xs font-medium">
+                Working Directory{" "}
+                <span className="text-muted-foreground/60 font-normal">(optional)</span>
+              </label>
+              <Input
+                value={cwd}
+                onChange={(e) => setCwd(e.target.value)}
+                placeholder="/path/to/project"
+                className="h-8 text-xs"
+              />
             </div>
 
             {/* Environment Variables */}
