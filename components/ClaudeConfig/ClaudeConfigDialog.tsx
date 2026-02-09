@@ -52,17 +52,27 @@ export function ClaudeConfigDialog({
 
   const hasProject = !!projectPath;
 
-  // Installed skill directory names for the store to check
+  // Installed directory names for the store to check
   const installedSkillNames = useMemo(
     () =>
       config.skills
         .filter((s) => s.scope === "global")
         .map((s) => {
-          // Extract directory name from path (last segment of dirPath)
           const parts = s.dirPath.split("/");
           return parts[parts.length - 1];
         }),
     [config.skills]
+  );
+
+  const installedAgentNames = useMemo(
+    () =>
+      config.agents
+        .filter((a) => a.scope === "global")
+        .map((a) => {
+          const parts = a.dirPath.split("/");
+          return parts[parts.length - 1];
+        }),
+    [config.agents]
   );
 
   const handleEdit = useCallback((item: ExtensionItem) => {
@@ -153,6 +163,7 @@ export function ClaudeConfigDialog({
               {activeTab === "store" && (
                 <SkillStore
                   installedSkillNames={installedSkillNames}
+                  installedAgentNames={installedAgentNames}
                   onInstalled={config.refresh}
                 />
               )}
