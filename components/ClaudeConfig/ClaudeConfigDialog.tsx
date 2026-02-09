@@ -202,15 +202,34 @@ export function ClaudeConfigDialog({
 
               {/* Agents tab */}
               {activeTab === "agents" && (
-                <ItemList
-                  items={config.agents}
-                  type="agent"
-                  loading={config.loading}
-                  hasProject={hasProject}
-                  onEdit={handleEdit}
-                  onDelete={handleDelete}
-                  onCreate={handleCreate("agent")}
-                />
+                <>
+                  {showInstaller && (
+                    <div className="border-b p-3">
+                      <InstallFromGitHub
+                        hasProject={hasProject}
+                        installing={installer.installing}
+                        error={installer.error}
+                        onInstall={installer.install}
+                        onClose={() => {
+                          setShowInstaller(false);
+                          installer.clearError();
+                        }}
+                      />
+                    </div>
+                  )}
+                  <ItemList
+                    items={config.agents}
+                    type="agent"
+                    loading={config.loading}
+                    hasProject={hasProject}
+                    onEdit={handleEdit}
+                    onDelete={handleDelete}
+                    onCreate={handleCreate("agent")}
+                    onInstallFromGitHub={() =>
+                      setShowInstaller(!showInstaller)
+                    }
+                  />
+                </>
               )}
 
               {/* CLAUDE.md tab */}

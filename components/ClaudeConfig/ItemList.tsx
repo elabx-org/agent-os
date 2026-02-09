@@ -143,8 +143,8 @@ export function ItemList({
 
   return (
     <div className="space-y-4 p-3">
-      {/* Install from GitHub button (skills only) */}
-      {type === "skill" && onInstallFromGitHub && (
+      {/* Install from GitHub button */}
+      {onInstallFromGitHub && (
         <Button
           variant="outline"
           size="sm"
