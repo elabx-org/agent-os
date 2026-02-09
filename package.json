@@ -1,5 +1,5 @@
 {
-  "name": "@saadnvd1/agent-os",
+  "name": "@elabx-org/agent-os",
   "version": "0.2.1",
   "description": "Self-hosted web UI for managing Claude Code sessions",
   "bin": {
@@ -43,7 +43,10 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/saadnvd1/agent-os.git"
+    "url": "git+https://github.com/elabx-org/agent-os.git"
+  },
+  "publishConfig": {
+    "@elabx-org:registry": "https://npm.pkg.github.com"
   },
   "keywords": [
     "claude",
@@ -58,9 +61,9 @@
     "node": ">=20"
   },
   "bugs": {
-    "url": "https://github.com/saadnvd1/agent-os/issues"
+    "url": "https://github.com/elabx-org/agent-os/issues"
   },
-  "homepage": "https://github.com/saadnvd1/agent-os#readme",
+  "homepage": "https://github.com/elabx-org/agent-os#readme",
   "dependencies": {
     "@codemirror/lang-css": "^6.3.1",
     "@codemirror/lang-html": "^6.4.11",

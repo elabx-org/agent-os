@@ -443,7 +443,7 @@ cmd_uninstall() {
     if [[ "$installed_via_npm" == true ]]; then
         echo ""
         log_info "To completely remove the CLI, run:"
-        echo "  npm uninstall -g @saadnvd1/agent-os"
+        echo "  npm uninstall -g @elabx-org/agent-os"
     fi
 }
 

@@ -19,7 +19,7 @@ log_info() { echo -e "${BLUE}==>${NC} $1"; }
 log_success() { echo -e "${GREEN}==>${NC} $1"; }
 log_error() { echo -e "${RED}==>${NC} $1"; }
 
-REPO_URL="https://github.com/saadnvd1/agent-os.git"
+REPO_URL="https://github.com/elabx-org/agent-os.git"
 INSTALL_DIR="$HOME/.agent-os/repo"
 
 echo ""
