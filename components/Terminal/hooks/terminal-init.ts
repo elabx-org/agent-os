@@ -104,8 +104,19 @@ export function createTerminal(
   // Use capture phase to intercept before browser default
   document.addEventListener("keydown", handleKeyDown, true);
 
+  // Block right-click from reaching xterm's canvas so it doesn't forward
+  // to tmux (which would show tmux's context menu). Our Radix UI context
+  // menu handles right-click instead.
+  const handleMouseDown = (event: MouseEvent) => {
+    if (event.button === 2) {
+      event.stopPropagation();
+    }
+  };
+  container.addEventListener("mousedown", handleMouseDown, true);
+
   const cleanup = () => {
     document.removeEventListener("keydown", handleKeyDown, true);
+    container.removeEventListener("mousedown", handleMouseDown, true);
   };
 
   return { term, fitAddon, searchAddon, cleanup };

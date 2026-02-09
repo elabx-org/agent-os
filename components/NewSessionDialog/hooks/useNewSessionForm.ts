@@ -9,6 +9,7 @@ import {
   AGENT_TYPE_KEY,
   RECENT_DIRS_KEY,
   USE_TMUX_KEY,
+  CONTINUE_SESSION_KEY,
   MAX_RECENT_DIRS,
   AGENT_OPTIONS,
   generateFeatureName,
@@ -44,6 +45,7 @@ export function useNewSessionForm({
   const [projectId, setProjectId] = useState<string | null>(null);
   const [agentType, setAgentType] = useState<AgentType>("claude");
   const [skipPermissions, setSkipPermissions] = useState(false);
+  const [continueSession, setContinueSession] = useState(false);
   const [useTmux, setUseTmux] = useState(true);
   const [initialPrompt, setInitialPrompt] = useState("");
 
@@ -131,6 +133,10 @@ export function useNewSessionForm({
     if (savedUseTmux !== null) {
       setUseTmux(savedUseTmux === "true");
     }
+    const savedContinueSession = localStorage.getItem(CONTINUE_SESSION_KEY);
+    if (savedContinueSession !== null) {
+      setContinueSession(savedContinueSession === "true");
+    }
     try {
       const saved = localStorage.getItem(RECENT_DIRS_KEY);
       if (saved) {
@@ -205,6 +211,11 @@ export function useNewSessionForm({
     localStorage.setItem(USE_TMUX_KEY, String(checked));
   };
 
+  const handleContinueSessionChange = (checked: boolean) => {
+    setContinueSession(checked);
+    localStorage.setItem(CONTINUE_SESSION_KEY, String(checked));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     createSession.reset(); // Clear any previous errors
@@ -240,6 +251,7 @@ export function useNewSessionForm({
         featureName: useWorktree ? featureName.trim() : null,
         baseBranch: useWorktree ? baseBranch : null,
         autoApprove: skipPermissions,
+        continueSession,
         useTmux,
         initialPrompt: initialPrompt.trim() || null,
       },
@@ -317,6 +329,7 @@ export function useNewSessionForm({
     projectId,
     agentType,
     skipPermissions,
+    continueSession,
     useTmux,
     initialPrompt,
     setInitialPrompt,
@@ -348,6 +361,7 @@ export function useNewSessionForm({
     // Handlers
     handleProjectChange,
     handleSkipPermissionsChange,
+    handleContinueSessionChange,
     handleAgentTypeChange,
     handleUseTmuxChange,
     handleSubmit,

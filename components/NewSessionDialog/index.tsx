@@ -147,6 +147,8 @@ export function NewSessionDialog({
               onUseTmuxChange={form.handleUseTmuxChange}
               skipPermissions={form.skipPermissions}
               onSkipPermissionsChange={form.handleSkipPermissionsChange}
+              continueSession={form.continueSession}
+              onContinueSessionChange={form.handleContinueSessionChange}
             />
 
             {form.error && <p className="text-sm text-red-500">{form.error}</p>}

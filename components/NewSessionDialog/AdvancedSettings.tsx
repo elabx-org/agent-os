@@ -10,6 +10,8 @@ interface AdvancedSettingsProps {
   onUseTmuxChange: (checked: boolean) => void;
   skipPermissions: boolean;
   onSkipPermissionsChange: (checked: boolean) => void;
+  continueSession: boolean;
+  onContinueSessionChange: (checked: boolean) => void;
 }
 
 export function AdvancedSettings({
@@ -20,6 +22,8 @@ export function AdvancedSettings({
   onUseTmuxChange,
   skipPermissions,
   onSkipPermissionsChange,
+  continueSession,
+  onContinueSessionChange,
 }: AdvancedSettingsProps) {
   const provider = getProviderDefinition(agentType);
 
@@ -65,6 +69,24 @@ export function AdvancedSettings({
               <span className="text-muted-foreground ml-1">
                 {provider.autoApproveFlag
                   ? `(${provider.autoApproveFlag})`
+                  : "(not supported)"}
+              </span>
+            </label>
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="continueSession"
+              checked={continueSession}
+              onChange={(e) => onContinueSessionChange(e.target.checked)}
+              disabled={!provider.continueFlag}
+              className="border-border bg-background accent-primary h-4 w-4 rounded"
+            />
+            <label htmlFor="continueSession" className="cursor-pointer text-sm">
+              Continue last session
+              <span className="text-muted-foreground ml-1">
+                {provider.continueFlag
+                  ? `(${provider.continueFlag})`
                   : "(not supported)"}
               </span>
             </label>

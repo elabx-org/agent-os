@@ -6,6 +6,7 @@ export const SKIP_PERMISSIONS_KEY = "agentOS:skipPermissions";
 export const AGENT_TYPE_KEY = "agentOS:defaultAgentType";
 export const RECENT_DIRS_KEY = "agentOS:recentDirectories";
 export const USE_TMUX_KEY = "agentOS:useTmux";
+export const CONTINUE_SESSION_KEY = "agentOS:continueSession";
 export const MAX_RECENT_DIRS = 5;
 
 // Random feature name generator

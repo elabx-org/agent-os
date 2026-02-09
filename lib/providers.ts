@@ -48,6 +48,7 @@ export interface BuildFlagsOptions {
   parentSessionId?: string | null; // For fork
   skipPermissions?: boolean;
   autoApprove?: boolean; // Use auto-approve flag from registry
+  continueSession?: boolean; // Continue last session in working directory
   model?: string;
   initialPrompt?: string; // Initial prompt to send to agent
 }
@@ -81,12 +82,14 @@ export const claudeProvider: AgentProvider = {
       flags.push(def.autoApproveFlag);
     }
 
-    // Resume/fork
+    // Resume/fork/continue
     if (options.sessionId && def.resumeFlag) {
       flags.push(`${def.resumeFlag} ${options.sessionId}`);
     } else if (options.parentSessionId && def.resumeFlag) {
       flags.push(`${def.resumeFlag} ${options.parentSessionId}`);
       flags.push("--fork-session");
+    } else if (options.continueSession && def.continueFlag) {
+      flags.push(def.continueFlag);
     }
 
     // Initial prompt (positional argument for Claude)

@@ -16,6 +16,7 @@ export interface Session {
   project_id: string | null;
   agent_type: AgentType;
   auto_approve: boolean;
+  continue_session: boolean;
   // Worktree fields (optional)
   worktree_path: string | null;
   branch_name: string | null;

@@ -183,6 +183,15 @@ const migrations: Migration[] = [
       );
     },
   },
+  {
+    id: 14,
+    name: "add_continue_session_to_sessions",
+    up: (db) => {
+      db.exec(
+        `ALTER TABLE sessions ADD COLUMN continue_session INTEGER NOT NULL DEFAULT 0`
+      );
+    },
+  },
 ];
 
 export function runMigrations(db: Database.Database): void {

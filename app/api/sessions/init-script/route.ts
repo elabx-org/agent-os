@@ -27,6 +27,7 @@ tmux set-option status-left-length 20 2>/dev/null
 tmux set-option status-right '#[fg=#6c7086]| #[fg=#89b4fa]#S #[fg=#6c7086]| #[fg=#a6adc8]%H:%M ' 2>/dev/null
 tmux set-option status-right-length 40 2>/dev/null
 tmux set-option status-position bottom 2>/dev/null
+tmux bind-key m display-menu -T "Tmux" -x R -y P "Copy Mode" c copy-mode "Paste Buffer" p paste-buffer "" "" "" "Split Horizontal" h "split-window -h" "Split Vertical" v "split-window -v" "" "" "" "Kill Pane" x "confirm-before kill-pane" 2>/dev/null
 
 # Clear and show banner
 clear

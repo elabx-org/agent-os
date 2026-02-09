@@ -69,6 +69,8 @@ export async function POST(request: NextRequest) {
       baseBranch = "main",
       // Tmux option
       useTmux = true,
+      // Continue last session in working directory
+      continueSession = false,
       // Initial prompt to send when session starts
       initialPrompt = null,
     } = body;
@@ -146,6 +148,7 @@ export async function POST(request: NextRequest) {
       groupPath,
       agentType,
       autoApprove ? 1 : 0, // SQLite stores booleans as integers
+      continueSession ? 1 : 0,
       projectId
     );
 

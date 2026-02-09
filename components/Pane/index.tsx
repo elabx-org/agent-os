@@ -206,7 +206,7 @@ export const Pane = memo(function Pane({
         : tab.attachedTmux;
 
       if (tmuxName) {
-        setTimeout(() => handle.sendCommand(`tmux set-option -g mouse on 2>/dev/null; tmux attach -t ${tmuxName}`), 100);
+        setTimeout(() => handle.sendCommand(`tmux set-option -g mouse on 2>/dev/null; tmux bind-key m display-menu -T "Tmux" -x R -y P "Copy Mode" c copy-mode "Paste Buffer" p paste-buffer "" "" "" "Split Horizontal" h 'split-window -h' "Split Vertical" v 'split-window -v' 2>/dev/null; tmux attach -t ${tmuxName}`), 100);
       }
     },
     [paneId, sessions, onRegisterTerminal]
@@ -393,7 +393,7 @@ export const Pane = memo(function Pane({
                   setTimeout(() => {
                     terminalRef?.sendInput("\x15");
                     setTimeout(() => {
-                      terminalRef?.sendCommand(`tmux set-option -g mouse on 2>/dev/null; tmux attach -t ${sessionName}`);
+                      terminalRef?.sendCommand(`tmux set-option -g mouse on 2>/dev/null; tmux bind-key m display-menu -T "Tmux" -x R -y P "Copy Mode" c copy-mode "Paste Buffer" p paste-buffer "" "" "" "Split Horizontal" h 'split-window -h' "Split Vertical" v 'split-window -v' 2>/dev/null; tmux attach -t ${sessionName}`);
                     }, 50);
                   }, 100);
                 }
@@ -481,7 +481,7 @@ export const Pane = memo(function Pane({
                             terminalRef?.sendInput("\x15");
                             setTimeout(() => {
                               terminalRef?.sendCommand(
-                                `tmux attach -t ${sessionName}`
+                                `tmux set-option -g mouse on 2>/dev/null; tmux bind-key m display-menu -T "Tmux" -x R -y P "Copy Mode" c copy-mode "Paste Buffer" p paste-buffer "" "" "" "Split Horizontal" h 'split-window -h' "Split Vertical" v 'split-window -v' 2>/dev/null; tmux attach -t ${sessionName}`
                               );
                             }, 50);
                           }, 100);

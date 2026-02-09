@@ -182,6 +182,7 @@ function HomeContent() {
         sessionId: session.claude_session_id,
         parentSessionId,
         autoApprove: session.auto_approve,
+        continueSession: session.continue_session,
         model: session.model,
         initialPrompt: initialPrompt || undefined,
       });
@@ -209,7 +210,7 @@ function HomeContent() {
         ? `tmux new -s ${sessionName} -c "${cwd}" "${command}"`
         : `tmux new -s ${sessionName} -c "${cwd}"`;
       terminal.sendCommand(
-        `tmux set-option -g mouse on 2>/dev/null; tmux set-option -g history-limit 50000 2>/dev/null; tmux attach -t ${sessionName} 2>/dev/null || ${tmuxNew}`
+        `tmux set-option -g mouse on 2>/dev/null; tmux set-option -g history-limit 50000 2>/dev/null; tmux bind-key m display-menu -T "Tmux" -x R -y P "Copy Mode" c copy-mode "Paste Buffer" p paste-buffer "" "" "" "Split Horizontal" h 'split-window -h' "Split Vertical" v 'split-window -v' 2>/dev/null; tmux attach -t ${sessionName} 2>/dev/null || ${tmuxNew}`
       );
       attachSession(paneId, session.id, sessionName);
       terminal.focus();

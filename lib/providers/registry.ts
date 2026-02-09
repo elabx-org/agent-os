@@ -36,6 +36,7 @@ export interface ProviderDefinition {
   supportsResume: boolean;
   supportsFork: boolean;
   resumeFlag?: string; // Flag for resuming sessions
+  continueFlag?: string; // Flag to continue last session in working directory
 
   // Model configuration
   modelFlag?: string; // Flag for specifying model
@@ -63,6 +64,7 @@ export const PROVIDERS: ProviderDefinition[] = [
     supportsResume: true,
     supportsFork: true,
     resumeFlag: "--resume",
+    continueFlag: "--continue",
     modelFlag: undefined, // Claude doesn't expose model flag
     initialPromptFlag: "", // Positional argument
   },

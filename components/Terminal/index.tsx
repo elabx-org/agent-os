@@ -11,7 +11,17 @@ import {
 } from "react";
 import { useTheme } from "next-themes";
 import "@xterm/xterm/css/xterm.css";
-import { ImagePlus, WifiOff, Upload, Loader2 } from "lucide-react";
+import {
+  ImagePlus,
+  WifiOff,
+  Upload,
+  Loader2,
+  Copy,
+  ClipboardPaste,
+  MousePointer2,
+  Eraser,
+  TerminalSquare,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SearchBar } from "./SearchBar";
 import { ScrollToBottomButton } from "./ScrollToBottomButton";
@@ -22,6 +32,14 @@ import { useViewport } from "@/hooks/useViewport";
 import { useFileDrop } from "@/hooks/useFileDrop";
 import { uploadFileToTemp } from "@/lib/file-upload";
 import { ImagePicker } from "@/components/ImagePicker";
+import {
+  ContextMenu,
+  ContextMenuTrigger,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuShortcut,
+} from "@/components/ui/context-menu";
 
 export type { TerminalScrollState };
 
@@ -60,6 +78,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
     const [showImagePicker, setShowImagePicker] = useState(false);
     const [selectMode, setSelectMode] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
+    const [copiedFlash, setCopiedFlash] = useState(false);
 
     // Use the full theme string (e.g., "dark-purple") for terminal theming
     const terminalTheme = useMemo(() => {
@@ -148,6 +167,62 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
       getScrollState,
       restoreScrollState,
     }));
+
+    // Context menu actions
+    const handleContextCopy = useCallback(async () => {
+      // Try xterm selection first (from Shift+drag)
+      const copied = copySelection();
+      if (copied) {
+        focus();
+        return;
+      }
+      // Fall back to tmux buffer (from mouse drag selection)
+      try {
+        const res = await fetch("/api/exec", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ command: "tmux save-buffer - 2>/dev/null" }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const text = (data.stdout || data.output || "").trim();
+          if (text && navigator.clipboard?.writeText) {
+            await navigator.clipboard.writeText(text);
+          }
+        }
+      } catch {
+        // tmux buffer not available
+      }
+      focus();
+    }, [copySelection, focus]);
+
+    const handleContextPaste = useCallback(async () => {
+      try {
+        const text = await navigator.clipboard?.readText?.();
+        if (text) {
+          sendInput(text);
+        }
+      } catch {
+        // Clipboard API not available
+      }
+      focus();
+    }, [sendInput, focus]);
+
+    const handleContextSelectAll = useCallback(() => {
+      xtermRef.current?.selectAll();
+      focus();
+    }, [xtermRef, focus]);
+
+    const handleContextClear = useCallback(() => {
+      xtermRef.current?.clear();
+      focus();
+    }, [xtermRef, focus]);
+
+    // Show tmux menu via prefix + m binding (configured in tmux setup)
+    const handleShowTmuxMenu = useCallback(() => {
+      sendInput("\x02m");
+      focus();
+    }, [sendInput, focus]);
 
     // Track visual viewport for iOS keyboard
     // We use explicit height instead of fixed positioning to stay in document flow
@@ -238,6 +313,63 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
       fetchTmuxBuffer();
     }, [selectMode, xtermRef]);
 
+    // Auto-copy: when user drags to select text (tmux handles the selection),
+    // grab tmux buffer on mouseup and copy to system clipboard
+    const dragStartRef = useRef<{ x: number; y: number } | null>(null);
+
+    useEffect(() => {
+      const container = terminalRef.current;
+      if (!container) return;
+
+      const onMouseDown = (e: MouseEvent) => {
+        if (e.button === 0) {
+          dragStartRef.current = { x: e.clientX, y: e.clientY };
+        }
+      };
+
+      const onMouseUp = async (e: MouseEvent) => {
+        if (e.button !== 0 || !dragStartRef.current) return;
+        const dx = e.clientX - dragStartRef.current.x;
+        const dy = e.clientY - dragStartRef.current.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        dragStartRef.current = null;
+
+        // Only auto-copy if it was a drag (>10px movement)
+        if (distance < 10) return;
+
+        // Wait for tmux to process the selection
+        await new Promise((r) => setTimeout(r, 150));
+
+        try {
+          const res = await fetch("/api/exec", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              command: "tmux save-buffer - 2>/dev/null",
+            }),
+          });
+          if (res.ok) {
+            const data = await res.json();
+            const text = (data.stdout || data.output || "").trim();
+            if (text && navigator.clipboard?.writeText) {
+              await navigator.clipboard.writeText(text);
+              setCopiedFlash(true);
+              setTimeout(() => setCopiedFlash(false), 1500);
+            }
+          }
+        } catch {
+          /* ignore */
+        }
+      };
+
+      container.addEventListener("mousedown", onMouseDown);
+      document.addEventListener("mouseup", onMouseUp);
+      return () => {
+        container.removeEventListener("mousedown", onMouseDown);
+        document.removeEventListener("mouseup", onMouseUp);
+      };
+    }, [terminalRef]);
+
     return (
       <div
         ref={containerRef}
@@ -264,17 +396,59 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
         />
 
         {/* Terminal container - NO padding! FitAddon reads offsetHeight which includes padding */}
-        <div
-          ref={terminalRef}
-          className={cn(
-            "terminal-container min-h-0 w-full flex-1 overflow-hidden",
-            selectMode && "ring-primary ring-2 ring-inset",
-            isDragging && "ring-primary ring-2 ring-inset"
-          )}
-          onClick={focus}
-          onTouchStart={selectMode ? (e) => e.stopPropagation() : undefined}
-          onTouchEnd={selectMode ? (e) => e.stopPropagation() : undefined}
-        />
+        <ContextMenu>
+          <ContextMenuTrigger asChild>
+            <div
+              ref={terminalRef}
+              className={cn(
+                "terminal-container min-h-0 w-full flex-1 overflow-hidden",
+                selectMode && "ring-primary ring-2 ring-inset",
+                isDragging && "ring-primary ring-2 ring-inset"
+              )}
+              onClick={focus}
+              onTouchStart={
+                selectMode ? (e) => e.stopPropagation() : undefined
+              }
+              onTouchEnd={
+                selectMode ? (e) => e.stopPropagation() : undefined
+              }
+            />
+          </ContextMenuTrigger>
+          <ContextMenuContent className="w-48">
+            <ContextMenuItem onSelect={handleContextCopy}>
+              <Copy className="mr-2 h-4 w-4" />
+              Copy
+              <ContextMenuShortcut>⌘C</ContextMenuShortcut>
+            </ContextMenuItem>
+            <ContextMenuItem onSelect={handleContextPaste}>
+              <ClipboardPaste className="mr-2 h-4 w-4" />
+              Paste
+              <ContextMenuShortcut>⌘V</ContextMenuShortcut>
+            </ContextMenuItem>
+            <ContextMenuSeparator />
+            <ContextMenuItem onSelect={handleContextSelectAll}>
+              <MousePointer2 className="mr-2 h-4 w-4" />
+              Select All
+              <ContextMenuShortcut>⌘A</ContextMenuShortcut>
+            </ContextMenuItem>
+            <ContextMenuItem onSelect={handleContextClear}>
+              <Eraser className="mr-2 h-4 w-4" />
+              Clear
+            </ContextMenuItem>
+            <ContextMenuSeparator />
+            <ContextMenuItem onSelect={handleShowTmuxMenu}>
+              <TerminalSquare className="mr-2 h-4 w-4" />
+              Tmux Menu
+            </ContextMenuItem>
+          </ContextMenuContent>
+        </ContextMenu>
+
+        {/* Copied to clipboard flash */}
+        {copiedFlash && (
+          <div className="animate-in fade-in absolute top-3 left-1/2 z-50 -translate-x-1/2 rounded-full bg-green-500 px-3 py-1 text-xs text-white shadow-lg">
+            Copied to clipboard
+          </div>
+        )}
 
         {/* Select mode overlay - shows terminal text in a selectable format */}
         {selectMode && (

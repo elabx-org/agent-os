@@ -183,6 +183,7 @@ export interface CreateSessionInput {
   featureName: string | null;
   baseBranch: string | null;
   autoApprove: boolean;
+  continueSession: boolean;
   useTmux: boolean;
   initialPrompt: string | null;
 }
