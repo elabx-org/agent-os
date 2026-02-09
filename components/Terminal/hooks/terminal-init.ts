@@ -132,11 +132,24 @@ export function createTerminal(
   // Use capture phase to intercept before browser default
   document.addEventListener("keydown", handleKeyDown, true);
 
-  // Block right-click from reaching xterm's canvas so it doesn't forward
-  // to tmux (which would show tmux's context menu). Our Radix UI context
-  // menu handles right-click instead.
+  // Right-click = paste (like PuTTY/Windows Terminal)
+  // Shift+right-click = show context menu (handled by Radix ContextMenu in index.tsx)
+  const handleContextMenu = (event: MouseEvent) => {
+    if (event.shiftKey) {
+      // Shift+right-click: let the event bubble up to Radix ContextMenu
+      return;
+    }
+    // Normal right-click: paste from clipboard
+    event.preventDefault();
+    event.stopPropagation();
+    callbacks?.onPaste?.();
+  };
+  container.addEventListener("contextmenu", handleContextMenu, true);
+
+  // Block right-click mousedown from reaching xterm/tmux (prevents tmux context menu)
+  // But let Shift+right-click through for Radix context menu
   const handleMouseDown = (event: MouseEvent) => {
-    if (event.button === 2) {
+    if (event.button === 2 && !event.shiftKey) {
       event.stopPropagation();
     }
   };
@@ -144,6 +157,7 @@ export function createTerminal(
 
   const cleanup = () => {
     document.removeEventListener("keydown", handleKeyDown, true);
+    container.removeEventListener("contextmenu", handleContextMenu, true);
     container.removeEventListener("mousedown", handleMouseDown, true);
   };
 

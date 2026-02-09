@@ -423,7 +423,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
             <ContextMenuItem onSelect={handleContextPaste}>
               <ClipboardPaste className="mr-2 h-4 w-4" />
               Paste
-              <ContextMenuShortcut>⌘V</ContextMenuShortcut>
+              <ContextMenuShortcut>Right-click / ⌘V</ContextMenuShortcut>
             </ContextMenuItem>
             <ContextMenuSeparator />
             <ContextMenuItem onSelect={handleContextSelectAll}>
