@@ -354,8 +354,10 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
       const container = terminalRef.current;
       if (!container) return;
 
+      // Use document-level listeners with capture phase to ensure we see
+      // events even if xterm's canvas stops propagation
       const onMouseDown = (e: MouseEvent) => {
-        if (e.button === 0) {
+        if (e.button === 0 && container.contains(e.target as Node)) {
           dragStartRef.current = { x: e.clientX, y: e.clientY };
         }
       };
@@ -383,11 +385,11 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
         }
       };
 
-      container.addEventListener("mousedown", onMouseDown);
-      document.addEventListener("mouseup", onMouseUp);
+      document.addEventListener("mousedown", onMouseDown, true);
+      document.addEventListener("mouseup", onMouseUp, true);
       return () => {
-        container.removeEventListener("mousedown", onMouseDown);
-        document.removeEventListener("mouseup", onMouseUp);
+        document.removeEventListener("mousedown", onMouseDown, true);
+        document.removeEventListener("mouseup", onMouseUp, true);
       };
     }, [terminalRef, getTmuxBuffer, writeClipboard]);
 
