@@ -258,25 +258,25 @@ export function SessionCard({
           </>
         )}
         {onOpenInTab && (
-          <MenuItem onClick={() => onOpenInTab()}>
+          <MenuItem onSelect={() => onOpenInTab()}>
             <ExternalLink className="mr-2 h-3 w-3" />
             Open in new tab
           </MenuItem>
         )}
         {onRename && (
-          <MenuItem onClick={() => setIsEditing(true)}>
+          <MenuItem onSelect={() => setIsEditing(true)}>
             <Pencil className="mr-2 h-3 w-3" />
             Rename
           </MenuItem>
         )}
         {onFork && session.agent_type === "claude" && (
-          <MenuItem onClick={() => onFork()}>
+          <MenuItem onSelect={() => onFork()}>
             <Copy className="mr-2 h-3 w-3" />
             Fork session
           </MenuItem>
         )}
         {onSummarize && (
-          <MenuItem onClick={() => onSummarize()} disabled={isSummarizing}>
+          <MenuItem onSelect={() => onSummarize()} disabled={isSummarizing}>
             {isSummarizing ? (
               <Loader2 className="mr-2 h-3 w-3 animate-spin" />
             ) : (

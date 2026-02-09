@@ -123,31 +123,31 @@ export function ProjectCard({
     return (
       <>
         {onNewSession && (
-          <MenuItem onClick={() => onNewSession()}>
+          <MenuItem onSelect={() => onNewSession()}>
             <Plus className="mr-2 h-3 w-3" />
             New session
           </MenuItem>
         )}
         {onOpenTerminal && (
-          <MenuItem onClick={() => onOpenTerminal()}>
+          <MenuItem onSelect={() => onOpenTerminal()}>
             <Terminal className="mr-2 h-3 w-3" />
             Open terminal
           </MenuItem>
         )}
         {onEdit && (
-          <MenuItem onClick={() => onEdit()}>
+          <MenuItem onSelect={() => onEdit()}>
             <Settings className="mr-2 h-3 w-3" />
             Project settings
           </MenuItem>
         )}
         {onRename && (
-          <MenuItem onClick={() => setIsEditing(true)}>
+          <MenuItem onSelect={() => setIsEditing(true)}>
             <Pencil className="mr-2 h-3 w-3" />
             Rename
           </MenuItem>
         )}
         {onOpenInEditor && (
-          <MenuItem onClick={() => onOpenInEditor()}>
+          <MenuItem onSelect={() => onOpenInEditor()}>
             <FolderOpen className="mr-2 h-3 w-3" />
             Open in editor
           </MenuItem>
@@ -155,7 +155,7 @@ export function ProjectCard({
         {onStartDevServer && (
           <>
             <MenuSeparator />
-            <MenuItem onClick={() => onStartDevServer()}>
+            <MenuItem onSelect={() => onStartDevServer()}>
               <Server className="mr-2 h-3 w-3" />
               Start dev server
             </MenuItem>
