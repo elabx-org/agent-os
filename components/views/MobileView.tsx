@@ -7,6 +7,7 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { PaneLayout } from "@/components/PaneLayout";
 import { SwipeSidebar } from "@/components/mobile/SwipeSidebar";
 import { QuickSwitcher } from "@/components/QuickSwitcher";
+import { UsageMonitor } from "@/components/UsageMonitor";
 import type { ViewProps } from "./types";
 import { fileOpenActions } from "@/stores/fileOpen";
 
@@ -62,10 +63,13 @@ export function MobileView({
             />
           </div>
 
-          {/* Sidebar footer with theme toggle */}
-          <div className="mt-auto flex items-center justify-between px-4 py-2">
-            <span className="text-muted-foreground text-xs">Theme</span>
-            <ThemeToggle />
+          {/* Sidebar footer */}
+          <div className="mt-auto space-y-1 px-4 py-2">
+            <UsageMonitor />
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground text-xs">Theme</span>
+              <ThemeToggle />
+            </div>
           </div>
         </div>
       </SwipeSidebar>
