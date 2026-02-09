@@ -90,10 +90,17 @@ export function ProjectCard({
       setTimeout(() => {
         input.focus();
         input.select();
-        // Clear the flag after focus is established
+        // Re-focus after Radix UI context menu finishes closing and restoring focus
+        setTimeout(() => {
+          if (inputRef.current) {
+            inputRef.current.focus();
+            inputRef.current.select();
+          }
+        }, 100);
+        // Clear the flag after Radix focus restoration is complete
         setTimeout(() => {
           justStartedEditingRef.current = false;
-        }, 100);
+        }, 300);
       }, 0);
     }
   }, [isEditing]);
