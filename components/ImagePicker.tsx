@@ -46,6 +46,7 @@ export function ImagePicker({
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const dropZoneRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Handle dropped/pasted image file
   const handleImageFile = useCallback(
@@ -228,12 +229,25 @@ export function ImagePicker({
         </div>
       </div>
 
-      {/* Drop Zone */}
+      {/* Hidden file input for device picker */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) handleImageFile(file);
+          e.target.value = "";
+        }}
+      />
+
+      {/* Upload Zone */}
       <div
         ref={dropZoneRef}
         {...dragHandlers}
         className={cn(
-          "border-border mx-3 mt-3 flex flex-col items-center justify-center rounded-lg border-2 border-dashed p-4 transition-colors",
+          "border-border mx-3 mt-3 flex flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed p-4 transition-colors",
           isDragging && "border-primary bg-primary/10",
           uploading && "opacity-50"
         )}
@@ -251,16 +265,21 @@ export function ImagePicker({
             </span>
           </div>
         ) : (
-          <div className="flex flex-col items-center gap-1 text-center">
-            <div className="text-muted-foreground flex items-center gap-2">
-              <Upload className="h-4 w-4" />
-              <span className="text-sm">Drop screenshot here</span>
-            </div>
+          <>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
+            >
+              <Upload className="mr-2 h-4 w-4" />
+              Upload from device
+            </Button>
             <div className="text-muted-foreground flex items-center gap-1 text-xs">
               <Clipboard className="h-3 w-3" />
-              <span>or paste from clipboard (⌘V)</span>
+              <span>or drag & drop / paste (⌘V)</span>
             </div>
-          </div>
+          </>
         )}
       </div>
 
