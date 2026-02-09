@@ -9,12 +9,14 @@ import {
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { useClaudeConfig } from "./hooks/useClaudeConfig";
+import { useMcpConfig } from "./hooks/useMcpConfig";
 import { useSkillInstaller } from "./hooks/useSkillInstaller";
 import { ItemList } from "./ItemList";
 import { ItemEditor } from "./ItemEditor";
 import { InstallFromGitHub } from "./InstallFromGitHub";
 import { ClaudeMdTab } from "./ClaudeMdTab";
 import { SkillStore } from "./SkillStore";
+import { McpServersTab } from "./McpServersTab";
 import {
   type ConfigTab,
   type ExtensionItem,
@@ -27,6 +29,7 @@ import {
 
 const TABS: { key: ConfigTab; label: string }[] = [
   { key: "store", label: "Store" },
+  { key: "mcp-servers", label: "MCP Servers" },
   { key: "skills", label: "Skills" },
   { key: "agents", label: "Agents" },
   { key: "claude-md", label: "CLAUDE.md" },
@@ -42,6 +45,7 @@ export function ClaudeConfigDialog({
   const [showInstaller, setShowInstaller] = useState(false);
 
   const config = useClaudeConfig({ open, projectPath });
+  const mcpConfig = useMcpConfig({ open });
   const installer = useSkillInstaller({
     projectPath,
     onInstalled: () => {
@@ -73,6 +77,24 @@ export function ClaudeConfigDialog({
           return parts[parts.length - 1];
         }),
     [config.agents]
+  );
+
+  // Installed MCP package identifiers for the store to check
+  const installedMcpIdentifiers = useMemo(
+    () =>
+      mcpConfig.servers
+        .filter((s) => !s.disabled)
+        .map((s) => {
+          const args = s.config.args || [];
+          if (s.config.command === "npx") {
+            const yIdx = args.indexOf("-y");
+            return yIdx >= 0 ? args[yIdx + 1] || "" : args[0] || "";
+          }
+          if (s.config.command === "uvx") return args[0] || "";
+          return "";
+        })
+        .filter(Boolean),
+    [mcpConfig.servers]
   );
 
   const handleEdit = useCallback((item: ExtensionItem) => {
@@ -124,7 +146,7 @@ export function ClaudeConfigDialog({
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && handleClose()}>
-      <DialogContent className="flex h-[90vh] w-[95vw] max-w-4xl flex-col overflow-hidden p-0">
+      <DialogContent className="flex h-[90vh] w-[95vw] max-w-7xl sm:max-w-7xl flex-col overflow-hidden p-0">
         <DialogHeader className="shrink-0 px-4 pt-4 pb-0">
           <DialogTitle>Claude Config</DialogTitle>
         </DialogHeader>
@@ -164,8 +186,17 @@ export function ClaudeConfigDialog({
                 <SkillStore
                   installedSkillNames={installedSkillNames}
                   installedAgentNames={installedAgentNames}
-                  onInstalled={config.refresh}
+                  installedMcpIdentifiers={installedMcpIdentifiers}
+                  onInstalled={() => {
+                    config.refresh();
+                    mcpConfig.refresh();
+                  }}
                 />
+              )}
+
+              {/* MCP Servers tab */}
+              {activeTab === "mcp-servers" && (
+                <McpServersTab open={open} />
               )}
 
               {/* Skills tab */}
