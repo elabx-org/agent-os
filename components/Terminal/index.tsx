@@ -206,7 +206,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
       const selection = xtermRef.current?.getSelection();
       if (selection) {
         await writeClipboard(selection);
-        focus();
+        setTimeout(() => focus(), 50);
         return;
       }
       // Fall back to tmux buffer (from mouse drag selection)
@@ -214,7 +214,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
       if (text) {
         await writeClipboard(text);
       }
-      focus();
+      setTimeout(() => focus(), 50);
     }, [xtermRef, writeClipboard, getTmuxBuffer, focus]);
 
     const handleContextPaste = useCallback(async () => {
@@ -226,23 +226,25 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
       } catch {
         // Clipboard API not available in non-secure contexts — user can paste via Cmd+V
       }
-      focus();
+      // Delay focus to run after Radix context menu finishes closing
+      // (Radix restores focus to trigger element, overriding our focus() call)
+      setTimeout(() => focus(), 50);
     }, [sendInput, focus]);
 
     const handleContextSelectAll = useCallback(() => {
       xtermRef.current?.selectAll();
-      focus();
+      setTimeout(() => focus(), 50);
     }, [xtermRef, focus]);
 
     const handleContextClear = useCallback(() => {
       xtermRef.current?.clear();
-      focus();
+      setTimeout(() => focus(), 50);
     }, [xtermRef, focus]);
 
     // Show tmux menu via prefix + m binding (configured in tmux setup)
     const handleShowTmuxMenu = useCallback(() => {
       sendInput("\x02m");
-      focus();
+      setTimeout(() => focus(), 50);
     }, [sendInput, focus]);
 
     // Track visual viewport for iOS keyboard

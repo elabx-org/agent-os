@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import type { StoreItem, StoreSource } from "@/lib/db/types";
 import { storeKeys } from "./keys";
 
@@ -39,6 +39,7 @@ export function useStoreItems(params?: { type?: string; search?: string }) {
     queryKey: storeKeys.items(params),
     queryFn: () => fetchStoreItems(params),
     staleTime: 30000,
+    placeholderData: keepPreviousData,
   });
 }
 
