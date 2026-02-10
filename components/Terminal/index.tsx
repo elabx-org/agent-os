@@ -206,7 +206,6 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
       const selection = xtermRef.current?.getSelection();
       if (selection) {
         await writeClipboard(selection);
-        setTimeout(() => focus(), 50);
         return;
       }
       // Fall back to tmux buffer (from mouse drag selection)
@@ -214,8 +213,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
       if (text) {
         await writeClipboard(text);
       }
-      setTimeout(() => focus(), 50);
-    }, [xtermRef, writeClipboard, getTmuxBuffer, focus]);
+    }, [xtermRef, writeClipboard, getTmuxBuffer]);
 
     const handleContextPaste = useCallback(async () => {
       try {
@@ -226,26 +224,20 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
       } catch {
         // Clipboard API not available in non-secure contexts — user can paste via Cmd+V
       }
-      // Delay focus to run after Radix context menu finishes closing
-      // (Radix restores focus to trigger element, overriding our focus() call)
-      setTimeout(() => focus(), 50);
-    }, [sendInput, focus]);
+    }, [sendInput]);
 
     const handleContextSelectAll = useCallback(() => {
       xtermRef.current?.selectAll();
-      setTimeout(() => focus(), 50);
-    }, [xtermRef, focus]);
+    }, [xtermRef]);
 
     const handleContextClear = useCallback(() => {
       xtermRef.current?.clear();
-      setTimeout(() => focus(), 50);
-    }, [xtermRef, focus]);
+    }, [xtermRef]);
 
     // Show tmux menu via prefix + m binding (configured in tmux setup)
     const handleShowTmuxMenu = useCallback(() => {
       sendInput("\x02m");
-      setTimeout(() => focus(), 50);
-    }, [sendInput, focus]);
+    }, [sendInput]);
 
     // Track visual viewport for iOS keyboard
     // We use explicit height instead of fixed positioning to stay in document flow
@@ -411,7 +403,10 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
               }
             />
           </ContextMenuTrigger>
-          <ContextMenuContent className="w-48">
+          <ContextMenuContent className="w-48" onCloseAutoFocus={(e) => {
+              e.preventDefault();
+              focus();
+            }}>
             <ContextMenuItem onSelect={handleContextCopy}>
               <Copy className="mr-2 h-4 w-4" />
               Copy
