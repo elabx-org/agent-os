@@ -166,9 +166,8 @@ export function DesktopView({
             )}
           </div>
 
-          <UsageMonitor />
-
           <div className="flex items-center gap-2">
+            <UsageMonitor />
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
