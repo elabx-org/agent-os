@@ -375,7 +375,7 @@ export const queries = {
     getStmt(
       db,
       `SELECT * FROM store_items
-       WHERE (name LIKE ?1 OR dir_name LIKE ?1 OR description LIKE ?1 OR source_label LIKE ?1)
+       WHERE (name LIKE ? OR dir_name LIKE ? OR description LIKE ? OR source_label LIKE ?)
        ORDER BY type ASC, name ASC`
     ),
 
@@ -383,7 +383,7 @@ export const queries = {
     getStmt(
       db,
       `SELECT * FROM store_items
-       WHERE type = ?1 AND (name LIKE ?2 OR dir_name LIKE ?2 OR description LIKE ?2 OR source_label LIKE ?2)
+       WHERE type = ? AND (name LIKE ? OR dir_name LIKE ? OR description LIKE ? OR source_label LIKE ?)
        ORDER BY name ASC`
     ),
 

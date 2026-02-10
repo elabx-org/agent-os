@@ -12,12 +12,12 @@ export async function GET(request: NextRequest) {
     let items: StoreItem[];
 
     if (search) {
-      const pattern = `%${search}%`;
+      const p = `%${search}%`;
       if (type === "all") {
-        items = queries.searchStoreItems(db).all(pattern) as StoreItem[];
+        items = queries.searchStoreItems(db).all(p, p, p, p) as StoreItem[];
       } else {
         const dbType = type === "skills" ? "skill" : type === "agents" ? "agent" : "mcp";
-        items = queries.searchStoreItemsByType(db).all(dbType, pattern) as StoreItem[];
+        items = queries.searchStoreItemsByType(db).all(dbType, p, p, p, p) as StoreItem[];
       }
     } else if (type === "all") {
       items = queries.getAllStoreItems(db).all() as StoreItem[];
