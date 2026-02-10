@@ -192,7 +192,16 @@ export const Pane = memo(function Pane({
   );
 
   // Tmux setup commands shared across all attach points
-  const tmuxSetup = `tmux set-option -g mouse on 2>/dev/null; tmux bind-key m display-menu -T "Tmux" -x R -y P "Copy Mode" c copy-mode "Paste Buffer" p paste-buffer "" "" "" "Split Horizontal" h 'split-window -h' "Split Vertical" v 'split-window -v' 2>/dev/null`;
+  const tmuxSetup = [
+    `tmux set-option -g mouse on`,
+    // Scroll 5 lines per wheel event instead of 1 for smoother scrolling
+    `tmux bind-key -T copy-mode WheelUpPane send-keys -X -N 5 scroll-up`,
+    `tmux bind-key -T copy-mode WheelDownPane send-keys -X -N 5 scroll-down`,
+    `tmux bind-key -T copy-mode-vi WheelUpPane send-keys -X -N 5 scroll-up`,
+    `tmux bind-key -T copy-mode-vi WheelDownPane send-keys -X -N 5 scroll-down`,
+    // Tmux menu
+    `tmux bind-key m display-menu -T "Tmux" -x R -y P "Copy Mode" c copy-mode "Paste Buffer" p paste-buffer "" "" "" "Split Horizontal" h 'split-window -h' "Split Vertical" v 'split-window -v'`,
+  ].map(c => `${c} 2>/dev/null`).join("; ");
 
   // Create onConnected callback for a specific tab
   const getTerminalConnectedHandler = useCallback(

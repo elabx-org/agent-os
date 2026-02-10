@@ -209,8 +209,18 @@ function HomeContent() {
       const tmuxNew = command
         ? `tmux new -s ${sessionName} -c "${cwd}" "${command}"`
         : `tmux new -s ${sessionName} -c "${cwd}"`;
+      const tmuxSetup = [
+        `tmux set-option -g mouse on`,
+        `tmux set-option -g history-limit 50000`,
+        // Scroll 5 lines per wheel event instead of 1
+        `tmux bind-key -T copy-mode WheelUpPane send-keys -X -N 5 scroll-up`,
+        `tmux bind-key -T copy-mode WheelDownPane send-keys -X -N 5 scroll-down`,
+        `tmux bind-key -T copy-mode-vi WheelUpPane send-keys -X -N 5 scroll-up`,
+        `tmux bind-key -T copy-mode-vi WheelDownPane send-keys -X -N 5 scroll-down`,
+        `tmux bind-key m display-menu -T "Tmux" -x R -y P "Copy Mode" c copy-mode "Paste Buffer" p paste-buffer "" "" "" "Split Horizontal" h 'split-window -h' "Split Vertical" v 'split-window -v'`,
+      ].map(c => `${c} 2>/dev/null`).join("; ");
       terminal.sendCommand(
-        `tmux set-option -g mouse on 2>/dev/null; tmux set-option -g history-limit 50000 2>/dev/null; tmux bind-key m display-menu -T "Tmux" -x R -y P "Copy Mode" c copy-mode "Paste Buffer" p paste-buffer "" "" "" "Split Horizontal" h 'split-window -h' "Split Vertical" v 'split-window -v' 2>/dev/null; tmux attach -t ${sessionName} 2>/dev/null || ${tmuxNew}`
+        `${tmuxSetup}; tmux attach -t ${sessionName} 2>/dev/null || ${tmuxNew}`
       );
       attachSession(paneId, session.id, sessionName);
       terminal.focus();

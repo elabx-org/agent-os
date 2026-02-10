@@ -21,6 +21,11 @@ C_MUTED=$'\\033[38;5;245m'
 # Configure tmux for scrolling and status bar
 tmux set-option -g mouse on 2>/dev/null
 tmux set-option -g history-limit 50000 2>/dev/null
+# Scroll 5 lines per wheel event instead of 1 for smoother scrolling
+tmux bind-key -T copy-mode WheelUpPane send-keys -X -N 5 scroll-up 2>/dev/null
+tmux bind-key -T copy-mode WheelDownPane send-keys -X -N 5 scroll-down 2>/dev/null
+tmux bind-key -T copy-mode-vi WheelUpPane send-keys -X -N 5 scroll-up 2>/dev/null
+tmux bind-key -T copy-mode-vi WheelDownPane send-keys -X -N 5 scroll-down 2>/dev/null
 tmux set-option status-style 'bg=#1e1e2e,fg=#cdd6f4' 2>/dev/null
 tmux set-option status-left '#[fg=#cba6f7,bold] AgentOS #[fg=#6c7086]| ' 2>/dev/null
 tmux set-option status-left-length 20 2>/dev/null
