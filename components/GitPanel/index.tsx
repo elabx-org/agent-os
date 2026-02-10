@@ -10,11 +10,13 @@ import {
   AlertCircle,
   ArrowUp,
   ArrowDown,
+  ArrowDownUp,
   Plus,
   Minus,
   ArrowLeft,
   FileCode,
   ExternalLink,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FileChanges } from "./FileChanges";
@@ -25,7 +27,10 @@ import { CommitHistory } from "./CommitHistory";
 import { StashList } from "./StashList";
 import { PRReview } from "./PRReview";
 import { DiffView } from "@/components/DiffViewer/DiffModal";
+import { BranchSelector } from "@/components/GitDrawer/BranchSelector";
 import { useViewport } from "@/hooks/useViewport";
+import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 import {
   useGitStatus,
   usePRStatus,
@@ -35,6 +40,7 @@ import {
   useMultiRepoGitStatus,
   useStashList,
   useAutoFetch,
+  useSyncBranch,
   gitKeys,
 } from "@/data/git/queries";
 import type { GitStatus, GitFile } from "@/lib/git-status";
@@ -46,6 +52,7 @@ interface GitPanelProps {
   projectId?: string;
   repositories?: ProjectRepository[];
   onFileSelect?: (file: GitFile, diff: string) => void;
+  onClose?: () => void;
 }
 
 interface SelectedFile {
@@ -58,6 +65,7 @@ export function GitPanel({
   workingDirectory,
   projectId,
   repositories = [],
+  onClose,
 }: GitPanelProps) {
   const { isMobile } = useViewport();
   const queryClient = useQueryClient();
@@ -130,6 +138,7 @@ export function GitPanel({
   const createPRMutation = useCreatePR(primaryRepoPath);
   const stageMutation = useStageFiles(primaryRepoPath);
   const unstageMutation = useUnstageFiles(primaryRepoPath);
+  const syncMutation = useSyncBranch(primaryRepoPath);
 
   // Stash count for tab badge
   const { data: stashes = [] } = useStashList(workingDirectory);
@@ -266,6 +275,13 @@ export function GitPanel({
     document.addEventListener("mouseup", handleMouseUp);
   }, []);
 
+  const handleSync = () => {
+    syncMutation.mutate(undefined, {
+      onSuccess: () => toast.success("Synced with remote"),
+      onError: (err) => toast.error(err.message || "Sync failed"),
+    });
+  };
+
   if (loading) {
     return (
       <div className="bg-background flex h-full w-full flex-col">
@@ -273,8 +289,11 @@ export function GitPanel({
           branch=""
           ahead={0}
           behind={0}
+          hasChanges={false}
+          workingDirectory={primaryRepoPath}
           onRefresh={handleRefresh}
           refreshing={false}
+          onClose={onClose}
         />
         <div className="flex flex-1 items-center justify-center">
           <Loader2 className="text-muted-foreground h-6 w-6 animate-spin" />
@@ -290,9 +309,12 @@ export function GitPanel({
           branch=""
           ahead={0}
           behind={0}
+          hasChanges={false}
+          workingDirectory={primaryRepoPath}
           onRefresh={handleRefresh}
           refreshing={isRefetching}
           existingPR={existingPR}
+          onClose={onClose}
         />
         <div className="flex flex-1 flex-col items-center justify-center p-4">
           <AlertCircle className="text-muted-foreground mb-2 h-8 w-8" />
@@ -331,6 +353,9 @@ export function GitPanel({
         prNumber={existingPR?.number}
         syncInterval={syncInterval}
         onSyncIntervalChange={handleSyncIntervalChange}
+        onSync={handleSync}
+        syncing={syncMutation.isPending}
+        primaryRepoPath={primaryRepoPath}
         onTabChange={setActiveTab}
         onRefresh={handleRefresh}
         onFileClick={handleFileClick}
@@ -362,11 +387,16 @@ export function GitPanel({
           branch={status.branch}
           ahead={status.ahead}
           behind={status.behind}
+          hasChanges={hasChanges}
+          workingDirectory={primaryRepoPath}
           onRefresh={handleRefresh}
           refreshing={isRefetching}
           existingPR={existingPR}
           syncInterval={syncInterval}
           onSyncIntervalChange={handleSyncIntervalChange}
+          onSync={handleSync}
+          syncing={syncMutation.isPending}
+          onClose={onClose}
         />
         <GitPanelTabs activeTab={activeTab} onTabChange={setActiveTab} stashCount={stashes.length} prNumber={existingPR?.number} />
         {activeTab === "history" && (
@@ -395,10 +425,15 @@ export function GitPanel({
             branch={status.branch}
             ahead={status.ahead}
             behind={status.behind}
+            hasChanges={hasChanges}
+            workingDirectory={primaryRepoPath}
             onRefresh={handleRefresh}
             refreshing={isRefetching}
             syncInterval={syncInterval}
             onSyncIntervalChange={handleSyncIntervalChange}
+            onSync={handleSync}
+            syncing={syncMutation.isPending}
+            onClose={onClose}
           />
           <GitPanelTabs activeTab={activeTab} onTabChange={setActiveTab} stashCount={stashes.length} prNumber={existingPR?.number} />
 
@@ -578,6 +613,9 @@ interface MobileGitPanelProps {
   prNumber?: number;
   syncInterval: number;
   onSyncIntervalChange: (seconds: number) => void;
+  onSync: () => void;
+  syncing: boolean;
+  primaryRepoPath: string;
   onTabChange: (tab: GitTab) => void;
   onRefresh: () => void;
   onFileClick: (file: GitFile) => void;
@@ -607,6 +645,9 @@ function MobileGitPanel({
   prNumber,
   syncInterval,
   onSyncIntervalChange,
+  onSync,
+  syncing,
+  primaryRepoPath,
   onTabChange,
   onRefresh,
   onFileClick,
@@ -628,11 +669,15 @@ function MobileGitPanel({
           branch={status.branch}
           ahead={status.ahead}
           behind={status.behind}
+          hasChanges={hasChanges}
+          workingDirectory={primaryRepoPath}
           onRefresh={onRefresh}
           refreshing={refreshing}
           existingPR={existingPR}
           syncInterval={syncInterval}
           onSyncIntervalChange={onSyncIntervalChange}
+          onSync={onSync}
+          syncing={syncing}
         />
         <GitPanelTabs activeTab={activeTab} onTabChange={onTabChange} stashCount={stashCount} prNumber={prNumber} />
         {activeTab === "history" && (
@@ -699,11 +744,15 @@ function MobileGitPanel({
         branch={status.branch}
         ahead={status.ahead}
         behind={status.behind}
+        hasChanges={hasChanges}
+        workingDirectory={primaryRepoPath}
         onRefresh={onRefresh}
         refreshing={refreshing}
         existingPR={existingPR}
         syncInterval={syncInterval}
         onSyncIntervalChange={onSyncIntervalChange}
+        onSync={onSync}
+        syncing={syncing}
       />
       <GitPanelTabs activeTab={activeTab} onTabChange={onTabChange} stashCount={stashCount} prNumber={prNumber} />
 
@@ -805,10 +854,15 @@ interface HeaderProps {
   branch: string;
   ahead: number;
   behind: number;
+  hasChanges: boolean;
+  workingDirectory: string;
   onRefresh: () => void;
   refreshing: boolean;
   syncInterval?: number;
   onSyncIntervalChange?: (seconds: number) => void;
+  onSync?: () => void;
+  syncing?: boolean;
+  onClose?: () => void;
   existingPR?: {
     number: number;
     url: string;
@@ -827,32 +881,37 @@ function Header({
   branch,
   ahead,
   behind,
+  hasChanges,
+  workingDirectory,
   onRefresh,
   refreshing,
   syncInterval = 0,
   onSyncIntervalChange,
+  onSync,
+  syncing,
+  onClose,
   existingPR,
 }: HeaderProps) {
   return (
-    <div className="flex items-center gap-2 p-3">
-      <GitBranch className="text-muted-foreground h-4 w-4 flex-shrink-0" />
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <p className="truncate text-sm font-medium">
-            {branch || "Git Status"}
-          </p>
-          {existingPR && (
-            <button
-              onClick={() => window.open(existingPR.url, "_blank")}
-              className="bg-muted hover:bg-accent inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-xs transition-colors"
-              title={`${existingPR.title} (#${existingPR.number})`}
-            >
-              <GitPullRequest className="h-3 w-3" />
-              PR
-              <ExternalLink className="h-2.5 w-2.5" />
-            </button>
-          )}
-        </div>
+    <div className="flex items-center gap-2 px-3 py-2">
+      <div className="flex min-w-0 flex-1 items-center gap-2">
+        <BranchSelector
+          workingDirectory={workingDirectory}
+          currentBranch={branch || "unknown"}
+          hasChanges={hasChanges}
+          onBranchChanged={onRefresh}
+        />
+        {existingPR && (
+          <button
+            onClick={() => window.open(existingPR.url, "_blank")}
+            className="bg-muted hover:bg-accent inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-xs transition-colors"
+            title={`${existingPR.title} (#${existingPR.number})`}
+          >
+            <GitPullRequest className="h-3 w-3" />
+            PR
+            <ExternalLink className="h-2.5 w-2.5" />
+          </button>
+        )}
         {(ahead > 0 || behind > 0) && (
           <div className="text-muted-foreground flex items-center gap-2 text-xs">
             {ahead > 0 && (
@@ -884,15 +943,38 @@ function Header({
           ))}
         </select>
       )}
+      {onSync && (
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={onSync}
+          disabled={syncing}
+          className="h-7 w-7"
+          title="Sync (fetch, pull, push)"
+        >
+          <ArrowDownUp className={cn("h-3.5 w-3.5", syncing && "animate-spin")} />
+        </Button>
+      )}
       <Button
         variant="ghost"
-        size="icon-sm"
+        size="icon"
         onClick={onRefresh}
         disabled={refreshing}
-        className="h-8 w-8"
+        className="h-7 w-7"
+        title="Refresh status"
       >
-        <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
+        <RefreshCw className={cn("h-3.5 w-3.5", refreshing && "animate-spin")} />
       </Button>
+      {onClose && (
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={onClose}
+          className="h-7 w-7"
+        >
+          <X className="h-3.5 w-3.5" />
+        </Button>
+      )}
     </div>
   );
 }

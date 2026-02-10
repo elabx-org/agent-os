@@ -538,17 +538,16 @@ export const Pane = memo(function Pane({
             </ResizablePanelGroup>
           </ResizablePanel>
 
-          {/* Git drawer - right side, full height */}
+          {/* Git panel - right side, full height */}
           {gitDrawerOpen && session?.working_directory && (
             <>
               <ResizablePanelHandle className="bg-border/30 hover:bg-primary/30 active:bg-primary/50 w-px cursor-col-resize transition-colors" />
               <ResizablePanel defaultSize={30} minSize={10}>
-                <GitDrawer
-                  open={true}
-                  onOpenChange={setGitDrawerOpen}
+                <GitPanel
                   workingDirectory={session.working_directory}
                   projectId={currentProject?.id}
                   repositories={projectRepositories}
+                  onClose={() => setGitDrawerOpen(false)}
                 />
               </ResizablePanel>
             </>
