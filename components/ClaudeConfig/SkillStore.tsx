@@ -38,6 +38,10 @@ interface StoreItem {
   type: StoreItemType;
   source: string;
   downloadFiles: Array<{ name: string; rawUrl: string }>;
+  /** GitHub Contents API URL to list all files in this item's directory (fetched at install time) */
+  contentsUrl?: string;
+  /** Base raw URL for constructing file download URLs */
+  rawBase?: string;
 }
 
 interface McpStoreItem {
@@ -65,25 +69,44 @@ interface SkillStoreProps {
   onInstalled: () => void;
 }
 
+// --- Concurrency limiter ---
+// Runs async tasks with a max concurrency to avoid hammering GitHub's secondary rate limits.
+
+async function pMap<T, R>(
+  items: T[],
+  fn: (item: T) => Promise<R>,
+  concurrency: number
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let idx = 0;
+
+  async function worker() {
+    while (idx < items.length) {
+      const i = idx++;
+      results[i] = await fn(items[i]);
+    }
+  }
+
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, items.length) }, () => worker())
+  );
+  return results;
+}
+
+const FETCH_CONCURRENCY = 3;
+
 // --- GitHub helpers ---
+// Always proxy through the server to use the cached gh auth token and avoid
+// burning through GitHub's 60 req/hr unauthenticated rate limit.
 
 async function ghApiFetch(url: string): Promise<unknown[] | null> {
   try {
-    // Try direct fetch first (works for public repos)
-    const res = await fetch(url, {
-      headers: { Accept: "application/vnd.github.v3+json" },
-    });
-    if (res.ok) return res.json();
-
-    // On rate-limit or auth failure, proxy through server (has gh token)
-    if (res.status === 403 || res.status === 429 || res.status === 401) {
-      const proxyRes = await fetch(
-        `/api/github-raw?url=${encodeURIComponent(url)}`
-      );
-      if (proxyRes.ok) {
-        const data = await proxyRes.json();
-        return JSON.parse(data.content || "[]");
-      }
+    const res = await fetch(
+      `/api/github-raw?url=${encodeURIComponent(url)}`
+    );
+    if (res.ok) {
+      const data = await res.json();
+      return JSON.parse(data.content || "[]");
     }
   } catch {
     // ignore
@@ -93,16 +116,11 @@ async function ghApiFetch(url: string): Promise<unknown[] | null> {
 
 async function fetchRaw(url: string): Promise<string | null> {
   try {
-    // Try direct fetch first
-    const res = await fetch(url);
-    if (res.ok) return res.text();
-
-    // Fallback through server proxy (handles private repos)
-    const proxyRes = await fetch(
+    const res = await fetch(
       `/api/github-raw?url=${encodeURIComponent(url)}`
     );
-    if (proxyRes.ok) {
-      const data = await proxyRes.json();
+    if (res.ok) {
+      const data = await res.json();
       return data.content || null;
     }
   } catch {
@@ -126,36 +144,27 @@ async function fetchAnthropicSkills(): Promise<StoreItem[]> {
   if (!dirs) return [];
 
   const items: StoreItem[] = [];
-  await Promise.all(
-    dirs
-      .filter((d) => d.type === "dir")
-      .map(async (dir) => {
-        const content = await fetchRaw(`${RAW}/skills/${dir.name}/SKILL.md`);
-        if (!content) return;
-        const { metadata } = parseFrontmatter(content);
+  await pMap(
+    dirs.filter((d) => d.type === "dir"),
+    async (dir) => {
+      const content = await fetchRaw(`${RAW}/skills/${dir.name}/SKILL.md`);
+      if (!content) return;
+      const { metadata } = parseFrontmatter(content);
 
-        let files = [{ name: "SKILL.md", rawUrl: `${RAW}/skills/${dir.name}/SKILL.md` }];
-        try {
-          const fileEntries = (await ghApiFetch(dir.url)) as Array<{ name: string; type: string }> | null;
-          if (fileEntries) {
-            files = fileEntries.filter((f) => f.type === "file").map((f) => ({
-              name: f.name,
-              rawUrl: `${RAW}/skills/${dir.name}/${f.name}`,
-            }));
-          }
-        } catch { /* keep default */ }
-
-        items.push({
-          id: `anthropic-${dir.name}`,
-          name: metadata.name || dir.name,
-          dirName: dir.name,
-          description: (metadata.description || "").replace(/\n/g, " ").trim(),
-          url: `${TREE}/${dir.name}`,
-          type: "skill",
-          source: "Anthropic",
-          downloadFiles: files,
-        });
-      })
+      items.push({
+        id: `anthropic-${dir.name}`,
+        name: metadata.name || dir.name,
+        dirName: dir.name,
+        description: (metadata.description || "").replace(/\n/g, " ").trim(),
+        url: `${TREE}/${dir.name}`,
+        type: "skill",
+        source: "Anthropic",
+        downloadFiles: [{ name: "SKILL.md", rawUrl: `${RAW}/skills/${dir.name}/SKILL.md` }],
+        contentsUrl: dir.url,
+        rawBase: `${RAW}/skills/${dir.name}`,
+      });
+    },
+    FETCH_CONCURRENCY
   );
   return items.sort((a, b) => a.name.localeCompare(b.name));
 }
@@ -170,36 +179,27 @@ async function fetchDaymadeSkills(): Promise<StoreItem[]> {
   if (!dirs) return [];
 
   const items: StoreItem[] = [];
-  await Promise.all(
-    dirs
-      .filter((d) => d.type === "dir" && !EXCLUDE.includes(d.name))
-      .map(async (dir) => {
-        const content = await fetchRaw(`${RAW}/${dir.name}/SKILL.md`);
-        if (!content) return;
-        const { metadata } = parseFrontmatter(content);
+  await pMap(
+    dirs.filter((d) => d.type === "dir" && !EXCLUDE.includes(d.name)),
+    async (dir) => {
+      const content = await fetchRaw(`${RAW}/${dir.name}/SKILL.md`);
+      if (!content) return;
+      const { metadata } = parseFrontmatter(content);
 
-        let files = [{ name: "SKILL.md", rawUrl: `${RAW}/${dir.name}/SKILL.md` }];
-        try {
-          const fileEntries = (await ghApiFetch(dir.url)) as Array<{ name: string; type: string }> | null;
-          if (fileEntries) {
-            files = fileEntries.filter((f) => f.type === "file").map((f) => ({
-              name: f.name,
-              rawUrl: `${RAW}/${dir.name}/${f.name}`,
-            }));
-          }
-        } catch { /* keep default */ }
-
-        items.push({
-          id: `daymade-${dir.name}`,
-          name: metadata.name || dir.name,
-          dirName: dir.name,
-          description: (metadata.description || "").replace(/\n/g, " ").trim(),
-          url: `${TREE}/${dir.name}`,
-          type: "skill",
-          source: "daymade",
-          downloadFiles: files,
-        });
-      })
+      items.push({
+        id: `daymade-${dir.name}`,
+        name: metadata.name || dir.name,
+        dirName: dir.name,
+        description: (metadata.description || "").replace(/\n/g, " ").trim(),
+        url: `${TREE}/${dir.name}`,
+        type: "skill",
+        source: "daymade",
+        downloadFiles: [{ name: "SKILL.md", rawUrl: `${RAW}/${dir.name}/SKILL.md` }],
+        contentsUrl: dir.url,
+        rawBase: `${RAW}/${dir.name}`,
+      });
+    },
+    FETCH_CONCURRENCY
   );
   return items.sort((a, b) => a.name.localeCompare(b.name));
 }
@@ -216,37 +216,44 @@ async function fetchVoltAgentAgents(): Promise<StoreItem[]> {
   }> | null;
   if (!categories) return [];
 
+  // Collect all agent files from all categories first, then fetch with concurrency
+  const agentFiles: Array<{ catName: string; fileName: string }> = [];
+  await pMap(
+    categories.filter((c) => c.type === "dir"),
+    async (cat) => {
+      const files = (await ghApiFetch(cat.url)) as Array<{ name: string; type: string }> | null;
+      if (!files) return;
+      for (const f of files) {
+        if (f.type === "file" && f.name.endsWith(".md") && f.name !== "README.md") {
+          agentFiles.push({ catName: cat.name, fileName: f.name });
+        }
+      }
+    },
+    FETCH_CONCURRENCY
+  );
+
   const items: StoreItem[] = [];
-  await Promise.all(
-    categories
-      .filter((c) => c.type === "dir")
-      .map(async (cat) => {
-        const files = (await ghApiFetch(cat.url)) as Array<{ name: string; type: string }> | null;
-        if (!files) return;
+  await pMap(
+    agentFiles,
+    async ({ catName, fileName }) => {
+      const agentName = fileName.replace(/\.md$/, "");
+      const rawUrl = `${RAW}/categories/${catName}/${fileName}`;
+      const content = await fetchRaw(rawUrl);
+      if (!content) return;
+      const { metadata } = parseFrontmatter(content);
 
-        await Promise.all(
-          files
-            .filter((f) => f.type === "file" && f.name.endsWith(".md") && f.name !== "README.md")
-            .map(async (f) => {
-              const agentName = f.name.replace(/\.md$/, "");
-              const rawUrl = `${RAW}/categories/${cat.name}/${f.name}`;
-              const content = await fetchRaw(rawUrl);
-              if (!content) return;
-              const { metadata } = parseFrontmatter(content);
-
-              items.push({
-                id: `voltagent-${agentName}`,
-                name: metadata.name || agentName,
-                dirName: agentName,
-                description: (metadata.description || "").replace(/\n/g, " ").trim(),
-                url: `${TREE}/${cat.name}/${f.name}`,
-                type: "agent",
-                source: `VoltAgent / ${cat.name.replace(/^\d+-/, "")}`,
-                downloadFiles: [{ name: "AGENT.md", rawUrl }],
-              });
-            })
-        );
-      })
+      items.push({
+        id: `voltagent-${agentName}`,
+        name: metadata.name || agentName,
+        dirName: agentName,
+        description: (metadata.description || "").replace(/\n/g, " ").trim(),
+        url: `${TREE}/${catName}/${fileName}`,
+        type: "agent",
+        source: `VoltAgent / ${catName.replace(/^\d+-/, "")}`,
+        downloadFiles: [{ name: "AGENT.md", rawUrl }],
+      });
+    },
+    FETCH_CONCURRENCY
   );
   return items.sort((a, b) => a.name.localeCompare(b.name));
 }
@@ -264,36 +271,27 @@ async function fetchCustomSource(source: StoreSource): Promise<StoreItem[]> {
   if (!dirs) return [];
 
   const items: StoreItem[] = [];
-  await Promise.all(
-    dirs
-      .filter((d) => d.type === "dir" && !d.name.startsWith("."))
-      .map(async (dir) => {
-        const content = await fetchRaw(`${RAW}/${dir.name}/${targetFile}`);
-        if (!content) return;
-        const { metadata } = parseFrontmatter(content);
+  await pMap(
+    dirs.filter((d) => d.type === "dir" && !d.name.startsWith(".")),
+    async (dir) => {
+      const content = await fetchRaw(`${RAW}/${dir.name}/${targetFile}`);
+      if (!content) return;
+      const { metadata } = parseFrontmatter(content);
 
-        let files = [{ name: targetFile, rawUrl: `${RAW}/${dir.name}/${targetFile}` }];
-        try {
-          const fileEntries = (await ghApiFetch(dir.url)) as Array<{ name: string; type: string }> | null;
-          if (fileEntries) {
-            files = fileEntries.filter((f) => f.type === "file").map((f) => ({
-              name: f.name,
-              rawUrl: `${RAW}/${dir.name}/${f.name}`,
-            }));
-          }
-        } catch { /* keep default */ }
-
-        items.push({
-          id: `custom-${source.id}-${dir.name}`,
-          name: metadata.name || dir.name,
-          dirName: dir.name,
-          description: (metadata.description || "").replace(/\n/g, " ").trim(),
-          url: `${TREE}/${dir.name}`,
-          type: source.type,
-          source: source.label,
-          downloadFiles: files,
-        });
-      })
+      items.push({
+        id: `custom-${source.id}-${dir.name}`,
+        name: metadata.name || dir.name,
+        dirName: dir.name,
+        description: (metadata.description || "").replace(/\n/g, " ").trim(),
+        url: `${TREE}/${dir.name}`,
+        type: source.type,
+        source: source.label,
+        downloadFiles: [{ name: targetFile, rawUrl: `${RAW}/${dir.name}/${targetFile}` }],
+        contentsUrl: dir.url,
+        rawBase: `${RAW}/${dir.name}`,
+      });
+    },
+    FETCH_CONCURRENCY
   );
   return items.sort((a, b) => a.name.localeCompare(b.name));
 }
@@ -547,28 +545,20 @@ export function SkillStore({
           item.type === "skill" ? GLOBAL_SKILLS_DIR : GLOBAL_AGENTS_DIR;
         const dirPath = `${baseDir}/${item.dirName}`;
 
-        for (const file of item.downloadFiles) {
-          // Try direct fetch first, fall back to server proxy for private repos
-          let content: string | null = null;
-          try {
-            const directRes = await fetch(file.rawUrl);
-            if (directRes.ok) {
-              content = await directRes.text();
-            }
-          } catch { /* ignore */ }
-
-          if (!content) {
-            const proxyRes = await fetch(
-              `/api/github-raw?url=${encodeURIComponent(file.rawUrl)}`
-            );
-            if (proxyRes.ok) {
-              const data = await proxyRes.json();
-              content = data.content || null;
-            }
+        // Resolve full file list at install time if we have a contents URL
+        let files = item.downloadFiles;
+        if (item.contentsUrl && item.rawBase) {
+          const fileEntries = (await ghApiFetch(item.contentsUrl)) as Array<{ name: string; type: string }> | null;
+          if (fileEntries) {
+            files = fileEntries
+              .filter((f) => f.type === "file")
+              .map((f) => ({ name: f.name, rawUrl: `${item.rawBase}/${f.name}` }));
           }
+        }
 
+        for (const file of files) {
+          const content = await fetchRaw(file.rawUrl);
           if (content) {
-            // writeFileContent creates parent directories automatically
             await fetch("/api/files/content", {
               method: "POST",
               headers: { "Content-Type": "application/json" },

@@ -17,7 +17,7 @@ npm run format       # Prettier
 npm run typecheck    # tsc --noEmit
 ```
 
-No test suite exists.
+No test suite exists. Husky pre-commit hook runs Prettier on staged files and `npm run typecheck`.
 
 ## Architecture
 
@@ -36,28 +36,37 @@ Custom Node.js HTTP server that:
 
 SQLite via `better-sqlite3` in WAL mode. No ORM — raw SQL with a prepared statement cache.
 
-- **`schema.ts`** — DDL for all tables (sessions, messages, tool_calls, projects, dev_servers, project_dev_servers, project_repositories, groups)
+- **`schema.ts`** — DDL for base tables (sessions, messages, tool_calls, projects, dev_servers, project_dev_servers, project_repositories, groups)
+- **`migrations.ts`** — Incremental schema migrations (14 so far) that add columns/tables. Run automatically on startup.
 - **`queries.ts`** — Prepared statement factories, exported as `queries` object
+- **`types.ts`** — TypeScript interfaces for all DB row types
 - **`index.ts`** — DB initialization, exports `db` singleton
 
-Database file: `agent-os.db` in project root (or `$DB_PATH`). Schema migrations are additive `CREATE TABLE IF NOT EXISTS` / `ALTER TABLE` with try-catch.
+Database file: `agent-os.db` in project root (or `$DB_PATH`). Base schema uses `CREATE TABLE IF NOT EXISTS`, then `migrations.ts` applies additive `ALTER TABLE` / new tables with try-catch. When adding a new column, add it as a new migration function in `migrations.ts`.
 
 ### API Routes (`app/api/`)
 
-Standard Next.js route handlers. Key endpoints:
-- `/api/sessions` — CRUD + `/[id]/fork`, `/[id]/messages`, `/status`
+Standard Next.js route handlers. Key endpoint groups:
+- `/api/sessions` — CRUD + `/[id]/fork`, `/[id]/messages`, `/[id]/preview`, `/[id]/send-keys`, `/[id]/claude-session`, `/status`
 - `/api/projects` — CRUD + `/[id]/dev-servers`, `/[id]/repositories`
-- `/api/git/` — status, commit, push, pr, history
+- `/api/git/` — status, multi-status, commit, push, pr, history, checkout, sync, discard, file-content
 - `/api/dev-servers` — lifecycle management
 - `/api/orchestrate/` — spawn/manage worker sessions
 - `/api/code-search` — ripgrep-powered search
 - `/api/files` — browse, read/write content, upload
+- `/api/claude-cli`, `/api/claude-usage` — Claude Code CLI integration
+- `/api/github-raw` — proxy for private repo raw file access
+- `/api/tmux-sessions` — tmux session listing
+
+### Data Layer (`data/`)
+
+TanStack Query abstractions organized by domain: `sessions/`, `projects/`, `git/`, `dev-servers/`, `repositories/`, `statuses/`, `code-search/`, `groups/`. Each domain exports query keys (`keys.ts`) and query/mutation hooks (`queries.ts`). Use these hooks in components rather than calling `fetch` directly.
 
 ### State Management (Frontend)
 
 Three-layer approach:
-- **TanStack Query** — server state (sessions, projects, git status) with polling
-- **Valtio** — UI state (session selection in `stores/`)
+- **TanStack Query** — server state via `data/` hooks (sessions, projects, git status) with polling
+- **Valtio** — UI state in `stores/`: `sessionSelection` (multi-select with shift-click), `initialPrompt` (pending prompts), `fileOpen` (file open requests with path/line)
 - **React Context** — pane layout (`contexts/PaneContext`)
 
 ### Key Frontend Libraries
@@ -70,11 +79,15 @@ Three-layer approach:
 
 ### Session Orchestration (`lib/orchestration.ts`, `mcp/`)
 
-Conductor/worker model: a conductor session spawns isolated workers via MCP tools. Workers get their own git worktrees (`lib/worktrees.ts`) and branches. The MCP server (`mcp/`) provides `spawn_worker`, `list_workers`, `send_to_worker`, etc.
+Conductor/worker model: a conductor session spawns isolated workers via MCP tools. Workers get their own git worktrees (`lib/worktrees.ts`, stored in `~/.agent-os/worktrees/`) and auto-named branches. The MCP server (`mcp/orchestration-server.ts`) exposes 4 tools: `spawn_worker`, `list_workers`, `get_worker_output`, `send_to_worker`. Uses `AGENTOS_URL` env var (default `http://localhost:3011`).
 
 ### Agent Providers (`lib/providers/`)
 
-Abstraction over AI CLIs (Claude Code, Codex, OpenCode, Gemini CLI, Aider, Cursor CLI, plain Shell). Each provider knows how to construct the CLI command, handle resume/fork, and parse output.
+Abstraction over AI CLIs (Claude Code, Codex, OpenCode, Gemini CLI, Aider, Cursor CLI, plain Shell). Central registry in `registry.ts` defines each provider's CLI command, config directory, auto-approve flag, resume/fork/model support, and status detection patterns (waiting/running/idle). Each provider knows how to construct the CLI command, handle resume/fork, and parse output.
+
+### WebSocket Protocol (`/ws/terminal`)
+
+Client → Server message types: `input` (PTY input), `resize` (terminal dimensions), `command` (input + `\r`), `exec` (run command outside PTY, returns `exec-result`). Server → Client: `output` (PTY data), `exit` (PTY exited), `error`, `exec-result`. Client auto-reconnects with exponential backoff; visibility-based forced reconnect handles mobile Safari socket death.
 
 ## Fork-Specific Changes
 
@@ -112,6 +125,18 @@ echo "//npm.pkg.github.com/:_authToken=$(gh auth token)" > .npmrc
 echo "@elabx-org:registry=https://npm.pkg.github.com" >> .npmrc
 ```
 Do not commit `.npmrc`.
+
+## Path Aliases & Config
+
+- TypeScript path alias: `@/*` maps to `./` (use `@/lib/...`, `@/components/...`, etc.)
+- `next.config.ts`: Minimal — only disables devIndicators
+- shadcn/ui: New York style, Tailwind CSS variables, Lucide icons (`components.json`)
+
+## Environment Variables
+
+- `PORT` — Server port (default `3011`)
+- `DB_PATH` — SQLite database path (default `./agent-os.db`)
+- `AGENTOS_URL` — Base URL for MCP orchestration (default `http://localhost:3011`)
 
 ## Prerequisites
 
