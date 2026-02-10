@@ -29,19 +29,26 @@ import { StoreSourceManager } from "./StoreSourceManager";
 type StoreItemType = "skill" | "agent";
 type StoreFilter = "all" | "skills" | "agents" | "mcps";
 
-interface StoreItem {
+/** Lightweight stub created from directory listing (no SKILL.md fetch needed) */
+interface StoreItemStub {
   id: string;
-  name: string;
   dirName: string;
-  description: string;
-  url: string;
   type: StoreItemType;
   source: string;
-  downloadFiles: Array<{ name: string; rawUrl: string }>;
-  /** GitHub Contents API URL to list all files in this item's directory (fetched at install time) */
+  url: string;
+  /** URL to fetch SKILL.md or AGENT.md content from */
+  contentUrl: string;
+  /** GitHub Contents API URL to list all files (for install) */
   contentsUrl?: string;
   /** Base raw URL for constructing file download URLs */
   rawBase?: string;
+}
+
+/** Enriched item after fetching SKILL.md */
+interface StoreItem extends StoreItemStub {
+  name: string;
+  description: string;
+  downloadFiles: Array<{ name: string; rawUrl: string }>;
 }
 
 interface McpStoreItem {
@@ -69,8 +76,12 @@ interface SkillStoreProps {
   onInstalled: () => void;
 }
 
+// --- Constants ---
+
+const PAGE_SIZE = 12;
+const FETCH_CONCURRENCY = 3;
+
 // --- Concurrency limiter ---
-// Runs async tasks with a max concurrency to avoid hammering GitHub's secondary rate limits.
 
 async function pMap<T, R>(
   items: T[],
@@ -92,8 +103,6 @@ async function pMap<T, R>(
   );
   return results;
 }
-
-const FETCH_CONCURRENCY = 3;
 
 // --- GitHub helpers ---
 // Always proxy through the server to use the cached gh auth token and avoid
@@ -129,9 +138,9 @@ async function fetchRaw(url: string): Promise<string | null> {
   return null;
 }
 
-// --- Built-in GitHub sources ---
+// --- Phase 1: List directory stubs (cheap — 1 API call per source) ---
 
-async function fetchAnthropicSkills(): Promise<StoreItem[]> {
+async function listAnthropicStubs(): Promise<StoreItemStub[]> {
   const API = "https://api.github.com/repos/anthropics/skills/contents";
   const RAW = "https://raw.githubusercontent.com/anthropics/skills/main";
   const TREE = "https://github.com/anthropics/skills/tree/main/skills";
@@ -143,33 +152,22 @@ async function fetchAnthropicSkills(): Promise<StoreItem[]> {
   }> | null;
   if (!dirs) return [];
 
-  const items: StoreItem[] = [];
-  await pMap(
-    dirs.filter((d) => d.type === "dir"),
-    async (dir) => {
-      const content = await fetchRaw(`${RAW}/skills/${dir.name}/SKILL.md`);
-      if (!content) return;
-      const { metadata } = parseFrontmatter(content);
-
-      items.push({
-        id: `anthropic-${dir.name}`,
-        name: metadata.name || dir.name,
-        dirName: dir.name,
-        description: (metadata.description || "").replace(/\n/g, " ").trim(),
-        url: `${TREE}/${dir.name}`,
-        type: "skill",
-        source: "Anthropic",
-        downloadFiles: [{ name: "SKILL.md", rawUrl: `${RAW}/skills/${dir.name}/SKILL.md` }],
-        contentsUrl: dir.url,
-        rawBase: `${RAW}/skills/${dir.name}`,
-      });
-    },
-    FETCH_CONCURRENCY
-  );
-  return items.sort((a, b) => a.name.localeCompare(b.name));
+  return dirs
+    .filter((d) => d.type === "dir")
+    .map((dir) => ({
+      id: `anthropic-${dir.name}`,
+      dirName: dir.name,
+      type: "skill" as const,
+      source: "Anthropic",
+      url: `${TREE}/${dir.name}`,
+      contentUrl: `${RAW}/skills/${dir.name}/SKILL.md`,
+      contentsUrl: dir.url,
+      rawBase: `${RAW}/skills/${dir.name}`,
+    }))
+    .sort((a, b) => a.dirName.localeCompare(b.dirName));
 }
 
-async function fetchDaymadeSkills(): Promise<StoreItem[]> {
+async function listDaymadeStubs(): Promise<StoreItemStub[]> {
   const API = "https://api.github.com/repos/daymade/claude-code-skills/contents";
   const RAW = "https://raw.githubusercontent.com/daymade/claude-code-skills/main";
   const TREE = "https://github.com/daymade/claude-code-skills/tree/main";
@@ -178,33 +176,22 @@ async function fetchDaymadeSkills(): Promise<StoreItem[]> {
   const dirs = (await ghApiFetch(API)) as Array<{ name: string; type: string; url: string }> | null;
   if (!dirs) return [];
 
-  const items: StoreItem[] = [];
-  await pMap(
-    dirs.filter((d) => d.type === "dir" && !EXCLUDE.includes(d.name)),
-    async (dir) => {
-      const content = await fetchRaw(`${RAW}/${dir.name}/SKILL.md`);
-      if (!content) return;
-      const { metadata } = parseFrontmatter(content);
-
-      items.push({
-        id: `daymade-${dir.name}`,
-        name: metadata.name || dir.name,
-        dirName: dir.name,
-        description: (metadata.description || "").replace(/\n/g, " ").trim(),
-        url: `${TREE}/${dir.name}`,
-        type: "skill",
-        source: "daymade",
-        downloadFiles: [{ name: "SKILL.md", rawUrl: `${RAW}/${dir.name}/SKILL.md` }],
-        contentsUrl: dir.url,
-        rawBase: `${RAW}/${dir.name}`,
-      });
-    },
-    FETCH_CONCURRENCY
-  );
-  return items.sort((a, b) => a.name.localeCompare(b.name));
+  return dirs
+    .filter((d) => d.type === "dir" && !EXCLUDE.includes(d.name))
+    .map((dir) => ({
+      id: `daymade-${dir.name}`,
+      dirName: dir.name,
+      type: "skill" as const,
+      source: "daymade",
+      url: `${TREE}/${dir.name}`,
+      contentUrl: `${RAW}/${dir.name}/SKILL.md`,
+      contentsUrl: dir.url,
+      rawBase: `${RAW}/${dir.name}`,
+    }))
+    .sort((a, b) => a.dirName.localeCompare(b.dirName));
 }
 
-async function fetchVoltAgentAgents(): Promise<StoreItem[]> {
+async function listVoltAgentStubs(): Promise<StoreItemStub[]> {
   const API = "https://api.github.com/repos/VoltAgent/awesome-claude-code-subagents/contents";
   const RAW = "https://raw.githubusercontent.com/VoltAgent/awesome-claude-code-subagents/main";
   const TREE = "https://github.com/VoltAgent/awesome-claude-code-subagents/tree/main/categories";
@@ -216,8 +203,8 @@ async function fetchVoltAgentAgents(): Promise<StoreItem[]> {
   }> | null;
   if (!categories) return [];
 
-  // Collect all agent files from all categories first, then fetch with concurrency
-  const agentFiles: Array<{ catName: string; fileName: string }> = [];
+  // Need to list files in each category (these are individual .md files, not dirs with SKILL.md)
+  const stubs: StoreItemStub[] = [];
   await pMap(
     categories.filter((c) => c.type === "dir"),
     async (cat) => {
@@ -225,42 +212,24 @@ async function fetchVoltAgentAgents(): Promise<StoreItem[]> {
       if (!files) return;
       for (const f of files) {
         if (f.type === "file" && f.name.endsWith(".md") && f.name !== "README.md") {
-          agentFiles.push({ catName: cat.name, fileName: f.name });
+          const agentName = f.name.replace(/\.md$/, "");
+          stubs.push({
+            id: `voltagent-${agentName}`,
+            dirName: agentName,
+            type: "agent",
+            source: `VoltAgent / ${cat.name.replace(/^\d+-/, "")}`,
+            url: `${TREE}/${cat.name}/${f.name}`,
+            contentUrl: `${RAW}/categories/${cat.name}/${f.name}`,
+          });
         }
       }
     },
     FETCH_CONCURRENCY
   );
-
-  const items: StoreItem[] = [];
-  await pMap(
-    agentFiles,
-    async ({ catName, fileName }) => {
-      const agentName = fileName.replace(/\.md$/, "");
-      const rawUrl = `${RAW}/categories/${catName}/${fileName}`;
-      const content = await fetchRaw(rawUrl);
-      if (!content) return;
-      const { metadata } = parseFrontmatter(content);
-
-      items.push({
-        id: `voltagent-${agentName}`,
-        name: metadata.name || agentName,
-        dirName: agentName,
-        description: (metadata.description || "").replace(/\n/g, " ").trim(),
-        url: `${TREE}/${catName}/${fileName}`,
-        type: "agent",
-        source: `VoltAgent / ${catName.replace(/^\d+-/, "")}`,
-        downloadFiles: [{ name: "AGENT.md", rawUrl }],
-      });
-    },
-    FETCH_CONCURRENCY
-  );
-  return items.sort((a, b) => a.name.localeCompare(b.name));
+  return stubs.sort((a, b) => a.dirName.localeCompare(b.dirName));
 }
 
-// --- Custom source fetcher ---
-
-async function fetchCustomSource(source: StoreSource): Promise<StoreItem[]> {
+async function listCustomStubs(source: StoreSource): Promise<StoreItemStub[]> {
   const API = `https://api.github.com/repos/${source.repo}/contents`;
   const branch = source.branch || "main";
   const RAW = `https://raw.githubusercontent.com/${source.repo}/${branch}`;
@@ -270,30 +239,43 @@ async function fetchCustomSource(source: StoreSource): Promise<StoreItem[]> {
   const dirs = (await ghApiFetch(API)) as Array<{ name: string; type: string; url: string }> | null;
   if (!dirs) return [];
 
+  return dirs
+    .filter((d) => d.type === "dir" && !d.name.startsWith("."))
+    .map((dir) => ({
+      id: `custom-${source.id}-${dir.name}`,
+      dirName: dir.name,
+      type: source.type,
+      source: source.label,
+      url: `${TREE}/${dir.name}`,
+      contentUrl: `${RAW}/${dir.name}/${targetFile}`,
+      contentsUrl: dir.url,
+      rawBase: `${RAW}/${dir.name}`,
+    }))
+    .sort((a, b) => a.dirName.localeCompare(b.dirName));
+}
+
+// --- Phase 2: Enrich a batch of stubs by fetching SKILL.md/AGENT.md ---
+
+async function enrichStubs(stubs: StoreItemStub[]): Promise<StoreItem[]> {
   const items: StoreItem[] = [];
   await pMap(
-    dirs.filter((d) => d.type === "dir" && !d.name.startsWith(".")),
-    async (dir) => {
-      const content = await fetchRaw(`${RAW}/${dir.name}/${targetFile}`);
+    stubs,
+    async (stub) => {
+      const content = await fetchRaw(stub.contentUrl);
       if (!content) return;
       const { metadata } = parseFrontmatter(content);
+      const fileName = stub.type === "agent" ? "AGENT.md" : "SKILL.md";
 
       items.push({
-        id: `custom-${source.id}-${dir.name}`,
-        name: metadata.name || dir.name,
-        dirName: dir.name,
+        ...stub,
+        name: metadata.name || stub.dirName,
         description: (metadata.description || "").replace(/\n/g, " ").trim(),
-        url: `${TREE}/${dir.name}`,
-        type: source.type,
-        source: source.label,
-        downloadFiles: [{ name: targetFile, rawUrl: `${RAW}/${dir.name}/${targetFile}` }],
-        contentsUrl: dir.url,
-        rawBase: `${RAW}/${dir.name}`,
+        downloadFiles: [{ name: fileName, rawUrl: stub.contentUrl }],
       });
     },
     FETCH_CONCURRENCY
   );
-  return items.sort((a, b) => a.name.localeCompare(b.name));
+  return items;
 }
 
 // --- Custom sources persistence ---
@@ -314,7 +296,6 @@ async function loadStoreSources(): Promise<StoreSource[]> {
 }
 
 async function saveStoreSources(sources: StoreSource[]): Promise<void> {
-  // writeFileContent creates parent directories automatically
   await fetch("/api/files/content", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -421,9 +402,13 @@ export function SkillStore({
   installedMcpIdentifiers,
   onInstalled,
 }: SkillStoreProps) {
-  // Skill/agent items
+  // All stubs (directory listings — cheap to fetch)
+  const [allStubs, setAllStubs] = useState<StoreItemStub[]>([]);
+  // Enriched items (SKILL.md fetched — expensive, done in pages)
   const [items, setItems] = useState<StoreItem[]>([]);
+  const [enrichedCount, setEnrichedCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [enriching, setEnriching] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [installing, setInstalling] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -443,35 +428,47 @@ export function SkillStore({
   // Debounce timer for MCP search
   const mcpSearchTimer = useRef<NodeJS.Timeout | null>(null);
 
-  // Load skills/agents + initial MCPs
+  // Phase 1: List all directory stubs (cheap — ~4 API calls total)
+  // Phase 2: Enrich first page of stubs (PAGE_SIZE API calls)
   const fetchAll = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setItems([]);
+    setAllStubs([]);
+    setEnrichedCount(0);
 
     try {
       const sources = await loadStoreSources();
       setCustomSources(sources);
 
+      // Phase 1: list directories from all sources
       const [anthropic, daymade, voltagent, ...customResults] =
         await Promise.all([
-          fetchAnthropicSkills().catch(() => []),
-          fetchDaymadeSkills().catch(() => []),
-          fetchVoltAgentAgents().catch(() => []),
-          ...sources.map((s) => fetchCustomSource(s).catch(() => [])),
+          listAnthropicStubs().catch(() => []),
+          listDaymadeStubs().catch(() => []),
+          listVoltAgentStubs().catch(() => []),
+          ...sources.map((s) => listCustomStubs(s).catch(() => [])),
         ]);
 
-      const all = [
+      const stubs = [
         ...anthropic,
         ...daymade,
         ...voltagent,
         ...customResults.flat(),
       ];
-      if (all.length === 0) {
+
+      if (stubs.length === 0) {
         setError(
           "Failed to load any items. GitHub may be rate-limiting requests."
         );
       }
-      setItems(all);
+      setAllStubs(stubs);
+
+      // Phase 2: enrich only the first page
+      const firstPage = stubs.slice(0, PAGE_SIZE);
+      const enriched = await enrichStubs(firstPage);
+      setItems(enriched);
+      setEnrichedCount(PAGE_SIZE);
     } catch {
       setError("Failed to load store");
     } finally {
@@ -494,6 +491,22 @@ export function SkillStore({
   useEffect(() => {
     fetchAll();
   }, [fetchAll]);
+
+  // Load more skills/agents
+  const handleLoadMore = useCallback(async () => {
+    if (enriching || enrichedCount >= allStubs.length) return;
+    setEnriching(true);
+    try {
+      const nextBatch = allStubs.slice(enrichedCount, enrichedCount + PAGE_SIZE);
+      const enriched = await enrichStubs(nextBatch);
+      setItems((prev) => [...prev, ...enriched]);
+      setEnrichedCount((prev) => prev + PAGE_SIZE);
+    } catch {
+      // non-fatal
+    } finally {
+      setEnriching(false);
+    }
+  }, [allStubs, enrichedCount, enriching]);
 
   // MCP search with debounce
   useEffect(() => {
@@ -609,7 +622,6 @@ export function SkillStore({
       const updated = [...customSources, newSource];
       await saveStoreSources(updated);
       setCustomSources(updated);
-      // Reload to pick up new source items
       fetchAll();
     },
     [customSources, fetchAll]
@@ -646,6 +658,8 @@ export function SkillStore({
 
   const skillCount = items.filter((i) => i.type === "skill").length;
   const agentCount = items.filter((i) => i.type === "agent").length;
+  const hasMore = enrichedCount < allStubs.length;
+  const remainingCount = Math.max(0, allStubs.length - enrichedCount);
 
   if (loading && mcpItems.length === 0) {
     return (
@@ -825,6 +839,22 @@ export function SkillStore({
                 </div>
               );
             })}
+          </div>
+        )}
+
+        {/* Load more skills/agents */}
+        {filter !== "mcps" && hasMore && !search.trim() && (
+          <div className="mt-3 flex justify-center">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleLoadMore}
+              disabled={enriching}
+              className="gap-1.5"
+            >
+              {enriching ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+              {enriching ? "Loading..." : `Load more (${remainingCount} remaining)`}
+            </Button>
           </div>
         )}
 
