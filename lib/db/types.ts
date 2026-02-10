@@ -50,6 +50,7 @@ export interface Project {
   expanded: boolean;
   sort_order: number;
   is_uncategorized: boolean;
+  git_sync_interval: number;
   created_at: string;
   updated_at: string;
 }

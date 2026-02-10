@@ -251,6 +251,15 @@ const migrations: Migration[] = [
       insert.run("builtin-voltagent", "VoltAgent/awesome-claude-code-subagents", "main", "agent", "VoltAgent");
     },
   },
+  {
+    id: 16,
+    name: "add_git_sync_interval_to_projects",
+    up: (db) => {
+      db.exec(
+        `ALTER TABLE projects ADD COLUMN git_sync_interval INTEGER NOT NULL DEFAULT 0`
+      );
+    },
+  },
 ];
 
 export function runMigrations(db: Database.Database): void {

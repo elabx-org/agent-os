@@ -4,7 +4,7 @@ import { gitKeys } from "./keys";
 // Re-export for convenience
 export { gitKeys };
 import type { CommitSummary, CommitDetail } from "@/lib/git-history";
-import type { GitStatus } from "@/lib/git-status";
+import type { GitStatus, StashEntry } from "@/lib/git-status";
 import type { MultiRepoGitStatus } from "@/lib/multi-repo-git";
 import type { ProjectRepository } from "@/lib/db";
 
@@ -422,5 +422,278 @@ export function useMultiRepoUnstageFiles(repoPath: string) {
         queryKey: gitKeys.all,
       });
     },
+  });
+}
+
+// --- Stash ---
+
+async function fetchStashList(workingDir: string): Promise<StashEntry[]> {
+  const res = await fetch(
+    `/api/git/stash?path=${encodeURIComponent(workingDir)}`
+  );
+  const data = await res.json();
+  if (data.error) throw new Error(data.error);
+  return data.stashes || [];
+}
+
+async function fetchStashDetail(
+  workingDir: string,
+  index: number
+): Promise<string> {
+  const res = await fetch(
+    `/api/git/stash/${index}?path=${encodeURIComponent(workingDir)}`
+  );
+  const data = await res.json();
+  if (data.error) throw new Error(data.error);
+  return data.diff || "";
+}
+
+export function useStashList(workingDir: string) {
+  return useQuery({
+    queryKey: gitKeys.stash(workingDir),
+    queryFn: () => fetchStashList(workingDir),
+    staleTime: 15000,
+    refetchInterval: 30000,
+    enabled: !!workingDir,
+  });
+}
+
+export function useStashDetail(workingDir: string, index: number | null) {
+  return useQuery({
+    queryKey: gitKeys.stashDetail(workingDir, index ?? -1),
+    queryFn: () => fetchStashDetail(workingDir, index!),
+    staleTime: 60000,
+    enabled: !!workingDir && index !== null,
+  });
+}
+
+export function useStashSave(workingDir: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      message,
+      includeUntracked,
+    }: {
+      message?: string;
+      includeUntracked?: boolean;
+    }) => {
+      const res = await fetch("/api/git/stash", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: workingDir, message, includeUntracked }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: gitKeys.stash(workingDir) });
+      queryClient.invalidateQueries({ queryKey: gitKeys.status(workingDir) });
+    },
+  });
+}
+
+export function useStashAction(workingDir: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      index,
+      action,
+    }: {
+      index: number;
+      action: "apply" | "pop" | "drop";
+    }) => {
+      const res = await fetch(`/api/git/stash/${index}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: workingDir, action }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: gitKeys.stash(workingDir) });
+      queryClient.invalidateQueries({ queryKey: gitKeys.status(workingDir) });
+    },
+  });
+}
+
+// --- PR Review ---
+
+import type { PRDetail, PRComment } from "@/lib/pr";
+
+async function fetchPRDetail(
+  workingDir: string,
+  prNumber: number
+): Promise<PRDetail> {
+  const res = await fetch(
+    `/api/git/pr/${prNumber}?path=${encodeURIComponent(workingDir)}`
+  );
+  const data = await res.json();
+  if (data.error) throw new Error(data.error);
+  return data.pr;
+}
+
+async function fetchPRComments(
+  workingDir: string,
+  prNumber: number
+): Promise<PRComment[]> {
+  const res = await fetch(
+    `/api/git/pr/${prNumber}/comments?path=${encodeURIComponent(workingDir)}`
+  );
+  const data = await res.json();
+  if (data.error) throw new Error(data.error);
+  return data.comments || [];
+}
+
+async function fetchPRDiff(
+  workingDir: string,
+  prNumber: number,
+  file?: string
+): Promise<string> {
+  const params = new URLSearchParams({ path: workingDir });
+  if (file) params.set("file", file);
+  const res = await fetch(`/api/git/pr/${prNumber}/diff?${params}`);
+  const data = await res.json();
+  if (data.error) throw new Error(data.error);
+  return data.diff || "";
+}
+
+export function usePRDetail(workingDir: string, prNumber: number | null) {
+  return useQuery({
+    queryKey: gitKeys.prDetail(workingDir, prNumber ?? 0),
+    queryFn: () => fetchPRDetail(workingDir, prNumber!),
+    staleTime: 30000,
+    enabled: !!workingDir && prNumber !== null,
+  });
+}
+
+export function usePRComments(workingDir: string, prNumber: number | null) {
+  return useQuery({
+    queryKey: gitKeys.prComments(workingDir, prNumber ?? 0),
+    queryFn: () => fetchPRComments(workingDir, prNumber!),
+    staleTime: 30000,
+    enabled: !!workingDir && prNumber !== null,
+  });
+}
+
+export function usePRDiff(workingDir: string, prNumber: number | null) {
+  return useQuery({
+    queryKey: gitKeys.prDiff(workingDir, prNumber ?? 0),
+    queryFn: () => fetchPRDiff(workingDir, prNumber!),
+    staleTime: 60000,
+    enabled: !!workingDir && prNumber !== null,
+  });
+}
+
+export function usePRFileDiff(
+  workingDir: string,
+  prNumber: number | null,
+  file: string | null
+) {
+  return useQuery({
+    queryKey: gitKeys.prFileDiff(workingDir, prNumber ?? 0, file ?? ""),
+    queryFn: () => fetchPRDiff(workingDir, prNumber!, file!),
+    staleTime: 60000,
+    enabled: !!workingDir && prNumber !== null && !!file,
+  });
+}
+
+export function useSubmitPRReview(workingDir: string, prNumber: number) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      event,
+      body,
+    }: {
+      event: "APPROVE" | "REQUEST_CHANGES" | "COMMENT";
+      body?: string;
+    }) => {
+      const res = await fetch(`/api/git/pr/${prNumber}/review`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: workingDir, event, body }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: gitKeys.prDetail(workingDir, prNumber),
+      });
+      queryClient.invalidateQueries({
+        queryKey: gitKeys.prComments(workingDir, prNumber),
+      });
+    },
+  });
+}
+
+export function useMergePR(workingDir: string, prNumber: number) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (method: "merge" | "squash" | "rebase" = "squash") => {
+      const res = await fetch(`/api/git/pr/${prNumber}/merge`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: workingDir, method }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: gitKeys.pr(workingDir) });
+      queryClient.invalidateQueries({
+        queryKey: gitKeys.prDetail(workingDir, prNumber),
+      });
+      queryClient.invalidateQueries({ queryKey: gitKeys.status(workingDir) });
+    },
+  });
+}
+
+export function useAddPRComment(workingDir: string, prNumber: number) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (body: string) => {
+      const res = await fetch(`/api/git/pr/${prNumber}/comments`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: workingDir, body }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: gitKeys.prComments(workingDir, prNumber),
+      });
+    },
+  });
+}
+
+// --- Auto Fetch ---
+
+export function useAutoFetch(workingDir: string, intervalSeconds: number) {
+  return useQuery({
+    queryKey: [...gitKeys.all, "auto-fetch", workingDir],
+    queryFn: async () => {
+      await fetch("/api/git/fetch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: workingDir }),
+      });
+      return { lastFetch: Date.now() };
+    },
+    refetchInterval: intervalSeconds > 0 ? intervalSeconds * 1000 : false,
+    enabled: !!workingDir && intervalSeconds > 0,
+    staleTime: 0,
   });
 }

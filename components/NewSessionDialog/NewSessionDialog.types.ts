@@ -122,8 +122,8 @@ export interface NewSessionFormState {
   skipPermissions: boolean;
   useTmux: boolean;
   initialPrompt: string;
-  // Worktree
-  useWorktree: boolean;
+  // Branch/Worktree
+  branchMode: "none" | "branch" | "worktree";
   featureName: string;
   baseBranch: string;
   // Git

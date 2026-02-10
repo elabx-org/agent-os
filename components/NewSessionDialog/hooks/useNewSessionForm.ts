@@ -14,6 +14,7 @@ import {
   AGENT_OPTIONS,
   generateFeatureName,
 } from "../NewSessionDialog.types";
+import type { BranchMode } from "../WorktreeSection";
 
 interface UseNewSessionFormOptions {
   open: boolean;
@@ -49,8 +50,8 @@ export function useNewSessionForm({
   const [useTmux, setUseTmux] = useState(true);
   const [initialPrompt, setInitialPrompt] = useState("");
 
-  // Worktree state
-  const [useWorktree, setUseWorktree] = useState(false);
+  // Branch/worktree state
+  const [branchMode, setBranchMode] = useState<BranchMode>("none");
   const [featureName, setFeatureName] = useState("");
   const [baseBranch, setBaseBranch] = useState("main");
   const [gitInfo, setGitInfo] = useState<GitInfo | null>(null);
@@ -75,7 +76,7 @@ export function useNewSessionForm({
   const checkGitRepo = useCallback(async (path: string) => {
     if (!path || path === "~") {
       setGitInfo(null);
-      setUseWorktree(false);
+      setBranchMode("none");
       setFeatureName("");
       return;
     }
@@ -93,15 +94,15 @@ export function useNewSessionForm({
         setBaseBranch(data.defaultBranch);
       }
       if (data.isGitRepo) {
-        setUseWorktree(true);
+        setBranchMode("branch");
         setFeatureName(generateFeatureName());
       } else {
-        setUseWorktree(false);
+        setBranchMode("none");
         setFeatureName("");
       }
     } catch {
       setGitInfo(null);
-      setUseWorktree(false);
+      setBranchMode("none");
       setFeatureName("");
     } finally {
       setCheckingGit(false);
@@ -220,7 +221,7 @@ export function useNewSessionForm({
     e.preventDefault();
     createSession.reset(); // Clear any previous errors
 
-    if (useWorktree) {
+    if (branchMode !== "none") {
       if (!featureName.trim()) {
         return; // Validation handled by button disabled state
       }
@@ -233,7 +234,7 @@ export function useNewSessionForm({
 
     // For worktree sessions, show step progression
     let stepTimer: NodeJS.Timeout | undefined;
-    if (useWorktree) {
+    if (branchMode === "worktree") {
       setCreationStep("worktree");
       // Progress to "setup" step after 2s (worktree creation is usually fast)
       stepTimer = setTimeout(() => {
@@ -247,9 +248,10 @@ export function useNewSessionForm({
         workingDirectory,
         projectId,
         agentType,
-        useWorktree,
-        featureName: useWorktree ? featureName.trim() : null,
-        baseBranch: useWorktree ? baseBranch : null,
+        useWorktree: branchMode === "worktree",
+        createBranch: branchMode === "branch",
+        featureName: branchMode !== "none" ? featureName.trim() : null,
+        baseBranch: branchMode !== "none" ? baseBranch : null,
         autoApprove: skipPermissions,
         continueSession,
         useTmux,
@@ -306,7 +308,7 @@ export function useNewSessionForm({
     setName("");
     setWorkingDirectory("~");
     setProjectId(null);
-    setUseWorktree(false);
+    setBranchMode("none");
     setFeatureName("");
     setInitialPrompt("");
     setShowNewProject(false);
@@ -333,9 +335,9 @@ export function useNewSessionForm({
     useTmux,
     initialPrompt,
     setInitialPrompt,
-    // Worktree
-    useWorktree,
-    setUseWorktree,
+    // Branch/Worktree
+    branchMode,
+    setBranchMode,
     featureName,
     setFeatureName,
     baseBranch,

@@ -202,6 +202,221 @@ export function createPR(
   };
 }
 
+// --- PR Review functions ---
+
+export interface PRDetail {
+  number: number;
+  title: string;
+  body: string;
+  state: string;
+  author: string;
+  url: string;
+  additions: number;
+  deletions: number;
+  changedFiles: number;
+  mergeable: string;
+  reviewDecision: string;
+  headRefName: string;
+  baseRefName: string;
+  files: PRFile[];
+}
+
+export interface PRFile {
+  path: string;
+  additions: number;
+  deletions: number;
+  status: string; // added, modified, removed, renamed
+}
+
+export interface PRComment {
+  id: number;
+  author: string;
+  body: string;
+  createdAt: string;
+  path?: string;
+  line?: number;
+  diffHunk?: string;
+  isReviewComment: boolean;
+}
+
+/**
+ * Get detailed PR info including file list
+ */
+export function getPRDetail(
+  workingDir: string,
+  prNumber: number
+): PRDetail {
+  const output = execSync(
+    `gh pr view ${prNumber} --json number,title,body,state,author,url,additions,deletions,changedFiles,mergeable,reviewDecision,headRefName,baseRefName,files`,
+    {
+      cwd: workingDir,
+      encoding: "utf-8",
+      timeout: 15000,
+    }
+  );
+  const data = JSON.parse(output);
+  return {
+    number: data.number,
+    title: data.title,
+    body: data.body || "",
+    state: data.state,
+    author: data.author?.login || data.author?.name || "unknown",
+    url: data.url,
+    additions: data.additions || 0,
+    deletions: data.deletions || 0,
+    changedFiles: data.changedFiles || 0,
+    mergeable: data.mergeable || "UNKNOWN",
+    reviewDecision: data.reviewDecision || "",
+    headRefName: data.headRefName || "",
+    baseRefName: data.baseRefName || "",
+    files: (data.files || []).map(
+      (f: { path: string; additions: number; deletions: number; status?: string }) => ({
+        path: f.path,
+        additions: f.additions || 0,
+        deletions: f.deletions || 0,
+        status: f.status || "modified",
+      })
+    ),
+  };
+}
+
+/**
+ * Get PR comments (both review comments and issue comments)
+ */
+export function getPRComments(
+  workingDir: string,
+  prNumber: number
+): PRComment[] {
+  const comments: PRComment[] = [];
+
+  // Get review (inline) comments
+  try {
+    const reviewOutput = execSync(
+      `gh api repos/{owner}/{repo}/pulls/${prNumber}/comments --paginate`,
+      {
+        cwd: workingDir,
+        encoding: "utf-8",
+        timeout: 15000,
+      }
+    );
+    const reviewComments = JSON.parse(reviewOutput);
+    for (const c of reviewComments) {
+      comments.push({
+        id: c.id,
+        author: c.user?.login || "unknown",
+        body: c.body || "",
+        createdAt: c.created_at,
+        path: c.path,
+        line: c.line || c.original_line,
+        diffHunk: c.diff_hunk,
+        isReviewComment: true,
+      });
+    }
+  } catch {
+    // Ignore - may not have review comments
+  }
+
+  // Get issue-level comments
+  try {
+    const issueOutput = execSync(
+      `gh api repos/{owner}/{repo}/issues/${prNumber}/comments --paginate`,
+      {
+        cwd: workingDir,
+        encoding: "utf-8",
+        timeout: 15000,
+      }
+    );
+    const issueComments = JSON.parse(issueOutput);
+    for (const c of issueComments) {
+      comments.push({
+        id: c.id,
+        author: c.user?.login || "unknown",
+        body: c.body || "",
+        createdAt: c.created_at,
+        isReviewComment: false,
+      });
+    }
+  } catch {
+    // Ignore
+  }
+
+  // Sort by date
+  comments.sort(
+    (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+  );
+
+  return comments;
+}
+
+/**
+ * Get the full diff for a PR
+ */
+export function getPRDiff(workingDir: string, prNumber: number): string {
+  try {
+    return execSync(`gh pr diff ${prNumber}`, {
+      cwd: workingDir,
+      encoding: "utf-8",
+      timeout: 30000,
+    });
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * Submit a PR review (approve, request changes, or comment)
+ */
+export function submitPRReview(
+  workingDir: string,
+  prNumber: number,
+  event: "APPROVE" | "REQUEST_CHANGES" | "COMMENT",
+  body?: string
+): void {
+  const flag =
+    event === "APPROVE"
+      ? "--approve"
+      : event === "REQUEST_CHANGES"
+        ? "--request-changes"
+        : "--comment";
+  const bodyArg = body ? ` -b '${body.replace(/'/g, "'\\''")}'` : "";
+  execSync(`gh pr review ${prNumber} ${flag}${bodyArg}`, {
+    cwd: workingDir,
+    timeout: 15000,
+    stdio: "pipe",
+  });
+}
+
+/**
+ * Merge a PR
+ */
+export function mergePR(
+  workingDir: string,
+  prNumber: number,
+  method: "merge" | "squash" | "rebase" = "squash"
+): void {
+  execSync(`gh pr merge ${prNumber} --${method} --delete-branch`, {
+    cwd: workingDir,
+    timeout: 30000,
+    stdio: "pipe",
+  });
+}
+
+/**
+ * Add a comment to a PR
+ */
+export function addPRComment(
+  workingDir: string,
+  prNumber: number,
+  body: string
+): void {
+  const bodyEscaped = body.replace(/'/g, "'\\''");
+  execSync(`gh pr comment ${prNumber} -b '${bodyEscaped}'`, {
+    cwd: workingDir,
+    timeout: 15000,
+    stdio: "pipe",
+  });
+}
+
 /**
  * Get current branch name
  */

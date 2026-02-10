@@ -180,6 +180,7 @@ export interface CreateSessionInput {
   projectId: string | null;
   agentType: AgentType;
   useWorktree: boolean;
+  createBranch?: boolean;
   featureName: string | null;
   baseBranch: string | null;
   autoApprove: boolean;

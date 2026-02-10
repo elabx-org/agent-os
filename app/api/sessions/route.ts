@@ -65,6 +65,7 @@ export async function POST(request: NextRequest) {
       projectId = "uncategorized",
       // Worktree options
       useWorktree = false,
+      createBranch = false,
       featureName = null,
       baseBranch = "main",
       // Tmux option
@@ -136,6 +137,25 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Handle simple branch creation (no worktree)
+    if (!useWorktree && createBranch && featureName) {
+      try {
+        const { expandPath, checkoutBranch, createBranch: gitCreateBranch } = await import("@/lib/git-status");
+        const expandedDir = expandPath(workingDirectory);
+        // Switch to base branch, then create new branch
+        checkoutBranch(expandedDir, baseBranch);
+        gitCreateBranch(expandedDir, featureName);
+        branchName = featureName;
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Unknown error";
+        return NextResponse.json(
+          { error: `Failed to create branch: ${message}` },
+          { status: 400 }
+        );
+      }
+    }
+
     const tmuxName = useTmux ? `${agentType}-${id}` : null;
     queries.createSession(db).run(
       id,
@@ -157,6 +177,10 @@ export async function POST(request: NextRequest) {
       queries
         .updateSessionWorktree(db)
         .run(worktreePath, branchName, baseBranch, port, id);
+    } else if (branchName) {
+      // Simple branch creation (no worktree) — store branch info
+      db.prepare("UPDATE sessions SET branch_name = ?, base_branch = ? WHERE id = ?")
+        .run(branchName, baseBranch, id);
     }
 
     // Set claude_session_id if provided (for importing external sessions)

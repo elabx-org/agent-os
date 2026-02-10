@@ -471,3 +471,121 @@ export function syncBranch(workingDir: string): {
 
   return { fetched: true, pulled, pushed };
 }
+
+/**
+ * Fetch from remote (read-only — only updates remote tracking branches)
+ */
+export function fetchRemote(workingDir: string): void {
+  execSync("git fetch origin --quiet", {
+    cwd: workingDir,
+    encoding: "utf-8",
+    timeout: 30000,
+  });
+}
+
+// --- Stash Management ---
+
+export interface StashEntry {
+  index: number;
+  message: string;
+  date: string;
+  branch: string;
+}
+
+/**
+ * Get list of stashes
+ */
+export function getStashList(workingDir: string): StashEntry[] {
+  try {
+    const output = execSync(
+      'git stash list --format="%gd|||%gs|||%ci"',
+      { cwd: workingDir, encoding: "utf-8" }
+    );
+    if (!output.trim()) return [];
+
+    return output
+      .trim()
+      .split("\n")
+      .map((line) => {
+        const [ref, message, date] = line.split("|||");
+        const indexMatch = ref?.match(/stash@\{(\d+)\}/);
+        const index = indexMatch ? parseInt(indexMatch[1], 10) : 0;
+        // Extract branch from message like "WIP on main: abc1234 commit msg"
+        const branchMatch = message?.match(/^(?:WIP on|On) ([^:]+)/);
+        return {
+          index,
+          message: message?.replace(/^(?:WIP on|On) [^:]+:\s*/, "").trim() || "Stash",
+          date: date?.trim() || "",
+          branch: branchMatch?.[1] || "",
+        };
+      });
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Save current changes to stash
+ */
+export function stashSave(
+  workingDir: string,
+  message?: string,
+  includeUntracked?: boolean
+): void {
+  const parts = ["git", "stash", "push"];
+  if (message) {
+    parts.push("-m", `"${message.replace(/"/g, '\\"')}"`);
+  }
+  if (includeUntracked) {
+    parts.push("-u");
+  }
+  execSync(parts.join(" "), {
+    cwd: workingDir,
+    encoding: "utf-8",
+  });
+}
+
+/**
+ * Apply a stash (keeps it in the stash list)
+ */
+export function stashApply(workingDir: string, index: number): string {
+  return execSync(`git stash apply stash@{${index}}`, {
+    cwd: workingDir,
+    encoding: "utf-8",
+  });
+}
+
+/**
+ * Pop a stash (applies and removes from stash list)
+ */
+export function stashPop(workingDir: string, index: number): string {
+  return execSync(`git stash pop stash@{${index}}`, {
+    cwd: workingDir,
+    encoding: "utf-8",
+  });
+}
+
+/**
+ * Drop a stash
+ */
+export function stashDrop(workingDir: string, index: number): void {
+  execSync(`git stash drop stash@{${index}}`, {
+    cwd: workingDir,
+    encoding: "utf-8",
+  });
+}
+
+/**
+ * Show stash diff
+ */
+export function stashShow(workingDir: string, index: number): string {
+  try {
+    return execSync(`git stash show -p stash@{${index}}`, {
+      cwd: workingDir,
+      encoding: "utf-8",
+      maxBuffer: 10 * 1024 * 1024,
+    });
+  } catch {
+    return "";
+  }
+}

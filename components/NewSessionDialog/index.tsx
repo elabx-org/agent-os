@@ -56,7 +56,7 @@ export function NewSessionDialog({
           {/* Loading overlay */}
           {form.isLoading && (
             <CreatingOverlay
-              isWorktree={form.useWorktree}
+              isWorktree={form.branchMode === "worktree"}
               step={form.creationStep}
             />
           )}
@@ -95,8 +95,8 @@ export function NewSessionDialog({
             {form.gitInfo?.isGitRepo && (
               <WorktreeSection
                 gitInfo={form.gitInfo}
-                useWorktree={form.useWorktree}
-                onUseWorktreeChange={form.setUseWorktree}
+                branchMode={form.branchMode}
+                onBranchModeChange={form.setBranchMode}
                 featureName={form.featureName}
                 onFeatureNameChange={form.setFeatureName}
                 baseBranch={form.baseBranch}
@@ -166,7 +166,7 @@ export function NewSessionDialog({
                 type="submit"
                 disabled={
                   form.isLoading ||
-                  (form.useWorktree && !form.featureName.trim())
+                  (form.branchMode !== "none" && !form.featureName.trim())
                 }
               >
                 {form.isLoading ? "Creating..." : "Create"}

@@ -8,10 +8,12 @@ import {
 } from "@/components/ui/select";
 import type { GitInfo } from "./NewSessionDialog.types";
 
+export type BranchMode = "none" | "branch" | "worktree";
+
 interface WorktreeSectionProps {
   gitInfo: GitInfo;
-  useWorktree: boolean;
-  onUseWorktreeChange: (checked: boolean) => void;
+  branchMode: BranchMode;
+  onBranchModeChange: (mode: BranchMode) => void;
   featureName: string;
   onFeatureNameChange: (value: string) => void;
   baseBranch: string;
@@ -20,8 +22,8 @@ interface WorktreeSectionProps {
 
 export function WorktreeSection({
   gitInfo,
-  useWorktree,
-  onUseWorktreeChange,
+  branchMode,
+  onBranchModeChange,
   featureName,
   onFeatureNameChange,
   baseBranch,
@@ -31,35 +33,60 @@ export function WorktreeSection({
 
   return (
     <div className="bg-accent/40 space-y-3 rounded-lg p-3">
-      <div className="flex items-center gap-2">
-        <input
-          type="checkbox"
-          id="useWorktree"
-          checked={useWorktree}
-          onChange={(e) => onUseWorktreeChange(e.target.checked)}
-          className="border-border bg-background accent-primary h-4 w-4 rounded"
-        />
-        <label
-          htmlFor="useWorktree"
-          className="cursor-pointer text-sm font-medium"
-        >
-          Create isolated worktree
+      <p className="text-sm font-medium">Git Branch</p>
+      <div className="space-y-1.5">
+        <label className="flex cursor-pointer items-center gap-2">
+          <input
+            type="radio"
+            name="branchMode"
+            checked={branchMode === "none"}
+            onChange={() => onBranchModeChange("none")}
+            className="accent-primary h-3.5 w-3.5"
+          />
+          <span className="text-sm">Use current branch</span>
+          {gitInfo.currentBranch && (
+            <span className="text-muted-foreground text-xs">
+              ({gitInfo.currentBranch})
+            </span>
+          )}
+        </label>
+        <label className="flex cursor-pointer items-center gap-2">
+          <input
+            type="radio"
+            name="branchMode"
+            checked={branchMode === "branch"}
+            onChange={() => onBranchModeChange("branch")}
+            className="accent-primary h-3.5 w-3.5"
+          />
+          <span className="text-sm">Create new branch</span>
+        </label>
+        <label className="flex cursor-pointer items-center gap-2">
+          <input
+            type="radio"
+            name="branchMode"
+            checked={branchMode === "worktree"}
+            onChange={() => onBranchModeChange("worktree")}
+            className="accent-primary h-3.5 w-3.5"
+          />
+          <span className="text-sm">Create isolated worktree</span>
         </label>
       </div>
 
-      {useWorktree && (
+      {branchMode !== "none" && (
         <div className="space-y-3 pl-6">
           <div className="space-y-1">
             <label className="text-muted-foreground text-xs">
-              Feature Name
+              {branchMode === "worktree" ? "Feature Name" : "Branch Name"}
             </label>
             <Input
               value={featureName}
               onChange={(e) => onFeatureNameChange(e.target.value)}
-              placeholder="add-dark-mode"
+              placeholder={
+                branchMode === "worktree" ? "add-dark-mode" : "feature/my-change"
+              }
               className="h-8 text-sm"
             />
-            {featureName && (
+            {featureName && branchMode === "worktree" && (
               <p className="text-muted-foreground text-xs">
                 Branch: feature/
                 {featureName

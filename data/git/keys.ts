@@ -13,4 +13,16 @@ export const gitKeys = {
     [...gitKeys.all, "diff", workingDir, hash, file] as const,
   branches: (workingDir: string) =>
     [...gitKeys.all, "branches", workingDir] as const,
+  stash: (workingDir: string) =>
+    [...gitKeys.all, "stash", workingDir] as const,
+  stashDetail: (workingDir: string, index: number) =>
+    [...gitKeys.all, "stash", workingDir, index] as const,
+  prDetail: (workingDir: string, prNumber: number) =>
+    [...gitKeys.all, "pr-detail", workingDir, prNumber] as const,
+  prComments: (workingDir: string, prNumber: number) =>
+    [...gitKeys.all, "pr-comments", workingDir, prNumber] as const,
+  prDiff: (workingDir: string, prNumber: number) =>
+    [...gitKeys.all, "pr-diff", workingDir, prNumber] as const,
+  prFileDiff: (workingDir: string, prNumber: number, file: string) =>
+    [...gitKeys.all, "pr-file-diff", workingDir, prNumber, file] as const,
 };

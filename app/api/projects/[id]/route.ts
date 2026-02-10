@@ -42,11 +42,20 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       defaultModel,
       initialPrompt,
       expanded,
+      gitSyncInterval,
     } = body;
 
     // Handle expanded toggle separately
     if (typeof expanded === "boolean") {
       toggleProjectExpanded(id, expanded);
+    }
+
+    // Handle git sync interval update
+    if (typeof gitSyncInterval === "number") {
+      const { getDb } = await import("@/lib/db");
+      const db = getDb();
+      db.prepare("UPDATE projects SET git_sync_interval = ? WHERE id = ?")
+        .run(gitSyncInterval, id);
     }
 
     // Update other fields if provided

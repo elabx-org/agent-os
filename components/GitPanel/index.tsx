@@ -22,6 +22,8 @@ import { CommitForm } from "./CommitForm";
 import { PRCreationModal } from "@/components/PRCreationModal";
 import { GitPanelTabs, type GitTab } from "./GitPanelTabs";
 import { CommitHistory } from "./CommitHistory";
+import { StashList } from "./StashList";
+import { PRReview } from "./PRReview";
 import { DiffView } from "@/components/DiffViewer/DiffModal";
 import { useViewport } from "@/hooks/useViewport";
 import {
@@ -31,6 +33,8 @@ import {
   useStageFiles,
   useUnstageFiles,
   useMultiRepoGitStatus,
+  useStashList,
+  useAutoFetch,
   gitKeys,
 } from "@/data/git/queries";
 import type { GitStatus, GitFile } from "@/lib/git-status";
@@ -126,6 +130,22 @@ export function GitPanel({
   const createPRMutation = useCreatePR(primaryRepoPath);
   const stageMutation = useStageFiles(primaryRepoPath);
   const unstageMutation = useUnstageFiles(primaryRepoPath);
+
+  // Stash count for tab badge
+  const { data: stashes = [] } = useStashList(workingDirectory);
+
+  // Auto-fetch from remote
+  const [syncInterval, setSyncInterval] = useState(() => {
+    if (typeof window === "undefined") return 0;
+    const stored = localStorage.getItem(`agentOS:gitSync:${workingDirectory}`);
+    return stored ? parseInt(stored, 10) : 0;
+  });
+  useAutoFetch(workingDirectory, syncInterval);
+
+  const handleSyncIntervalChange = (seconds: number) => {
+    setSyncInterval(seconds);
+    localStorage.setItem(`agentOS:gitSync:${workingDirectory}`, String(seconds));
+  };
 
   // Selected file for diff view
   const [selectedFile, setSelectedFile] = useState<SelectedFile | null>(null);
@@ -307,6 +327,10 @@ export function GitPanel({
         activeTab={activeTab}
         existingPR={existingPR}
         creatingPR={createPRMutation.isPending}
+        stashCount={stashes.length}
+        prNumber={existingPR?.number}
+        syncInterval={syncInterval}
+        onSyncIntervalChange={handleSyncIntervalChange}
         onTabChange={setActiveTab}
         onRefresh={handleRefresh}
         onFileClick={handleFileClick}
@@ -330,8 +354,8 @@ export function GitPanel({
     );
   }
 
-  // Desktop layout: side-by-side for Changes, or CommitHistory for History
-  if (activeTab === "history") {
+  // Desktop layout: full-width tabs (History, Stash, PR)
+  if (activeTab === "history" || activeTab === "stash" || activeTab === "pr") {
     return (
       <div className="bg-background flex h-full w-full flex-col">
         <Header
@@ -341,9 +365,19 @@ export function GitPanel({
           onRefresh={handleRefresh}
           refreshing={isRefetching}
           existingPR={existingPR}
+          syncInterval={syncInterval}
+          onSyncIntervalChange={handleSyncIntervalChange}
         />
-        <GitPanelTabs activeTab={activeTab} onTabChange={setActiveTab} />
-        <CommitHistory workingDirectory={workingDirectory} />
+        <GitPanelTabs activeTab={activeTab} onTabChange={setActiveTab} stashCount={stashes.length} prNumber={existingPR?.number} />
+        {activeTab === "history" && (
+          <CommitHistory workingDirectory={workingDirectory} />
+        )}
+        {activeTab === "stash" && (
+          <StashList workingDirectory={workingDirectory} />
+        )}
+        {activeTab === "pr" && existingPR && (
+          <PRReview workingDirectory={primaryRepoPath} prNumber={existingPR.number} />
+        )}
       </div>
     );
   }
@@ -363,8 +397,10 @@ export function GitPanel({
             behind={status.behind}
             onRefresh={handleRefresh}
             refreshing={isRefetching}
+            syncInterval={syncInterval}
+            onSyncIntervalChange={handleSyncIntervalChange}
           />
-          <GitPanelTabs activeTab={activeTab} onTabChange={setActiveTab} />
+          <GitPanelTabs activeTab={activeTab} onTabChange={setActiveTab} stashCount={stashes.length} prNumber={existingPR?.number} />
 
           <div className="flex-1 overflow-y-auto">
             {!hasChanges ? (
@@ -538,6 +574,10 @@ interface MobileGitPanelProps {
     title: string;
   } | null;
   creatingPR: boolean;
+  stashCount: number;
+  prNumber?: number;
+  syncInterval: number;
+  onSyncIntervalChange: (seconds: number) => void;
   onTabChange: (tab: GitTab) => void;
   onRefresh: () => void;
   onFileClick: (file: GitFile) => void;
@@ -563,6 +603,10 @@ function MobileGitPanel({
   activeTab,
   existingPR,
   creatingPR,
+  stashCount,
+  prNumber,
+  syncInterval,
+  onSyncIntervalChange,
   onTabChange,
   onRefresh,
   onFileClick,
@@ -576,8 +620,8 @@ function MobileGitPanel({
   onClosePRModal,
   onCreatePR,
 }: MobileGitPanelProps) {
-  // History tab
-  if (activeTab === "history") {
+  // Full-width tabs (History, Stash, PR)
+  if (activeTab === "history" || activeTab === "stash" || activeTab === "pr") {
     return (
       <div className="bg-background flex h-full w-full flex-col">
         <Header
@@ -587,9 +631,19 @@ function MobileGitPanel({
           onRefresh={onRefresh}
           refreshing={refreshing}
           existingPR={existingPR}
+          syncInterval={syncInterval}
+          onSyncIntervalChange={onSyncIntervalChange}
         />
-        <GitPanelTabs activeTab={activeTab} onTabChange={onTabChange} />
-        <CommitHistory workingDirectory={workingDirectory} />
+        <GitPanelTabs activeTab={activeTab} onTabChange={onTabChange} stashCount={stashCount} prNumber={prNumber} />
+        {activeTab === "history" && (
+          <CommitHistory workingDirectory={workingDirectory} />
+        )}
+        {activeTab === "stash" && (
+          <StashList workingDirectory={workingDirectory} />
+        )}
+        {activeTab === "pr" && prNumber && (
+          <PRReview workingDirectory={workingDirectory} prNumber={prNumber} />
+        )}
       </div>
     );
   }
@@ -648,8 +702,10 @@ function MobileGitPanel({
         onRefresh={onRefresh}
         refreshing={refreshing}
         existingPR={existingPR}
+        syncInterval={syncInterval}
+        onSyncIntervalChange={onSyncIntervalChange}
       />
-      <GitPanelTabs activeTab={activeTab} onTabChange={onTabChange} />
+      <GitPanelTabs activeTab={activeTab} onTabChange={onTabChange} stashCount={stashCount} prNumber={prNumber} />
 
       <div className="flex-1 overflow-y-auto">
         {!hasChanges ? (
@@ -751,6 +807,8 @@ interface HeaderProps {
   behind: number;
   onRefresh: () => void;
   refreshing: boolean;
+  syncInterval?: number;
+  onSyncIntervalChange?: (seconds: number) => void;
   existingPR?: {
     number: number;
     url: string;
@@ -758,12 +816,21 @@ interface HeaderProps {
   } | null;
 }
 
+const SYNC_OPTIONS = [
+  { value: 0, label: "Off" },
+  { value: 60, label: "1m" },
+  { value: 300, label: "5m" },
+  { value: 600, label: "10m" },
+];
+
 function Header({
   branch,
   ahead,
   behind,
   onRefresh,
   refreshing,
+  syncInterval = 0,
+  onSyncIntervalChange,
   existingPR,
 }: HeaderProps) {
   return (
@@ -803,6 +870,20 @@ function Header({
           </div>
         )}
       </div>
+      {onSyncIntervalChange && (
+        <select
+          value={syncInterval}
+          onChange={(e) => onSyncIntervalChange(parseInt(e.target.value, 10))}
+          className="bg-muted text-muted-foreground hover:text-foreground h-7 cursor-pointer rounded border-0 px-1.5 text-xs transition-colors"
+          title="Auto-fetch interval"
+        >
+          {SYNC_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.value === 0 ? "Sync: Off" : `Sync: ${opt.label}`}
+            </option>
+          ))}
+        </select>
+      )}
       <Button
         variant="ghost"
         size="icon-sm"
