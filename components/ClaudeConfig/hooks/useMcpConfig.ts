@@ -96,16 +96,26 @@ async function readServers(projectPath?: string): Promise<McpServerEntry[]> {
       }
     }
 
-    // Local-scope (project-specific) servers
-    if (projectPath && parsed.projects?.[projectPath]?.mcpServers) {
-      for (const [name, cfg] of Object.entries(
-        parsed.projects[projectPath].mcpServers as Record<
-          string,
-          ClaudeJsonMcpEntry
-        >
-      )) {
-        if (!seen.has(name)) {
-          entries.push(parseEntry(name, cfg, "local"));
+    // Local-scope servers: scan the active project first, then all other projects
+    if (parsed.projects && typeof parsed.projects === "object") {
+      // Active project first so its entries take priority
+      const projectKeys = Object.keys(parsed.projects);
+      if (projectPath) {
+        projectKeys.sort((a, b) =>
+          a === projectPath ? -1 : b === projectPath ? 1 : 0
+        );
+      }
+
+      for (const key of projectKeys) {
+        const proj = parsed.projects[key];
+        if (!proj?.mcpServers || typeof proj.mcpServers !== "object") continue;
+        for (const [name, cfg] of Object.entries(
+          proj.mcpServers as Record<string, ClaudeJsonMcpEntry>
+        )) {
+          if (!seen.has(name)) {
+            entries.push(parseEntry(name, cfg, "local"));
+            seen.add(name);
+          }
         }
       }
     }

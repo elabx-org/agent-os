@@ -8,6 +8,9 @@ import {
   ExternalLink,
   RefreshCw,
   Settings,
+  ChevronLeft,
+  Package,
+  Tag,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -87,6 +90,7 @@ export function SkillStore({
   const [mcpInstallTarget, setMcpInstallTarget] = useState<StoreItem | null>(null);
   const [mcpInstalling, setMcpInstalling] = useState(false);
   const [showSourceManager, setShowSourceManager] = useState(false);
+  const [selectedItem, setSelectedItem] = useState<StoreItem | null>(null);
 
   // Debounced search for API queries
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -264,6 +268,220 @@ export function SkillStore({
 
   const showMcps = filter === "all" || filter === "mcps";
 
+  // --- Detail view for selected item ---
+  if (selectedItem) {
+    const item = selectedItem;
+    const isMcp = item.type === "mcp";
+    const installedNames = item.type === "skill" ? installedSkillNames : installedAgentNames;
+    const isInstalled = isMcp
+      ? item.mcp_package_identifier
+        ? installedMcpIdentifiers.includes(item.mcp_package_identifier)
+        : false
+      : installedNames.includes(item.dir_name);
+    const isInstalling = installing === item.id;
+
+    let envVars: Array<{
+      name: string;
+      description: string;
+      isRequired: boolean;
+      isSecret?: boolean;
+      defaultValue?: string;
+    }> = [];
+    if (isMcp) {
+      try { envVars = JSON.parse(item.mcp_env_vars || "[]"); } catch { envVars = []; }
+    }
+
+    return (
+      <div className="flex h-full flex-col">
+        {/* Back button */}
+        <div className="border-b px-3 py-2">
+          <button
+            onClick={() => setSelectedItem(null)}
+            className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-sm transition-colors"
+          >
+            <ChevronLeft className="h-4 w-4" />
+            Back to store
+          </button>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto p-4">
+          {/* Header */}
+          <div className="mb-4 flex items-start gap-3">
+            <div className="min-w-0 flex-1">
+              <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
+                <span
+                  className={cn(
+                    "shrink-0 rounded px-1.5 py-0.5 text-[11px] font-medium leading-none",
+                    item.type === "skill"
+                      ? "bg-blue-500/10 text-blue-500"
+                      : item.type === "agent"
+                        ? "bg-purple-500/10 text-purple-500"
+                        : "bg-green-500/10 text-green-500"
+                  )}
+                >
+                  {item.type === "skill" ? "Skill" : item.type === "agent" ? "Agent" : "MCP"}
+                </span>
+                {isMcp && item.mcp_registry_type && (
+                  <span
+                    className={cn(
+                      "shrink-0 rounded px-1.5 py-0.5 text-[11px] font-medium leading-none",
+                      item.mcp_registry_type === "npm"
+                        ? "bg-orange-500/10 text-orange-500"
+                        : "bg-sky-500/10 text-sky-500"
+                    )}
+                  >
+                    {item.mcp_registry_type}
+                  </span>
+                )}
+                {isInstalled && (
+                  <span className="bg-primary/10 text-primary flex shrink-0 items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[11px]">
+                    <Check className="h-3 w-3" /> Installed
+                  </span>
+                )}
+              </div>
+              <h2 className="text-lg font-semibold">{item.name || item.dir_name}</h2>
+              {item.dir_name && item.name && item.dir_name !== item.name && (
+                <p className="text-muted-foreground text-xs">{item.dir_name}</p>
+              )}
+            </div>
+
+            {/* Install button */}
+            {isMcp ? (
+              <Button
+                variant={isInstalled ? "outline" : "default"}
+                size="sm"
+                className="shrink-0 gap-1.5"
+                onClick={() => setMcpInstallTarget(mcpInstallTarget?.id === item.id ? null : item)}
+              >
+                <Download className="h-3.5 w-3.5" />
+                {isInstalled ? "Reinstall" : "Install"}
+              </Button>
+            ) : (
+              <Button
+                variant={isInstalled ? "outline" : "default"}
+                size="sm"
+                className="shrink-0 gap-1.5"
+                disabled={isInstalling}
+                onClick={() => handleInstallSkillAgent(item)}
+              >
+                {isInstalling ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Download className="h-3.5 w-3.5" />
+                )}
+                {isInstalled ? "Reinstall" : isInstalling ? "Installing..." : "Install"}
+              </Button>
+            )}
+          </div>
+
+          {/* MCP Install form */}
+          {isMcp && mcpInstallTarget?.id === item.id && (
+            <div className="mb-4">
+              <McpInstallForm
+                serverName={(item.name || "")
+                  .toLowerCase()
+                  .replace(/[^a-z0-9]+/g, "-")
+                  .replace(/^-|-$/g, "")}
+                registryType={(item.mcp_registry_type as "npm" | "pypi") || "npm"}
+                packageIdentifier={item.mcp_package_identifier || ""}
+                envVars={envVars}
+                onInstall={handleInstallMcp}
+                onCancel={() => setMcpInstallTarget(null)}
+                installing={mcpInstalling}
+              />
+            </div>
+          )}
+
+          {/* Description */}
+          {item.description && (
+            <div className="mb-4">
+              <h3 className="text-muted-foreground mb-1 text-xs font-medium uppercase tracking-wide">Description</h3>
+              <p className="text-sm leading-relaxed">{item.description}</p>
+            </div>
+          )}
+
+          {/* Metadata grid */}
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            <div className="flex items-center gap-2">
+              <Tag className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
+              <span className="text-muted-foreground text-xs">Source:</span>
+              <span className="text-xs font-medium">{item.source_label}</span>
+            </div>
+
+            {isMcp && item.mcp_version && (
+              <div className="flex items-center gap-2">
+                <Package className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
+                <span className="text-muted-foreground text-xs">Version:</span>
+                <span className="text-xs font-medium">v{item.mcp_version}</span>
+              </div>
+            )}
+
+            {isMcp && item.mcp_package_identifier && (
+              <div className="col-span-2 flex items-center gap-2">
+                <Package className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
+                <span className="text-muted-foreground text-xs">Package:</span>
+                <code className="bg-muted rounded px-1.5 py-0.5 text-xs">{item.mcp_package_identifier}</code>
+              </div>
+            )}
+
+            {item.url && (
+              <div className="col-span-2">
+                <a
+                  href={item.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary hover:text-primary/80 inline-flex items-center gap-1 text-xs transition-colors"
+                >
+                  View on GitHub <ExternalLink className="h-3 w-3" />
+                </a>
+              </div>
+            )}
+
+            {isMcp && item.mcp_repo_url && item.mcp_repo_url !== item.url && (
+              <div className="col-span-2">
+                <a
+                  href={item.mcp_repo_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary hover:text-primary/80 inline-flex items-center gap-1 text-xs transition-colors"
+                >
+                  Repository <ExternalLink className="h-3 w-3" />
+                </a>
+              </div>
+            )}
+          </div>
+
+          {/* Environment variables for MCPs */}
+          {isMcp && envVars.length > 0 && (
+            <div className="mt-4">
+              <h3 className="text-muted-foreground mb-2 text-xs font-medium uppercase tracking-wide">
+                Environment Variables
+              </h3>
+              <div className="space-y-1.5">
+                {envVars.map((ev) => (
+                  <div key={ev.name} className="bg-muted/50 rounded-md px-3 py-2">
+                    <div className="flex items-center gap-1.5">
+                      <code className="text-xs font-medium">{ev.name}</code>
+                      {ev.isRequired && (
+                        <span className="rounded bg-red-500/10 px-1 py-0.5 text-[10px] text-red-500">required</span>
+                      )}
+                      {ev.isSecret && (
+                        <span className="rounded bg-amber-500/10 px-1 py-0.5 text-[10px] text-amber-500">secret</span>
+                      )}
+                    </div>
+                    {ev.description && (
+                      <p className="text-muted-foreground mt-0.5 text-xs">{ev.description}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
@@ -399,7 +617,8 @@ export function SkillStore({
               return (
                 <div
                   key={item.id}
-                  className="border-border hover:border-border/80 hover:bg-accent/50 flex flex-col rounded-lg border p-3 transition-colors"
+                  className="border-border hover:border-border/80 hover:bg-accent/50 flex cursor-pointer flex-col rounded-lg border p-3 transition-colors"
+                  onClick={() => setSelectedItem(item)}
                 >
                   <div className="mb-1 flex items-start gap-1.5">
                     <span
@@ -430,22 +649,15 @@ export function SkillStore({
                     <span className="text-muted-foreground flex-1 truncate text-[10px]">
                       {item.source_label}
                     </span>
-                    {item.url && (
-                      <a
-                        href={item.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-muted-foreground hover:text-foreground inline-flex shrink-0 items-center gap-0.5 text-[10px] transition-colors"
-                      >
-                        View <ExternalLink className="h-2.5 w-2.5" />
-                      </a>
-                    )}
                     <Button
                       variant={isInstalled ? "outline" : "default"}
                       size="sm"
                       className="h-6 shrink-0 gap-1 px-2 text-[11px]"
                       disabled={isInstalling}
-                      onClick={() => handleInstallSkillAgent(item)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleInstallSkillAgent(item);
+                      }}
                     >
                       {isInstalling ? (
                         <Loader2 className="h-3 w-3 animate-spin" />
@@ -499,7 +711,8 @@ export function SkillStore({
                 return (
                   <div
                     key={item.id}
-                    className="border-border hover:border-border/80 hover:bg-accent/50 flex flex-col rounded-lg border p-3 transition-colors"
+                    className="border-border hover:border-border/80 hover:bg-accent/50 flex cursor-pointer flex-col rounded-lg border p-3 transition-colors"
+                    onClick={() => setSelectedItem(item)}
                   >
                     <div className="mb-1 flex items-start gap-1.5">
                       <span className="mt-0.5 shrink-0 rounded bg-green-500/10 px-1 py-0.5 text-[10px] font-medium leading-none text-green-500">
@@ -515,7 +728,7 @@ export function SkillStore({
                       >
                         {item.mcp_registry_type}
                       </span>
-                      <span className="text-sm font-medium leading-tight">
+                      <span className="min-w-0 truncate text-sm font-medium leading-tight">
                         {item.name}
                       </span>
                       {isInstalled && (
@@ -540,50 +753,20 @@ export function SkillStore({
                         </span>
                       )}
                       <div className="flex-1" />
-                      {item.mcp_repo_url && (
-                        <a
-                          href={item.mcp_repo_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-muted-foreground hover:text-foreground inline-flex shrink-0 items-center gap-0.5 text-[10px] transition-colors"
-                        >
-                          View <ExternalLink className="h-2.5 w-2.5" />
-                        </a>
-                      )}
                       <Button
                         variant={isInstalled ? "outline" : "default"}
                         size="sm"
                         className="h-6 shrink-0 gap-1 px-2 text-[11px]"
-                        onClick={() =>
-                          setMcpInstallTarget(isTarget ? null : item)
-                        }
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedItem(item);
+                          setMcpInstallTarget(item);
+                        }}
                       >
                         <Download className="h-3 w-3" />
                         {isInstalled ? "Reinstall" : "Install"}
                       </Button>
                     </div>
-
-                    {/* Install form */}
-                    {isTarget && (
-                      <div className="mt-2">
-                        <McpInstallForm
-                          serverName={(item.name || "")
-                            .toLowerCase()
-                            .replace(/[^a-z0-9]+/g, "-")
-                            .replace(/^-|-$/g, "")}
-                          registryType={
-                            (item.mcp_registry_type as "npm" | "pypi") || "npm"
-                          }
-                          packageIdentifier={
-                            item.mcp_package_identifier || ""
-                          }
-                          envVars={envVars}
-                          onInstall={handleInstallMcp}
-                          onCancel={() => setMcpInstallTarget(null)}
-                          installing={mcpInstalling}
-                        />
-                      </div>
-                    )}
                   </div>
                 );
               })}

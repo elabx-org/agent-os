@@ -152,13 +152,13 @@ function ScopeSection({
 
       {items.length > 0 && (
         <div className="w-full overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full table-fixed text-sm">
             <thead>
               <tr className="text-muted-foreground border-b text-left text-xs">
-                <th className="pb-1.5 pr-2 font-medium">Name</th>
-                <th className="pb-1.5 pr-2 font-medium">Description</th>
-                <th className="pb-1.5 pr-2 font-medium">Source</th>
-                <th className="pb-1.5 font-medium w-16">Actions</th>
+                <th className="w-[25%] pb-1.5 pr-2 font-medium">Name</th>
+                <th className="w-[45%] pb-1.5 pr-2 font-medium">Description</th>
+                <th className="w-[15%] pb-1.5 pr-2 font-medium">Source</th>
+                <th className="w-[15%] pb-1.5 font-medium">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -167,14 +167,14 @@ function ScopeSection({
                   key={item.filePath}
                   className="group border-b border-border/30 last:border-0"
                 >
-                  <td className="py-1.5 pr-2 max-w-[180px]">
+                  <td className="overflow-hidden py-1.5 pr-2">
                     <InlineEdit
                       value={item.name}
                       placeholder="Unnamed"
                       onSave={(v) => onUpdateMetadata(item, { name: v })}
                     />
                   </td>
-                  <td className="py-1.5 pr-2 max-w-[260px]">
+                  <td className="overflow-hidden py-1.5 pr-2">
                     <InlineEdit
                       value={item.description}
                       placeholder="No description"
@@ -183,8 +183,8 @@ function ScopeSection({
                       }
                     />
                   </td>
-                  <td className="py-1.5 pr-2">
-                    <span className="text-muted-foreground bg-muted rounded px-1.5 py-0.5 text-xs">
+                  <td className="overflow-hidden py-1.5 pr-2">
+                    <span className="text-muted-foreground bg-muted truncate rounded px-1.5 py-0.5 text-xs">
                       {item.source}
                     </span>
                   </td>
