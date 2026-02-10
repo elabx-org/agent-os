@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { isGitRepo } from "@/lib/git-status";
+import { isGitRepo, expandPath } from "@/lib/git-status";
 import {
   checkGhCli,
   getCommitsSinceBase,
@@ -23,7 +23,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Path is required" }, { status: 400 });
   }
 
-  if (!isGitRepo(path)) {
+  const expanded = expandPath(path);
+
+  if (!isGitRepo(expanded)) {
     return NextResponse.json(
       { error: "Not a git repository" },
       { status: 400 }
@@ -41,8 +43,8 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const branch = getCurrentBranch(path);
-    const baseBranch = getBaseBranch(path);
+    const branch = getCurrentBranch(expanded);
+    const baseBranch = getBaseBranch(expanded);
 
     // Check if on main/master (can't create PR from there)
     if (branch === "main" || branch === "master") {
@@ -53,10 +55,10 @@ export async function GET(request: NextRequest) {
     }
 
     // Check if PR already exists
-    const existingPR = getPRForBranch(path, branch);
+    const existingPR = getPRForBranch(expanded, branch);
 
     // Get commits for listing
-    const commits = getCommitsSinceBase(path, baseBranch);
+    const commits = getCommitsSinceBase(expanded, baseBranch);
 
     // Only generate suggested content if explicitly requested (for PR creation flow)
     let suggestedTitle: string | undefined;
@@ -64,7 +66,7 @@ export async function GET(request: NextRequest) {
 
     if (shouldGenerate) {
       try {
-        const generated = await generatePRContent(path, baseBranch);
+        const generated = await generatePRContent(expanded, baseBranch);
         suggestedTitle = generated.title;
         suggestedBody = generated.description;
       } catch {
@@ -116,7 +118,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Title is required" }, { status: 400 });
     }
 
-    if (!isGitRepo(path)) {
+    const expanded = expandPath(path);
+
+    if (!isGitRepo(expanded)) {
       return NextResponse.json(
         { error: "Not a git repository" },
         { status: 400 }
@@ -130,8 +134,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const branch = getCurrentBranch(path);
-    const baseBranch = customBase || getBaseBranch(path);
+    const branch = getCurrentBranch(expanded);
+    const baseBranch = customBase || getBaseBranch(expanded);
 
     // Check if on main/master
     if (branch === "main" || branch === "master") {
@@ -142,7 +146,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if PR already exists
-    const existingPR = getPRForBranch(path, branch);
+    const existingPR = getPRForBranch(expanded, branch);
     if (existingPR) {
       return NextResponse.json(
         { error: "PR already exists for this branch", pr: existingPR },
@@ -151,7 +155,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Create the PR
-    const pr = createPR(path, branch, baseBranch, title, description || "");
+    const pr = createPR(expanded, branch, baseBranch, title, description || "");
 
     return NextResponse.json({ pr }, { status: 201 });
   } catch (error) {

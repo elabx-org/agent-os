@@ -5,6 +5,7 @@ import {
   getDefaultBranch,
   getCurrentBranch,
 } from "@/lib/git";
+import { expandPath } from "@/lib/git-status";
 
 /**
  * POST /api/git/check
@@ -13,11 +14,13 @@ import {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { path: dirPath } = body;
+    const { path: rawPath } = body;
 
-    if (!dirPath) {
+    if (!rawPath) {
       return NextResponse.json({ error: "Path is required" }, { status: 400 });
     }
+
+    const dirPath = expandPath(rawPath);
 
     // Check if it's a git repo
     const isRepo = await isGitRepo(dirPath);
