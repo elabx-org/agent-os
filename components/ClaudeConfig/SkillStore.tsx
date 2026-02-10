@@ -427,6 +427,9 @@ export function SkillStore({
 
   // Debounce timer for MCP search
   const mcpSearchTimer = useRef<NodeJS.Timeout | null>(null);
+  // Search-triggered enrichment
+  const searchEnrichTimer = useRef<NodeJS.Timeout | null>(null);
+  const enrichedIdsRef = useRef<Set<string>>(new Set());
 
   // Phase 1: List all directory stubs (cheap — ~4 API calls total)
   // Phase 2: Enrich first page of stubs (PAGE_SIZE API calls)
@@ -499,7 +502,11 @@ export function SkillStore({
     try {
       const nextBatch = allStubs.slice(enrichedCount, enrichedCount + PAGE_SIZE);
       const enriched = await enrichStubs(nextBatch);
-      setItems((prev) => [...prev, ...enriched]);
+      setItems((prev) => {
+        const existingIds = new Set(prev.map((i) => i.id));
+        const newItems = enriched.filter((i) => !existingIds.has(i.id));
+        return [...prev, ...newItems];
+      });
       setEnrichedCount((prev) => prev + PAGE_SIZE);
     } catch {
       // non-fatal
@@ -532,6 +539,48 @@ export function SkillStore({
       if (mcpSearchTimer.current) clearTimeout(mcpSearchTimer.current);
     };
   }, [search, filter]);
+
+  // Keep enrichedIdsRef in sync with items
+  useEffect(() => {
+    enrichedIdsRef.current = new Set(items.map((i) => i.id));
+  }, [items]);
+
+  // Auto-enrich unenriched stubs that match the search query
+  useEffect(() => {
+    if (searchEnrichTimer.current) clearTimeout(searchEnrichTimer.current);
+    if (!search.trim() || filter === "mcps") return;
+
+    searchEnrichTimer.current = setTimeout(async () => {
+      const q = search.toLowerCase();
+      const unenrichedMatches = allStubs.filter(
+        (stub) =>
+          !enrichedIdsRef.current.has(stub.id) &&
+          (stub.dirName.toLowerCase().includes(q) ||
+            stub.source.toLowerCase().includes(q))
+      );
+
+      if (unenrichedMatches.length === 0) return;
+
+      const batch = unenrichedMatches.slice(0, 20);
+      setEnriching(true);
+      try {
+        const enriched = await enrichStubs(batch);
+        setItems((prev) => {
+          const existingIds = new Set(prev.map((i) => i.id));
+          const newItems = enriched.filter((i) => !existingIds.has(i.id));
+          return [...prev, ...newItems];
+        });
+      } catch {
+        // non-fatal
+      } finally {
+        setEnriching(false);
+      }
+    }, 300);
+
+    return () => {
+      if (searchEnrichTimer.current) clearTimeout(searchEnrichTimer.current);
+    };
+  }, [search, filter, allStubs]);
 
   const handleLoadMoreMcps = useCallback(async () => {
     if (!mcpNextCursor) return;
@@ -649,6 +698,7 @@ export function SkillStore({
       result = result.filter(
         (i) =>
           i.name.toLowerCase().includes(q) ||
+          i.dirName.toLowerCase().includes(q) ||
           i.description.toLowerCase().includes(q) ||
           i.source.toLowerCase().includes(q)
       );
@@ -855,6 +905,14 @@ export function SkillStore({
               {enriching ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
               {enriching ? "Loading..." : `Load more (${remainingCount} remaining)`}
             </Button>
+          </div>
+        )}
+
+        {/* Search enrichment indicator */}
+        {filter !== "mcps" && search.trim() && enriching && (
+          <div className="mt-3 flex items-center justify-center gap-2">
+            <Loader2 className="text-muted-foreground h-3.5 w-3.5 animate-spin" />
+            <span className="text-muted-foreground text-xs">Searching all items...</span>
           </div>
         )}
 
