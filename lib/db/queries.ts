@@ -342,8 +342,8 @@ export const queries = {
     getStmt(
       db,
       `UPDATE store_sources SET sync_status = ?, sync_error = ?,
-       last_synced_at = CASE WHEN ?1 = 'synced' THEN datetime('now') ELSE last_synced_at END,
-       updated_at = datetime('now') WHERE id = ?4`
+       last_synced_at = CASE WHEN ? = 'synced' THEN datetime('now') ELSE last_synced_at END,
+       updated_at = datetime('now') WHERE id = ?`
     ),
 
   deleteStoreSource: (db: Database.Database) =>
@@ -394,7 +394,7 @@ export const queries = {
          source_label, url, content_url, contents_url, raw_base, is_enriched,
          mcp_version, mcp_registry_type, mcp_package_identifier, mcp_repo_url,
          mcp_env_vars, download_files)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET name=excluded.name, description=excluded.description,
          source_label=excluded.source_label, url=excluded.url, content_url=excluded.content_url,
          contents_url=excluded.contents_url, raw_base=excluded.raw_base,
