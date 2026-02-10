@@ -3,7 +3,7 @@ import { parse } from "url";
 import next from "next";
 import { WebSocketServer, WebSocket } from "ws";
 import * as pty from "node-pty";
-import { exec, execSync } from "child_process";
+import { exec } from "child_process";
 import { randomBytes } from "crypto";
 import { scheduleStoreSync } from "./lib/store-sync";
 
@@ -14,118 +14,65 @@ const port = parseInt(process.env.PORT || "3011", 10);
 const app = next({ dev, hostname, port });
 const handle = app.getRequestHandler();
 
-// --- tmux-backed Terminal Session Manager ---
-// Each WebSocket terminal gets a tmux session. The PTY runs `tmux attach`.
-// On disconnect the PTY dies but the tmux session stays alive.
-// On reconnect a new PTY attaches to the same tmux session — full state preserved.
-// This survives server restarts too since tmux runs independently.
+// --- PTY Session Manager ---
+// Keeps PTY processes alive across WebSocket reconnects so that
+// Claude Code (or any long-running CLI) survives network blips.
 
-const PING_INTERVAL_MS = 25_000; // 25s server-side ping
-const SESSION_GRACE_MS = 600_000; // 10 min before killing abandoned tmux session
-const TMUX_PREFIX = "shell-"; // prefix for direct shell tmux sessions
+const PING_INTERVAL_MS = 25_000; // 25s — well under typical 60s proxy timeout
+const PONG_TIMEOUT_MS = 10_000; // 10s to respond before we consider it dead
+const PTY_GRACE_MS = 300_000; // 5 min grace period after disconnect
+const OUTPUT_BUFFER_MAX = 200_000; // ~200KB scrollback buffer per session
 
-interface ShellSession {
-  tmuxName: string;
-  pty: pty.IPty | null;
+interface PtySession {
+  id: string;
+  pty: pty.IPty;
   ws: WebSocket | null;
-  alive: boolean;
-  pingInterval: ReturnType<typeof setInterval> | null;
+  buffer: string; // circular output buffer for replay on reconnect
   killTimer: ReturnType<typeof setTimeout> | null;
+  alive: boolean; // pong received tracking
+  pingInterval: ReturnType<typeof setInterval> | null;
 }
 
-const shellSessions = new Map<string, ShellSession>();
+const sessions = new Map<string, PtySession>();
 
 function generateId(): string {
-  return randomBytes(8).toString("hex");
+  return randomBytes(12).toString("base64url");
 }
 
-function tmuxSessionExists(name: string): boolean {
-  try {
-    execSync(`tmux has-session -t "${name}" 2>/dev/null`);
-    return true;
-  } catch {
-    return false;
+function appendToBuffer(session: PtySession, data: string): void {
+  session.buffer += data;
+  if (session.buffer.length > OUTPUT_BUFFER_MAX) {
+    // Keep the most recent output
+    session.buffer = session.buffer.slice(-OUTPUT_BUFFER_MAX);
   }
 }
 
-function createTmuxSession(name: string): boolean {
-  try {
-    const shell = process.env.SHELL || "/bin/bash";
-    const home = process.env.HOME || "/config";
-    const path = process.env.PATH || "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/config/.npm-global/bin:/config/.local/bin";
-    // Create detached tmux session with correct env
-    execSync(
-      `SHELL="${shell}" HOME="${home}" USER="${process.env.USER || "abc"}" ` +
-      `TERM=xterm-256color COLORTERM=truecolor LANG="${process.env.LANG || "en_US.UTF-8"}" ` +
-      `PATH="${path}" ` +
-      `tmux new-session -d -s "${name}" -x 80 -y 24`,
-      { env: { ...process.env, SHELL: shell, HOME: home, TERM: "xterm-256color", COLORTERM: "truecolor", PATH: path } }
-    );
-    // Disable status bar for clean terminal experience
-    execSync(`tmux set-option -t "${name}" status off`);
-    // Set generous scrollback
-    execSync(`tmux set-option -t "${name}" history-limit 50000`);
-    return true;
-  } catch (err) {
-    console.error("Failed to create tmux session:", err);
-    return false;
-  }
-}
-
-function spawnTmuxAttach(tmuxName: string, cols: number, rows: number): pty.IPty | null {
-  try {
-    const ptyProcess = pty.spawn("tmux", ["attach", "-t", tmuxName], {
-      name: "xterm-256color",
-      cols,
-      rows,
-      cwd: process.env.HOME || "/config",
-      env: {
-        TERM: "xterm-256color",
-        COLORTERM: "truecolor",
-        HOME: process.env.HOME || "/config",
-        PATH: process.env.PATH || "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/config/.npm-global/bin:/config/.local/bin",
-        LANG: process.env.LANG || "en_US.UTF-8",
-      },
-    });
-    return ptyProcess;
-  } catch (err) {
-    console.error("Failed to attach to tmux session:", err);
-    return null;
-  }
-}
-
-function detachSession(session: ShellSession): void {
-  // Stop ping
+function detachSession(session: PtySession): void {
+  // Stop ping/pong for this session
   if (session.pingInterval) {
     clearInterval(session.pingInterval);
     session.pingInterval = null;
   }
 
-  // Kill the PTY (tmux client), tmux session stays alive
-  if (session.pty) {
-    try { session.pty.kill(); } catch { /* ignore */ }
-    session.pty = null;
-  }
-
   session.ws = null;
 
-  // Start grace timer — kill tmux session if nobody reconnects
+  // Start grace period timer — PTY stays alive for reconnect
   if (!session.killTimer) {
     session.killTimer = setTimeout(() => {
-      try { execSync(`tmux kill-session -t "${session.tmuxName}" 2>/dev/null`); } catch { /* ignore */ }
-      shellSessions.delete(session.tmuxName);
-    }, SESSION_GRACE_MS);
+      try { session.pty.kill(); } catch { /* ignore */ }
+      sessions.delete(session.id);
+    }, PTY_GRACE_MS);
   }
 }
 
-function attachSession(session: ShellSession, ws: WebSocket, cols = 80, rows = 24): void {
-  // Cancel kill timer
+function attachSession(session: PtySession, ws: WebSocket): void {
+  // Cancel kill timer — client reconnected
   if (session.killTimer) {
     clearTimeout(session.killTimer);
     session.killTimer = null;
   }
 
-  // Detach previous WebSocket
+  // Detach previous WebSocket if any
   if (session.ws && session.ws !== ws) {
     session.ws.onclose = null;
     session.ws.onerror = null;
@@ -133,48 +80,21 @@ function attachSession(session: ShellSession, ws: WebSocket, cols = 80, rows = 2
     try { session.ws.close(); } catch { /* ignore */ }
   }
 
-  // Kill previous PTY if any (new attach will take over)
-  if (session.pty) {
-    try { session.pty.kill(); } catch { /* ignore */ }
-    session.pty = null;
-  }
-
   session.ws = ws;
 
-  // Spawn new PTY that attaches to the tmux session
-  const ptyProcess = spawnTmuxAttach(session.tmuxName, cols, rows);
-  if (!ptyProcess) {
-    ws.send(JSON.stringify({ type: "error", message: "Failed to attach to terminal session" }));
-    ws.close();
-    return;
-  }
-  session.pty = ptyProcess;
+  // Send session ID and buffered output
+  ws.send(JSON.stringify({
+    type: "session",
+    sessionId: session.id,
+    buffered: session.buffer,
+  }));
 
-  // Send session ID to client
-  ws.send(JSON.stringify({ type: "session", sessionId: session.tmuxName }));
-
-  // Wire PTY output → WebSocket
-  ptyProcess.onData((data: string) => {
-    if (ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: "output", data }));
-    }
-  });
-
-  ptyProcess.onExit(() => {
-    // tmux session was killed or exited
-    if (ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: "exit", code: 0 }));
-      ws.close();
-    }
-    if (session.pingInterval) clearInterval(session.pingInterval);
-    shellSessions.delete(session.tmuxName);
-  });
-
-  // Ping/pong heartbeat
+  // Start ping/pong heartbeat
   session.alive = true;
   if (session.pingInterval) clearInterval(session.pingInterval);
   session.pingInterval = setInterval(() => {
     if (!session.alive) {
+      // No pong received — connection is dead
       ws.terminate();
       return;
     }
@@ -182,23 +102,26 @@ function attachSession(session: ShellSession, ws: WebSocket, cols = 80, rows = 2
     try { ws.ping(); } catch { /* ignore */ }
   }, PING_INTERVAL_MS);
 
-  ws.on("pong", () => { session.alive = true; });
+  ws.on("pong", () => {
+    session.alive = true;
+  });
 
-  // Wire WebSocket messages → PTY
+  // Wire up message handling
   ws.on("message", (message: Buffer) => {
     try {
       const msg = JSON.parse(message.toString());
       switch (msg.type) {
         case "input":
-          session.pty?.write(msg.data);
+          session.pty.write(msg.data);
           break;
         case "resize":
-          session.pty?.resize(msg.cols, msg.rows);
+          session.pty.resize(msg.cols, msg.rows);
           break;
         case "command":
-          session.pty?.write(msg.data + "\r");
+          session.pty.write(msg.data + "\r");
           break;
         case "ping":
+          // Application-level ping from client
           if (ws.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify({ type: "pong" }));
           }
@@ -228,6 +151,62 @@ function attachSession(session: ShellSession, ws: WebSocket, cols = 80, rows = 2
   ws.on("error", () => detachSession(session));
 }
 
+function createPtySession(ws: WebSocket): PtySession | null {
+  try {
+    const shell = process.env.SHELL || "/bin/bash";
+    const minimalEnv: { [key: string]: string } = {
+      PATH: process.env.PATH || "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/config/.npm-global/bin:/config/.local/bin",
+      HOME: process.env.HOME || "/config",
+      USER: process.env.USER || "abc",
+      SHELL: shell,
+      TERM: "xterm-256color",
+      COLORTERM: "truecolor",
+      LANG: process.env.LANG || "en_US.UTF-8",
+    };
+
+    const ptyProcess = pty.spawn(shell, ["-l"], {
+      name: "xterm-256color",
+      cols: 80,
+      rows: 24,
+      cwd: process.env.HOME || "/config",
+      env: minimalEnv,
+    });
+
+    const session: PtySession = {
+      id: generateId(),
+      pty: ptyProcess,
+      ws: null,
+      buffer: "",
+      killTimer: null,
+      alive: true,
+      pingInterval: null,
+    };
+
+    // Always buffer PTY output (even during disconnect)
+    ptyProcess.onData((data: string) => {
+      appendToBuffer(session, data);
+      if (session.ws?.readyState === WebSocket.OPEN) {
+        session.ws.send(JSON.stringify({ type: "output", data }));
+      }
+    });
+
+    ptyProcess.onExit(({ exitCode }) => {
+      if (session.ws?.readyState === WebSocket.OPEN) {
+        session.ws.send(JSON.stringify({ type: "exit", code: exitCode }));
+        session.ws.close();
+      }
+      if (session.pingInterval) clearInterval(session.pingInterval);
+      sessions.delete(session.id);
+    });
+
+    sessions.set(session.id, session);
+    return session;
+  } catch (err) {
+    console.error("Failed to spawn pty:", err);
+    return null;
+  }
+}
+
 // --- Server setup ---
 
 app.prepare().then(() => {
@@ -249,6 +228,7 @@ app.prepare().then(() => {
 
     if (parsed.pathname === "/ws/terminal") {
       terminalWss.handleUpgrade(request, socket, head, (ws) => {
+        // Pass query params through emit
         terminalWss.emit("connection", ws, request);
       });
     }
@@ -259,48 +239,23 @@ app.prepare().then(() => {
     const parsed = parse(request.url || "", true);
     const requestedSessionId = parsed.query.sessionId as string | undefined;
 
-    // Try to reattach to an existing tmux session
+    // Try to reattach to an existing session
     if (requestedSessionId) {
-      // Check our map first
-      let session = shellSessions.get(requestedSessionId);
-      if (session && tmuxSessionExists(session.tmuxName)) {
-        attachSession(session, ws);
-        return;
-      }
-
-      // Maybe the tmux session exists but we lost our map (server restarted)
-      if (requestedSessionId.startsWith(TMUX_PREFIX) && tmuxSessionExists(requestedSessionId)) {
-        session = {
-          tmuxName: requestedSessionId,
-          pty: null,
-          ws: null,
-          alive: true,
-          pingInterval: null,
-          killTimer: null,
-        };
-        shellSessions.set(requestedSessionId, session);
-        attachSession(session, ws);
+      const existing = sessions.get(requestedSessionId);
+      if (existing) {
+        attachSession(existing, ws);
         return;
       }
     }
 
-    // Create new tmux session
-    const tmuxName = `${TMUX_PREFIX}${generateId()}`;
-    if (!createTmuxSession(tmuxName)) {
+    // Create new PTY session
+    const session = createPtySession(ws);
+    if (!session) {
       ws.send(JSON.stringify({ type: "error", message: "Failed to start terminal" }));
       ws.close();
       return;
     }
 
-    const session: ShellSession = {
-      tmuxName,
-      pty: null,
-      ws: null,
-      alive: true,
-      pingInterval: null,
-      killTimer: null,
-    };
-    shellSessions.set(tmuxName, session);
     attachSession(session, ws);
   });
 
