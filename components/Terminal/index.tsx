@@ -405,7 +405,9 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
           </ContextMenuTrigger>
           <ContextMenuContent className="w-48" onCloseAutoFocus={(e) => {
               e.preventDefault();
-              focus();
+              // Double-RAF: first waits for Radix portal removal, second ensures
+              // the browser has fully settled focus before we steal it back to xterm
+              requestAnimationFrame(() => requestAnimationFrame(() => focus()));
             }}>
             <ContextMenuItem onSelect={handleContextCopy}>
               <Copy className="mr-2 h-4 w-4" />
