@@ -18,6 +18,7 @@ import {
   GLOBAL_AGENTS_DIR,
   type McpServerConfig,
 } from "./ClaudeConfigDialog.types";
+import { updateFrontmatter } from "@/lib/frontmatter";
 import { McpInstallForm, installMcpServer } from "./McpInstallForm";
 import { StoreSourceManager } from "./StoreSourceManager";
 import type { StoreItem } from "@/lib/db/types";
@@ -163,8 +164,14 @@ export function SkillStore({
         }
 
         for (const file of files) {
-          const content = await fetchRaw(file.rawUrl);
+          let content = await fetchRaw(file.rawUrl);
           if (content) {
+            // Inject source metadata into the main markdown file
+            if (file.name === "SKILL.md" || file.name === "AGENT.md") {
+              content = updateFrontmatter(content, {
+                source: item.source_label || "Store",
+              });
+            }
             await fetch("/api/files/content", {
               method: "POST",
               headers: { "Content-Type": "application/json" },

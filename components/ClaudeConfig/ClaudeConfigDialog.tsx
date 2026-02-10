@@ -130,6 +130,13 @@ export function ClaudeConfigDialog({
     [config]
   );
 
+  const handleUpdateMetadata = useCallback(
+    (item: ExtensionItem, updates: Record<string, string>) => {
+      config.updateItemMetadata(item, updates);
+    },
+    [config]
+  );
+
   const handleTabChange = useCallback((tab: ConfigTab) => {
     setActiveTab(tab);
     setEditingItem(null);
@@ -223,6 +230,7 @@ export function ClaudeConfigDialog({
                     onEdit={handleEdit}
                     onDelete={handleDelete}
                     onCreate={handleCreate("skill")}
+                    onUpdateMetadata={handleUpdateMetadata}
                     onInstallFromGitHub={() =>
                       setShowInstaller(!showInstaller)
                     }
@@ -255,6 +263,7 @@ export function ClaudeConfigDialog({
                     onEdit={handleEdit}
                     onDelete={handleDelete}
                     onCreate={handleCreate("agent")}
+                    onUpdateMetadata={handleUpdateMetadata}
                     onInstallFromGitHub={() =>
                       setShowInstaller(!showInstaller)
                     }

@@ -20,3 +20,19 @@ export function parseFrontmatter(content: string): {
   }
   return { metadata, body: match[2] };
 }
+
+/**
+ * Update (or add) frontmatter keys in markdown content.
+ * Preserves existing keys and body text.
+ */
+export function updateFrontmatter(
+  content: string,
+  updates: Record<string, string>
+): string {
+  const { metadata, body } = parseFrontmatter(content);
+  const merged = { ...metadata, ...updates };
+  const header = Object.entries(merged)
+    .map(([k, v]) => `${k}: ${v}`)
+    .join("\n");
+  return `---\n${header}\n---\n${body}`;
+}

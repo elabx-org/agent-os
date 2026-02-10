@@ -11,6 +11,7 @@ import {
   projectClaudeMd,
   parseFrontmatter,
 } from "../ClaudeConfigDialog.types";
+import { updateFrontmatter } from "@/lib/frontmatter";
 
 interface UseClaudeConfigOptions {
   open: boolean;
@@ -99,6 +100,7 @@ async function scanExtensions(
       dirPath: node.path,
       scope,
       content,
+      source: metadata.source || "Manual",
     });
   }
 
@@ -222,6 +224,15 @@ export function useClaudeConfig({ open, projectPath }: UseClaudeConfigOptions) {
     [projectPath, refresh]
   );
 
+  const updateItemMetadata = useCallback(
+    async (item: ExtensionItem, updates: Record<string, string>) => {
+      const newContent = updateFrontmatter(item.content, updates);
+      await writeFile(item.filePath, newContent);
+      refresh();
+    },
+    [refresh]
+  );
+
   return {
     loading,
     skills,
@@ -232,6 +243,7 @@ export function useClaudeConfig({ open, projectPath }: UseClaudeConfigOptions) {
     createItem,
     deleteItem,
     createClaudeMd,
+    updateItemMetadata,
     refresh,
   };
 }

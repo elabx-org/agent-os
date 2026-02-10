@@ -5,6 +5,7 @@ import {
   projectSkillsDir,
   parseFrontmatter,
 } from "../ClaudeConfigDialog.types";
+import { updateFrontmatter } from "@/lib/frontmatter";
 
 // Convert a GitHub URL to a raw content URL
 function toRawUrl(url: string): string | null {
@@ -111,13 +112,18 @@ export function useSkillInstaller({
 
         const dirPath = `${baseDir}/${safeName}`;
 
+        // Inject source metadata
+        const finalContent = updateFrontmatter(content, {
+          source: "GitHub Import",
+        });
+
         // Write SKILL.md (parent dirs created automatically)
         const writeRes = await fetch("/api/files/content", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             path: `${dirPath}/SKILL.md`,
-            content,
+            content: finalContent,
           }),
         });
 

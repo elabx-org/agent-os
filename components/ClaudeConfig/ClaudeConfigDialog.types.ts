@@ -8,6 +8,7 @@ export interface ExtensionItem {
   dirPath: string;
   scope: ConfigScope;
   content: string;
+  source: string;
 }
 
 export interface ClaudeConfigDialogProps {

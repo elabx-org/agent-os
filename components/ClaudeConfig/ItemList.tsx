@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { Plus, Trash2, Download, Loader2 } from "lucide-react";
+import { useState, useRef, useEffect } from "react";
+import { Plus, Trash2, Pencil, Download, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { ExtensionItem, ConfigScope } from "./ClaudeConfigDialog.types";
@@ -14,7 +14,67 @@ interface ItemListProps {
   onEdit: (item: ExtensionItem) => void;
   onDelete: (item: ExtensionItem) => void;
   onCreate: (scope: ConfigScope, name: string) => void;
+  onUpdateMetadata: (
+    item: ExtensionItem,
+    updates: Record<string, string>
+  ) => void;
   onInstallFromGitHub?: () => void;
+}
+
+function InlineEdit({
+  value,
+  placeholder,
+  onSave,
+}: {
+  value: string;
+  placeholder: string;
+  onSave: (value: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (editing) inputRef.current?.focus();
+  }, [editing]);
+
+  const commit = () => {
+    const trimmed = draft.trim();
+    if (trimmed && trimmed !== value) onSave(trimmed);
+    setEditing(false);
+  };
+
+  if (editing) {
+    return (
+      <Input
+        ref={inputRef}
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") commit();
+          if (e.key === "Escape") {
+            setDraft(value);
+            setEditing(false);
+          }
+        }}
+        className="h-6 text-xs"
+      />
+    );
+  }
+
+  return (
+    <span
+      className="cursor-pointer truncate rounded px-1 py-0.5 hover:bg-accent"
+      onClick={() => {
+        setDraft(value);
+        setEditing(true);
+      }}
+      title="Click to edit"
+    >
+      {value || <span className="text-muted-foreground italic">{placeholder}</span>}
+    </span>
+  );
 }
 
 function ScopeSection({
@@ -24,6 +84,7 @@ function ScopeSection({
   onEdit,
   onDelete,
   onCreate,
+  onUpdateMetadata,
 }: {
   label: string;
   items: ExtensionItem[];
@@ -31,6 +92,10 @@ function ScopeSection({
   onEdit: (item: ExtensionItem) => void;
   onDelete: (item: ExtensionItem) => void;
   onCreate: (name: string) => void;
+  onUpdateMetadata: (
+    item: ExtensionItem,
+    updates: Record<string, string>
+  ) => void;
 }) {
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
@@ -85,37 +150,76 @@ function ScopeSection({
         </p>
       )}
 
-      <div className="space-y-1">
-        {items.map((item) => (
-          <div
-            key={item.filePath}
-            className="hover:bg-accent group flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 transition-colors"
-            onClick={() => onEdit(item)}
-          >
-            <div className="min-w-0 flex-1">
-              <div className="truncate text-sm font-medium">{item.name}</div>
-              {item.description && (
-                <div className="text-muted-foreground truncate text-xs">
-                  {item.description}
-                </div>
-              )}
-            </div>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className="text-muted-foreground hover:text-destructive h-6 w-6 opacity-0 group-hover:opacity-100"
-              onClick={(e) => {
-                e.stopPropagation();
-                if (confirm(`Delete "${item.name}"?`)) {
-                  onDelete(item);
-                }
-              }}
-            >
-              <Trash2 className="h-3 w-3" />
-            </Button>
-          </div>
-        ))}
-      </div>
+      {items.length > 0 && (
+        <div className="w-full overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-muted-foreground border-b text-left text-xs">
+                <th className="pb-1.5 pr-2 font-medium">Name</th>
+                <th className="pb-1.5 pr-2 font-medium">Description</th>
+                <th className="pb-1.5 pr-2 font-medium">Source</th>
+                <th className="pb-1.5 font-medium w-16">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((item) => (
+                <tr
+                  key={item.filePath}
+                  className="group border-b border-border/30 last:border-0"
+                >
+                  <td className="py-1.5 pr-2 max-w-[180px]">
+                    <InlineEdit
+                      value={item.name}
+                      placeholder="Unnamed"
+                      onSave={(v) => onUpdateMetadata(item, { name: v })}
+                    />
+                  </td>
+                  <td className="py-1.5 pr-2 max-w-[260px]">
+                    <InlineEdit
+                      value={item.description}
+                      placeholder="No description"
+                      onSave={(v) =>
+                        onUpdateMetadata(item, { description: v })
+                      }
+                    />
+                  </td>
+                  <td className="py-1.5 pr-2">
+                    <span className="text-muted-foreground bg-muted rounded px-1.5 py-0.5 text-xs">
+                      {item.source}
+                    </span>
+                  </td>
+                  <td className="py-1.5">
+                    <div className="flex items-center gap-0.5">
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        className="text-muted-foreground hover:text-foreground h-6 w-6 opacity-0 group-hover:opacity-100"
+                        onClick={() => onEdit(item)}
+                        title="Edit source"
+                      >
+                        <Pencil className="h-3 w-3" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        className="text-muted-foreground hover:text-destructive h-6 w-6 opacity-0 group-hover:opacity-100"
+                        onClick={() => {
+                          if (confirm(`Delete "${item.name}"?`)) {
+                            onDelete(item);
+                          }
+                        }}
+                        title="Delete"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
@@ -128,6 +232,7 @@ export function ItemList({
   onEdit,
   onDelete,
   onCreate,
+  onUpdateMetadata,
   onInstallFromGitHub,
 }: ItemListProps) {
   const globalItems = items.filter((i) => i.scope === "global");
@@ -163,6 +268,7 @@ export function ItemList({
         onEdit={onEdit}
         onDelete={onDelete}
         onCreate={(name) => onCreate("global", name)}
+        onUpdateMetadata={onUpdateMetadata}
       />
 
       {hasProject && (
@@ -173,6 +279,7 @@ export function ItemList({
           onEdit={onEdit}
           onDelete={onDelete}
           onCreate={(name) => onCreate("project", name)}
+          onUpdateMetadata={onUpdateMetadata}
         />
       )}
     </div>
