@@ -111,3 +111,44 @@ export interface DevServer {
   created_at: string;
   updated_at: string;
 }
+
+// Store
+export type StoreItemType = "skill" | "agent" | "mcp";
+export type StoreSyncStatus = "pending" | "syncing" | "synced" | "error";
+
+export interface StoreSource {
+  id: string;
+  repo: string;
+  branch: string;
+  type: "skill" | "agent";
+  label: string;
+  is_builtin: number; // 0 or 1
+  last_synced_at: string | null;
+  sync_status: StoreSyncStatus;
+  sync_error: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface StoreItem {
+  id: string;
+  source_id: string | null;
+  type: StoreItemType;
+  dir_name: string;
+  name: string;
+  description: string;
+  source_label: string;
+  url: string;
+  content_url: string;
+  contents_url: string;
+  raw_base: string;
+  is_enriched: number; // 0 or 1
+  mcp_version: string | null;
+  mcp_registry_type: string | null;
+  mcp_package_identifier: string | null;
+  mcp_repo_url: string | null;
+  mcp_env_vars: string | null; // JSON array
+  download_files: string; // JSON array of {name, rawUrl}
+  created_at: string;
+  updated_at: string;
+}

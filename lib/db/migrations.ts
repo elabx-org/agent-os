@@ -192,6 +192,65 @@ const migrations: Migration[] = [
       );
     },
   },
+  {
+    id: 15,
+    name: "add_store_tables",
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS store_sources (
+          id TEXT PRIMARY KEY,
+          repo TEXT NOT NULL,
+          branch TEXT NOT NULL DEFAULT 'main',
+          type TEXT NOT NULL DEFAULT 'skill',
+          label TEXT NOT NULL,
+          is_builtin INTEGER NOT NULL DEFAULT 0,
+          last_synced_at TEXT,
+          sync_status TEXT NOT NULL DEFAULT 'pending',
+          sync_error TEXT,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+      `);
+
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS store_items (
+          id TEXT PRIMARY KEY,
+          source_id TEXT,
+          type TEXT NOT NULL,
+          dir_name TEXT NOT NULL,
+          name TEXT NOT NULL DEFAULT '',
+          description TEXT NOT NULL DEFAULT '',
+          source_label TEXT NOT NULL DEFAULT '',
+          url TEXT NOT NULL DEFAULT '',
+          content_url TEXT NOT NULL DEFAULT '',
+          contents_url TEXT NOT NULL DEFAULT '',
+          raw_base TEXT NOT NULL DEFAULT '',
+          is_enriched INTEGER NOT NULL DEFAULT 0,
+          mcp_version TEXT,
+          mcp_registry_type TEXT,
+          mcp_package_identifier TEXT,
+          mcp_repo_url TEXT,
+          mcp_env_vars TEXT,
+          download_files TEXT NOT NULL DEFAULT '[]',
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+          FOREIGN KEY (source_id) REFERENCES store_sources(id) ON DELETE CASCADE
+        )
+      `);
+
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_store_items_source ON store_items(source_id)`);
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_store_items_type ON store_items(type)`);
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_store_items_enriched ON store_items(is_enriched)`);
+
+      // Seed built-in sources
+      const insert = db.prepare(
+        `INSERT OR IGNORE INTO store_sources (id, repo, branch, type, label, is_builtin) VALUES (?, ?, ?, ?, ?, 1)`
+      );
+      insert.run("builtin-anthropic", "anthropics/skills", "main", "skill", "Anthropic");
+      insert.run("builtin-daymade", "daymade/claude-code-skills", "main", "skill", "daymade");
+      insert.run("builtin-voltagent", "VoltAgent/awesome-claude-code-subagents", "main", "agent", "VoltAgent");
+    },
+  },
 ];
 
 export function runMigrations(db: Database.Database): void {

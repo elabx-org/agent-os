@@ -318,4 +318,114 @@ export const queries = {
 
   deleteDevServersByProject: (db: Database.Database) =>
     getStmt(db, `DELETE FROM dev_servers WHERE project_id = ?`),
+
+  // Store sources
+  getStoreSources: (db: Database.Database) =>
+    getStmt(
+      db,
+      `SELECT * FROM store_sources ORDER BY is_builtin DESC, label ASC`
+    ),
+
+  getStoreSource: (db: Database.Database) =>
+    getStmt(db, `SELECT * FROM store_sources WHERE id = ?`),
+
+  upsertStoreSource: (db: Database.Database) =>
+    getStmt(
+      db,
+      `INSERT INTO store_sources (id, repo, branch, type, label, is_builtin)
+       VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET repo=excluded.repo, branch=excluded.branch,
+         type=excluded.type, label=excluded.label, updated_at=datetime('now')`
+    ),
+
+  updateStoreSourceSync: (db: Database.Database) =>
+    getStmt(
+      db,
+      `UPDATE store_sources SET sync_status = ?, sync_error = ?,
+       last_synced_at = CASE WHEN ?1 = 'synced' THEN datetime('now') ELSE last_synced_at END,
+       updated_at = datetime('now') WHERE id = ?4`
+    ),
+
+  deleteStoreSource: (db: Database.Database) =>
+    getStmt(
+      db,
+      `DELETE FROM store_sources WHERE id = ? AND is_builtin = 0`
+    ),
+
+  // Store items
+  getAllStoreItems: (db: Database.Database) =>
+    getStmt(
+      db,
+      `SELECT * FROM store_items ORDER BY type ASC, name ASC`
+    ),
+
+  getStoreItemsByType: (db: Database.Database) =>
+    getStmt(
+      db,
+      `SELECT * FROM store_items WHERE type = ? ORDER BY name ASC`
+    ),
+
+  getStoreItemsBySource: (db: Database.Database) =>
+    getStmt(
+      db,
+      `SELECT * FROM store_items WHERE source_id = ? ORDER BY name ASC`
+    ),
+
+  searchStoreItems: (db: Database.Database) =>
+    getStmt(
+      db,
+      `SELECT * FROM store_items
+       WHERE (name LIKE ?1 OR dir_name LIKE ?1 OR description LIKE ?1 OR source_label LIKE ?1)
+       ORDER BY type ASC, name ASC`
+    ),
+
+  searchStoreItemsByType: (db: Database.Database) =>
+    getStmt(
+      db,
+      `SELECT * FROM store_items
+       WHERE type = ?1 AND (name LIKE ?2 OR dir_name LIKE ?2 OR description LIKE ?2 OR source_label LIKE ?2)
+       ORDER BY name ASC`
+    ),
+
+  upsertStoreItem: (db: Database.Database) =>
+    getStmt(
+      db,
+      `INSERT INTO store_items (id, source_id, type, dir_name, name, description,
+         source_label, url, content_url, contents_url, raw_base, is_enriched,
+         mcp_version, mcp_registry_type, mcp_package_identifier, mcp_repo_url,
+         mcp_env_vars, download_files)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)
+       ON CONFLICT(id) DO UPDATE SET name=excluded.name, description=excluded.description,
+         source_label=excluded.source_label, url=excluded.url, content_url=excluded.content_url,
+         contents_url=excluded.contents_url, raw_base=excluded.raw_base,
+         is_enriched=excluded.is_enriched, mcp_version=excluded.mcp_version,
+         mcp_registry_type=excluded.mcp_registry_type,
+         mcp_package_identifier=excluded.mcp_package_identifier,
+         mcp_repo_url=excluded.mcp_repo_url, mcp_env_vars=excluded.mcp_env_vars,
+         download_files=excluded.download_files, updated_at=datetime('now')`
+    ),
+
+  deleteStoreItemsBySource: (db: Database.Database) =>
+    getStmt(db, `DELETE FROM store_items WHERE source_id = ?`),
+
+  deleteStaleStoreItems: (db: Database.Database) =>
+    getStmt(
+      db,
+      `DELETE FROM store_items WHERE source_id = ? AND id NOT IN (SELECT value FROM json_each(?))`
+    ),
+
+  getUnenrichedStoreItems: (db: Database.Database) =>
+    getStmt(
+      db,
+      `SELECT * FROM store_items WHERE is_enriched = 0 AND type != 'mcp' LIMIT ?`
+    ),
+
+  getStoreItemCounts: (db: Database.Database) =>
+    getStmt(
+      db,
+      `SELECT type, COUNT(*) as count FROM store_items GROUP BY type`
+    ),
+
+  getStoreItem: (db: Database.Database) =>
+    getStmt(db, `SELECT * FROM store_items WHERE id = ?`),
 };

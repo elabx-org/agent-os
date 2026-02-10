@@ -4,6 +4,7 @@ import next from "next";
 import { WebSocketServer, WebSocket } from "ws";
 import * as pty from "node-pty";
 import { exec } from "child_process";
+import { scheduleStoreSync } from "./lib/store-sync";
 const dev = process.env.NODE_ENV !== "production";
 const hostname = "0.0.0.0";
 const port = parseInt(process.env.PORT || "3011", 10);
@@ -131,5 +132,6 @@ app.prepare().then(() => {
 
   server.listen(port, () => {
     console.log(`> Agent-OS ready on http://${hostname}:${port}`);
+    scheduleStoreSync();
   });
 });
