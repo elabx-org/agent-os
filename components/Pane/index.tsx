@@ -99,6 +99,7 @@ export const Pane = memo(function Pane({
     return stored === "true";
   });
   const terminalRefs = useRef<Map<string, TerminalHandle | null>>(new Map());
+  const initializedTabs = useRef<Set<string>>(new Set());
   const paneData = getPaneData(paneId);
   const activeTab = getActiveTab(paneId);
 
@@ -184,6 +185,7 @@ export const Pane = memo(function Pane({
         terminalRefs.current.set(tabId, handle);
       } else {
         terminalRefs.current.delete(tabId);
+        initializedTabs.current.delete(tabId);
       }
     },
     []
@@ -202,6 +204,13 @@ export const Pane = memo(function Pane({
       if (!handle) return;
 
       onRegisterTerminal(paneId, tab.id, handle);
+
+      // Skip tmux command on WebSocket reconnect — PTY is still alive with tmux running
+      if (initializedTabs.current.has(tab.id)) {
+        console.log(`[AgentOS] Tab ${tab.id} already initialized, skipping tmux attach (reconnect)`);
+        return;
+      }
+      initializedTabs.current.add(tab.id);
 
       // Determine tmux session name to attach
       const tmuxName = tab.sessionId
