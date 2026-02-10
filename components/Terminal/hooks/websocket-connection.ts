@@ -85,7 +85,13 @@ export function createWebSocketConnection(
     callbacks.onSetConnected(true);
     callbacks.onConnectionStateChange("connected");
     reconnectDelayRef.current = WS_RECONNECT_BASE_DELAY;
-    callbacks.onConnected?.();
+    // Only fire onConnected for fresh connections (sessionId is null).
+    // On reconnects (sessionId is set from previous connection), the PTY
+    // is still alive with tmux running — firing onConnected would re-send
+    // the tmux attach command into the active session.
+    if (!sessionId) {
+      callbacks.onConnected?.();
+    }
     sendResize(term.cols, term.rows);
     term.focus();
     startClientPing(wsRef.current!);
