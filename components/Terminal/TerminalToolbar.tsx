@@ -318,6 +318,7 @@ export function TerminalToolbar({
   const [longPressInterval, setLongPressInterval] = useState<NodeJS.Timeout | null>(null);
   const [cursorMoveMode, setCursorMoveMode] = useState<"left" | "right" | null>(null);
   const [lastCursorMove, setLastCursorMove] = useState<number>(0);
+  const [cursorStartX, setCursorStartX] = useState<number>(0);
 
   // Send text character-by-character to terminal
   const sendText = useCallback(
@@ -586,39 +587,46 @@ export function TerminalToolbar({
         {/* Cursor movement - long press for iOS-style trackpad */}
         <button
           type="button"
+          style={{ touchAction: "none" }} // Prevent toolbar scroll
           onMouseDown={(e) => e.preventDefault()}
           onTouchStart={(e) => {
             e.preventDefault();
             e.stopPropagation();
+            const touch = e.touches[0];
+            setCursorStartX(touch.clientX);
             onKeyPress(" ");
             setLastCursorMove(Date.now());
-            // Start cursor move mode after 700ms (less sensitive)
+            // Start cursor move mode after 700ms
             setTimeout(() => {
               if (e.touches.length > 0) {
-                setCursorMoveMode("left");
+                setCursorMoveMode("left"); // Default, will update on move
               }
             }, 700);
           }}
           onTouchMove={(e) => {
             if (cursorMoveMode) {
               e.preventDefault();
+              e.stopPropagation();
               const now = Date.now();
-              // Throttle: only move every 100ms (less jumpy)
+              // Throttle: only move every 100ms
               if (now - lastCursorMove < 100) return;
 
               const touch = e.touches[0];
-              const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-              const centerX = rect.left + rect.width / 2;
-              const deltaX = touch.clientX - centerX;
+              const deltaX = touch.clientX - cursorStartX;
 
-              // Larger threshold for direction change (less sensitive)
-              const newMode = deltaX > 30 ? "right" : deltaX < -30 ? "left" : cursorMoveMode;
+              // Direction based on movement from start position
+              const newMode = deltaX > 20 ? "right" : deltaX < -20 ? "left" : cursorMoveMode;
+
               setCursorMoveMode(newMode);
-              onKeyPress(newMode === "left" ? SPECIAL_KEYS.LEFT : SPECIAL_KEYS.RIGHT);
+              onKeyPress(newMode === "right" ? SPECIAL_KEYS.RIGHT : SPECIAL_KEYS.LEFT);
               setLastCursorMove(now);
             }
           }}
-          onTouchEnd={stopLongPress}
+          onTouchEnd={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            stopLongPress();
+          }}
           onClick={(e) => {
             e.stopPropagation();
             if (!cursorMoveMode) {
@@ -631,9 +639,9 @@ export function TerminalToolbar({
               ? "bg-primary text-primary-foreground"
               : "bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground"
           )}
-          title="Tap: space | Hold: move cursor"
+          title="Tap: space | Hold: slide left/right to move cursor"
         >
-          {cursorMoveMode ? "◄►" : "⎵"}
+          {cursorMoveMode ? (cursorMoveMode === "left" ? "◄" : "►") : "⎵"}
         </button>
 
         {/* Rapid delete - long press for continuous deletion */}

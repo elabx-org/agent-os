@@ -59,6 +59,18 @@ export function createTerminal(
   term.loadAddon(new CanvasAddon());
   fitAddon.fit();
 
+  // Enable autocorrect/autocomplete on mobile for better typing experience
+  // Xterm creates a hidden textarea for keyboard input
+  setTimeout(() => {
+    const textarea = container.querySelector("textarea");
+    if (textarea && isMobile) {
+      textarea.setAttribute("autocorrect", "on");
+      textarea.setAttribute("autocomplete", "on");
+      textarea.setAttribute("autocapitalize", "sentences");
+      textarea.setAttribute("spellcheck", "true");
+    }
+  }, 100);
+
   // Helper to copy text to clipboard with fallback
   const copyToClipboard = (text: string) => {
     if (navigator.clipboard?.writeText) {
