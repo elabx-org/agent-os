@@ -545,30 +545,18 @@ export function TerminalToolbar({
           ↵
         </button>
 
-        {/* Special keys */}
-        {buttons.map((btn) => (
-          <button
-            type="button"
-            key={btn.label}
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={(e) => {
-              e.stopPropagation();
-              onKeyPress(btn.key);
-            }}
-            className={cn(
-              "flex-shrink-0 rounded-md px-2.5 py-1.5 text-xs font-medium",
-              "active:bg-primary active:text-primary-foreground",
-              btn.highlight
-                ? "bg-red-500/20 text-red-500"
-                : "bg-secondary text-secondary-foreground"
-            )}
-          >
-            {btn.label}
-          </button>
-        ))}
-
-        {/* Divider */}
-        <div className="bg-border mx-1 h-6 w-px" />
+        {/* Special keys - Esc first */}
+        <button
+          type="button"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={(e) => {
+            e.stopPropagation();
+            onKeyPress(SPECIAL_KEYS.ESC);
+          }}
+          className="bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground flex-shrink-0 rounded-md px-2.5 py-1.5 text-xs font-medium"
+        >
+          Esc
+        </button>
 
         {/* Newline button (for multi-line Claude input) */}
         <button
@@ -674,6 +662,31 @@ export function TerminalToolbar({
         >
           ⌫
         </button>
+
+        {/* Rest of special keys (excluding Esc which is first) */}
+        {buttons.slice(1).map((btn) => (
+          <button
+            type="button"
+            key={btn.label}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={(e) => {
+              e.stopPropagation();
+              onKeyPress(btn.key);
+            }}
+            className={cn(
+              "flex-shrink-0 rounded-md px-2.5 py-1.5 text-xs font-medium",
+              "active:bg-primary active:text-primary-foreground",
+              btn.highlight
+                ? "bg-red-500/20 text-red-500"
+                : "bg-secondary text-secondary-foreground"
+            )}
+          >
+            {btn.label}
+          </button>
+        ))}
+
+        {/* Divider */}
+        <div className="bg-border mx-1 h-6 w-px" />
 
         {/* Common shell characters */}
         {["~", "/", "|", ">"].map((char) => (
