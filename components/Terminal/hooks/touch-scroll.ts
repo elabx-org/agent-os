@@ -155,7 +155,7 @@ export function setupTouchScroll(config: TouchScrollConfig): () => void {
       const isAtTop = term.buffer.active.viewportY === 0;
       const isAtBottom = term.buffer.active.viewportY >= scrollableHeight;
 
-      const scrollingUp = moveDeltaY < 0; // negative deltaY = scrolling up
+      const scrollingUp = moveDeltaY > 0; // positive deltaY = finger moving down = scroll up
       const shouldCapture = canScroll && ((scrollingUp && !isAtTop) || (!scrollingUp && !isAtBottom));
 
       if (!shouldCapture) {
