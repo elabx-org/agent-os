@@ -16,6 +16,7 @@ import { ItemEditor } from "./ItemEditor";
 import { InstallFromGitHub } from "./InstallFromGitHub";
 import { ClaudeMdTab } from "./ClaudeMdTab";
 import { SkillStore } from "./SkillStore";
+import { PluginsTab } from "./PluginsTab";
 import { McpServersTab } from "./McpServersTab";
 import {
   type ConfigTab,
@@ -28,6 +29,7 @@ import {
 } from "./ClaudeConfigDialog.types";
 
 const TABS: { key: ConfigTab; label: string }[] = [
+  { key: "plugins", label: "Plugins" },
   { key: "store", label: "Store" },
   { key: "mcp-servers", label: "MCP Servers" },
   { key: "skills", label: "Skills" },
@@ -40,7 +42,7 @@ export function ClaudeConfigDialog({
   onClose,
   projectPath,
 }: ClaudeConfigDialogProps) {
-  const [activeTab, setActiveTab] = useState<ConfigTab>("store");
+  const [activeTab, setActiveTab] = useState<ConfigTab>("plugins");
   const [editingItem, setEditingItem] = useState<ExtensionItem | null>(null);
   const [showInstaller, setShowInstaller] = useState(false);
 
@@ -146,7 +148,7 @@ export function ClaudeConfigDialog({
   const handleClose = useCallback(() => {
     setEditingItem(null);
     setShowInstaller(false);
-    setActiveTab("store");
+    setActiveTab("plugins");
     onClose();
   }, [onClose]);
 
@@ -187,6 +189,9 @@ export function ClaudeConfigDialog({
             />
           ) : (
             <>
+              {/* Plugins tab */}
+              {activeTab === "plugins" && <PluginsTab />}
+
               {/* Store tab */}
               {activeTab === "store" && (
                 <SkillStore

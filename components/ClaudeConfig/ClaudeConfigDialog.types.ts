@@ -1,4 +1,4 @@
-export type ConfigTab = "store" | "mcp-servers" | "skills" | "agents" | "claude-md";
+export type ConfigTab = "plugins" | "store" | "mcp-servers" | "skills" | "agents" | "claude-md";
 export type ConfigScope = "global" | "project";
 
 export interface ExtensionItem {
