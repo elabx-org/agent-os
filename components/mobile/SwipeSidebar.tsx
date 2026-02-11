@@ -113,7 +113,7 @@ export function SwipeSidebar({ isOpen, onClose, children }: SwipeSidebarProps) {
         )}
       >
         {/* Content */}
-        <div className="flex-1 overflow-y-auto">{children}</div>
+        <div className="smooth-scroll flex-1 overflow-y-auto">{children}</div>
 
         {/* Safe area spacer */}
         <div className="h-[env(safe-area-inset-bottom)]" />

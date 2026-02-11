@@ -482,7 +482,7 @@ export function GitPanel({
           />
           <GitPanelTabs activeTab={activeTab} onTabChange={setActiveTab} stashCount={stashes.length} prNumber={existingPR?.number} />
 
-          <div className="flex-1 overflow-y-auto">
+          <div className="smooth-scroll flex-1 overflow-y-auto overscroll-contain">
             <div className="py-2">
               {/* Staged section */}
               {status.staged.length > 0 && (
@@ -777,7 +777,7 @@ function MobileGitPanel({
       />
       <GitPanelTabs activeTab={activeTab} onTabChange={onTabChange} stashCount={stashCount} prNumber={prNumber} />
 
-      <div className="flex-1 overflow-y-auto">
+      <div className="smooth-scroll flex-1 overflow-y-auto overscroll-contain">
         {!hasChanges ? (
           <div className="flex h-32 flex-col items-center justify-center gap-3">
             <p className="text-muted-foreground text-sm">No changes</p>

@@ -135,8 +135,6 @@ export function MobileTabBar({
     <div
       className="bg-muted flex items-center gap-2 px-2 py-1.5"
       onClick={(e) => e.stopPropagation()}
-      onTouchStart={(e) => e.stopPropagation()}
-      onTouchEnd={(e) => e.stopPropagation()}
     >
       {/* Menu button */}
       {onMenuClick && (
@@ -158,7 +156,6 @@ export function MobileTabBar({
         <button
           type="button"
           onClick={handlePrev}
-          onTouchEnd={(e) => e.stopPropagation()}
           disabled={!hasPrev || isNavigating}
           className="hover:bg-accent flex h-8 w-8 shrink-0 items-center justify-center rounded-md disabled:pointer-events-none disabled:opacity-50"
         >
@@ -229,7 +226,6 @@ export function MobileTabBar({
         <button
           type="button"
           onClick={handleNext}
-          onTouchEnd={(e) => e.stopPropagation()}
           disabled={!hasNext || isNavigating}
           className="hover:bg-accent flex h-8 w-8 shrink-0 items-center justify-center rounded-md disabled:pointer-events-none disabled:opacity-50"
         >

@@ -30,8 +30,8 @@ export function setupTouchScroll(config: TouchScrollConfig): () => void {
       return;
     }
 
-    // Apply touch-action to prevent browser handling
-    xtermScreen.style.touchAction = "none";
+    // Allow vertical scroll and pinch zoom, block horizontal scroll
+    xtermScreen.style.touchAction = "pan-y pinch-zoom";
     xtermScreen.style.userSelect = "none";
     (
       xtermScreen.style as CSSStyleDeclaration & { webkitUserSelect?: string }
@@ -40,7 +40,7 @@ export function setupTouchScroll(config: TouchScrollConfig): () => void {
     // Also apply to canvas children
     const canvases = xtermScreen.querySelectorAll("canvas");
     canvases.forEach((canvas) => {
-      (canvas as HTMLElement).style.touchAction = "none";
+      (canvas as HTMLElement).style.touchAction = "pan-y pinch-zoom";
     });
 
     // Touch state for scroll handling
@@ -146,11 +146,26 @@ export function setupTouchScroll(config: TouchScrollConfig): () => void {
       // Let parent handle horizontal swipes for session switching
       if (touchState.isHorizontal) return;
 
-      e.preventDefault();
-      e.stopPropagation();
-
       const now = Date.now();
       const moveDeltaY = touch.clientY - lastY;
+
+      // Only preventDefault if terminal has content to scroll and we're not at boundaries
+      const scrollableHeight = term.buffer.active.length - term.rows;
+      const canScroll = scrollableHeight > 0;
+      const isAtTop = term.buffer.active.viewportY === 0;
+      const isAtBottom = term.buffer.active.viewportY >= scrollableHeight;
+
+      const scrollingUp = moveDeltaY < 0; // negative deltaY = scrolling up
+      const shouldCapture = canScroll && ((scrollingUp && !isAtTop) || (!scrollingUp && !isAtBottom));
+
+      if (!shouldCapture) {
+        // At boundary or no content - let native scroll handle it (scroll parent container)
+        return;
+      }
+
+      // We're scrolling terminal content - prevent default
+      e.preventDefault();
+      e.stopPropagation();
       const timeDelta = now - touchState.lastMoveTime;
 
       // Track velocity for momentum

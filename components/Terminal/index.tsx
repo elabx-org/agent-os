@@ -396,10 +396,25 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
               )}
               onClick={focus}
               onTouchStart={
-                selectMode ? (e) => e.stopPropagation() : undefined
+                selectMode
+                  ? (e) => {
+                      // Only stop if touch is on actual selected text
+                      const selection = window.getSelection();
+                      if (selection && selection.toString().length > 0) {
+                        e.stopPropagation();
+                      }
+                    }
+                  : undefined
               }
               onTouchEnd={
-                selectMode ? (e) => e.stopPropagation() : undefined
+                selectMode
+                  ? (e) => {
+                      const selection = window.getSelection();
+                      if (selection && selection.toString().length > 0) {
+                        e.stopPropagation();
+                      }
+                    }
+                  : undefined
               }
             />
           </ContextMenuTrigger>

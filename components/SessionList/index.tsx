@@ -15,7 +15,6 @@ import { SessionListHeader } from "./SessionListHeader";
 import { GroupSection } from "./GroupSection";
 import { KillAllConfirm } from "./KillAllConfirm";
 import { useSessionListMutations } from "./hooks/useSessionListMutations";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { ProjectSectionSkeleton } from "@/components/ui/skeleton";
 import { Plus, FolderPlus, Loader2, AlertCircle } from "lucide-react";
@@ -181,7 +180,7 @@ export function SessionList({
       )}
 
       {/* Session list */}
-      <ScrollArea className="w-full flex-1">
+      <div className="smooth-scroll w-full flex-1 overflow-y-auto overscroll-contain">
         <div className="max-w-full space-y-0.5 px-1.5 py-1">
           {/* Loading state */}
           {isInitialLoading && <ProjectSectionSkeleton count={2} />}
@@ -288,7 +287,7 @@ export function SessionList({
               />
             )}
         </div>
-      </ScrollArea>
+      </div>
 
       {/* Session Preview Popover (desktop only) - temporarily disabled */}
       {/* {!isMobile && (
