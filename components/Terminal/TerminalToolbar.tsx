@@ -317,6 +317,7 @@ export function TerminalToolbar({
   const [copyFeedback, setCopyFeedback] = useState(false);
   const [longPressInterval, setLongPressInterval] = useState<NodeJS.Timeout | null>(null);
   const [cursorMoveMode, setCursorMoveMode] = useState<"left" | "right" | null>(null);
+  const [lastCursorMove, setLastCursorMove] = useState<number>(0);
 
   // Send text character-by-character to terminal
   const sendText = useCallback(
@@ -582,7 +583,7 @@ export function TerminalToolbar({
           ⇧↵
         </button>
 
-        {/* Space bar - long press for cursor movement */}
+        {/* Cursor movement - long press for iOS-style trackpad */}
         <button
           type="button"
           onMouseDown={(e) => e.preventDefault()}
@@ -590,24 +591,31 @@ export function TerminalToolbar({
             e.preventDefault();
             e.stopPropagation();
             onKeyPress(" ");
-            // Start cursor move mode after 500ms
+            setLastCursorMove(Date.now());
+            // Start cursor move mode after 700ms (less sensitive)
             setTimeout(() => {
               if (e.touches.length > 0) {
                 setCursorMoveMode("left");
               }
-            }, 500);
+            }, 700);
           }}
           onTouchMove={(e) => {
             if (cursorMoveMode) {
               e.preventDefault();
+              const now = Date.now();
+              // Throttle: only move every 100ms (less jumpy)
+              if (now - lastCursorMove < 100) return;
+
               const touch = e.touches[0];
-              const startX = (e.currentTarget as HTMLElement).getBoundingClientRect().left;
-              const deltaX = touch.clientX - startX;
-              const newMode = deltaX > 50 ? "right" : "left";
-              if (newMode !== cursorMoveMode) {
-                setCursorMoveMode(newMode);
-              }
+              const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+              const centerX = rect.left + rect.width / 2;
+              const deltaX = touch.clientX - centerX;
+
+              // Larger threshold for direction change (less sensitive)
+              const newMode = deltaX > 30 ? "right" : deltaX < -30 ? "left" : cursorMoveMode;
+              setCursorMoveMode(newMode);
               onKeyPress(newMode === "left" ? SPECIAL_KEYS.LEFT : SPECIAL_KEYS.RIGHT);
+              setLastCursorMove(now);
             }
           }}
           onTouchEnd={stopLongPress}
@@ -618,17 +626,17 @@ export function TerminalToolbar({
             }
           }}
           className={cn(
-            "flex-shrink-0 rounded-md px-4 py-1.5 text-xs font-medium",
+            "flex-shrink-0 rounded-md px-3 py-1.5 text-xs font-medium",
             cursorMoveMode
               ? "bg-primary text-primary-foreground"
               : "bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground"
           )}
-          title="Hold to move cursor"
+          title="Tap: space | Hold: move cursor"
         >
-          Space
+          {cursorMoveMode ? "◄►" : "⎵"}
         </button>
 
-        {/* Backspace - long press for rapid delete */}
+        {/* Rapid delete - long press for continuous deletion */}
         <button
           type="button"
           onMouseDown={(e) => e.preventDefault()}
@@ -636,10 +644,10 @@ export function TerminalToolbar({
             e.preventDefault();
             e.stopPropagation();
             onKeyPress("\x7f"); // Backspace
-            // Start rapid delete after 300ms
+            // Start rapid delete after 400ms (less accidental)
             const timeout = setTimeout(() => {
-              startLongPress("\x7f", 50);
-            }, 300);
+              startLongPress("\x7f", 80); // Slower: 80ms per delete (was 50ms)
+            }, 400);
             // Store timeout to clear on touch end
             (e.currentTarget as HTMLElement).dataset.timeout = String(timeout as unknown as number);
           }}
@@ -654,7 +662,7 @@ export function TerminalToolbar({
             onKeyPress("\x7f");
           }}
           className="bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground flex-shrink-0 rounded-md px-2.5 py-1.5 text-xs font-medium"
-          title="Hold for rapid delete"
+          title="Tap: delete | Hold: rapid delete"
         >
           ⌫
         </button>
