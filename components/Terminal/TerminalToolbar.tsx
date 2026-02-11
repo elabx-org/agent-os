@@ -315,6 +315,8 @@ export function TerminalToolbar({
   const [showSnippetsModal, setShowSnippetsModal] = useState(false);
   const [shiftActive, setShiftActive] = useState(false);
   const [copyFeedback, setCopyFeedback] = useState(false);
+  const [longPressInterval, setLongPressInterval] = useState<NodeJS.Timeout | null>(null);
+  const [cursorMoveMode, setCursorMoveMode] = useState<"left" | "right" | null>(null);
 
   // Send text character-by-character to terminal
   const sendText = useCallback(
@@ -354,11 +356,28 @@ export function TerminalToolbar({
     }
   }, [onCopy]);
 
+  // Long-press handlers
+  const startLongPress = useCallback((key: string, interval: number = 50) => {
+    if (longPressInterval) clearInterval(longPressInterval);
+    const id = setInterval(() => onKeyPress(key), interval);
+    setLongPressInterval(id);
+  }, [longPressInterval, onKeyPress]);
+
+  const stopLongPress = useCallback(() => {
+    if (longPressInterval) {
+      clearInterval(longPressInterval);
+      setLongPressInterval(null);
+    }
+    setCursorMoveMode(null);
+  }, [longPressInterval]);
+
   if (!visible) return null;
 
   const buttons = [
     { label: "Esc", key: SPECIAL_KEYS.ESC },
     { label: "^C", key: SPECIAL_KEYS.CTRL_C, highlight: true },
+    { label: "^L", key: SPECIAL_KEYS.CTRL_L }, // Clear screen
+    { label: "^Z", key: SPECIAL_KEYS.CTRL_Z }, // Suspend
     { label: "Tab", key: SPECIAL_KEYS.TAB },
     { label: "^D", key: SPECIAL_KEYS.CTRL_D },
     { label: "←", key: SPECIAL_KEYS.LEFT },
@@ -543,6 +562,116 @@ export function TerminalToolbar({
             )}
           >
             {btn.label}
+          </button>
+        ))}
+
+        {/* Divider */}
+        <div className="bg-border mx-1 h-6 w-px" />
+
+        {/* Newline button (for multi-line Claude input) */}
+        <button
+          type="button"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={(e) => {
+            e.stopPropagation();
+            onKeyPress("\n");
+          }}
+          className="bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground flex-shrink-0 rounded-md px-2.5 py-1.5 text-xs font-medium"
+          title="Newline (for multi-line input)"
+        >
+          ⇧↵
+        </button>
+
+        {/* Space bar - long press for cursor movement */}
+        <button
+          type="button"
+          onMouseDown={(e) => e.preventDefault()}
+          onTouchStart={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onKeyPress(" ");
+            // Start cursor move mode after 500ms
+            setTimeout(() => {
+              if (e.touches.length > 0) {
+                setCursorMoveMode("left");
+              }
+            }, 500);
+          }}
+          onTouchMove={(e) => {
+            if (cursorMoveMode) {
+              e.preventDefault();
+              const touch = e.touches[0];
+              const startX = (e.currentTarget as HTMLElement).getBoundingClientRect().left;
+              const deltaX = touch.clientX - startX;
+              const newMode = deltaX > 50 ? "right" : "left";
+              if (newMode !== cursorMoveMode) {
+                setCursorMoveMode(newMode);
+              }
+              onKeyPress(newMode === "left" ? SPECIAL_KEYS.LEFT : SPECIAL_KEYS.RIGHT);
+            }
+          }}
+          onTouchEnd={stopLongPress}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (!cursorMoveMode) {
+              onKeyPress(" ");
+            }
+          }}
+          className={cn(
+            "flex-shrink-0 rounded-md px-4 py-1.5 text-xs font-medium",
+            cursorMoveMode
+              ? "bg-primary text-primary-foreground"
+              : "bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground"
+          )}
+          title="Hold to move cursor"
+        >
+          Space
+        </button>
+
+        {/* Backspace - long press for rapid delete */}
+        <button
+          type="button"
+          onMouseDown={(e) => e.preventDefault()}
+          onTouchStart={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onKeyPress("\x7f"); // Backspace
+            // Start rapid delete after 300ms
+            const timeout = setTimeout(() => {
+              startLongPress("\x7f", 50);
+            }, 300);
+            // Store timeout to clear on touch end
+            (e.currentTarget as HTMLElement).dataset.timeout = String(timeout as unknown as number);
+          }}
+          onTouchEnd={(e) => {
+            e.preventDefault();
+            const timeout = (e.currentTarget as HTMLElement).dataset.timeout;
+            if (timeout) clearTimeout(Number(timeout));
+            stopLongPress();
+          }}
+          onClick={(e) => {
+            e.stopPropagation();
+            onKeyPress("\x7f");
+          }}
+          className="bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground flex-shrink-0 rounded-md px-2.5 py-1.5 text-xs font-medium"
+          title="Hold for rapid delete"
+        >
+          ⌫
+        </button>
+
+        {/* Common shell characters */}
+        {["~", "/", "|", ">"].map((char) => (
+          <button
+            type="button"
+            key={char}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={(e) => {
+              e.stopPropagation();
+              onKeyPress(char);
+            }}
+            className="bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground flex-shrink-0 rounded-md px-2.5 py-1.5 text-xs font-medium"
+          >
+            {char}
           </button>
         ))}
       </div>

@@ -26,6 +26,7 @@ import { cn } from "@/lib/utils";
 import { SearchBar } from "./SearchBar";
 import { ScrollToBottomButton } from "./ScrollToBottomButton";
 import { TerminalToolbar } from "./TerminalToolbar";
+import { KeybarToggleButton } from "./KeybarToggleButton";
 import { useTerminalConnection, useTerminalSearch } from "./hooks";
 import type { TerminalScrollState } from "./hooks";
 import { useViewport } from "@/hooks/useViewport";
@@ -79,6 +80,11 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
     const [selectMode, setSelectMode] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
     const [copiedFlash, setCopiedFlash] = useState(false);
+    const [toolbarVisible, setToolbarVisible] = useState(() => {
+      if (typeof window === "undefined") return true;
+      const stored = localStorage.getItem("terminalToolbarVisible");
+      return stored === null ? true : stored === "true";
+    });
 
     // Use the full theme string (e.g., "dark-purple") for terminal theming
     const terminalTheme = useMemo(() => {
@@ -530,6 +536,18 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
         {/* Scroll to bottom button */}
         <ScrollToBottomButton visible={!isAtBottom} onClick={scrollToBottom} />
 
+        {/* Mobile: Keyboard toggle button */}
+        {isMobile && (
+          <KeybarToggleButton
+            isVisible={toolbarVisible}
+            onToggle={() => {
+              const newValue = !toolbarVisible;
+              setToolbarVisible(newValue);
+              localStorage.setItem("terminalToolbarVisible", String(newValue));
+            }}
+          />
+        )}
+
         {/* Mobile: Toolbar with special keys (native keyboard handles text) */}
         {isMobile && (
           <TerminalToolbar
@@ -538,7 +556,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
             onCopy={copySelection}
             selectMode={selectMode}
             onSelectModeChange={setSelectMode}
-            visible={true}
+            visible={toolbarVisible}
           />
         )}
 
