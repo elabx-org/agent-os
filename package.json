@@ -1,6 +1,6 @@
 {
   "name": "@elabx-org/agent-os",
-  "version": "0.2.41",
+  "version": "0.2.42",
   "description": "Self-hosted web UI for managing Claude Code sessions",
   "bin": {
     "agent-os": "./scripts/agent-os"
