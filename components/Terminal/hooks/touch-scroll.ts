@@ -30,8 +30,8 @@ export function setupTouchScroll(config: TouchScrollConfig): () => void {
       return;
     }
 
-    // Allow vertical scroll and pinch zoom, block horizontal scroll
-    xtermScreen.style.touchAction = "pan-y pinch-zoom";
+    // Block native touch handling so our JS handlers can intercept and manually scroll
+    xtermScreen.style.touchAction = "none";
     xtermScreen.style.userSelect = "none";
     (
       xtermScreen.style as CSSStyleDeclaration & { webkitUserSelect?: string }
@@ -40,7 +40,7 @@ export function setupTouchScroll(config: TouchScrollConfig): () => void {
     // Also apply to canvas children
     const canvases = xtermScreen.querySelectorAll("canvas");
     canvases.forEach((canvas) => {
-      (canvas as HTMLElement).style.touchAction = "pan-y pinch-zoom";
+      (canvas as HTMLElement).style.touchAction = "none";
     });
 
     // Touch state for scroll handling
