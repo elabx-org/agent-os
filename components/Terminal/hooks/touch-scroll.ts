@@ -80,11 +80,21 @@ export function setupTouchScroll(config: TouchScrollConfig): () => void {
     // These are interpreted by tmux (with mouse mode on) to scroll the pane
     const sendWheelEvents = (lines: number) => {
       if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
-      const absLines = Math.abs(lines);
+
+      // Safety: cap at 20 lines per event to prevent flooding
+      const absLines = Math.min(Math.abs(lines), 20);
+      if (absLines === 0) return;
+
       // SGR mouse: \x1b[<65;col;rowM = scroll up, \x1b[<64;col;rowM = scroll down
       const event = lines < 0 ? "\x1b[<65;1;1M" : "\x1b[<64;1;1M";
-      for (let i = 0; i < absLines; i++) {
-        wsRef.current.send(JSON.stringify({ type: "input", data: event }));
+
+      try {
+        for (let i = 0; i < absLines; i++) {
+          wsRef.current.send(JSON.stringify({ type: "input", data: event }));
+        }
+      } catch (error) {
+        console.error("[TouchScroll] Failed to send wheel events:", error);
+        stopMomentum();
       }
     };
 
@@ -93,8 +103,21 @@ export function setupTouchScroll(config: TouchScrollConfig): () => void {
       let accumulator = 0;
       const friction = 0.95;
       const minVelocity = 0.3;
+      let tickCount = 0;
+      const maxTicks = 120; // Safety: max 2 seconds at 60fps
 
       const tick = () => {
+        // Safety checks
+        if (
+          selectModeRef.current ||
+          !wsRef.current ||
+          wsRef.current.readyState !== WebSocket.OPEN ||
+          tickCount++ > maxTicks
+        ) {
+          momentumRaf = null;
+          return;
+        }
+
         velocity *= friction;
         if (Math.abs(velocity) < minVelocity) {
           momentumRaf = null;
