@@ -412,7 +412,52 @@ export function GitPanel({
     );
   }
 
-  // Desktop layout: side-by-side (Changes tab)
+  // Desktop layout: Changes tab
+  // When no changes, use full-width layout (no split pane)
+  if (!hasChanges) {
+    return (
+      <div className="bg-background flex h-full w-full flex-col">
+        <Header
+          branch={status.branch}
+          ahead={status.ahead}
+          behind={status.behind}
+          hasChanges={false}
+          workingDirectory={primaryRepoPath}
+          onRefresh={handleRefresh}
+          refreshing={isRefetching}
+          syncInterval={syncInterval}
+          onSyncIntervalChange={handleSyncIntervalChange}
+          onSync={handleSync}
+          syncing={syncMutation.isPending}
+          onClose={onClose}
+        />
+        <GitPanelTabs activeTab={activeTab} onTabChange={setActiveTab} stashCount={stashes.length} prNumber={existingPR?.number} />
+        <div className="flex flex-1 flex-col items-center justify-center gap-3">
+          <p className="text-muted-foreground text-sm">No changes</p>
+          {status.branch !== "main" &&
+            status.branch !== "master" &&
+            !existingPR && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => createPRMutation.mutate()}
+                disabled={createPRMutation.isPending}
+                className="gap-1.5"
+              >
+                {createPRMutation.isPending ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <GitPullRequest className="h-3.5 w-3.5" />
+                )}
+                Create PR
+              </Button>
+            )}
+        </div>
+      </div>
+    );
+  }
+
+  // Desktop layout: side-by-side (Changes tab with files)
   return (
     <div
       ref={containerRef}
@@ -438,72 +483,48 @@ export function GitPanel({
           <GitPanelTabs activeTab={activeTab} onTabChange={setActiveTab} stashCount={stashes.length} prNumber={existingPR?.number} />
 
           <div className="flex-1 overflow-y-auto">
-            {!hasChanges ? (
-              <div className="flex h-32 flex-col items-center justify-center gap-3">
-                <p className="text-muted-foreground text-sm">No changes</p>
-                {status.branch !== "main" &&
-                  status.branch !== "master" &&
-                  !existingPR && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => createPRMutation.mutate()}
-                      disabled={createPRMutation.isPending}
-                      className="gap-1.5"
-                    >
-                      {createPRMutation.isPending ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <GitPullRequest className="h-3.5 w-3.5" />
-                      )}
-                      Create PR
-                    </Button>
-                  )}
-              </div>
-            ) : (
-              <div className="py-2">
-                {/* Staged section */}
-                {status.staged.length > 0 && (
-                  <FileChanges
-                    files={status.staged}
-                    title="Staged Changes"
-                    emptyMessage="No staged changes"
-                    selectedPath={selectedFile?.file.path}
-                    onFileClick={handleFileClick}
-                    onUnstage={handleUnstage}
-                    onUnstageAll={handleUnstageAll}
-                    isStaged={true}
-                  />
-                )}
+            <div className="py-2">
+              {/* Staged section */}
+              {status.staged.length > 0 && (
+                <FileChanges
+                  files={status.staged}
+                  title="Staged Changes"
+                  emptyMessage="No staged changes"
+                  selectedPath={selectedFile?.file.path}
+                  onFileClick={handleFileClick}
+                  onUnstage={handleUnstage}
+                  onUnstageAll={handleUnstageAll}
+                  isStaged={true}
+                />
+              )}
 
-                {/* Unstaged section */}
-                {status.unstaged.length > 0 && (
-                  <FileChanges
-                    files={status.unstaged}
-                    title="Changes"
-                    emptyMessage="No changes"
-                    selectedPath={selectedFile?.file.path}
-                    onFileClick={handleFileClick}
-                    onStage={handleStage}
-                    onStageAll={handleStageAll}
-                    isStaged={false}
-                  />
-                )}
+              {/* Unstaged section */}
+              {status.unstaged.length > 0 && (
+                <FileChanges
+                  files={status.unstaged}
+                  title="Changes"
+                  emptyMessage="No changes"
+                  selectedPath={selectedFile?.file.path}
+                  onFileClick={handleFileClick}
+                  onStage={handleStage}
+                  onStageAll={handleStageAll}
+                  isStaged={false}
+                />
+              )}
 
-                {/* Untracked section */}
-                {status.untracked.length > 0 && (
-                  <FileChanges
-                    files={status.untracked}
-                    title="Untracked Files"
-                    emptyMessage="No untracked files"
-                    selectedPath={selectedFile?.file.path}
-                    onFileClick={handleFileClick}
-                    onStage={handleStage}
-                    isStaged={false}
-                  />
-                )}
-              </div>
-            )}
+              {/* Untracked section */}
+              {status.untracked.length > 0 && (
+                <FileChanges
+                  files={status.untracked}
+                  title="Untracked Files"
+                  emptyMessage="No untracked files"
+                  selectedPath={selectedFile?.file.path}
+                  onFileClick={handleFileClick}
+                  onStage={handleStage}
+                  isStaged={false}
+                />
+              )}
+            </div>
           </div>
 
           {/* Commit form */}
