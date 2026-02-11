@@ -149,21 +149,8 @@ export function setupTouchScroll(config: TouchScrollConfig): () => void {
       const now = Date.now();
       const moveDeltaY = touch.clientY - lastY;
 
-      // Only preventDefault if terminal has content to scroll and we're not at boundaries
-      const scrollableHeight = term.buffer.active.length - term.rows;
-      const canScroll = scrollableHeight > 0;
-      const isAtTop = term.buffer.active.viewportY === 0;
-      const isAtBottom = term.buffer.active.viewportY >= scrollableHeight;
-
-      const scrollingUp = moveDeltaY > 0; // positive deltaY = finger moving down = scroll up
-      const shouldCapture = canScroll && ((scrollingUp && !isAtTop) || (!scrollingUp && !isAtBottom));
-
-      if (!shouldCapture) {
-        // At boundary or no content - let native scroll handle it (scroll parent container)
-        return;
-      }
-
-      // We're scrolling terminal content - prevent default
+      // Always capture vertical touches and send to tmux - let tmux handle scrollback
+      // (tmux's scrollback is in tmux buffer, not xterm buffer)
       e.preventDefault();
       e.stopPropagation();
       const timeDelta = now - touchState.lastMoveTime;
