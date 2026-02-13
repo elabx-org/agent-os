@@ -107,7 +107,12 @@ export function createWebSocketConnection(
         // Server sent us the session ID (and optional buffered output)
         sessionId = msg.sessionId;
         if (msg.buffered) {
-          // Write buffered output to terminal (replay what happened during disconnect)
+          // Clear existing terminal content before replaying buffer.
+          // The buffer contains raw escape sequences (tmux borders, cursor
+          // positioning) that assume a clean terminal state. Writing them
+          // on top of existing content produces garbled characters — especially
+          // visible after mobile browser minimize/restore cycles.
+          term.reset();
           term.write(msg.buffered);
         }
         return;

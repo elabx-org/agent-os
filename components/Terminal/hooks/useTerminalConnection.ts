@@ -185,6 +185,9 @@ export function useTerminalConnection({
             } catch {
               // Clipboard API not available or permission denied
             }
+            // Refocus terminal — right-click mousedown is stopped from
+            // reaching xterm, and the async clipboard read can steal focus
+            term.focus();
           },
           onCopyFallback: async () => {
             const text = await execViaWs("tmux save-buffer - 2>/dev/null");

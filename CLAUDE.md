@@ -37,7 +37,7 @@ Custom Node.js HTTP server that:
 SQLite via `better-sqlite3` in WAL mode. No ORM — raw SQL with a prepared statement cache.
 
 - **`schema.ts`** — DDL for base tables (sessions, messages, tool_calls, projects, dev_servers, project_dev_servers, project_repositories, groups)
-- **`migrations.ts`** — Incremental schema migrations (14 so far) that add columns/tables. Run automatically on startup.
+- **`migrations.ts`** — Incremental schema migrations (16 so far) that add columns/tables. Run automatically on startup.
 - **`queries.ts`** — Prepared statement factories, exported as `queries` object
 - **`types.ts`** — TypeScript interfaces for all DB row types
 - **`index.ts`** — DB initialization, exports `db` singleton

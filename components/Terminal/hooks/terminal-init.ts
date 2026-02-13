@@ -66,7 +66,7 @@ export function createTerminal(
     if (textarea && isMobile) {
       textarea.setAttribute("autocorrect", "on");
       textarea.setAttribute("autocomplete", "on");
-      textarea.setAttribute("autocapitalize", "sentences");
+      textarea.setAttribute("autocapitalize", "none");
       textarea.setAttribute("spellcheck", "true");
     }
   }, 100);
