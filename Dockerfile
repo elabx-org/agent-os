@@ -10,7 +10,7 @@ COPY package.json package-lock.json ./
 
 # Install all dependencies (tsx is a devDep but needed at runtime)
 # better-sqlite3 and node-pty need native build tools (available in bookworm)
-RUN npm ci
+RUN npm ci --legacy-peer-deps
 
 # Copy application source
 COPY . .
