@@ -71,9 +71,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Install Claude Code CLI globally
 RUN npm install -g @anthropic-ai/claude-code
 
-# Create user and directories matching server.ts container defaults
-RUN groupadd -g 1000 abc \
-    && useradd -u 1000 -g abc -d /config -s /bin/bash abc \
+# Repurpose the existing node user (uid 1000) as abc with HOME=/config
+RUN usermod -l abc -d /config -s /bin/bash node \
+    && groupmod -n abc node \
     && mkdir -p /config /config/.npm-global /config/.local/bin /config/.agent-os /workspace \
     && chown -R abc:abc /config /workspace
 
