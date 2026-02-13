@@ -50,6 +50,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         parent.group_path || "sessions",
         agentType,
         parent.auto_approve ? 1 : 0,
+        0,
         parent.project_id || "uncategorized"
       );
 

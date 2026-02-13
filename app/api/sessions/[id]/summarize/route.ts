@@ -274,6 +274,7 @@ export async function POST(
         session.group_path,
         agentType,
         session.auto_approve ? 1 : 0,
+        0,
         session.project_id || "uncategorized"
       );
 
