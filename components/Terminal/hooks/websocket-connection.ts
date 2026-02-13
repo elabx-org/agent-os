@@ -112,7 +112,13 @@ export function createWebSocketConnection(
           // positioning) that assume a clean terminal state. Writing them
           // on top of existing content produces garbled characters — especially
           // visible after mobile browser minimize/restore cycles.
-          term.reset();
+          //
+          // Use clear() + ANSI erase instead of reset() — reset() clears
+          // xterm's DA-response flags, causing it to re-answer Device Attributes
+          // queries in the replayed buffer, which produces visible garbage
+          // like [?1;2c and [>0;276;0c.
+          term.clear();
+          term.write("\x1b[2J\x1b[H");
           term.write(msg.buffered);
         }
         return;
