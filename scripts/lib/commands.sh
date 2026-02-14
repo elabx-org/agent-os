@@ -4,24 +4,29 @@
 # Sync source directory to target, excluding build artifacts/db/git/node_modules
 sync_source() {
     local src="$1" dst="$2"
+    # Resolve to absolute paths to avoid issues with cd
+    src="$(cd "$src" && pwd)"
+    dst="$(cd "$dst" && pwd)"
     if command -v rsync &> /dev/null; then
         rsync -a --delete \
             --exclude='.git' --exclude='node_modules' --exclude='.next' \
             --exclude='*.db*' --exclude='.npmrc' \
             "$src/" "$dst/"
     else
-        # Fallback: clean and copy
+        # Fallback: clean destination then copy from source (in subshell to preserve cwd)
         find "$dst" -mindepth 1 -maxdepth 1 \
             ! -name '.git' ! -name 'node_modules' ! -name '.next' \
-            ! -name '*.db' ! -name '*.db-journal' ! -name '*.db-wal' \
+            ! -name '*.db' ! -name '*.db-journal' ! -name '*.db-wal' ! -name '*.db-shm' \
             ! -name '.npmrc' \
             -exec rm -rf {} +
-        cd "$src"
-        find . -mindepth 1 -maxdepth 1 \
-            ! -name '.git' ! -name 'node_modules' ! -name '.next' \
-            ! -name '*.db' ! -name '*.db-journal' ! -name '*.db-wal' \
-            ! -name '.npmrc' \
-            -exec cp -a {} "$dst/" \;
+        (
+            cd "$src" || exit 1
+            find . -mindepth 1 -maxdepth 1 \
+                ! -name '.git' ! -name 'node_modules' ! -name '.next' \
+                ! -name '*.db' ! -name '*.db-journal' ! -name '*.db-wal' ! -name '*.db-shm' \
+                ! -name '.npmrc' \
+                -exec cp -a {} "$dst/" \;
+        )
     fi
 }
 
