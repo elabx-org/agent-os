@@ -76,6 +76,12 @@ export function useTerminalConnection({
     }
   }, []);
 
+  const sendPaste = useCallback((data: string) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: "paste", data }));
+    }
+  }, []);
+
   const sendCommand = useCallback((command: string) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ type: "command", data: command }));
@@ -180,7 +186,7 @@ export function useTerminalConnection({
             try {
               const text = await navigator.clipboard?.readText?.();
               if (text && wsRef.current?.readyState === WebSocket.OPEN) {
-                wsRef.current.send(JSON.stringify({ type: "input", data: text }));
+                wsRef.current.send(JSON.stringify({ type: "paste", data: text }));
               }
             } catch {
               // Clipboard API not available or permission denied
@@ -334,6 +340,7 @@ export function useTerminalConnection({
     scrollToBottom,
     copySelection,
     sendInput,
+    sendPaste,
     sendCommand,
     execViaWs,
     focus,

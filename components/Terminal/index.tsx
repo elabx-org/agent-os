@@ -47,6 +47,7 @@ export type { TerminalScrollState };
 export interface TerminalHandle {
   sendCommand: (command: string) => void;
   sendInput: (data: string) => void;
+  sendPaste: (data: string) => void;
   focus: () => void;
   getScrollState: () => TerminalScrollState | null;
   restoreScrollState: (state: TerminalScrollState) => void;
@@ -103,6 +104,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
       scrollToBottom,
       copySelection,
       sendInput,
+      sendPaste,
       sendCommand,
       execViaWs,
       focus,
@@ -170,6 +172,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
     useImperativeHandle(ref, () => ({
       sendCommand,
       sendInput,
+      sendPaste,
       focus,
       getScrollState,
       restoreScrollState,
@@ -225,12 +228,12 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
       try {
         const text = await navigator.clipboard?.readText?.();
         if (text) {
-          sendInput(text);
+          sendPaste(text);
         }
       } catch {
         // Clipboard API not available in non-secure contexts — user can paste via Cmd+V
       }
-    }, [sendInput]);
+    }, [sendPaste]);
 
     const handleContextSelectAll = useCallback(() => {
       xtermRef.current?.selectAll();
@@ -552,6 +555,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
         {isMobile && (
           <TerminalToolbar
             onKeyPress={sendInput}
+            onPaste={sendPaste}
             onImagePicker={() => setShowImagePicker(true)}
             onCopy={copySelection}
             selectMode={selectMode}

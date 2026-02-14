@@ -33,6 +33,7 @@ const SPECIAL_KEYS = {
 
 interface TerminalToolbarProps {
   onKeyPress: (key: string) => void;
+  onPaste?: (text: string) => void;
   onImagePicker?: () => void;
   onCopy?: () => boolean; // Returns true if selection was copied
   selectMode?: boolean;
@@ -305,6 +306,7 @@ function PasteModal({
 
 export function TerminalToolbar({
   onKeyPress,
+  onPaste,
   onImagePicker,
   onCopy,
   selectMode = false,
@@ -341,14 +343,19 @@ export function TerminalToolbar({
     try {
       const text = await navigator.clipboard?.readText?.();
       if (text) {
-        sendText(text);
+        // Use bracketed paste when available, fall back to char-by-char
+        if (onPaste) {
+          onPaste(text);
+        } else {
+          sendText(text);
+        }
         return;
       }
     } catch {
       // Clipboard API failed or unavailable
     }
     setShowPasteModal(true);
-  }, [sendText]);
+  }, [sendText, onPaste]);
 
   // Handle copy with visual feedback
   const handleCopy = useCallback(() => {
@@ -393,12 +400,12 @@ export function TerminalToolbar({
       <PasteModal
         open={showPasteModal}
         onClose={() => setShowPasteModal(false)}
-        onPaste={sendText}
+        onPaste={onPaste || sendText}
       />
       <SnippetsModal
         open={showSnippetsModal}
         onClose={() => setShowSnippetsModal(false)}
-        onInsert={sendText}
+        onInsert={onPaste || sendText}
       />
       <div
         className="bg-background/95 border-border scrollbar-none flex items-center gap-1 overflow-x-auto border-t px-2 py-1.5 backdrop-blur"

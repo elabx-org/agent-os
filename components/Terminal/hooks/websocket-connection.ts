@@ -15,6 +15,7 @@ export interface WebSocketCallbacks {
 export interface WebSocketManager {
   ws: WebSocket;
   sendInput: (data: string) => void;
+  sendPaste: (data: string) => void;
   sendCommand: (command: string) => void;
   sendResize: (cols: number, rows: number) => void;
   reconnect: () => void;
@@ -71,6 +72,12 @@ export function createWebSocketConnection(
   const sendInput = (data: string) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ type: "input", data }));
+    }
+  };
+
+  const sendPaste = (data: string) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: "paste", data }));
     }
   };
 
@@ -224,9 +231,16 @@ export function createWebSocketConnection(
   ws.onclose = handleClose;
   ws.onerror = handleError;
 
-  // Handle terminal input
+  // Handle terminal input — detect paste vs keyboard heuristically
   term.onData((data) => {
-    sendInput(data);
+    // Multi-char data that isn't a short escape sequence is likely a paste event
+    // (browser-native paste that bypasses our Cmd+V/right-click interceptors)
+    const isLikelyEscapeSeq = data.startsWith('\x1b') && data.length <= 8;
+    if (data.length > 1 && !isLikelyEscapeSeq) {
+      sendPaste(data);
+    } else {
+      sendInput(data);
+    }
   });
 
   // Handle Shift+Enter for multi-line input
@@ -294,6 +308,7 @@ export function createWebSocketConnection(
   return {
     ws,
     sendInput,
+    sendPaste,
     sendCommand,
     sendResize,
     reconnect: forceReconnect,

@@ -194,6 +194,7 @@ export const Pane = memo(function Pane({
   // Tmux setup commands shared across all attach points
   const tmuxSetup = [
     `tmux set-option -g mouse on`,
+    `tmux set-option -sg escape-time 10`,
     // Scroll 5 lines per wheel event instead of 1 for smoother scrolling
     `tmux bind-key -T copy-mode WheelUpPane send-keys -X -N 5 scroll-up`,
     `tmux bind-key -T copy-mode WheelDownPane send-keys -X -N 5 scroll-down`,

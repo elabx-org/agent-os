@@ -41,6 +41,8 @@ async function fetchUsage(apiKey: string): Promise<CodingPlanResponse> {
     headers: {
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
+      Accept: "application/json",
+      "User-Agent": "AgentOS/1.0",
     },
   });
 

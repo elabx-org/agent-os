@@ -114,6 +114,11 @@ function attachSession(session: PtySession, ws: WebSocket): void {
         case "input":
           session.pty.write(msg.data);
           break;
+        case "paste":
+          // Wrap in bracketed paste markers so tmux/readline/apps
+          // know this is pasted text and don't interpret escape chars
+          session.pty.write(`\x1b[200~${msg.data}\x1b[201~`);
+          break;
         case "resize":
           session.pty.resize(msg.cols, msg.rows);
           break;

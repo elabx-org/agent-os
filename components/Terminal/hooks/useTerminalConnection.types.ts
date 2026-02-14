@@ -30,6 +30,7 @@ export interface UseTerminalConnectionReturn {
   scrollToBottom: () => void;
   copySelection: () => boolean;
   sendInput: (data: string) => void;
+  sendPaste: (data: string) => void;
   sendCommand: (command: string) => void;
   execViaWs: (command: string) => Promise<string>;
   focus: () => void;
