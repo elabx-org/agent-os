@@ -19,11 +19,9 @@ import { cn } from "@/lib/utils";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import {
   type ToolbarButtonId,
-  type ToolbarPreferences,
   SPECIAL_KEYS,
   getButtonDef,
-  getToolbarPreferences,
-  saveToolbarPreferences,
+  useToolbarPreferences,
 } from "./toolbar-config";
 import { ToolbarSettings } from "./ToolbarSettings";
 
@@ -648,9 +646,7 @@ export function TerminalToolbar({
   const [showSettings, setShowSettings] = useState(false);
   const [shiftActive, setShiftActive] = useState(false);
   const [copyFeedback, setCopyFeedback] = useState(false);
-  const [preferences, setPreferences] = useState<ToolbarPreferences>(() =>
-    getToolbarPreferences()
-  );
+  const { preferences, updatePreferences: persistPreferences } = useToolbarPreferences();
 
   // Send text character-by-character to terminal
   const sendText = useCallback(
@@ -694,14 +690,13 @@ export function TerminalToolbar({
     }
   }, [onCopy]);
 
-  // Update preferences and persist
+  // Update preferences and persist to DB
   const updatePreferences = useCallback(
-    (next: ToolbarPreferences) => {
-      setPreferences(next);
-      saveToolbarPreferences(next);
+    (next: typeof preferences) => {
+      persistPreferences(next);
       onLayoutChange?.(next.layout);
     },
-    [onLayoutChange]
+    [persistPreferences, onLayoutChange]
   );
 
   // Resolve visible buttons for each row, filtering out conditional buttons

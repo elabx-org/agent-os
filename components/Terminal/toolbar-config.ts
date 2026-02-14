@@ -1,5 +1,8 @@
 // Button registry, preferences, and persistence for the customizable mobile toolbar
 
+import { useState, useCallback, useEffect } from "react";
+import { usePreference, useUpdatePreference } from "@/data/preferences";
+
 export type ToolbarButtonId =
   // tools
   | "mic"
@@ -109,7 +112,7 @@ export interface ToolbarPreferences {
   hidden: ToolbarButtonId[];
 }
 
-const STORAGE_KEY = "terminal-toolbar-preferences";
+const PREFERENCES_DB_KEY = "toolbar-preferences";
 
 // Default order matches current hardcoded toolbar exactly
 const DEFAULT_ROW1: ToolbarButtonId[] = [
@@ -147,25 +150,38 @@ function migratePreferences(prefs: ToolbarPreferences): ToolbarPreferences {
   return prefs;
 }
 
-export function getToolbarPreferences(): ToolbarPreferences {
-  if (typeof window === "undefined") return DEFAULT_PREFERENCES;
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (!stored) return DEFAULT_PREFERENCES;
-    const parsed = JSON.parse(stored) as ToolbarPreferences;
-    return migratePreferences(parsed);
-  } catch {
-    return DEFAULT_PREFERENCES;
-  }
-}
+/**
+ * Hook to load and persist toolbar preferences via the database.
+ * Returns DEFAULT_PREFERENCES instantly while the DB fetch is in-flight.
+ */
+export function useToolbarPreferences() {
+  const { data: dbPrefs, isLoading } = usePreference<ToolbarPreferences>(
+    PREFERENCES_DB_KEY,
+    DEFAULT_PREFERENCES
+  );
+  const updateMutation = useUpdatePreference();
 
-export function saveToolbarPreferences(prefs: ToolbarPreferences): void {
-  if (typeof window === "undefined") return;
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(prefs));
-  } catch {
-    // localStorage might be full or unavailable
-  }
+  // Local state for instant UI feedback — initialized from defaults,
+  // then synced once DB data arrives
+  const [preferences, setPreferences] = useState<ToolbarPreferences>(DEFAULT_PREFERENCES);
+  const [synced, setSynced] = useState(false);
+
+  useEffect(() => {
+    if (!isLoading && dbPrefs && !synced) {
+      setPreferences(migratePreferences(dbPrefs));
+      setSynced(true);
+    }
+  }, [dbPrefs, isLoading, synced]);
+
+  const updatePreferences = useCallback(
+    (next: ToolbarPreferences) => {
+      setPreferences(next);
+      updateMutation.mutate({ key: PREFERENCES_DB_KEY, value: next });
+    },
+    [updateMutation]
+  );
+
+  return { preferences, updatePreferences, isLoading: isLoading && !synced };
 }
 
 // --- Presets ---

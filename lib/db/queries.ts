@@ -428,4 +428,15 @@ export const queries = {
 
   getStoreItem: (db: Database.Database) =>
     getStmt(db, `SELECT * FROM store_items WHERE id = ?`),
+
+  // Preferences
+  getPreference: (db: Database.Database) =>
+    getStmt(db, `SELECT value FROM preferences WHERE key = ?`),
+
+  upsertPreference: (db: Database.Database) =>
+    getStmt(
+      db,
+      `INSERT INTO preferences (key, value) VALUES (?, ?)
+       ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=datetime('now')`
+    ),
 };
