@@ -204,19 +204,30 @@ export const opencodeProvider: AgentProvider = {
   command: "opencode",
   configDir: "~/.opencode.json",
 
-  supportsResume: false, // OpenCode manages sessions internally via SQLite
-  supportsFork: false,
+  supportsResume: true,
+  supportsFork: true,
 
   buildFlags(options: BuildFlagsOptions): string[] {
     const def = getProviderDefinition("opencode");
     const flags: string[] = [];
 
-    // OpenCode uses --prompt for non-interactive, but we want interactive mode
-    // So we typically don't add flags for interactive use
+    if (
+      (options.skipPermissions || options.autoApprove) &&
+      def.autoApproveFlag
+    ) {
+      flags.push(def.autoApproveFlag);
+    }
 
-    if (options.skipPermissions) {
-      // OpenCode doesn't have a skip permissions flag
-      // It manages this via config
+    // Resume/fork/continue
+    if (options.sessionId && def.resumeFlag) {
+      flags.push(def.resumeFlag);
+      flags.push(options.sessionId);
+    } else if (options.parentSessionId && def.resumeFlag) {
+      flags.push(def.resumeFlag);
+      flags.push(options.parentSessionId);
+      flags.push("--fork");
+    } else if (options.continueSession && def.continueFlag) {
+      flags.push(def.continueFlag);
     }
 
     // Initial prompt (uses --prompt flag)
@@ -411,6 +422,69 @@ export const cursorProvider: AgentProvider = {
 };
 
 /**
+ * Cline Provider
+ * Cline AI coding agent in the terminal
+ */
+export const clineProvider: AgentProvider = {
+  id: "cline",
+  name: "Cline",
+  description: "Cline AI coding agent",
+  command: "cline",
+  configDir: "~/.cline",
+
+  supportsResume: false,
+  supportsFork: false,
+
+  buildFlags(options: BuildFlagsOptions): string[] {
+    const def = getProviderDefinition("cline");
+    const flags: string[] = [];
+
+    // Auto-approve flag from registry (-y / --yolo)
+    if (
+      (options.skipPermissions || options.autoApprove) &&
+      def.autoApproveFlag
+    ) {
+      flags.push(def.autoApproveFlag);
+    }
+
+    if (options.model && def.modelFlag) {
+      flags.push(`${def.modelFlag} ${options.model}`);
+    }
+
+    // Initial prompt (positional argument for Cline)
+    if (options.initialPrompt?.trim() && def.initialPromptFlag !== undefined) {
+      const prompt = options.initialPrompt.trim();
+      const escapedPrompt = prompt.replace(/'/g, "'\\''");
+      flags.push(`'${escapedPrompt}'`);
+    }
+
+    return flags;
+  },
+
+  waitingPatterns: [
+    /\[Y\/n\]/i,
+    /\[y\/N\]/i,
+    /approve/i,
+    /confirm/i,
+    /Press Enter/i,
+    /\(yes\/no\)/i,
+    /Do you want to/i,
+  ],
+
+  runningPatterns: [
+    /thinking/i,
+    /processing/i,
+    /working/i,
+    /writing/i,
+    /reading/i,
+    /executing/i,
+    SPINNER_CHARS,
+  ],
+
+  idlePatterns: [/^>\s*$/m, /cline.*>\s*$/im, /\$\s*$/m],
+};
+
+/**
  * Minimax Provider
  * Minimax CLI (via claude-minimax alias) - supports same flags as Claude Code
  */
@@ -524,6 +598,7 @@ export const providers: Record<AgentType, AgentProvider> = {
   gemini: geminiProvider,
   aider: aiderProvider,
   cursor: cursorProvider,
+  cline: clineProvider,
   minimax: minimaxProvider,
   shell: shellProvider,
 };

@@ -10,6 +10,7 @@ detect_ai_clis() {
     command -v gemini &> /dev/null && installed+=("gemini")
     command -v aider &> /dev/null && installed+=("aider")
     command -v cursor &> /dev/null && installed+=("cursor")
+    command -v cline &> /dev/null && installed+=("cline")
 
     echo "${installed[*]}"
 }
@@ -82,6 +83,28 @@ install_gemini_cli() {
     gemini auth login 2>/dev/null || true
 }
 
+install_cline() {
+    if command -v cline &> /dev/null; then
+        log_success "Cline already installed"
+        return 0
+    fi
+
+    log_info "Installing Cline..."
+    npm install -g cline
+}
+
+install_opencode() {
+    if command -v opencode &> /dev/null; then
+        log_success "OpenCode already installed"
+        return 0
+    fi
+
+    log_info "Installing OpenCode..."
+    curl -fsSL https://opencode.ai/install | bash
+
+    log_info "Configure OpenCode by editing ~/.opencode.json"
+}
+
 prompt_ai_cli_install() {
     local installed
     installed=$(detect_ai_clis)
@@ -100,7 +123,9 @@ prompt_ai_cli_install() {
     echo "  2) Codex (OpenAI)"
     echo "  3) Aider (Multi-LLM)"
     echo "  4) Gemini CLI (Google)"
-    echo "  5) Skip - I'll install one myself"
+    echo "  5) Cline (AI coding agent)"
+    echo "  6) OpenCode (Multi-provider)"
+    echo "  7) Skip - I'll install one myself"
     echo ""
 
     if ! is_interactive; then
@@ -109,7 +134,7 @@ prompt_ai_cli_install() {
         return
     fi
 
-    read -p "Which would you like to install? [1-5, default: 1] " -r choice
+    read -p "Which would you like to install? [1-7, default: 1] " -r choice
     echo ""
 
     case "${choice:-1}" in
@@ -117,7 +142,9 @@ prompt_ai_cli_install() {
         2) install_codex ;;
         3) install_aider ;;
         4) install_gemini_cli ;;
-        5)
+        5) install_cline ;;
+        6) install_opencode ;;
+        7)
             log_info "Skipping AI CLI installation"
             echo ""
             echo "Install one of these before using AgentOS:"
@@ -125,6 +152,8 @@ prompt_ai_cli_install() {
             echo "  Codex:       npm install -g @openai/codex"
             echo "  Aider:       pip install aider-chat"
             echo "  Gemini:      npm install -g gemini-cli"
+            echo "  Cline:       npm install -g cline"
+            echo "  OpenCode:    curl -fsSL https://opencode.ai/install | bash"
             echo ""
             ;;
         *) log_warn "Invalid choice, skipping" ;;

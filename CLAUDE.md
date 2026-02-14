@@ -28,7 +28,9 @@ agent-os restart          # Restart server
 agent-os run              # Start and open browser
 agent-os status           # Show server status and URLs
 agent-os logs             # Tail server logs
-agent-os update           # Update to latest version
+agent-os update           # Pull latest from git and rebuild
+agent-os deploy           # Deploy from local dev repo (rsync + build + restart)
+agent-os deploy --publish # Deploy + publish to GitHub Packages registry
 agent-os start-foreground # Start in foreground (for debugging)
 ```
 
@@ -104,15 +106,38 @@ Conductor/worker model: a conductor session spawns isolated workers via MCP tool
 
 Abstraction over AI CLIs (Claude Code, Codex, OpenCode, Gemini CLI, Aider, Cursor CLI, plain Shell). Central registry in `registry.ts` defines each provider's CLI command, config directory, auto-approve flag, resume/fork/model support, and status detection patterns (waiting/running/idle). Each provider knows how to construct the CLI command, handle resume/fork, and parse output.
 
-| Agent       | Resume | Fork | Auto-Approve Flag                     |
-| ----------- | ------ | ---- | ------------------------------------ |
-| Claude Code | ✅     | ✅   | `--dangerously-skip-permissions`      |
-| Minimax     | ✅     | ✅   | `--dangerously-skip-permissions`      |
-| Codex       | ❌     | ❌   | `--approval-mode full-auto`           |
-| OpenCode    | ❌     | ❌   | Config file                           |
-| Gemini CLI  | ❌     | ❌   | `--yolomode`                         |
-| Aider       | ❌     | ❌   | `--yes`                               |
-| Cursor CLI  | ❌     | ❌   | N/A                                   |
+| Agent       | Resume | Fork | Auto-Approve Flag                     | Install Command |
+| ----------- | ------ | ---- | ------------------------------------- | --------------- |
+| Claude Code | ✅     | ✅   | `--dangerously-skip-permissions`      | `npm i -g @anthropic-ai/claude-code` |
+| Minimax     | ✅     | ✅   | `--dangerously-skip-permissions`      | (manual alias) |
+| Codex       | ❌     | ❌   | `--approval-mode full-auto`           | `npm i -g @openai/codex` |
+| OpenCode    | ✅     | ✅   | `--dangerously-skip-permissions`      | `curl -fsSL https://opencode.ai/install \| bash` |
+| Gemini CLI  | ❌     | ❌   | `--yolomode`                         | `npm i -g @google/gemini-cli` |
+| Aider       | ❌     | ❌   | `--yes`                               | `pipx install aider-chat` |
+| Cursor CLI  | ❌     | ❌   | N/A                                   | (manual) |
+| Cline       | ❌     | ❌   | `-y`                                  | `npm i -g cline` |
+
+The UI shows which CLIs are installed at runtime via `GET /api/cli-status` and offers one-click installation via `POST /api/cli-install` using each provider's `installCommand` from the registry.
+
+### Adding a New Provider
+
+1. **Registry** (`lib/providers/registry.ts`):
+   - Add the provider ID string to `PROVIDER_IDS` array
+   - Add a `ProviderDefinition` entry to `PROVIDERS` with: `cli` (binary name), `configDir`, `autoApproveFlag`, `supportsResume`/`supportsFork`, `resumeFlag`/`continueFlag`, `modelFlag`, `initialPromptFlag` (`""` = positional, string = flag, `undefined` = no support), `installCommand`
+
+2. **Provider logic** (`lib/providers.ts`):
+   - Create an `AgentProvider` object with `buildFlags(options)` that constructs CLI arguments, plus `waitingPatterns`/`runningPatterns`/`idlePatterns` regex arrays for status detection
+   - Add it to the `providers` record (keyed by provider ID)
+
+3. **UI dropdown** (`components/NewSessionDialog/NewSessionDialog.types.ts`):
+   - Add `{ value, label, description }` entry to `AGENT_OPTIONS` array
+
+4. **Install script** (`scripts/lib/ai-clis.sh`):
+   - Add `command -v <cli>` check in `detect_ai_clis()`
+   - Add `install_<name>()` function
+   - Add menu entry in `prompt_ai_cli_install()`
+
+5. **Documentation**: Update the provider table above
 
 ### Store Sync (`lib/store-sync.ts`)
 
@@ -120,7 +145,7 @@ Background sync of skills/agents from GitHub repositories every 30 minutes. Thre
 
 ### WebSocket Protocol (`/ws/terminal`)
 
-Client → Server message types: `input` (PTY input), `resize` (terminal dimensions), `command` (input + `\r`), `exec` (run command outside PTY, returns `exec-result`). Server → Client: `output` (PTY data), `exit` (PTY exited), `error`, `exec-result`. Client auto-reconnects with exponential backoff; visibility-based forced reconnect handles mobile Safari socket death.
+Client → Server message types: `input` (PTY input), `paste` (clipboard paste, wrapped in bracketed paste markers), `resize` (terminal dimensions), `command` (input + `\r`), `exec` (run command outside PTY, returns `exec-result`). Server → Client: `output` (PTY data), `exit` (PTY exited), `error`, `exec-result`. Client auto-reconnects with exponential backoff; visibility-based forced reconnect handles mobile Safari socket death.
 
 ## Fork-Specific Changes
 
@@ -135,6 +160,7 @@ Client → Server message types: `input` (PTY input), `resize` (terminal dimensi
 - **`components/Projects/ProjectCard.tsx`**, **`components/SessionCard.tsx`** — `onSelect` instead of `onClick` on Radix MenuItems (mobile fix), rename focus fix
 - **`app/api/sessions/[id]/fork/route.ts`**, **`app/api/sessions/[id]/summarize/route.ts`** — Added missing `continue_session` parameter to `createSession` calls
 - **`components/Terminal/hooks/websocket-connection.ts`** — Fixed garbled terminal output on WebSocket reconnect (replaced `term.reset()` with clear sequence to avoid visible escape codes)
+- **Terminal paste** — Fixed paste corruption by adding bracketed paste mode (`\x1b[200~...\x1b[201~`) via dedicated `paste` WebSocket message type, and setting tmux `escape-time 10`
 
 ## Development Workflow
 
@@ -145,10 +171,11 @@ Client → Server message types: `input` (PTY input), `resize` (terminal dimensi
 4. docker-code-server picks up the new version on next startup
 
 ### Deploying to Running Instance
-The running agent-os server lives at `/config/.agent-os/repo/`. To deploy changes without publishing:
+The running agent-os server lives at `/config/.agent-os/repo/`. Use the CLI:
 ```bash
-cd /config/.agent-os/repo && git pull && npm install && npm run build
-# Then restart the server process
+agent-os deploy           # Rsync from dev repo → production, build, restart
+agent-os deploy --publish # Same + publish to GitHub Packages first
+agent-os update           # Pull from git remote + rebuild (auto-stashes dirty state)
 ```
 
 ### Merging Upstream

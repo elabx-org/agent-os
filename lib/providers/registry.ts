@@ -11,6 +11,7 @@ export const PROVIDER_IDS = [
   "gemini",
   "aider",
   "cursor",
+  "cline",
   "minimax",
   "shell",
 ] as const;
@@ -46,6 +47,9 @@ export interface ProviderDefinition {
   // undefined = no support, '' = positional arg, string = flag (e.g., '--prompt')
   initialPromptFlag?: string;
 
+  // Installation
+  installCommand?: string; // Shell command to install this CLI
+
   // Default arguments
   defaultArgs?: string[]; // Always passed to CLI
 }
@@ -68,6 +72,7 @@ export const PROVIDERS: ProviderDefinition[] = [
     continueFlag: "--continue",
     modelFlag: undefined, // Claude doesn't expose model flag
     initialPromptFlag: "", // Positional argument
+    installCommand: "npm install -g @anthropic-ai/claude-code",
   },
   {
     id: "codex",
@@ -80,6 +85,7 @@ export const PROVIDERS: ProviderDefinition[] = [
     supportsFork: false,
     modelFlag: "--model",
     initialPromptFlag: "", // Positional argument
+    installCommand: "npm install -g @openai/codex",
   },
   {
     id: "opencode",
@@ -87,10 +93,13 @@ export const PROVIDERS: ProviderDefinition[] = [
     description: "Multi-provider AI CLI",
     cli: "opencode",
     configDir: "~/.opencode.json",
-    autoApproveFlag: undefined, // OpenCode manages this via config
-    supportsResume: false,
-    supportsFork: false,
+    autoApproveFlag: "--dangerously-skip-permissions",
+    supportsResume: true,
+    supportsFork: true,
+    resumeFlag: "--session",
+    continueFlag: "--continue",
     initialPromptFlag: "--prompt",
+    installCommand: "curl -fsSL https://opencode.ai/install | bash",
   },
   {
     id: "gemini",
@@ -103,6 +112,7 @@ export const PROVIDERS: ProviderDefinition[] = [
     supportsFork: false,
     modelFlag: "-m",
     initialPromptFlag: "-p",
+    installCommand: "npm install -g @google/gemini-cli",
   },
   {
     id: "aider",
@@ -114,6 +124,7 @@ export const PROVIDERS: ProviderDefinition[] = [
     supportsResume: false,
     supportsFork: false,
     modelFlag: "--model",
+    installCommand: "pipx install aider-chat || pip3 install aider-chat",
   },
   {
     id: "cursor",
@@ -125,6 +136,19 @@ export const PROVIDERS: ProviderDefinition[] = [
     supportsResume: false,
     supportsFork: false,
     modelFlag: "--model",
+  },
+  {
+    id: "cline",
+    name: "Cline",
+    description: "Cline AI coding agent",
+    cli: "cline",
+    configDir: "~/.cline",
+    autoApproveFlag: "-y",
+    supportsResume: false,
+    supportsFork: false,
+    modelFlag: "-m",
+    initialPromptFlag: "", // Positional argument
+    installCommand: "npm install -g cline",
   },
   {
     id: "minimax",

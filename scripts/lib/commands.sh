@@ -157,7 +157,9 @@ cmd_stop() {
     pid=$(get_pid)
     log_info "Stopping AgentOS (PID: $pid)..."
 
+    # Kill the process and its children (covers sh -c wrappers)
     kill "$pid" 2>/dev/null || true
+    pkill -P "$pid" 2>/dev/null || true
 
     # Wait for graceful shutdown with progress
     local count=0
@@ -173,6 +175,7 @@ cmd_stop() {
     if ps -p "$pid" &> /dev/null; then
         log_warn "Force killing..."
         kill -9 "$pid" 2>/dev/null || true
+        pkill -9 -P "$pid" 2>/dev/null || true
         sleep 1
     fi
 
@@ -268,6 +271,12 @@ cmd_update() {
 
     cd "$REPO_DIR"
 
+    # Stash any local changes (npm install often dirties package-lock.json)
+    if ! git diff --quiet 2>/dev/null || ! git diff --cached --quiet 2>/dev/null; then
+        log_info "Stashing local changes..."
+        git stash --include-untracked
+    fi
+
     # Fetch and check
     git fetch
     local local_hash remote_hash
@@ -286,8 +295,70 @@ cmd_update() {
         log_info "Rebuilding..."
         npm run build
 
-        log_success "Update complete!"
+        local new_version
+        new_version=$(node -p "require('./package.json').version" 2>/dev/null || echo "unknown")
+        log_success "Update complete! (v$new_version)"
     fi
+
+    if [[ "$was_running" == true ]]; then
+        cmd_start
+    fi
+}
+
+cmd_deploy() {
+    # Deploy from local dev repo to the running instance
+    # Usage: agent-os deploy [--publish]
+    local do_publish=false
+    [[ "${1:-}" == "--publish" ]] && do_publish=true
+
+    if [[ ! -d "$REPO_DIR" ]]; then
+        log_error "AgentOS is not installed. Run 'agent-os install' first."
+        exit 1
+    fi
+
+    local source_dir="$LOCAL_REPO"
+    if [[ ! -f "$source_dir/package.json" ]]; then
+        log_error "Not running from an agent-os source tree."
+        exit 1
+    fi
+
+    local version
+    version=$(node -p "require('$source_dir/package.json').version" 2>/dev/null || echo "unknown")
+    log_info "Deploying v$version to $REPO_DIR..."
+
+    # Optionally publish to registry first
+    if [[ "$do_publish" == true ]]; then
+        log_info "Publishing v$version to GitHub Packages..."
+        cd "$source_dir"
+        npm publish --registry=https://npm.pkg.github.com
+    fi
+
+    # Stop server
+    local was_running=false
+    if is_running; then
+        was_running=true
+        cmd_stop
+    fi
+
+    # Sync source to production (excluding git/node_modules/build artifacts/db)
+    log_info "Syncing source files..."
+    rsync -a --delete \
+        --exclude='.git' \
+        --exclude='node_modules' \
+        --exclude='.next' \
+        --exclude='*.db*' \
+        --exclude='.npmrc' \
+        "$source_dir/" "$REPO_DIR/"
+
+    cd "$REPO_DIR"
+
+    log_info "Installing dependencies..."
+    npm install --legacy-peer-deps
+
+    log_info "Building..."
+    npm run build
+
+    log_success "Deployed v$version!"
 
     if [[ "$was_running" == true ]]; then
         cmd_start
@@ -475,7 +546,8 @@ cmd_help() {
     echo "  restart     Restart the server"
     echo "  status      Show server status and URLs"
     echo "  logs        Tail server logs"
-    echo "  update      Update to latest version"
+    echo "  update      Pull latest from git and rebuild"
+    echo "  deploy      Deploy from local dev repo (rsync + build + restart)"
     echo "  enable      Enable auto-start on boot"
     echo "  disable     Disable auto-start"
     echo "  uninstall   Remove AgentOS completely"

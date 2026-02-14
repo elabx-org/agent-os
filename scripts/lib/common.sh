@@ -65,6 +65,7 @@ prompt_yn() {
 
 # Process management helpers
 get_pid() {
+    # First check PID file
     local pid_file="$AGENT_OS_HOME/agent-os.pid"
     if [[ -f "$pid_file" ]]; then
         local pid
@@ -73,6 +74,13 @@ get_pid() {
             echo "$pid"
             return 0
         fi
+    fi
+    # Fallback: find server process directly (handles manual starts / container restarts)
+    local pid
+    pid=$(pgrep -f "tsx server.ts" 2>/dev/null | head -1)
+    if [[ -n "$pid" ]]; then
+        echo "$pid"
+        return 0
     fi
     return 1
 }

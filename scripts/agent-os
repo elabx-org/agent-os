@@ -76,6 +76,7 @@ case "${1:-}" in
     status)           cmd_status ;;
     logs)             cmd_logs ;;
     update)           cmd_update ;;
+    deploy)           cmd_deploy "${2:-}" ;;
     enable)           cmd_enable ;;
     disable)          cmd_disable ;;
     uninstall)        cmd_uninstall ;;
