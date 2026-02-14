@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useState, useMemo } from "react";
 import {
   Clipboard,
   X,
@@ -13,23 +13,19 @@ import {
   Trash2,
   MousePointer2,
   Copy,
+  Settings,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
-
-// ANSI escape sequences
-const SPECIAL_KEYS = {
-  UP: "\x1b[A",
-  DOWN: "\x1b[B",
-  LEFT: "\x1b[D",
-  RIGHT: "\x1b[C",
-  ESC: "\x1b",
-  TAB: "\t",
-  CTRL_C: "\x03",
-  CTRL_D: "\x04",
-  CTRL_Z: "\x1a",
-  CTRL_L: "\x0c",
-} as const;
+import {
+  type ToolbarButtonId,
+  type ToolbarPreferences,
+  SPECIAL_KEYS,
+  getButtonDef,
+  getToolbarPreferences,
+  saveToolbarPreferences,
+} from "./toolbar-config";
+import { ToolbarSettings } from "./ToolbarSettings";
 
 interface TerminalToolbarProps {
   onKeyPress: (key: string) => void;
@@ -39,6 +35,7 @@ interface TerminalToolbarProps {
   selectMode?: boolean;
   onSelectModeChange?: (enabled: boolean) => void;
   visible?: boolean;
+  onLayoutChange?: (layout: "single" | "double") => void;
 }
 
 interface Snippet {
@@ -304,6 +301,338 @@ function PasteModal({
   );
 }
 
+// --- Sub-components for custom buttons ---
+
+function SimpleKeyButton({
+  displayLabel,
+  keyCode,
+  highlight,
+  onKeyPress,
+}: {
+  displayLabel: string;
+  keyCode: string;
+  highlight?: boolean;
+  onKeyPress: (key: string) => void;
+}) {
+  return (
+    <button
+      type="button"
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={(e) => {
+        e.stopPropagation();
+        onKeyPress(keyCode);
+      }}
+      className={cn(
+        "flex-shrink-0 rounded-md px-2.5 py-1.5 text-xs font-medium",
+        "active:bg-primary active:text-primary-foreground",
+        highlight
+          ? "bg-red-500/20 text-red-500"
+          : "bg-secondary text-secondary-foreground"
+      )}
+    >
+      {displayLabel}
+    </button>
+  );
+}
+
+function MicButton({
+  isListening,
+  onToggle,
+}: {
+  isListening: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onToggle();
+      }}
+      className={cn(
+        "flex-shrink-0 rounded-md px-2.5 py-1.5 text-xs font-medium",
+        isListening
+          ? "animate-pulse bg-red-500 text-white"
+          : "bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground"
+      )}
+    >
+      {isListening ? (
+        <MicOff className="h-4 w-4" />
+      ) : (
+        <Mic className="h-4 w-4" />
+      )}
+    </button>
+  );
+}
+
+function PasteButton({ onPaste }: { onPaste: () => void }) {
+  return (
+    <button
+      type="button"
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={(e) => {
+        e.stopPropagation();
+        onPaste();
+      }}
+      className="bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground flex-shrink-0 rounded-md px-2.5 py-1.5 text-xs font-medium"
+    >
+      <Clipboard className="h-4 w-4" />
+    </button>
+  );
+}
+
+function SelectModeButton({
+  active,
+  onToggle,
+}: {
+  active: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={(e) => {
+        e.stopPropagation();
+        onToggle();
+      }}
+      className={cn(
+        "flex-shrink-0 rounded-md px-2.5 py-1.5 text-xs font-medium",
+        active
+          ? "bg-primary text-primary-foreground"
+          : "bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground"
+      )}
+    >
+      <MousePointer2 className="h-4 w-4" />
+    </button>
+  );
+}
+
+function ImagePickerButton({ onPick }: { onPick: () => void }) {
+  return (
+    <button
+      type="button"
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={(e) => {
+        e.stopPropagation();
+        onPick();
+      }}
+      className="bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground flex-shrink-0 rounded-md px-2.5 py-1.5 text-xs font-medium"
+    >
+      <ImagePlus className="h-4 w-4" />
+    </button>
+  );
+}
+
+function SnippetsButton({ onOpen }: { onOpen: () => void }) {
+  return (
+    <button
+      type="button"
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={(e) => {
+        e.stopPropagation();
+        onOpen();
+      }}
+      className="bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground flex-shrink-0 rounded-md px-2.5 py-1.5 text-xs font-medium"
+    >
+      <FileText className="h-4 w-4" />
+    </button>
+  );
+}
+
+function ShiftButton({
+  active,
+  onToggle,
+}: {
+  active: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={(e) => {
+        e.stopPropagation();
+        onToggle();
+      }}
+      className={cn(
+        "flex-shrink-0 rounded-md px-2.5 py-1.5 text-xs font-medium",
+        active
+          ? "bg-primary text-primary-foreground"
+          : "bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground"
+      )}
+    >
+      {"\u21E7"}
+    </button>
+  );
+}
+
+function EnterButton({
+  shiftActive,
+  onPress,
+}: {
+  shiftActive: boolean;
+  onPress: (key: string) => void;
+}) {
+  return (
+    <button
+      type="button"
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={(e) => {
+        e.stopPropagation();
+        onPress(shiftActive ? "\n" : "\r");
+      }}
+      className="bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground flex-shrink-0 rounded-md px-2.5 py-1.5 text-xs font-medium"
+    >
+      {"\u21B5"}
+    </button>
+  );
+}
+
+function CursorTrackpadButton({
+  onKeyPress,
+}: {
+  onKeyPress: (key: string) => void;
+}) {
+  const [cursorMoveMode, setCursorMoveMode] = useState<"left" | "right" | null>(null);
+  const [lastCursorMove, setLastCursorMove] = useState(0);
+  const [cursorStartX, setCursorStartX] = useState(0);
+
+  return (
+    <button
+      type="button"
+      style={{ touchAction: "none" }}
+      onMouseDown={(e) => e.preventDefault()}
+      onTouchStart={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const touch = e.touches[0];
+        setCursorStartX(touch.clientX);
+        onKeyPress(" ");
+        setLastCursorMove(Date.now());
+        setTimeout(() => {
+          if (e.touches.length > 0) {
+            setCursorMoveMode("left");
+          }
+        }, 700);
+      }}
+      onTouchMove={(e) => {
+        if (cursorMoveMode) {
+          e.preventDefault();
+          e.stopPropagation();
+          const now = Date.now();
+          if (now - lastCursorMove < 100) return;
+
+          const touch = e.touches[0];
+          const deltaX = touch.clientX - cursorStartX;
+          const newMode = deltaX > 20 ? "right" : deltaX < -20 ? "left" : cursorMoveMode;
+
+          setCursorMoveMode(newMode);
+          onKeyPress(newMode === "right" ? SPECIAL_KEYS.RIGHT : SPECIAL_KEYS.LEFT);
+          setLastCursorMove(now);
+        }
+      }}
+      onTouchEnd={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setCursorMoveMode(null);
+      }}
+      onClick={(e) => {
+        e.stopPropagation();
+        if (!cursorMoveMode) {
+          onKeyPress(" ");
+        }
+      }}
+      className={cn(
+        "flex-shrink-0 rounded-md px-3 py-1.5 text-xs font-medium",
+        cursorMoveMode
+          ? "bg-primary text-primary-foreground"
+          : "bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground"
+      )}
+      title="Tap: space | Hold: slide left/right to move cursor"
+    >
+      {cursorMoveMode ? (cursorMoveMode === "left" ? "\u25C4" : "\u25BA") : "\u2395"}
+    </button>
+  );
+}
+
+function BackspaceButton({
+  onKeyPress,
+}: {
+  onKeyPress: (key: string) => void;
+}) {
+  const [longPressInterval, setLongPressInterval] = useState<NodeJS.Timeout | null>(null);
+
+  const stopLongPress = useCallback(() => {
+    if (longPressInterval) {
+      clearInterval(longPressInterval);
+      setLongPressInterval(null);
+    }
+  }, [longPressInterval]);
+
+  return (
+    <button
+      type="button"
+      onMouseDown={(e) => e.preventDefault()}
+      onTouchStart={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onKeyPress("\x7f");
+        const timeout = setTimeout(() => {
+          const id = setInterval(() => onKeyPress("\x7f"), 80);
+          setLongPressInterval(id);
+        }, 400);
+        (e.currentTarget as HTMLElement).dataset.timeout = String(timeout as unknown as number);
+      }}
+      onTouchEnd={(e) => {
+        e.preventDefault();
+        const timeout = (e.currentTarget as HTMLElement).dataset.timeout;
+        if (timeout) clearTimeout(Number(timeout));
+        stopLongPress();
+      }}
+      onClick={(e) => {
+        e.stopPropagation();
+        onKeyPress("\x7f");
+      }}
+      className="bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground flex-shrink-0 rounded-md px-2.5 py-1.5 text-xs font-medium"
+      title="Tap: delete | Hold: rapid delete"
+    >
+      {"\u232B"}
+    </button>
+  );
+}
+
+function CopyButton({
+  onCopy,
+  copyFeedback,
+}: {
+  onCopy: () => void;
+  copyFeedback: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={(e) => {
+        e.stopPropagation();
+        onCopy();
+      }}
+      className={cn(
+        "flex-shrink-0 rounded-md px-2.5 py-1.5 text-xs font-medium",
+        copyFeedback
+          ? "bg-green-500 text-white"
+          : "bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground"
+      )}
+    >
+      <Copy className="h-4 w-4" />
+    </button>
+  );
+}
+
+// --- Main component ---
+
 export function TerminalToolbar({
   onKeyPress,
   onPaste,
@@ -312,15 +641,16 @@ export function TerminalToolbar({
   selectMode = false,
   onSelectModeChange,
   visible = true,
+  onLayoutChange,
 }: TerminalToolbarProps) {
   const [showPasteModal, setShowPasteModal] = useState(false);
   const [showSnippetsModal, setShowSnippetsModal] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const [shiftActive, setShiftActive] = useState(false);
   const [copyFeedback, setCopyFeedback] = useState(false);
-  const [longPressInterval, setLongPressInterval] = useState<NodeJS.Timeout | null>(null);
-  const [cursorMoveMode, setCursorMoveMode] = useState<"left" | "right" | null>(null);
-  const [lastCursorMove, setLastCursorMove] = useState<number>(0);
-  const [cursorStartX, setCursorStartX] = useState<number>(0);
+  const [preferences, setPreferences] = useState<ToolbarPreferences>(() =>
+    getToolbarPreferences()
+  );
 
   // Send text character-by-character to terminal
   const sendText = useCallback(
@@ -343,7 +673,6 @@ export function TerminalToolbar({
     try {
       const text = await navigator.clipboard?.readText?.();
       if (text) {
-        // Use bracketed paste when available, fall back to char-by-char
         if (onPaste) {
           onPaste(text);
         } else {
@@ -365,35 +694,169 @@ export function TerminalToolbar({
     }
   }, [onCopy]);
 
-  // Long-press handlers
-  const startLongPress = useCallback((key: string, interval: number = 50) => {
-    if (longPressInterval) clearInterval(longPressInterval);
-    const id = setInterval(() => onKeyPress(key), interval);
-    setLongPressInterval(id);
-  }, [longPressInterval, onKeyPress]);
+  // Update preferences and persist
+  const updatePreferences = useCallback(
+    (next: ToolbarPreferences) => {
+      setPreferences(next);
+      saveToolbarPreferences(next);
+      onLayoutChange?.(next.layout);
+    },
+    [onLayoutChange]
+  );
 
-  const stopLongPress = useCallback(() => {
-    if (longPressInterval) {
-      clearInterval(longPressInterval);
-      setLongPressInterval(null);
-    }
-    setCursorMoveMode(null);
-  }, [longPressInterval]);
+  // Resolve visible buttons for each row, filtering out conditional buttons
+  const resolvedRow1 = useMemo(
+    () =>
+      preferences.row1.filter((id) => {
+        const def = getButtonDef(id);
+        if (!def) return false;
+        if (def.conditional === "mic" && !isMicSupported) return false;
+        if (def.conditional === "image" && !onImagePicker) return false;
+        if (def.conditional === "select-mode" && !onSelectModeChange)
+          return false;
+        return true;
+      }),
+    [preferences.row1, isMicSupported, onImagePicker, onSelectModeChange]
+  );
+
+  const resolvedRow2 = useMemo(
+    () =>
+      preferences.row2.filter((id) => {
+        const def = getButtonDef(id);
+        if (!def) return false;
+        if (def.conditional === "mic" && !isMicSupported) return false;
+        if (def.conditional === "image" && !onImagePicker) return false;
+        if (def.conditional === "select-mode" && !onSelectModeChange)
+          return false;
+        return true;
+      }),
+    [preferences.row2, isMicSupported, onImagePicker, onSelectModeChange]
+  );
+
+  // Render a single button by ID
+  const renderButton = useCallback(
+    (id: ToolbarButtonId) => {
+      switch (id) {
+        case "mic":
+          return (
+            <MicButton
+              key={id}
+              isListening={isListening}
+              onToggle={toggleMic}
+            />
+          );
+        case "paste":
+          return <PasteButton key={id} onPaste={handlePaste} />;
+        case "select":
+          return (
+            <SelectModeButton
+              key={id}
+              active={selectMode}
+              onToggle={() => onSelectModeChange?.(!selectMode)}
+            />
+          );
+        case "image":
+          return (
+            <ImagePickerButton key={id} onPick={() => onImagePicker?.()} />
+          );
+        case "snippets":
+          return (
+            <SnippetsButton
+              key={id}
+              onOpen={() => setShowSnippetsModal(true)}
+            />
+          );
+        case "shift":
+          return (
+            <ShiftButton
+              key={id}
+              active={shiftActive}
+              onToggle={() => setShiftActive((s) => !s)}
+            />
+          );
+        case "enter":
+          return (
+            <EnterButton
+              key={id}
+              shiftActive={shiftActive}
+              onPress={(k) => {
+                onKeyPress(k);
+                setShiftActive(false);
+              }}
+            />
+          );
+        case "cursor":
+          return <CursorTrackpadButton key={id} onKeyPress={onKeyPress} />;
+        case "backspace":
+          return <BackspaceButton key={id} onKeyPress={onKeyPress} />;
+        default: {
+          const def = getButtonDef(id);
+          if (!def || !def.key) return null;
+          return (
+            <SimpleKeyButton
+              key={id}
+              displayLabel={def.displayLabel}
+              keyCode={def.key}
+              highlight={def.highlight}
+              onKeyPress={onKeyPress}
+            />
+          );
+        }
+      }
+    },
+    [
+      isListening,
+      toggleMic,
+      handlePaste,
+      selectMode,
+      onSelectModeChange,
+      onImagePicker,
+      shiftActive,
+      onKeyPress,
+    ]
+  );
+
+  // Render a row of buttons with auto-dividers between groups
+  const renderRow = useCallback(
+    (buttonIds: ToolbarButtonId[]) => {
+      const elements: React.ReactNode[] = [];
+      let lastGroup: string | null = null;
+
+      for (const id of buttonIds) {
+        const def = getButtonDef(id);
+        if (!def) continue;
+
+        // Insert divider between different groups
+        if (lastGroup !== null && def.group !== lastGroup) {
+          elements.push(
+            <div
+              key={`div-${lastGroup}-${def.group}`}
+              className="bg-border mx-1 h-6 w-px"
+            />
+          );
+        }
+        lastGroup = def.group;
+
+        elements.push(renderButton(id));
+
+        // Insert copy button right after select when in select mode
+        if (id === "select" && selectMode && onCopy) {
+          elements.push(
+            <CopyButton
+              key="copy"
+              onCopy={handleCopy}
+              copyFeedback={copyFeedback}
+            />
+          );
+        }
+      }
+
+      return elements;
+    },
+    [renderButton, selectMode, onCopy, handleCopy, copyFeedback]
+  );
 
   if (!visible) return null;
-
-  const buttons = [
-    { label: "Esc", key: SPECIAL_KEYS.ESC },
-    { label: "^C", key: SPECIAL_KEYS.CTRL_C, highlight: true },
-    { label: "^L", key: SPECIAL_KEYS.CTRL_L }, // Clear screen
-    { label: "^Z", key: SPECIAL_KEYS.CTRL_Z }, // Suspend
-    { label: "Tab", key: SPECIAL_KEYS.TAB },
-    { label: "^D", key: SPECIAL_KEYS.CTRL_D },
-    { label: "←", key: SPECIAL_KEYS.LEFT },
-    { label: "→", key: SPECIAL_KEYS.RIGHT },
-    { label: "↑", key: SPECIAL_KEYS.UP },
-    { label: "↓", key: SPECIAL_KEYS.DOWN },
-  ];
 
   return (
     <>
@@ -407,310 +870,44 @@ export function TerminalToolbar({
         onClose={() => setShowSnippetsModal(false)}
         onInsert={onPaste || sendText}
       />
+      <ToolbarSettings
+        open={showSettings}
+        onClose={() => setShowSettings(false)}
+        preferences={preferences}
+        onUpdate={updatePreferences}
+      />
+
+      {/* Row 1 — always visible */}
       <div
         className="bg-background/95 border-border scrollbar-none flex items-center gap-1 overflow-x-auto border-t px-2 py-1.5 backdrop-blur"
         onTouchEnd={(e) => e.stopPropagation()}
       >
-        {/* Mic button */}
-        {isMicSupported && (
-          <button
-            type="button"
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              toggleMic();
-            }}
-            className={cn(
-              "flex-shrink-0 rounded-md px-2.5 py-1.5 text-xs font-medium",
-              isListening
-                ? "animate-pulse bg-red-500 text-white"
-                : "bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground"
-            )}
-          >
-            {isListening ? (
-              <MicOff className="h-4 w-4" />
-            ) : (
-              <Mic className="h-4 w-4" />
-            )}
-          </button>
-        )}
+        {renderRow(resolvedRow1)}
 
-        {/* Paste button */}
-        <button
-          type="button"
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={(e) => {
-            e.stopPropagation();
-            handlePaste();
-          }}
-          className="bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground flex-shrink-0 rounded-md px-2.5 py-1.5 text-xs font-medium"
-        >
-          <Clipboard className="h-4 w-4" />
-        </button>
-
-        {/* Select mode toggle */}
-        {onSelectModeChange && (
-          <button
-            type="button"
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={(e) => {
-              e.stopPropagation();
-              onSelectModeChange(!selectMode);
-            }}
-            className={cn(
-              "flex-shrink-0 rounded-md px-2.5 py-1.5 text-xs font-medium",
-              selectMode
-                ? "bg-primary text-primary-foreground"
-                : "bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground"
-            )}
-          >
-            <MousePointer2 className="h-4 w-4" />
-          </button>
-        )}
-
-        {/* Copy button - shown when in select mode */}
-        {selectMode && onCopy && (
-          <button
-            type="button"
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={(e) => {
-              e.stopPropagation();
-              handleCopy();
-            }}
-            className={cn(
-              "flex-shrink-0 rounded-md px-2.5 py-1.5 text-xs font-medium",
-              copyFeedback
-                ? "bg-green-500 text-white"
-                : "bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground"
-            )}
-          >
-            <Copy className="h-4 w-4" />
-          </button>
-        )}
-
-        {/* Image picker button */}
-        {onImagePicker && (
-          <button
-            type="button"
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={(e) => {
-              e.stopPropagation();
-              onImagePicker();
-            }}
-            className="bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground flex-shrink-0 rounded-md px-2.5 py-1.5 text-xs font-medium"
-          >
-            <ImagePlus className="h-4 w-4" />
-          </button>
-        )}
-
-        {/* Snippets button */}
-        <button
-          type="button"
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={(e) => {
-            e.stopPropagation();
-            setShowSnippetsModal(true);
-          }}
-          className="bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground flex-shrink-0 rounded-md px-2.5 py-1.5 text-xs font-medium"
-        >
-          <FileText className="h-4 w-4" />
-        </button>
-
-        {/* Divider */}
+        {/* Gear icon — always last, separated */}
         <div className="bg-border mx-1 h-6 w-px" />
-
-        {/* Shift toggle */}
         <button
           type="button"
           onMouseDown={(e) => e.preventDefault()}
           onClick={(e) => {
             e.stopPropagation();
-            setShiftActive(!shiftActive);
-          }}
-          className={cn(
-            "flex-shrink-0 rounded-md px-2.5 py-1.5 text-xs font-medium",
-            shiftActive
-              ? "bg-primary text-primary-foreground"
-              : "bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground"
-          )}
-        >
-          ⇧
-        </button>
-
-        {/* Enter key - sends \n if shift active, \r otherwise */}
-        <button
-          type="button"
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={(e) => {
-            e.stopPropagation();
-            onKeyPress(shiftActive ? "\n" : "\r");
-            setShiftActive(false);
+            setShowSettings(true);
           }}
           className="bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground flex-shrink-0 rounded-md px-2.5 py-1.5 text-xs font-medium"
         >
-          ↵
+          <Settings className="h-4 w-4" />
         </button>
-
-        {/* Special keys - Esc first */}
-        <button
-          type="button"
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={(e) => {
-            e.stopPropagation();
-            onKeyPress(SPECIAL_KEYS.ESC);
-          }}
-          className="bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground flex-shrink-0 rounded-md px-2.5 py-1.5 text-xs font-medium"
-        >
-          Esc
-        </button>
-
-        {/* Newline button (for multi-line Claude input) */}
-        <button
-          type="button"
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={(e) => {
-            e.stopPropagation();
-            onKeyPress("\n");
-          }}
-          className="bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground flex-shrink-0 rounded-md px-2.5 py-1.5 text-xs font-medium"
-          title="Newline (for multi-line input)"
-        >
-          ⇧↵
-        </button>
-
-        {/* Cursor movement - long press for iOS-style trackpad */}
-        <button
-          type="button"
-          style={{ touchAction: "none" }} // Prevent toolbar scroll
-          onMouseDown={(e) => e.preventDefault()}
-          onTouchStart={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            const touch = e.touches[0];
-            setCursorStartX(touch.clientX);
-            onKeyPress(" ");
-            setLastCursorMove(Date.now());
-            // Start cursor move mode after 700ms
-            setTimeout(() => {
-              if (e.touches.length > 0) {
-                setCursorMoveMode("left"); // Default, will update on move
-              }
-            }, 700);
-          }}
-          onTouchMove={(e) => {
-            if (cursorMoveMode) {
-              e.preventDefault();
-              e.stopPropagation();
-              const now = Date.now();
-              // Throttle: only move every 100ms
-              if (now - lastCursorMove < 100) return;
-
-              const touch = e.touches[0];
-              const deltaX = touch.clientX - cursorStartX;
-
-              // Direction based on movement from start position
-              const newMode = deltaX > 20 ? "right" : deltaX < -20 ? "left" : cursorMoveMode;
-
-              setCursorMoveMode(newMode);
-              onKeyPress(newMode === "right" ? SPECIAL_KEYS.RIGHT : SPECIAL_KEYS.LEFT);
-              setLastCursorMove(now);
-            }
-          }}
-          onTouchEnd={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            stopLongPress();
-          }}
-          onClick={(e) => {
-            e.stopPropagation();
-            if (!cursorMoveMode) {
-              onKeyPress(" ");
-            }
-          }}
-          className={cn(
-            "flex-shrink-0 rounded-md px-3 py-1.5 text-xs font-medium",
-            cursorMoveMode
-              ? "bg-primary text-primary-foreground"
-              : "bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground"
-          )}
-          title="Tap: space | Hold: slide left/right to move cursor"
-        >
-          {cursorMoveMode ? (cursorMoveMode === "left" ? "◄" : "►") : "⎵"}
-        </button>
-
-        {/* Rapid delete - long press for continuous deletion */}
-        <button
-          type="button"
-          onMouseDown={(e) => e.preventDefault()}
-          onTouchStart={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            onKeyPress("\x7f"); // Backspace
-            // Start rapid delete after 400ms (less accidental)
-            const timeout = setTimeout(() => {
-              startLongPress("\x7f", 80); // Slower: 80ms per delete (was 50ms)
-            }, 400);
-            // Store timeout to clear on touch end
-            (e.currentTarget as HTMLElement).dataset.timeout = String(timeout as unknown as number);
-          }}
-          onTouchEnd={(e) => {
-            e.preventDefault();
-            const timeout = (e.currentTarget as HTMLElement).dataset.timeout;
-            if (timeout) clearTimeout(Number(timeout));
-            stopLongPress();
-          }}
-          onClick={(e) => {
-            e.stopPropagation();
-            onKeyPress("\x7f");
-          }}
-          className="bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground flex-shrink-0 rounded-md px-2.5 py-1.5 text-xs font-medium"
-          title="Tap: delete | Hold: rapid delete"
-        >
-          ⌫
-        </button>
-
-        {/* Rest of special keys (excluding Esc which is first) */}
-        {buttons.slice(1).map((btn) => (
-          <button
-            type="button"
-            key={btn.label}
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={(e) => {
-              e.stopPropagation();
-              onKeyPress(btn.key);
-            }}
-            className={cn(
-              "flex-shrink-0 rounded-md px-2.5 py-1.5 text-xs font-medium",
-              "active:bg-primary active:text-primary-foreground",
-              btn.highlight
-                ? "bg-red-500/20 text-red-500"
-                : "bg-secondary text-secondary-foreground"
-            )}
-          >
-            {btn.label}
-          </button>
-        ))}
-
-        {/* Divider */}
-        <div className="bg-border mx-1 h-6 w-px" />
-
-        {/* Common shell characters */}
-        {["~", "/", "|", ">"].map((char) => (
-          <button
-            type="button"
-            key={char}
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={(e) => {
-              e.stopPropagation();
-              onKeyPress(char);
-            }}
-            className="bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground flex-shrink-0 rounded-md px-2.5 py-1.5 text-xs font-medium"
-          >
-            {char}
-          </button>
-        ))}
       </div>
+
+      {/* Row 2 — only when double layout with buttons */}
+      {preferences.layout === "double" && resolvedRow2.length > 0 && (
+        <div
+          className="bg-background/95 border-border scrollbar-none flex items-center gap-1 overflow-x-auto px-2 py-1.5 backdrop-blur"
+          onTouchEnd={(e) => e.stopPropagation()}
+        >
+          {renderRow(resolvedRow2)}
+        </div>
+      )}
     </>
   );
 }

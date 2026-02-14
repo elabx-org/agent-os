@@ -86,6 +86,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
       const stored = localStorage.getItem("terminalToolbarVisible");
       return stored === null ? true : stored === "true";
     });
+    const [toolbarDoubleRow, setToolbarDoubleRow] = useState(false);
 
     // Use the full theme string (e.g., "dark-purple") for terminal theming
     const terminalTheme = useMemo(() => {
@@ -543,6 +544,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
         {isMobile && (
           <KeybarToggleButton
             isVisible={toolbarVisible}
+            doubleRow={toolbarDoubleRow}
             onToggle={() => {
               const newValue = !toolbarVisible;
               setToolbarVisible(newValue);
@@ -561,6 +563,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
             selectMode={selectMode}
             onSelectModeChange={setSelectMode}
             visible={toolbarVisible}
+            onLayoutChange={(layout) => setToolbarDoubleRow(layout === "double")}
           />
         )}
 

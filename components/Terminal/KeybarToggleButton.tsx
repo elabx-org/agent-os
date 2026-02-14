@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 interface KeybarToggleButtonProps {
   isVisible: boolean;
   onToggle: () => void;
+  doubleRow?: boolean;
 }
 
 /**
@@ -15,6 +16,7 @@ interface KeybarToggleButtonProps {
 export function KeybarToggleButton({
   isVisible,
   onToggle,
+  doubleRow = false,
 }: KeybarToggleButtonProps) {
   return (
     <button
@@ -29,9 +31,11 @@ export function KeybarToggleButton({
         "touch-manipulation transition-all duration-200",
         "active:scale-95",
         // Position: moves up when keyboard is visible (accounts for safe-area + taller keys + recent commands bar)
-        isVisible
-          ? "bottom-[265px]"
-          : "bottom-[calc(1rem+env(safe-area-inset-bottom))]"
+        !isVisible
+          ? "bottom-[calc(1rem+env(safe-area-inset-bottom))]"
+          : doubleRow
+            ? "bottom-[301px]"
+            : "bottom-[265px]"
       )}
       aria-label={isVisible ? "Hide keyboard" : "Show keyboard"}
     >
