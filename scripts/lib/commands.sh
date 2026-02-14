@@ -1,6 +1,30 @@
 #!/usr/bin/env bash
 # Command implementations for agent-os
 
+# Sync source directory to target, excluding build artifacts/db/git/node_modules
+sync_source() {
+    local src="$1" dst="$2"
+    if command -v rsync &> /dev/null; then
+        rsync -a --delete \
+            --exclude='.git' --exclude='node_modules' --exclude='.next' \
+            --exclude='*.db*' --exclude='.npmrc' \
+            "$src/" "$dst/"
+    else
+        # Fallback: clean and copy
+        find "$dst" -mindepth 1 -maxdepth 1 \
+            ! -name '.git' ! -name 'node_modules' ! -name '.next' \
+            ! -name '*.db' ! -name '*.db-journal' ! -name '*.db-wal' \
+            ! -name '.npmrc' \
+            -exec rm -rf {} +
+        cd "$src"
+        find . -mindepth 1 -maxdepth 1 \
+            ! -name '.git' ! -name 'node_modules' ! -name '.next' \
+            ! -name '*.db' ! -name '*.db-journal' ! -name '*.db-wal' \
+            ! -name '.npmrc' \
+            -exec cp -a {} "$dst/" \;
+    fi
+}
+
 cmd_install() {
     local use_local=false
     [[ "${1:-}" == "--local" ]] && use_local=true
@@ -21,7 +45,7 @@ cmd_install() {
     if [[ -d "$REPO_DIR" ]]; then
         if [[ "$use_local" == true ]]; then
             log_info "Updating from local source..."
-            rsync -a --delete --exclude='.git' --exclude='node_modules' --exclude='.next' --exclude='*.db*' "$LOCAL_REPO/" "$REPO_DIR/"
+            sync_source "$LOCAL_REPO" "$REPO_DIR"
         else
             log_info "Repository already exists, pulling latest..."
             cd "$REPO_DIR"
@@ -31,7 +55,8 @@ cmd_install() {
     else
         if [[ "$use_local" == true ]]; then
             log_info "Copying from local source..."
-            rsync -a --exclude='.git' --exclude='node_modules' --exclude='.next' --exclude='*.db*' "$LOCAL_REPO/" "$REPO_DIR/"
+            mkdir -p "$REPO_DIR"
+            sync_source "$LOCAL_REPO" "$REPO_DIR"
             cd "$REPO_DIR"
             git init
         else
@@ -342,13 +367,7 @@ cmd_deploy() {
 
     # Sync source to production (excluding git/node_modules/build artifacts/db)
     log_info "Syncing source files..."
-    rsync -a --delete \
-        --exclude='.git' \
-        --exclude='node_modules' \
-        --exclude='.next' \
-        --exclude='*.db*' \
-        --exclude='.npmrc' \
-        "$source_dir/" "$REPO_DIR/"
+    sync_source "$source_dir" "$REPO_DIR"
 
     cd "$REPO_DIR"
 
