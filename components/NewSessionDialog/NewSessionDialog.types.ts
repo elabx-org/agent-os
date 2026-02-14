@@ -92,6 +92,7 @@ export const AGENT_OPTIONS: {
   description: string;
 }[] = [
   { value: "claude", label: "Claude Code", description: "Anthropic's CLI" },
+  { value: "minimax", label: "Minimax", description: "Minimax CLI (claude-minimax)" },
   { value: "codex", label: "Codex", description: "OpenAI's CLI" },
   { value: "opencode", label: "OpenCode", description: "Multi-provider CLI" },
   { value: "gemini", label: "Gemini CLI", description: "Google's CLI" },

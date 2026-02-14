@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/tooltip";
 import { QuickSwitcher } from "@/components/QuickSwitcher";
 import { UsageMonitor } from "@/components/UsageMonitor";
+import { MinimaxUsageMonitor } from "@/components/MinimaxUsageMonitor";
 import type { ViewProps } from "./types";
 import { fileOpenActions } from "@/stores/fileOpen";
 
@@ -168,6 +169,7 @@ export function DesktopView({
 
           <div className="flex items-center gap-2">
             <UsageMonitor />
+            <MinimaxUsageMonitor />
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button

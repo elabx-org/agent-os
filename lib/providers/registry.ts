@@ -11,6 +11,7 @@ export const PROVIDER_IDS = [
   "gemini",
   "aider",
   "cursor",
+  "minimax",
   "shell",
 ] as const;
 
@@ -124,6 +125,20 @@ export const PROVIDERS: ProviderDefinition[] = [
     supportsResume: false,
     supportsFork: false,
     modelFlag: "--model",
+  },
+  {
+    id: "minimax",
+    name: "Minimax",
+    description: "Minimax CLI (via claude-minimax alias)",
+    cli: "claude-minimax",
+    configDir: "~/.claude",
+    autoApproveFlag: "--dangerously-skip-permissions",
+    supportsResume: true,
+    supportsFork: true,
+    resumeFlag: "--resume",
+    continueFlag: "--continue",
+    modelFlag: undefined,
+    initialPromptFlag: "", // Positional argument
   },
   {
     id: "shell",

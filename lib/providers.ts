@@ -411,6 +411,89 @@ export const cursorProvider: AgentProvider = {
 };
 
 /**
+ * Minimax Provider
+ * Minimax CLI (via claude-minimax alias) - supports same flags as Claude Code
+ */
+export const minimaxProvider: AgentProvider = {
+  id: "minimax",
+  name: "Minimax",
+  description: "Minimax CLI (via claude-minimax alias)",
+  command: "claude-minimax",
+  configDir: "~/.claude",
+
+  supportsResume: true,
+  supportsFork: true,
+
+  buildFlags(options: BuildFlagsOptions): string[] {
+    const def = getProviderDefinition("minimax");
+    const flags: string[] = [];
+
+    // Auto-approve flag from registry
+    if (
+      (options.skipPermissions || options.autoApprove) &&
+      def.autoApproveFlag
+    ) {
+      flags.push(def.autoApproveFlag);
+    }
+
+    // Resume/fork/continue
+    if (options.sessionId && def.resumeFlag) {
+      flags.push(`${def.resumeFlag} ${options.sessionId}`);
+    } else if (options.parentSessionId && def.resumeFlag) {
+      flags.push(`${def.resumeFlag} ${options.parentSessionId}`);
+      flags.push("--fork-session");
+    } else if (options.continueSession && def.continueFlag) {
+      flags.push(def.continueFlag);
+    }
+
+    // Initial prompt (positional argument for Minimax)
+    if (options.initialPrompt?.trim() && def.initialPromptFlag !== undefined) {
+      const prompt = options.initialPrompt.trim();
+      // Shell-escape the prompt
+      const escapedPrompt = prompt.replace(/'/g, "'\\''");
+      flags.push(`'${escapedPrompt}'`);
+    }
+
+    return flags;
+  },
+
+  waitingPatterns: [
+    /\[Y\/n\]/i,
+    /\[y\/N\]/i,
+    /Allow\?/i,
+    /Approve\?/i,
+    /Continue\?/i,
+    /Press Enter/i,
+    /waiting for/i,
+    /\(yes\/no\)/i,
+    /Do you want to/i,
+    /Esc to cancel/i,
+    />\s*1\.\s*Yes/,
+    /Yes, allow all/i,
+    /allow all edits/i,
+    /allow all commands/i,
+  ],
+
+  runningPatterns: [
+    /thinking/i,
+    /Working/i,
+    /Reading/i,
+    /Writing/i,
+    /Searching/i,
+    /Running/i,
+    /Executing/i,
+    SPINNER_CHARS,
+  ],
+
+  idlePatterns: [
+    /^>\s*$/m,
+    /claude.*>\s*$/im,
+    /✻\s*Sautéed/i,
+    /✻\s*Done/i,
+  ],
+};
+
+/**
  * Shell Provider
  * Plain terminal without any AI CLI
  */
@@ -441,6 +524,7 @@ export const providers: Record<AgentType, AgentProvider> = {
   gemini: geminiProvider,
   aider: aiderProvider,
   cursor: cursorProvider,
+  minimax: minimaxProvider,
   shell: shellProvider,
 };
 
