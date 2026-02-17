@@ -233,10 +233,12 @@ export function createWebSocketConnection(
 
   // Handle terminal input — detect paste vs keyboard heuristically
   term.onData((data) => {
-    // Multi-char data that isn't a short escape sequence is likely a paste event
-    // (browser-native paste that bypasses our Cmd+V/right-click interceptors)
-    const isLikelyEscapeSeq = data.startsWith('\x1b') && data.length <= 8;
-    if (data.length > 1 && !isLikelyEscapeSeq) {
+    // Any data starting with ESC is a terminal escape sequence (keyboard special
+    // keys, F-keys, mouse events encoded by xterm when mouse tracking is active, etc.)
+    // — never treat these as pastes regardless of length.
+    // Multi-char data without a leading ESC is a native browser paste that bypassed
+    // our Cmd+V/right-click interceptors (e.g. Ctrl+V into xterm's hidden textarea).
+    if (data.length > 1 && !data.startsWith('\x1b')) {
       sendPaste(data);
     } else {
       sendInput(data);
