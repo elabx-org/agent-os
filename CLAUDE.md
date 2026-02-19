@@ -110,7 +110,7 @@ Abstraction over AI CLIs (Claude Code, Codex, OpenCode, Gemini CLI, Aider, Curso
 | ----------- | ------ | ---- | ------------------------------------- | --------------- |
 | Claude Code | ✅     | ✅   | `--dangerously-skip-permissions`      | `npm i -g @anthropic-ai/claude-code` |
 | Minimax     | ✅     | ✅   | `--dangerously-skip-permissions`      | (manual alias) |
-| Codex       | ❌     | ❌   | `--approval-mode full-auto`           | `npm i -g @openai/codex` |
+| Codex       | ❌     | ❌   | `--full-auto`                         | `npm i -g @openai/codex` |
 | OpenCode    | ✅     | ✅   | `--dangerously-skip-permissions`      | `curl -fsSL https://opencode.ai/install \| bash` |
 | Gemini CLI  | ❌     | ❌   | `--yolomode`                         | `npm i -g @google/gemini-cli` |
 | Aider       | ❌     | ❌   | `--yes`                               | `pipx install aider-chat` |

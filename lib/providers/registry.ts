@@ -80,7 +80,7 @@ export const PROVIDERS: ProviderDefinition[] = [
     description: "OpenAI's CLI",
     cli: "codex",
     configDir: "~/.codex",
-    autoApproveFlag: "--approval-mode full-auto",
+    autoApproveFlag: "--full-auto",
     supportsResume: false,
     supportsFork: false,
     modelFlag: "--model",
