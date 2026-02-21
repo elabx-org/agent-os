@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { FileTree } from "./FileTree";
 import { FileEditor } from "./FileEditor";
 import { FileTabs } from "./FileTabs";
+import { FilePicker } from "@/components/FilePicker";
 import type { UseFileEditorReturn } from "@/hooks/useFileEditor";
 import { useViewport } from "@/hooks/useViewport";
 import { useFileDrop } from "@/hooks/useFileDrop";
@@ -50,6 +51,7 @@ export function FileExplorer({
   const [pendingClose, setPendingClose] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [showFilePicker, setShowFilePicker] = useState(false);
 
   const {
     openFiles,
@@ -200,6 +202,7 @@ export function FileExplorer({
     onNavigateUp: handleNavigateUp,
     onNavigateTo: handleNavigateTo,
     onFilesUpload: handleFilesUpload,
+    onOpenFilePicker: () => setShowFilePicker(true),
     isDirty,
     updateContent,
     pendingClose,
@@ -208,16 +211,28 @@ export function FileExplorer({
     onSaveAndClose: handleSaveAndClose,
   };
 
-  if (isMobile) {
-    return (
-      <MobileFileExplorer
-        {...sharedProps}
-        onBack={() => setActiveFile(null as unknown as string)}
-      />
-    );
-  }
-
-  return <DesktopFileExplorer {...sharedProps} />;
+  return (
+    <>
+      {showFilePicker && (
+        <FilePicker
+          destinationDir={currentRoot}
+          onFilesAdded={() => {
+            setShowFilePicker(false);
+            loadFiles(currentRoot);
+          }}
+          onClose={() => setShowFilePicker(false)}
+        />
+      )}
+      {isMobile ? (
+        <MobileFileExplorer
+          {...sharedProps}
+          onBack={() => setActiveFile(null as unknown as string)}
+        />
+      ) : (
+        <DesktopFileExplorer {...sharedProps} />
+      )}
+    </>
+  );
 }
 
 // Clickable breadcrumb path navigator
@@ -287,6 +302,7 @@ interface FileExplorerLayoutProps {
   onNavigateUp: () => void;
   onNavigateTo: (path: string) => void;
   onFilesUpload: (files: File[]) => Promise<void>;
+  onOpenFilePicker: () => void;
   isDirty: (path: string) => boolean;
   updateContent: (path: string, content: string) => void;
   pendingClose: string | null;
@@ -307,6 +323,7 @@ function TreePanel({
   onNavigateUp,
   onNavigateTo,
   onFilesUpload,
+  onOpenFilePicker,
 }: Pick<
   FileExplorerLayoutProps,
   | "files"
@@ -319,18 +336,18 @@ function TreePanel({
   | "onNavigateUp"
   | "onNavigateTo"
   | "onFilesUpload"
+  | "onOpenFilePicker"
 >) {
   const treePanelRef = useRef<HTMLDivElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Drag-and-drop: any file onto the tree panel
+  // Drag-and-drop: any file onto the tree panel (quick path, no modal)
   const { isDragging, dragHandlers } = useFileDrop(
     treePanelRef,
     (file) => onFilesUpload([file]),
     { disabled: uploading }
   );
 
-  // Clipboard paste: any file pasted while file browser is visible
+  // Clipboard paste: any file pasted while file browser is visible (quick path)
   useEffect(() => {
     const handlePaste = (e: ClipboardEvent) => {
       const items = e.clipboardData?.items;
@@ -356,19 +373,6 @@ function TreePanel({
       className="relative flex h-full flex-col"
       {...dragHandlers}
     >
-      {/* Hidden file input for device picker */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        multiple
-        className="hidden"
-        onChange={(e) => {
-          const picked = Array.from(e.target.files || []);
-          if (picked.length > 0) onFilesUpload(picked);
-          e.target.value = "";
-        }}
-      />
-
       {/* Header: up + breadcrumb + upload */}
       <div className="flex items-center gap-1 border-b px-2 py-1.5">
         <Button
@@ -387,10 +391,10 @@ function TreePanel({
         <Button
           variant="ghost"
           size="icon-sm"
-          onClick={() => fileInputRef.current?.click()}
+          onClick={onOpenFilePicker}
           disabled={uploading}
           className="flex-shrink-0"
-          title="Upload files to this folder"
+          title="Add files to this folder"
         >
           {uploading ? (
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -423,7 +427,7 @@ function TreePanel({
             <Folder className="h-8 w-8 opacity-40" />
             <p className="text-sm">Empty directory</p>
             <button
-              onClick={() => fileInputRef.current?.click()}
+              onClick={onOpenFilePicker}
               className="text-muted-foreground hover:text-foreground text-xs underline underline-offset-2 transition-colors"
             >
               Upload files
@@ -482,6 +486,7 @@ function DesktopFileExplorer({
   onNavigateUp,
   onNavigateTo,
   onFilesUpload,
+  onOpenFilePicker,
   isDirty,
   updateContent,
   pendingClose,
@@ -533,6 +538,7 @@ function DesktopFileExplorer({
           onNavigateUp={onNavigateUp}
           onNavigateTo={onNavigateTo}
           onFilesUpload={onFilesUpload}
+          onOpenFilePicker={onOpenFilePicker}
         />
       </div>
 
@@ -614,6 +620,7 @@ function MobileFileExplorer({
   onNavigateUp,
   onNavigateTo,
   onFilesUpload,
+  onOpenFilePicker,
   isDirty,
   updateContent,
   pendingClose,
@@ -693,6 +700,7 @@ function MobileFileExplorer({
         onNavigateUp={onNavigateUp}
         onNavigateTo={onNavigateTo}
         onFilesUpload={onFilesUpload}
+        onOpenFilePicker={onOpenFilePicker}
       />
     </div>
   );
