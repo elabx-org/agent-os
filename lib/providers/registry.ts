@@ -52,6 +52,10 @@ export interface ProviderDefinition {
 
   // Default arguments
   defaultArgs?: string[]; // Always passed to CLI
+
+  // Native worktree support
+  // If set, agent-os passes this flag instead of managing worktrees itself
+  worktreeFlag?: string; // e.g., '--worktree'
 }
 
 /**
@@ -73,6 +77,7 @@ export const PROVIDERS: ProviderDefinition[] = [
     modelFlag: undefined, // Claude doesn't expose model flag
     initialPromptFlag: "", // Positional argument
     installCommand: "npm install -g @anthropic-ai/claude-code",
+    worktreeFlag: "--worktree",
   },
   {
     id: "codex",
@@ -163,6 +168,7 @@ export const PROVIDERS: ProviderDefinition[] = [
     continueFlag: "--continue",
     modelFlag: undefined,
     initialPromptFlag: "", // Positional argument
+    worktreeFlag: "--worktree",
   },
   {
     id: "shell",

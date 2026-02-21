@@ -51,6 +51,7 @@ export interface BuildFlagsOptions {
   continueSession?: boolean; // Continue last session in working directory
   model?: string;
   initialPrompt?: string; // Initial prompt to send to agent
+  worktreeName?: string; // If set, use provider's native worktree flag with this name
 }
 
 // Common spinner characters used across CLIs
@@ -80,6 +81,13 @@ export const claudeProvider: AgentProvider = {
       def.autoApproveFlag
     ) {
       flags.push(def.autoApproveFlag);
+    }
+
+    // Native worktree isolation (Claude 2.1.50+)
+    if (options.worktreeName !== undefined && def.worktreeFlag) {
+      flags.push(options.worktreeName
+        ? `${def.worktreeFlag} ${options.worktreeName}`
+        : def.worktreeFlag);
     }
 
     // Resume/fork/continue
@@ -508,6 +516,13 @@ export const minimaxProvider: AgentProvider = {
       def.autoApproveFlag
     ) {
       flags.push(def.autoApproveFlag);
+    }
+
+    // Native worktree isolation
+    if (options.worktreeName !== undefined && def.worktreeFlag) {
+      flags.push(options.worktreeName
+        ? `${def.worktreeFlag} ${options.worktreeName}`
+        : def.worktreeFlag);
     }
 
     // Resume/fork/continue

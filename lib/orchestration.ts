@@ -12,6 +12,7 @@ import { db, queries, type Session } from "./db";
 import { createWorktree, deleteWorktree } from "./worktrees";
 import { setupWorktree } from "./env-setup";
 import { getProvider } from "./providers";
+import { getProviderDefinition } from "./providers/registry";
 import { statusDetector } from "./status-detector";
 import { wrapWithBanner } from "./banner";
 import { runInBackground } from "./async-operations";
@@ -99,8 +100,12 @@ export async function spawnWorker(
   let worktreePath: string | null = null;
   let actualWorkingDir = workingDirectory;
 
-  // Create worktree if requested
-  if (useWorktree) {
+  // Determine worktree strategy: native CLI flag (Claude/Minimax) vs agent-os managed
+  const providerDef = getProviderDefinition(agentType);
+  const hasNativeWorktree = !!providerDef.worktreeFlag;
+
+  // Create worktree if requested and provider doesn't support native worktrees
+  if (useWorktree && !hasNativeWorktree) {
     try {
       const worktreeResult = await createWorktree({
         projectPath: workingDirectory,
@@ -129,6 +134,8 @@ export async function spawnWorker(
       // Fall back to same directory (no isolation)
     }
   }
+  // For native worktree providers (Claude/Minimax), the CLI manages its own worktree;
+  // actualWorkingDir stays as the project root and we pass --worktree <branchName> as a flag
 
   // Create session in database
   const tmuxName = `${provider.id}-${sessionId}`;
@@ -161,7 +168,12 @@ export async function spawnWorker(
   const cwd = actualWorkingDir.replace("~", "$HOME");
 
   // Build the initial prompt command (workers use auto-approve by default for automation)
-  const flags = provider.buildFlags({ model, autoApprove: true });
+  const flags = provider.buildFlags({
+    model,
+    autoApprove: true,
+    // Pass branch name as the native worktree name for providers that support it
+    worktreeName: useWorktree && hasNativeWorktree ? branchName : undefined,
+  });
   const flagsStr = flags.join(" ");
 
   // Create tmux session with the agent and banner
