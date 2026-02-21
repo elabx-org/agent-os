@@ -124,9 +124,19 @@ export function createWebSocketConnection(
           // xterm's DA-response flags, causing it to re-answer Device Attributes
           // queries in the replayed buffer, which produces visible garbage
           // like [?1;2c and [>0;276;0c.
+          //
+          // Even with clear() (not reset()), a fresh xterm instance (new tab
+          // load, component remount) hasn't yet answered the DA queries that
+          // were in the original live stream, so it auto-responds through
+          // onData when it sees them in the replayed buffer — injecting
+          // garbage like "[>0;276;0c" as PTY input. Strip DA query sequences
+          // from the buffer before replaying to prevent this entirely.
+          // Primary DA: ESC [ c or ESC [ 0 c
+          // Secondary DA: ESC [ > c or ESC [ > 0 c
+          const sanitized = msg.buffered.replace(/\x1b\[>?0?c/g, "");
           term.clear();
           term.write("\x1b[2J\x1b[H");
-          term.write(msg.buffered);
+          term.write(sanitized);
         }
         return;
       }
