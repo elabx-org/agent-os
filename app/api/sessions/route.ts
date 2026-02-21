@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { getDb, queries, type Session, type Group } from "@/lib/db";
 import { isValidAgentType, type AgentType } from "@/lib/providers";
+import { getProviderDefinition } from "@/lib/providers/registry";
 import { createWorktree } from "@/lib/worktrees";
+import { generateBranchName } from "@/lib/git";
 import { setupWorktree, type SetupResult } from "@/lib/env-setup";
 import { findAvailablePort } from "@/lib/ports";
 import { runInBackground } from "@/lib/async-operations";
@@ -96,44 +98,51 @@ export async function POST(request: NextRequest) {
     let setupResult: SetupResult | null = null;
 
     if (useWorktree && featureName) {
-      try {
-        const worktreeInfo = await createWorktree({
-          projectPath: workingDirectory,
-          featureName,
-          baseBranch,
-        });
-        worktreePath = worktreeInfo.worktreePath;
-        branchName = worktreeInfo.branchName;
-        actualWorkingDirectory = worktreeInfo.worktreePath;
-
-        // Find an available port for the dev server
-        port = await findAvailablePort();
-
-        // Run environment setup in background (non-blocking)
-        // This allows instant UI feedback while npm install runs async
-        const capturedWorktreePath = worktreeInfo.worktreePath;
-        const capturedSourcePath = workingDirectory;
-        const capturedPort = port;
-        runInBackground(async () => {
-          const result = await setupWorktree({
-            worktreePath: capturedWorktreePath,
-            sourcePath: capturedSourcePath,
-            port: capturedPort,
+      const providerDef = getProviderDefinition(agentType);
+      if (providerDef.worktreeFlag) {
+        // Native worktree: CLI manages the worktree itself via --worktree flag.
+        // Just record the branch name; working directory stays as project root.
+        branchName = generateBranchName(featureName);
+      } else {
+        // Custom worktree: agent-os creates and manages the worktree directory.
+        try {
+          const worktreeInfo = await createWorktree({
+            projectPath: workingDirectory,
+            featureName,
+            baseBranch,
           });
-          console.log("Worktree setup completed:", {
-            port: capturedPort,
-            envFilesCopied: result.envFilesCopied,
-            stepsRun: result.steps.length,
-            success: result.success,
-          });
-        }, `setup-worktree-${id}`);
-      } catch (error) {
-        const message =
-          error instanceof Error ? error.message : "Unknown error";
-        return NextResponse.json(
-          { error: `Failed to create worktree: ${message}` },
-          { status: 400 }
-        );
+          worktreePath = worktreeInfo.worktreePath;
+          branchName = worktreeInfo.branchName;
+          actualWorkingDirectory = worktreeInfo.worktreePath;
+
+          // Find an available port for the dev server
+          port = await findAvailablePort();
+
+          // Run environment setup in background (non-blocking)
+          const capturedWorktreePath = worktreeInfo.worktreePath;
+          const capturedSourcePath = workingDirectory;
+          const capturedPort = port;
+          runInBackground(async () => {
+            const result = await setupWorktree({
+              worktreePath: capturedWorktreePath,
+              sourcePath: capturedSourcePath,
+              port: capturedPort,
+            });
+            console.log("Worktree setup completed:", {
+              port: capturedPort,
+              envFilesCopied: result.envFilesCopied,
+              stepsRun: result.steps.length,
+              success: result.success,
+            });
+          }, `setup-worktree-${id}`);
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : "Unknown error";
+          return NextResponse.json(
+            { error: `Failed to create worktree: ${message}` },
+            { status: 400 }
+          );
+        }
       }
     }
 

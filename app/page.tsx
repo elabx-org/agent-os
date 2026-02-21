@@ -34,6 +34,7 @@ import { useSessionStatuses } from "@/hooks/useSessionStatuses";
 import type { Session } from "@/lib/db";
 import type { TerminalHandle } from "@/components/Terminal";
 import { getProvider } from "@/lib/providers";
+import { getProviderDefinition } from "@/lib/providers/registry";
 import { DesktopView } from "@/components/views/DesktopView";
 import { MobileView } from "@/components/views/MobileView";
 import { getPendingPrompt, clearPendingPrompt } from "@/stores/initialPrompt";
@@ -178,6 +179,14 @@ function HomeContent() {
         clearPendingPrompt(session.id);
       }
 
+      // For providers with native worktree support, pass the branch name so
+      // the CLI creates and manages the worktree itself (e.g. claude --worktree)
+      const providerDef = getProviderDefinition(session.agent_type || "claude");
+      const nativeWorktreeName =
+        session.branch_name && !session.worktree_path && providerDef.worktreeFlag
+          ? session.branch_name
+          : undefined;
+
       const flags = provider.buildFlags({
         sessionId: session.claude_session_id,
         parentSessionId,
@@ -185,6 +194,7 @@ function HomeContent() {
         continueSession: session.continue_session,
         model: session.model,
         initialPrompt: initialPrompt || undefined,
+        worktreeName: nativeWorktreeName,
       });
       const flagsStr = flags.join(" ");
 
