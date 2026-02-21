@@ -6,6 +6,8 @@ import { FileEditor } from "./FileEditor";
 import { FileTabs } from "./FileTabs";
 import type { UseFileEditorReturn } from "@/hooks/useFileEditor";
 import { useViewport } from "@/hooks/useViewport";
+import { useFileDrop } from "@/hooks/useFileDrop";
+import { uploadFileToTemp } from "@/lib/file-upload";
 import {
   Loader2,
   AlertCircle,
@@ -15,6 +17,8 @@ import {
   Save,
   Home,
   ChevronRight,
+  Upload,
+  FolderUp,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -44,6 +48,8 @@ export function FileExplorer({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [pendingClose, setPendingClose] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   const {
     openFiles,
@@ -64,30 +70,51 @@ export function FileExplorer({
     setCurrentRoot(workingDirectory);
   }, [workingDirectory]);
 
-  // Load directory contents whenever currentRoot changes
-  useEffect(() => {
-    const loadFiles = async () => {
-      setLoading(true);
-      setError(null);
-      setFiles([]);
-      try {
-        const res = await fetch(
-          `/api/files?path=${encodeURIComponent(currentRoot)}`
-        );
-        const data = await res.json();
-        if (data.error) {
-          setError(data.error);
-        } else {
-          setFiles(data.files || []);
-        }
-      } catch {
-        setError("Failed to load directory");
-      } finally {
-        setLoading(false);
+  const loadFiles = useCallback(async (dir: string) => {
+    setLoading(true);
+    setError(null);
+    setFiles([]);
+    try {
+      const res = await fetch(`/api/files?path=${encodeURIComponent(dir)}`);
+      const data = await res.json();
+      if (data.error) {
+        setError(data.error);
+      } else {
+        setFiles(data.files || []);
       }
-    };
-    loadFiles();
-  }, [currentRoot]);
+    } catch {
+      setError("Failed to load directory");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Reload when currentRoot changes
+  useEffect(() => {
+    loadFiles(currentRoot);
+  }, [currentRoot, loadFiles]);
+
+  // Upload one or more files to currentRoot
+  const handleFilesUpload = useCallback(
+    async (fileList: File[]) => {
+      if (fileList.length === 0) return;
+      setUploading(true);
+      setUploadError(null);
+      try {
+        await Promise.all(
+          fileList.map((file) => uploadFileToTemp(file, currentRoot))
+        );
+        // Refresh listing
+        await loadFiles(currentRoot);
+      } catch {
+        setUploadError("Upload failed");
+        setTimeout(() => setUploadError(null), 3000);
+      } finally {
+        setUploading(false);
+      }
+    },
+    [currentRoot, loadFiles]
+  );
 
   const handleFileClick = useCallback(
     (path: string) => {
@@ -128,7 +155,7 @@ export function FileExplorer({
 
   const handleNavigateUp = useCallback(() => {
     const parts = currentRoot.replace(/\/$/, "").split("/");
-    if (parts.length <= 1) return; // already at /
+    if (parts.length <= 1) return;
     const parent = parts.slice(0, -1).join("/") || "/";
     setCurrentRoot(parent);
   }, [currentRoot]);
@@ -139,7 +166,6 @@ export function FileExplorer({
 
   const activeFile = activeFilePath ? getFile(activeFilePath) : undefined;
 
-  // Loading state before hydration
   if (!isHydrated) {
     return (
       <div className="bg-background flex h-full w-full items-center justify-center">
@@ -153,6 +179,8 @@ export function FileExplorer({
     loading,
     error,
     fileLoading,
+    uploading,
+    uploadError,
     currentRoot,
     workingDirectory,
     openFiles,
@@ -165,6 +193,7 @@ export function FileExplorer({
     onSave: handleSave,
     onNavigateUp: handleNavigateUp,
     onNavigateTo: handleNavigateTo,
+    onFilesUpload: handleFilesUpload,
     isDirty,
     updateContent,
     pendingClose,
@@ -185,7 +214,7 @@ export function FileExplorer({
   return <DesktopFileExplorer {...sharedProps} />;
 }
 
-// Breadcrumb path navigator
+// Clickable breadcrumb path navigator
 function PathBreadcrumb({
   path,
   onNavigateTo,
@@ -193,12 +222,10 @@ function PathBreadcrumb({
   path: string;
   onNavigateTo: (path: string) => void;
 }) {
-  // Split into segments, filtering empty strings
   const segments = path.split("/").filter(Boolean);
 
   return (
     <div className="flex min-w-0 items-center gap-0.5 overflow-x-auto">
-      {/* Root "/" */}
       <button
         onClick={() => onNavigateTo("/")}
         className="text-muted-foreground hover:text-foreground flex flex-shrink-0 items-center rounded px-1 py-0.5 text-xs transition-colors"
@@ -215,14 +242,14 @@ function PathBreadcrumb({
             <ChevronRight className="text-muted-foreground/50 h-3 w-3 flex-shrink-0" />
             <button
               onClick={() => !isLast && onNavigateTo(segPath)}
+              disabled={isLast}
               className={cn(
                 "max-w-[120px] truncate rounded px-1 py-0.5 text-xs transition-colors",
                 isLast
-                  ? "text-foreground font-medium cursor-default"
+                  ? "text-foreground cursor-default font-medium"
                   : "text-muted-foreground hover:text-foreground cursor-pointer"
               )}
               title={segPath}
-              disabled={isLast}
             >
               {seg}
             </button>
@@ -233,12 +260,14 @@ function PathBreadcrumb({
   );
 }
 
-// Shared props interface
+// Shared props
 interface FileExplorerLayoutProps {
   files: FileNode[];
   loading: boolean;
   error: string | null;
   fileLoading: boolean;
+  uploading: boolean;
+  uploadError: string | null;
   currentRoot: string;
   workingDirectory: string;
   openFiles: OpenFile[];
@@ -251,6 +280,7 @@ interface FileExplorerLayoutProps {
   onSave: () => void;
   onNavigateUp: () => void;
   onNavigateTo: (path: string) => void;
+  onFilesUpload: (files: File[]) => Promise<void>;
   isDirty: (path: string) => boolean;
   updateContent: (path: string, content: string) => void;
   pendingClose: string | null;
@@ -259,12 +289,181 @@ interface FileExplorerLayoutProps {
   onSaveAndClose: () => void;
 }
 
+// Tree panel: navigation header + drop zone + file listing
+function TreePanel({
+  files,
+  loading,
+  error,
+  uploading,
+  uploadError,
+  currentRoot,
+  onFileClick,
+  onNavigateUp,
+  onNavigateTo,
+  onFilesUpload,
+}: Pick<
+  FileExplorerLayoutProps,
+  | "files"
+  | "loading"
+  | "error"
+  | "uploading"
+  | "uploadError"
+  | "currentRoot"
+  | "onFileClick"
+  | "onNavigateUp"
+  | "onNavigateTo"
+  | "onFilesUpload"
+>) {
+  const treePanelRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Drag-and-drop: any file onto the tree panel
+  const { isDragging, dragHandlers } = useFileDrop(
+    treePanelRef,
+    (file) => onFilesUpload([file]),
+    { disabled: uploading }
+  );
+
+  // Clipboard paste: any file pasted while file browser is visible
+  useEffect(() => {
+    const handlePaste = (e: ClipboardEvent) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      const fileItems = Array.from(items)
+        .filter((item) => item.kind === "file")
+        .map((item) => item.getAsFile())
+        .filter((f): f is File => f !== null);
+      if (fileItems.length > 0) {
+        e.preventDefault();
+        onFilesUpload(fileItems);
+      }
+    };
+    document.addEventListener("paste", handlePaste);
+    return () => document.removeEventListener("paste", handlePaste);
+  }, [onFilesUpload]);
+
+  const atRoot = currentRoot === "/" || currentRoot === "";
+
+  return (
+    <div
+      ref={treePanelRef}
+      className="relative flex h-full flex-col"
+      {...dragHandlers}
+    >
+      {/* Hidden file input for device picker */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        className="hidden"
+        onChange={(e) => {
+          const picked = Array.from(e.target.files || []);
+          if (picked.length > 0) onFilesUpload(picked);
+          e.target.value = "";
+        }}
+      />
+
+      {/* Header: up + breadcrumb + upload */}
+      <div className="flex items-center gap-1 border-b px-2 py-1.5">
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={onNavigateUp}
+          disabled={atRoot}
+          className="flex-shrink-0"
+          title="Go up one level"
+        >
+          <ArrowUp className="h-3.5 w-3.5" />
+        </Button>
+        <div className="min-w-0 flex-1 overflow-hidden">
+          <PathBreadcrumb path={currentRoot} onNavigateTo={onNavigateTo} />
+        </div>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={uploading}
+          className="flex-shrink-0"
+          title="Upload files to this folder"
+        >
+          {uploading ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Upload className="h-3.5 w-3.5" />
+          )}
+        </Button>
+      </div>
+
+      {/* Upload error toast */}
+      {uploadError && (
+        <div className="bg-destructive/10 text-destructive border-destructive/20 border-b px-3 py-1.5 text-xs">
+          {uploadError}
+        </div>
+      )}
+
+      {/* File listing */}
+      <div className="flex-1 overflow-y-auto">
+        {loading ? (
+          <div className="flex h-32 items-center justify-center">
+            <Loader2 className="text-muted-foreground h-6 w-6 animate-spin" />
+          </div>
+        ) : error ? (
+          <div className="text-muted-foreground flex h-32 flex-col items-center justify-center p-4">
+            <AlertCircle className="mb-2 h-8 w-8" />
+            <p className="text-center text-sm">{error}</p>
+          </div>
+        ) : files.length === 0 ? (
+          <div className="text-muted-foreground flex h-32 flex-col items-center justify-center gap-2">
+            <Folder className="h-8 w-8 opacity-40" />
+            <p className="text-sm">Empty directory</p>
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="text-muted-foreground hover:text-foreground text-xs underline underline-offset-2 transition-colors"
+            >
+              Upload files
+            </button>
+          </div>
+        ) : (
+          <FileTree
+            nodes={files}
+            basePath={currentRoot}
+            onFileClick={onFileClick}
+          />
+        )}
+      </div>
+
+      {/* Drag overlay */}
+      {isDragging && (
+        <div className="bg-primary/10 border-primary absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 rounded border-2 border-dashed">
+          <FolderUp className="text-primary h-8 w-8" />
+          <p className="text-primary text-sm font-medium">
+            Drop to upload here
+          </p>
+          <p className="text-muted-foreground text-xs">{currentRoot}</p>
+        </div>
+      )}
+
+      {/* Upload progress overlay */}
+      {uploading && !isDragging && (
+        <div className="bg-background/60 absolute inset-0 z-10 flex items-center justify-center backdrop-blur-sm">
+          <div className="flex items-center gap-2">
+            <Loader2 className="text-primary h-5 w-5 animate-spin" />
+            <span className="text-sm">Uploading…</span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Desktop: Side-by-side tree + editor
 function DesktopFileExplorer({
   files,
   loading,
   error,
   fileLoading,
+  uploading,
+  uploadError,
   currentRoot,
   openFiles,
   activeFilePath,
@@ -276,6 +475,7 @@ function DesktopFileExplorer({
   onSave,
   onNavigateUp,
   onNavigateTo,
+  onFilesUpload,
   isDirty,
   updateContent,
   pendingClose,
@@ -312,51 +512,22 @@ function DesktopFileExplorer({
     document.addEventListener("mouseup", handleMouseUp);
   }, []);
 
-  const atRoot = currentRoot === "/" || currentRoot === "";
-
   return (
     <div ref={containerRef} className="bg-background flex h-full w-full">
       {/* File tree panel */}
       <div className="flex h-full flex-col" style={{ width: treeWidth }}>
-        {/* Header: up button + breadcrumb */}
-        <div className="flex items-center gap-1 border-b px-2 py-1.5">
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={onNavigateUp}
-            disabled={atRoot}
-            className="flex-shrink-0"
-            title="Go up one level"
-          >
-            <ArrowUp className="h-3.5 w-3.5" />
-          </Button>
-          <div className="min-w-0 flex-1 overflow-hidden">
-            <PathBreadcrumb path={currentRoot} onNavigateTo={onNavigateTo} />
-          </div>
-        </div>
-
-        <div className="flex-1 overflow-y-auto">
-          {loading ? (
-            <div className="flex h-32 items-center justify-center">
-              <Loader2 className="text-muted-foreground h-6 w-6 animate-spin" />
-            </div>
-          ) : error ? (
-            <div className="text-muted-foreground flex h-32 flex-col items-center justify-center p-4">
-              <AlertCircle className="mb-2 h-8 w-8" />
-              <p className="text-center text-sm">{error}</p>
-            </div>
-          ) : files.length === 0 ? (
-            <div className="text-muted-foreground flex h-32 items-center justify-center">
-              <p className="text-sm">Empty directory</p>
-            </div>
-          ) : (
-            <FileTree
-              nodes={files}
-              basePath={currentRoot}
-              onFileClick={onFileClick}
-            />
-          )}
-        </div>
+        <TreePanel
+          files={files}
+          loading={loading}
+          error={error}
+          uploading={uploading}
+          uploadError={uploadError}
+          currentRoot={currentRoot}
+          onFileClick={onFileClick}
+          onNavigateUp={onNavigateUp}
+          onNavigateTo={onNavigateTo}
+          onFilesUpload={onFilesUpload}
+        />
       </div>
 
       {/* Resize handle */}
@@ -367,7 +538,6 @@ function DesktopFileExplorer({
 
       {/* Editor panel */}
       <div className="bg-muted/20 flex h-full min-w-0 flex-1 flex-col">
-        {/* Tabs */}
         {openFiles.length > 0 && (
           <div className="bg-background/50">
             <FileTabs
@@ -380,7 +550,6 @@ function DesktopFileExplorer({
           </div>
         )}
 
-        {/* Editor or empty state */}
         <div className="flex-1 overflow-hidden">
           {fileLoading ? (
             <div className="flex h-full items-center justify-center">
@@ -403,7 +572,6 @@ function DesktopFileExplorer({
         </div>
       </div>
 
-      {/* Unsaved changes dialog */}
       <UnsavedChangesDialog
         open={!!pendingClose}
         fileName={pendingClose?.split("/").pop() || ""}
@@ -425,6 +593,8 @@ function MobileFileExplorer({
   loading,
   error,
   fileLoading,
+  uploading,
+  uploadError,
   currentRoot,
   openFiles,
   activeFilePath,
@@ -437,6 +607,7 @@ function MobileFileExplorer({
   onBack,
   onNavigateUp,
   onNavigateTo,
+  onFilesUpload,
   isDirty,
   updateContent,
   pendingClose,
@@ -444,13 +615,11 @@ function MobileFileExplorer({
   onConfirmClose,
   onSaveAndClose,
 }: MobileFileExplorerProps) {
-  // Show editor when a file is active
   if (activeFile) {
     const isCurrentDirty = activeFilePath ? isDirty(activeFilePath) : false;
 
     return (
       <div className="bg-background flex h-full w-full flex-col">
-        {/* Header */}
         <div className="bg-muted/30 flex items-center gap-2 p-2">
           <Button variant="ghost" size="icon-sm" onClick={onBack}>
             <ArrowLeft className="h-5 w-5" />
@@ -478,7 +647,6 @@ function MobileFileExplorer({
           )}
         </div>
 
-        {/* Editor */}
         <div className="flex-1 overflow-hidden">
           {fileLoading ? (
             <div className="flex h-full items-center justify-center">
@@ -495,7 +663,6 @@ function MobileFileExplorer({
           )}
         </div>
 
-        {/* Unsaved changes dialog */}
         <UnsavedChangesDialog
           open={!!pendingClose}
           fileName={pendingClose?.split("/").pop() || ""}
@@ -507,56 +674,20 @@ function MobileFileExplorer({
     );
   }
 
-  const atRoot = currentRoot === "/" || currentRoot === "";
-
-  // Show file tree
   return (
     <div className="bg-background flex h-full w-full flex-col">
-      {/* Header: up button + breadcrumb */}
-      <div className="flex items-center gap-1 border-b px-2 py-2">
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          onClick={onNavigateUp}
-          disabled={atRoot}
-          className="flex-shrink-0"
-          title="Go up one level"
-        >
-          <ArrowUp className="h-4 w-4" />
-        </Button>
-        <div className="min-w-0 flex-1 overflow-hidden">
-          <PathBreadcrumb path={currentRoot} onNavigateTo={onNavigateTo} />
-        </div>
-      </div>
-
-      <div className="flex-1 overflow-y-auto">
-        {loading ? (
-          <div className="flex h-32 items-center justify-center">
-            <Loader2 className="text-muted-foreground h-6 w-6 animate-spin" />
-          </div>
-        ) : error ? (
-          <div className="text-muted-foreground flex h-32 flex-col items-center justify-center p-4">
-            <AlertCircle className="mb-2 h-8 w-8" />
-            <p className="text-center text-sm">{error}</p>
-          </div>
-        ) : files.length === 0 ? (
-          <div className="text-muted-foreground flex h-32 items-center justify-center">
-            <p className="text-sm">Empty directory</p>
-          </div>
-        ) : (
-          <FileTree
-            nodes={files}
-            basePath={currentRoot}
-            onFileClick={onFileClick}
-          />
-        )}
-      </div>
-
-      {fileLoading && (
-        <div className="bg-background/80 fixed inset-0 z-50 flex items-center justify-center backdrop-blur-sm">
-          <Loader2 className="text-primary h-8 w-8 animate-spin" />
-        </div>
-      )}
+      <TreePanel
+        files={files}
+        loading={loading}
+        error={error}
+        uploading={uploading}
+        uploadError={uploadError}
+        currentRoot={currentRoot}
+        onFileClick={onFileClick}
+        onNavigateUp={onNavigateUp}
+        onNavigateTo={onNavigateTo}
+        onFilesUpload={onFilesUpload}
+      />
     </div>
   );
 }

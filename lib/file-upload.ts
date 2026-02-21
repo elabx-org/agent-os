@@ -1,11 +1,15 @@
 /**
- * Upload a file to temporary storage and return its path.
+ * Upload a file and return its saved path.
  * Converts the file to base64 and POSTs to /api/files/upload-temp.
  *
  * @param file - The file to upload
+ * @param destinationDir - Optional directory to save into. Defaults to a temp directory.
  * @returns The path to the uploaded file, or null if upload failed
  */
-export async function uploadFileToTemp(file: File): Promise<string | null> {
+export async function uploadFileToTemp(
+  file: File,
+  destinationDir?: string
+): Promise<string | null> {
   const buffer = await file.arrayBuffer();
   const base64 = btoa(
     new Uint8Array(buffer).reduce(
@@ -21,6 +25,7 @@ export async function uploadFileToTemp(file: File): Promise<string | null> {
       filename: file.name || `file-${Date.now()}`,
       base64,
       mimeType: file.type || "application/octet-stream",
+      ...(destinationDir ? { destinationDir } : {}),
     }),
   });
 

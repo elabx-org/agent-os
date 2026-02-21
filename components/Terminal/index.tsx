@@ -517,8 +517,8 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
           </div>
         )}
 
-        {/* Image picker button - desktop only, for agent terminals */}
-        {!isMobile && showImageButton && (
+        {/* Image picker button — visible on all screen sizes for agent terminals */}
+        {showImageButton && (
           <button
             onClick={() => setShowImagePicker(true)}
             className="bg-secondary hover:bg-accent absolute top-3 right-3 z-40 flex h-9 w-9 items-center justify-center rounded-full shadow-lg transition-all"
