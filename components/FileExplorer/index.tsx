@@ -81,6 +81,12 @@ export function FileExplorer({
         setError(data.error);
       } else {
         setFiles(data.files || []);
+        // Normalize currentRoot: the API expands ~ to an absolute path.
+        // If we keep ~ in state the breadcrumb splits it as a segment and
+        // re-constructs parent paths as /~/... which the API can't expand.
+        if (data.path && data.path !== dir) {
+          setCurrentRoot(data.path);
+        }
       }
     } catch {
       setError("Failed to load directory");
