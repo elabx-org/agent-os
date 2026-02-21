@@ -10,9 +10,11 @@ import {
   Loader2,
   AlertCircle,
   ArrowLeft,
+  ArrowUp,
   Folder,
   Save,
-  FolderOpen,
+  Home,
+  ChevronRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,6 +27,7 @@ import {
 } from "@/components/ui/dialog";
 import type { FileNode } from "@/lib/file-utils";
 import type { OpenFile } from "@/hooks/useFileEditor";
+import { cn } from "@/lib/utils";
 
 interface FileExplorerProps {
   workingDirectory: string;
@@ -36,6 +39,7 @@ export function FileExplorer({
   fileEditor,
 }: FileExplorerProps) {
   const { isMobile, isHydrated } = useViewport();
+  const [currentRoot, setCurrentRoot] = useState(workingDirectory);
   const [files, setFiles] = useState<FileNode[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -55,14 +59,20 @@ export function FileExplorer({
     getFile,
   } = fileEditor;
 
-  // Load directory contents
+  // Sync currentRoot when workingDirectory changes (session switch)
+  useEffect(() => {
+    setCurrentRoot(workingDirectory);
+  }, [workingDirectory]);
+
+  // Load directory contents whenever currentRoot changes
   useEffect(() => {
     const loadFiles = async () => {
       setLoading(true);
       setError(null);
+      setFiles([]);
       try {
         const res = await fetch(
-          `/api/files?path=${encodeURIComponent(workingDirectory)}`
+          `/api/files?path=${encodeURIComponent(currentRoot)}`
         );
         const data = await res.json();
         if (data.error) {
@@ -77,7 +87,7 @@ export function FileExplorer({
       }
     };
     loadFiles();
-  }, [workingDirectory]);
+  }, [currentRoot]);
 
   const handleFileClick = useCallback(
     (path: string) => {
@@ -116,6 +126,17 @@ export function FileExplorer({
     }
   }, [activeFilePath, saveFile]);
 
+  const handleNavigateUp = useCallback(() => {
+    const parts = currentRoot.replace(/\/$/, "").split("/");
+    if (parts.length <= 1) return; // already at /
+    const parent = parts.slice(0, -1).join("/") || "/";
+    setCurrentRoot(parent);
+  }, [currentRoot]);
+
+  const handleNavigateTo = useCallback((path: string) => {
+    setCurrentRoot(path);
+  }, []);
+
   const activeFile = activeFilePath ? getFile(activeFilePath) : undefined;
 
   // Loading state before hydration
@@ -127,66 +148,98 @@ export function FileExplorer({
     );
   }
 
-  // Mobile layout: full-screen tree OR full-screen editor
+  const sharedProps = {
+    files,
+    loading,
+    error,
+    fileLoading,
+    currentRoot,
+    workingDirectory,
+    openFiles,
+    activeFilePath,
+    activeFile,
+    saving,
+    onFileClick: handleFileClick,
+    onSelectTab: setActiveFile,
+    onCloseTab: handleCloseFile,
+    onSave: handleSave,
+    onNavigateUp: handleNavigateUp,
+    onNavigateTo: handleNavigateTo,
+    isDirty,
+    updateContent,
+    pendingClose,
+    onCancelClose: () => setPendingClose(null),
+    onConfirmClose: handleConfirmClose,
+    onSaveAndClose: handleSaveAndClose,
+  };
+
   if (isMobile) {
     return (
       <MobileFileExplorer
-        files={files}
-        loading={loading}
-        error={error}
-        fileLoading={fileLoading}
-        workingDirectory={workingDirectory}
-        openFiles={openFiles}
-        activeFilePath={activeFilePath}
-        activeFile={activeFile}
-        saving={saving}
-        onFileClick={handleFileClick}
-        onSelectTab={setActiveFile}
-        onCloseTab={handleCloseFile}
-        onSave={handleSave}
+        {...sharedProps}
         onBack={() => setActiveFile(null as unknown as string)}
-        isDirty={isDirty}
-        updateContent={updateContent}
-        pendingClose={pendingClose}
-        onCancelClose={() => setPendingClose(null)}
-        onConfirmClose={handleConfirmClose}
-        onSaveAndClose={handleSaveAndClose}
       />
     );
   }
 
-  // Desktop layout: side-by-side tree + editor
+  return <DesktopFileExplorer {...sharedProps} />;
+}
+
+// Breadcrumb path navigator
+function PathBreadcrumb({
+  path,
+  onNavigateTo,
+}: {
+  path: string;
+  onNavigateTo: (path: string) => void;
+}) {
+  // Split into segments, filtering empty strings
+  const segments = path.split("/").filter(Boolean);
+
   return (
-    <DesktopFileExplorer
-      files={files}
-      loading={loading}
-      error={error}
-      fileLoading={fileLoading}
-      workingDirectory={workingDirectory}
-      openFiles={openFiles}
-      activeFilePath={activeFilePath}
-      activeFile={activeFile}
-      saving={saving}
-      onFileClick={handleFileClick}
-      onSelectTab={setActiveFile}
-      onCloseTab={handleCloseFile}
-      onSave={handleSave}
-      isDirty={isDirty}
-      updateContent={updateContent}
-      pendingClose={pendingClose}
-      onCancelClose={() => setPendingClose(null)}
-      onConfirmClose={handleConfirmClose}
-      onSaveAndClose={handleSaveAndClose}
-    />
+    <div className="flex min-w-0 items-center gap-0.5 overflow-x-auto">
+      {/* Root "/" */}
+      <button
+        onClick={() => onNavigateTo("/")}
+        className="text-muted-foreground hover:text-foreground flex flex-shrink-0 items-center rounded px-1 py-0.5 text-xs transition-colors"
+        title="/"
+      >
+        <Home className="h-3 w-3" />
+      </button>
+
+      {segments.map((seg, i) => {
+        const segPath = "/" + segments.slice(0, i + 1).join("/");
+        const isLast = i === segments.length - 1;
+        return (
+          <span key={segPath} className="flex flex-shrink-0 items-center">
+            <ChevronRight className="text-muted-foreground/50 h-3 w-3 flex-shrink-0" />
+            <button
+              onClick={() => !isLast && onNavigateTo(segPath)}
+              className={cn(
+                "max-w-[120px] truncate rounded px-1 py-0.5 text-xs transition-colors",
+                isLast
+                  ? "text-foreground font-medium cursor-default"
+                  : "text-muted-foreground hover:text-foreground cursor-pointer"
+              )}
+              title={segPath}
+              disabled={isLast}
+            >
+              {seg}
+            </button>
+          </span>
+        );
+      })}
+    </div>
   );
 }
 
-// Desktop: Side-by-side tree + editor
-interface DesktopFileExplorerProps {
+// Shared props interface
+interface FileExplorerLayoutProps {
   files: FileNode[];
   loading: boolean;
   error: string | null;
   fileLoading: boolean;
+  currentRoot: string;
   workingDirectory: string;
   openFiles: OpenFile[];
   activeFilePath: string | null;
@@ -196,6 +249,8 @@ interface DesktopFileExplorerProps {
   onSelectTab: (path: string) => void;
   onCloseTab: (path: string) => void;
   onSave: () => void;
+  onNavigateUp: () => void;
+  onNavigateTo: (path: string) => void;
   isDirty: (path: string) => boolean;
   updateContent: (path: string, content: string) => void;
   pendingClose: string | null;
@@ -204,12 +259,13 @@ interface DesktopFileExplorerProps {
   onSaveAndClose: () => void;
 }
 
+// Desktop: Side-by-side tree + editor
 function DesktopFileExplorer({
   files,
   loading,
   error,
   fileLoading,
-  workingDirectory,
+  currentRoot,
   openFiles,
   activeFilePath,
   activeFile,
@@ -218,13 +274,15 @@ function DesktopFileExplorer({
   onSelectTab,
   onCloseTab,
   onSave,
+  onNavigateUp,
+  onNavigateTo,
   isDirty,
   updateContent,
   pendingClose,
   onCancelClose,
   onConfirmClose,
   onSaveAndClose,
-}: DesktopFileExplorerProps) {
+}: FileExplorerLayoutProps) {
   const [treeWidth, setTreeWidth] = useState(280);
   const containerRef = useRef<HTMLDivElement>(null);
   const isDragging = useRef(false);
@@ -254,14 +312,29 @@ function DesktopFileExplorer({
     document.addEventListener("mouseup", handleMouseUp);
   }, []);
 
+  const atRoot = currentRoot === "/" || currentRoot === "";
+
   return (
     <div ref={containerRef} className="bg-background flex h-full w-full">
       {/* File tree panel */}
       <div className="flex h-full flex-col" style={{ width: treeWidth }}>
-        <div className="flex items-center gap-2 p-3">
-          <FolderOpen className="text-muted-foreground h-4 w-4 flex-shrink-0" />
-          <p className="flex-1 truncate text-sm font-medium">Files</p>
+        {/* Header: up button + breadcrumb */}
+        <div className="flex items-center gap-1 border-b px-2 py-1.5">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={onNavigateUp}
+            disabled={atRoot}
+            className="flex-shrink-0"
+            title="Go up one level"
+          >
+            <ArrowUp className="h-3.5 w-3.5" />
+          </Button>
+          <div className="min-w-0 flex-1 overflow-hidden">
+            <PathBreadcrumb path={currentRoot} onNavigateTo={onNavigateTo} />
+          </div>
         </div>
+
         <div className="flex-1 overflow-y-auto">
           {loading ? (
             <div className="flex h-32 items-center justify-center">
@@ -279,7 +352,7 @@ function DesktopFileExplorer({
           ) : (
             <FileTree
               nodes={files}
-              basePath={workingDirectory}
+              basePath={currentRoot}
               onFileClick={onFileClick}
             />
           )}
@@ -343,7 +416,7 @@ function DesktopFileExplorer({
 }
 
 // Mobile: Full-screen tree OR full-screen editor
-interface MobileFileExplorerProps extends DesktopFileExplorerProps {
+interface MobileFileExplorerProps extends FileExplorerLayoutProps {
   onBack: () => void;
 }
 
@@ -352,7 +425,7 @@ function MobileFileExplorer({
   loading,
   error,
   fileLoading,
-  workingDirectory,
+  currentRoot,
   openFiles,
   activeFilePath,
   activeFile,
@@ -362,6 +435,8 @@ function MobileFileExplorer({
   onCloseTab,
   onSave,
   onBack,
+  onNavigateUp,
+  onNavigateTo,
   isDirty,
   updateContent,
   pendingClose,
@@ -432,16 +507,25 @@ function MobileFileExplorer({
     );
   }
 
+  const atRoot = currentRoot === "/" || currentRoot === "";
+
   // Show file tree
   return (
     <div className="bg-background flex h-full w-full flex-col">
-      <div className="flex items-center gap-2 p-3">
-        <Folder className="text-muted-foreground h-4 w-4 flex-shrink-0" />
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium">Files</p>
-          <p className="text-muted-foreground truncate text-xs">
-            {workingDirectory}
-          </p>
+      {/* Header: up button + breadcrumb */}
+      <div className="flex items-center gap-1 border-b px-2 py-2">
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={onNavigateUp}
+          disabled={atRoot}
+          className="flex-shrink-0"
+          title="Go up one level"
+        >
+          <ArrowUp className="h-4 w-4" />
+        </Button>
+        <div className="min-w-0 flex-1 overflow-hidden">
+          <PathBreadcrumb path={currentRoot} onNavigateTo={onNavigateTo} />
         </div>
       </div>
 
@@ -462,7 +546,7 @@ function MobileFileExplorer({
         ) : (
           <FileTree
             nodes={files}
-            basePath={workingDirectory}
+            basePath={currentRoot}
             onFileClick={onFileClick}
           />
         )}
