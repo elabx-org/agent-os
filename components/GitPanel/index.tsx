@@ -249,6 +249,25 @@ export function GitPanel({
     unstageMutation.mutate(undefined);
   };
 
+  const handleDiscard = async (file: GitFile | MultiRepoGitFile) => {
+    const action =
+      file.status === "untracked" ? "delete" : "discard changes to";
+    if (!window.confirm(`Are you sure you want to ${action} "${file.path}"? This cannot be undone.`)) return;
+    const repoPath =
+      "repoPath" in file && file.repoPath ? file.repoPath : primaryRepoPath;
+    try {
+      await fetch("/api/git/discard", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: repoPath, file: file.path }),
+      });
+      queryClient.invalidateQueries({ queryKey: gitKeys.all });
+      if (selectedFile?.file.path === file.path) setSelectedFile(null);
+    } catch {
+      toast.error("Failed to discard changes");
+    }
+  };
+
   // Resize handle for desktop
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -361,6 +380,7 @@ export function GitPanel({
         onFileClick={handleFileClick}
         onStage={handleStage}
         onUnstage={handleUnstage}
+        onDiscard={handleDiscard}
         onStageAll={handleStageAll}
         onUnstageAll={handleUnstageAll}
         onBack={() => setSelectedFile(null)}
@@ -508,6 +528,7 @@ export function GitPanel({
                   onFileClick={handleFileClick}
                   onStage={handleStage}
                   onStageAll={handleStageAll}
+                  onDiscard={handleDiscard}
                   isStaged={false}
                 />
               )}
@@ -521,6 +542,7 @@ export function GitPanel({
                   selectedPath={selectedFile?.file.path}
                   onFileClick={handleFileClick}
                   onStage={handleStage}
+                  onDiscard={handleDiscard}
                   isStaged={false}
                 />
               )}
@@ -642,6 +664,7 @@ interface MobileGitPanelProps {
   onFileClick: (file: GitFile) => void;
   onStage: (file: GitFile) => void;
   onUnstage: (file: GitFile) => void;
+  onDiscard: (file: GitFile) => void;
   onStageAll: () => void;
   onUnstageAll: () => void;
   onBack: () => void;
@@ -674,6 +697,7 @@ function MobileGitPanel({
   onFileClick,
   onStage,
   onUnstage,
+  onDiscard,
   onStageAll,
   onUnstageAll,
   onBack,
@@ -824,6 +848,7 @@ function MobileGitPanel({
                 onFileClick={onFileClick}
                 onStage={onStage}
                 onStageAll={onStageAll}
+                onDiscard={onDiscard}
                 isStaged={false}
               />
             )}
@@ -836,6 +861,7 @@ function MobileGitPanel({
                 emptyMessage="No untracked files"
                 onFileClick={onFileClick}
                 onStage={onStage}
+                onDiscard={onDiscard}
                 isStaged={false}
               />
             )}
