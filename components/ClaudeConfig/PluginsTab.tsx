@@ -17,6 +17,10 @@ import {
   Plug,
   Shield,
   Package,
+  Store,
+  Plus,
+  X,
+  ExternalLink,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,6 +30,8 @@ import {
   usePlugins,
   usePluginAction,
   useSyncMarketplaces,
+  useAddMarketplace,
+  useRemoveMarketplace,
   type PluginInfo,
 } from "@/data/plugins/queries";
 
@@ -36,10 +42,14 @@ export function PluginsTab() {
   const [filter, setFilter] = useState<PluginFilter>("all");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const searchTimer = useRef<NodeJS.Timeout | null>(null);
+  const [showMarketplaces, setShowMarketplaces] = useState(false);
+  const [newMarketplaceRepo, setNewMarketplaceRepo] = useState("");
 
   const { data, isLoading } = usePlugins();
   const actionMutation = usePluginAction();
   const syncMutation = useSyncMarketplaces();
+  const addMarketplaceMutation = useAddMarketplace();
+  const removeMarketplaceMutation = useRemoveMarketplace();
 
   const plugins = data?.plugins || [];
 
@@ -113,6 +123,31 @@ export function PluginsTab() {
     });
   }, [syncMutation]);
 
+  const handleAddMarketplace = useCallback(() => {
+    const repo = newMarketplaceRepo.trim();
+    if (!repo) return;
+    addMarketplaceMutation.mutate(repo, {
+      onSuccess: () => {
+        toast.success(`Marketplace "${repo}" added`);
+        setNewMarketplaceRepo("");
+        // Also sync to pull the plugin list
+        syncMutation.mutate(undefined, {});
+      },
+      onError: (err) => toast.error(err.message || "Failed to add marketplace"),
+    });
+  }, [newMarketplaceRepo, addMarketplaceMutation, syncMutation]);
+
+  const handleRemoveMarketplace = useCallback(
+    (name: string) => {
+      removeMarketplaceMutation.mutate(name, {
+        onSuccess: () => toast.success(`Marketplace "${name}" removed`),
+        onError: (err) =>
+          toast.error(err.message || "Failed to remove marketplace"),
+      });
+    },
+    [removeMarketplaceMutation]
+  );
+
   if (isLoading && plugins.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center gap-2 py-16">
@@ -150,7 +185,90 @@ export function PluginsTab() {
           />
           Refresh
         </Button>
+        <Button
+          variant={showMarketplaces ? "secondary" : "outline"}
+          size="sm"
+          onClick={() => setShowMarketplaces((v) => !v)}
+          className="gap-1.5 whitespace-nowrap"
+          title="Manage marketplaces"
+        >
+          <Store className="h-3.5 w-3.5" />
+          Sources
+        </Button>
       </div>
+
+      {/* Marketplace management panel */}
+      {showMarketplaces && (
+        <div className="border-border bg-muted/30 mx-3 mb-2 rounded-lg border p-3">
+          <div className="mb-2 flex items-center justify-between">
+            <p className="text-sm font-medium">Plugin Marketplaces</p>
+            <a
+              href="https://claude.com/plugins"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-muted-foreground hover:text-foreground flex items-center gap-1 text-xs"
+            >
+              Browse claude.com/plugins
+              <ExternalLink className="h-3 w-3" />
+            </a>
+          </div>
+
+          {/* Registered marketplaces */}
+          <div className="mb-2 space-y-1">
+            {(data?.marketplaces ?? []).map((mp) => (
+              <div
+                key={mp.name}
+                className="bg-background flex items-center justify-between rounded px-2 py-1.5"
+              >
+                <div className="min-w-0">
+                  <span className="text-xs font-medium">{mp.name}</span>
+                  <span className="text-muted-foreground ml-1.5 text-[10px]">
+                    {mp.repo}
+                  </span>
+                </div>
+                {mp.name !== "claude-plugins-official" && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="text-muted-foreground hover:text-destructive h-6 w-6 shrink-0"
+                    title="Remove marketplace"
+                    onClick={() => handleRemoveMarketplace(mp.name)}
+                    disabled={removeMarketplaceMutation.isPending}
+                  >
+                    <X className="h-3 w-3" />
+                  </Button>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* Add marketplace */}
+          <div className="flex gap-1.5">
+            <Input
+              value={newMarketplaceRepo}
+              onChange={(e) => setNewMarketplaceRepo(e.target.value)}
+              placeholder="owner/repo-name (e.g. obra/superpowers-marketplace)"
+              className="h-7 text-xs"
+              onKeyDown={(e) => e.key === "Enter" && handleAddMarketplace()}
+            />
+            <Button
+              size="sm"
+              className="h-7 gap-1 whitespace-nowrap text-xs"
+              onClick={handleAddMarketplace}
+              disabled={
+                !newMarketplaceRepo.trim() || addMarketplaceMutation.isPending
+              }
+            >
+              {addMarketplaceMutation.isPending ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <Plus className="h-3 w-3" />
+              )}
+              Add
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Filter chips */}
       <div className="flex gap-1.5 px-3 pb-2">

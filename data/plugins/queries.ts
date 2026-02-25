@@ -85,3 +85,47 @@ export function useSyncMarketplaces() {
     },
   });
 }
+
+export function useAddMarketplace() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (repo: string) => {
+      const res = await fetch("/api/plugins/marketplace", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ repo }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to add marketplace");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: pluginKeys.all });
+    },
+  });
+}
+
+export function useRemoveMarketplace() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (name: string) => {
+      const res = await fetch("/api/plugins/marketplace", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to remove marketplace");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: pluginKeys.all });
+    },
+  });
+}
