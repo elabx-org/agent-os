@@ -170,6 +170,8 @@ Client → Server message types: `input` (PTY input), `paste` (clipboard paste, 
 3. `npm publish --registry=https://npm.pkg.github.com`
 4. docker-code-server picks up the new version on next startup
 
+**Always bump the version after committing features** — `agent-os deploy` syncs code but doesn't bump the package version.
+
 ### Deploying to Running Instance
 The running agent-os server lives at `/config/.agent-os/repo/`. Use the CLI:
 ```bash
@@ -177,6 +179,14 @@ agent-os deploy           # Rsync from dev repo → production, build, restart
 agent-os deploy --publish # Same + publish to GitHub Packages first
 agent-os update           # Pull from git remote + rebuild (auto-stashes dirty state)
 ```
+
+After deploy, the s6 supervisor manages the server process. If `agent-os restart` hangs, kill the process directly — s6 will auto-restart it. New API routes require a server restart to become active even if the build succeeded.
+
+### Claude CLI stdout quirk
+`claude plugin list --json` and similar commands produce no visible output when run via the Bash tool directly, but work correctly with file redirection or via Node.js `execSync`. Not a real error.
+
+### Plugin Marketplace Architecture
+`claude.com/plugins` is a web discovery page aggregating plugins from many GitHub marketplaces — it is NOT the same as `anthropics/claude-plugins-official`. Community plugins live in separate marketplace repos with a `.claude-plugin/marketplace.json` file. Add via `claude plugin marketplace add github:owner/repo`. Popular community marketplaces: `obra/superpowers-marketplace`, `anthropics/knowledge-work-plugins`, `ananddtyagi/cc-marketplace`.
 
 ### Merging Upstream
 ```bash
