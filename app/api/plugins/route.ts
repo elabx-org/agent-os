@@ -13,6 +13,23 @@ interface PluginJson {
   license?: string;
 }
 
+interface MarketplaceManifestPlugin {
+  name: string;
+  description?: string;
+  version?: string;
+  author?: { name?: string; url?: string; email?: string } | string;
+  source?: string | { source: string; url?: string };
+  keywords?: string[];
+  category?: string;
+  homepage?: string;
+}
+
+interface MarketplaceManifest {
+  name?: string;
+  owner?: { name?: string; email?: string };
+  plugins?: MarketplaceManifestPlugin[];
+}
+
 interface InstalledPlugin {
   id: string;
   version: string;
@@ -141,6 +158,52 @@ function scanPluginDir(
   return plugins;
 }
 
+function readMarketplaceManifest(
+  installLocation: string,
+  marketplaceName: string
+): PluginInfo[] {
+  const manifestPath = join(installLocation, ".claude-plugin", "marketplace.json");
+  if (!existsSync(manifestPath)) return [];
+
+  try {
+    const manifest: MarketplaceManifest = JSON.parse(
+      readFileSync(manifestPath, "utf-8")
+    );
+    if (!Array.isArray(manifest.plugins)) return [];
+
+    return manifest.plugins.map((p) => {
+      // Resolve local plugin path for capability detection
+      let localDir: string | null = null;
+      if (typeof p.source === "string" && p.source.startsWith("./")) {
+        localDir = join(installLocation, p.source.slice(2));
+      }
+
+      const authorName =
+        typeof p.author === "string"
+          ? p.author
+          : p.author?.name || manifest.owner?.name || "Unknown";
+
+      return {
+        name: p.name,
+        description: p.description || "",
+        author: authorName,
+        marketplace: marketplaceName,
+        type: "external" as const,
+        installed: false,
+        enabled: false,
+        version: p.version,
+        hasCommands: localDir ? existsSync(join(localDir, "commands")) : false,
+        hasSkills: localDir ? existsSync(join(localDir, "skills")) : false,
+        hasAgents: localDir ? existsSync(join(localDir, "agents")) : false,
+        hasMcp: localDir ? existsSync(join(localDir, ".mcp.json")) : false,
+        keywords: p.keywords,
+      };
+    });
+  } catch {
+    return [];
+  }
+}
+
 export async function GET() {
   try {
     const installed = getInstalledPlugins();
@@ -157,6 +220,7 @@ export async function GET() {
 
     // Scan all marketplaces for available plugins
     const allPlugins: PluginInfo[] = [];
+    const seenNames = new Set<string>();
 
     for (const mp of marketplaces) {
       const internalDir = join(mp.installLocation, "plugins");
@@ -164,8 +228,21 @@ export async function GET() {
 
       const internal = scanPluginDir(internalDir, "internal", mp.name);
       const external = scanPluginDir(externalDir, "external", mp.name);
+      const fromDirs = [...internal, ...external];
 
-      allPlugins.push(...internal, ...external);
+      // If no filesystem dirs, fall back to reading marketplace.json manifest
+      const fromManifest =
+        fromDirs.length === 0
+          ? readMarketplaceManifest(mp.installLocation, mp.name)
+          : [];
+
+      for (const plugin of [...fromDirs, ...fromManifest]) {
+        const key = `${plugin.name}@${plugin.marketplace}`;
+        if (!seenNames.has(key)) {
+          seenNames.add(key);
+          allPlugins.push(plugin);
+        }
+      }
     }
 
     // Merge installed state
