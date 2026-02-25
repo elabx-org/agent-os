@@ -37,6 +37,29 @@ import {
 
 type PluginFilter = "all" | "installed" | "available";
 
+const SUGGESTED_MARKETPLACES = [
+  {
+    repo: "obra/superpowers-marketplace",
+    label: "Superpowers",
+    description: "TDD, debugging & subagent workflows",
+  },
+  {
+    repo: "anthropics/knowledge-work-plugins",
+    label: "Knowledge Work",
+    description: "Official Anthropic — sales, marketing, productivity (19 plugins)",
+  },
+  {
+    repo: "ananddtyagi/cc-marketplace",
+    label: "Community Catalog",
+    description: "Large community marketplace (119 plugins)",
+  },
+  {
+    repo: "kivilaid/plugin-marketplace",
+    label: "Ando Marketplace",
+    description: "Dev tools, document processing, media (77 plugins)",
+  },
+];
+
 export function PluginsTab() {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<PluginFilter>("all");
@@ -242,12 +265,66 @@ export function PluginsTab() {
             ))}
           </div>
 
-          {/* Add marketplace */}
+          {/* Suggested marketplaces */}
+          {SUGGESTED_MARKETPLACES.filter(
+            (s) => !(data?.marketplaces ?? []).some((m) => m.repo === s.repo)
+          ).length > 0 && (
+            <div className="mb-2">
+              <p className="text-muted-foreground mb-1.5 text-[10px] font-medium uppercase tracking-wide">
+                Suggested
+              </p>
+              <div className="space-y-1">
+                {SUGGESTED_MARKETPLACES.filter(
+                  (s) =>
+                    !(data?.marketplaces ?? []).some((m) => m.repo === s.repo)
+                ).map((s) => (
+                  <div
+                    key={s.repo}
+                    className="bg-background flex items-center justify-between rounded px-2 py-1.5"
+                  >
+                    <div className="min-w-0">
+                      <span className="text-xs font-medium">{s.label}</span>
+                      <span className="text-muted-foreground ml-1.5 text-[10px]">
+                        {s.description}
+                      </span>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-6 gap-1 shrink-0 text-[10px]"
+                      onClick={() => {
+                        setNewMarketplaceRepo(s.repo);
+                        addMarketplaceMutation.mutate(s.repo, {
+                          onSuccess: () => {
+                            toast.success(`"${s.label}" marketplace added`);
+                            syncMutation.mutate(undefined, {});
+                          },
+                          onError: (err) =>
+                            toast.error(
+                              err.message || "Failed to add marketplace"
+                            ),
+                        });
+                      }}
+                      disabled={addMarketplaceMutation.isPending}
+                    >
+                      <Plus className="h-2.5 w-2.5" />
+                      Add
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Add custom marketplace */}
+          <p className="text-muted-foreground mb-1.5 text-[10px] font-medium uppercase tracking-wide">
+            Custom
+          </p>
           <div className="flex gap-1.5">
             <Input
               value={newMarketplaceRepo}
               onChange={(e) => setNewMarketplaceRepo(e.target.value)}
-              placeholder="owner/repo-name (e.g. obra/superpowers-marketplace)"
+              placeholder="owner/repo-name"
               className="h-7 text-xs"
               onKeyDown={(e) => e.key === "Enter" && handleAddMarketplace()}
             />
