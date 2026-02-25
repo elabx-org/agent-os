@@ -58,6 +58,11 @@ const SUGGESTED_MARKETPLACES = [
     label: "Ando Marketplace",
     description: "Dev tools, document processing, media (77 plugins)",
   },
+  {
+    repo: "rohitg00/pro-workflow",
+    label: "Pro Workflow",
+    description: "Self-correcting memory, parallel worktrees & power-user hooks",
+  },
 ];
 
 export function PluginsTab() {
