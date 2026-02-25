@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
     }
 
     const claude = getClaudePath();
-    execSync(`${claude} plugin marketplace add github:${repo}`, {
+    execSync(`${claude} plugin marketplace add ${repo}`, {
       encoding: "utf-8",
       timeout: 30000,
       env: { ...process.env, HOME: process.env.HOME || "/config" },
