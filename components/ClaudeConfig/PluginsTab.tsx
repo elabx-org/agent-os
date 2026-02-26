@@ -63,11 +63,6 @@ const SUGGESTED_MARKETPLACES = [
     label: "Pro Workflow",
     description: "Self-correcting memory, parallel worktrees & power-user hooks",
   },
-  {
-    repo: "ruvnet/claude-flow",
-    label: "Claude Flow",
-    description: "Enterprise agent orchestration — 150+ commands, 74+ agents, SPARC methodology",
-  },
 ];
 
 export function PluginsTab() {
