@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useMemo } from "react";
 import { SessionList } from "@/components/SessionList";
 import { NewSessionDialog } from "@/components/NewSessionDialog";
 import { StartServerDialog } from "@/components/DevServers/StartServerDialog";
@@ -11,6 +12,9 @@ import { UsageMonitor } from "@/components/UsageMonitor";
 import { MinimaxUsageMonitor } from "@/components/MinimaxUsageMonitor";
 import type { ViewProps } from "./types";
 import { fileOpenActions } from "@/stores/fileOpen";
+import { mobileNavActions, mobileNavStore } from "@/stores/mobileNav";
+import { NavRail } from "@/components/mobile/NavRail";
+import { useSideRail } from "@/hooks/useSideRail";
 
 export function MobileView({
   sessions,
@@ -37,8 +41,53 @@ export function MobileView({
   setStartDevServerProjectId,
   renderPane,
 }: ViewProps) {
+  const railWidth = useSideRail(true);
+
+  useEffect(() => {
+    mobileNavStore.statuses = sessionStatuses;
+  }, [sessionStatuses]);
+
+  useEffect(() => {
+    mobileNavStore.railActive = railWidth > 0;
+  }, [railWidth]);
+
+  const waitingSessions = useMemo(
+    () =>
+      sessions.filter(
+        (s) =>
+          !s.conductor_session_id && sessionStatuses[s.id]?.status === "waiting"
+      ),
+    [sessions, sessionStatuses]
+  );
+
+  // Jump to the next session waiting on you, cycling past the current one
+  const openInbox = () => {
+    if (waitingSessions.length === 0) {
+      setSidebarOpen(true);
+      return;
+    }
+    const currentId = focusedActiveTab?.sessionId;
+    const at = waitingSessions.findIndex((s) => s.id === currentId);
+    const next = waitingSessions[(at + 1) % waitingSessions.length];
+    if (next.id !== currentId) attachToSession(next);
+    mobileNavActions.requestViewMode("terminal");
+  };
+
   return (
-    <main className="bg-background flex h-dvh flex-col overflow-hidden">
+    <main
+      className="bg-background flex h-dvh flex-col overflow-hidden"
+      style={railWidth ? { paddingRight: railWidth } : undefined}
+    >
+      {railWidth > 0 && (
+        <NavRail
+          columnWidth={railWidth}
+          waitingCount={waitingSessions.length}
+          onInbox={openInbox}
+          onSessions={() => setSidebarOpen(true)}
+          onFind={() => setShowQuickSwitcher(true)}
+          onNewSession={() => setShowNewSessionDialog(true)}
+        />
+      )}
       {/* Swipe sidebar */}
       <SwipeSidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)}>
         <div className="flex h-full flex-col">

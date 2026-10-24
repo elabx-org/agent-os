@@ -29,6 +29,7 @@ import { GitDrawer } from "@/components/GitDrawer";
 import { ShellDrawer } from "@/components/ShellDrawer";
 import { useSnapshot } from "valtio";
 import { fileOpenStore, fileOpenActions } from "@/stores/fileOpen";
+import { mobileNavStore, mobileNavActions } from "@/stores/mobileNav";
 
 // Dynamic imports for client-only components with loading states
 const Terminal = dynamic(
@@ -166,6 +167,21 @@ export const Pane = memo(function Pane({
       // TODO: Scroll to line (requires FileEditor enhancement)
     }
   }, [fileOpenRequest, isFocused, session, fileEditor]);
+
+  // Mobile nav rail: mirror the focused pane's view and take view requests
+  const { request: navRequest } = useSnapshot(mobileNavStore);
+
+  useEffect(() => {
+    if (isFocused) mobileNavStore.viewMode = viewMode;
+  }, [isFocused, viewMode]);
+
+  useEffect(() => {
+    if (!navRequest || !isFocused) return;
+    if (navRequest.mode === "terminal" || session?.working_directory) {
+      setViewMode(navRequest.mode);
+    }
+    mobileNavActions.clearRequest();
+  }, [navRequest, isFocused, session?.working_directory]);
 
   const handleFocus = useCallback(() => {
     focusPane(paneId);

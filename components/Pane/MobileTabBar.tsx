@@ -22,6 +22,20 @@ import {
 import { cn } from "@/lib/utils";
 import type { Session, Project } from "@/lib/db";
 import type { LucideIcon } from "lucide-react";
+import { useSnapshot } from "valtio";
+import { mobileNavStore } from "@/stores/mobileNav";
+import type { SessionStatus } from "@/components/views/types";
+
+const STATUS_STRIP: Record<
+  SessionStatus["status"],
+  { word: string; dot: string }
+> = {
+  running: { word: "Working", dot: "bg-blue-400 ring-4 ring-blue-400/20" },
+  waiting: { word: "Needs you", dot: "bg-amber-400 ring-4 ring-amber-400/20" },
+  error: { word: "Error", dot: "bg-red-400" },
+  idle: { word: "Idle", dot: "bg-muted-foreground" },
+  dead: { word: "Stopped", dot: "bg-muted-foreground/50" },
+};
 
 type ViewMode = "terminal" | "files" | "git" | "workers";
 
@@ -83,6 +97,11 @@ export function MobileTabBar({
   onViewModeChange,
   onSelectSession,
 }: MobileTabBarProps) {
+  const { railActive, statuses } = useSnapshot(mobileNavStore);
+  const status = session
+    ? STATUS_STRIP[statuses[session.id]?.status ?? "idle"]
+    : null;
+
   // Find current session index and calculate prev/next
   const currentIndex = session
     ? sessions.findIndex((s) => s.id === session.id)
@@ -92,6 +111,7 @@ export function MobileTabBar({
   const projectName = session?.project_id
     ? projects.find((p) => p.id === session.project_id)?.name
     : null;
+  const hasProject = !!projectName && projectName !== "Uncategorized";
   const hasPrev = currentIndex > 0;
   const hasNext = currentIndex >= 0 && currentIndex < sessions.length - 1;
 
@@ -133,11 +153,11 @@ export function MobileTabBar({
 
   return (
     <div
-      className="bg-muted kb-compact-hide flex items-center gap-2 py-1.5 pr-[calc(0.5rem+env(safe-area-inset-right))] pl-[calc(0.5rem+env(safe-area-inset-left))]"
+      className="bg-muted kb-compact-hide flex items-center gap-2 py-1.5 pr-[calc(0.5rem+var(--safe-right,env(safe-area-inset-right)))] pl-[calc(0.5rem+env(safe-area-inset-left))]"
       onClick={(e) => e.stopPropagation()}
     >
       {/* Menu button */}
-      {onMenuClick && (
+      {onMenuClick && !railActive && (
         <Button
           variant="ghost"
           size="icon-sm"
@@ -167,14 +187,23 @@ export function MobileTabBar({
           <DropdownMenuTrigger asChild>
             <button
               type="button"
-              className="hover:bg-accent active:bg-accent flex min-w-0 flex-1 items-center justify-center gap-1 rounded-md px-2 py-1"
+              className="hover:bg-accent active:bg-accent flex min-h-10 min-w-0 flex-1 items-center gap-2.5 rounded-lg px-2 py-1 text-left"
             >
-              <span className="truncate text-sm font-medium">
-                {session?.name || "No session"}
-                {projectName && projectName !== "Uncategorized" && (
-                  <span className="text-muted-foreground font-normal">
-                    {" "}
-                    [{projectName}]
+              {status && (
+                <span
+                  aria-hidden="true"
+                  className={cn("h-2 w-2 shrink-0 rounded-full", status.dot)}
+                />
+              )}
+              <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                <span className="truncate text-sm leading-tight font-semibold">
+                  {(hasProject ? projectName : session?.name) || "No session"}
+                </span>
+                {session && status && (
+                  <span className="text-muted-foreground truncate text-xs leading-tight">
+                    {hasProject
+                      ? `${session.name} · ${status.word}`
+                      : status.word}
                   </span>
                 )}
               </span>
@@ -234,7 +263,7 @@ export function MobileTabBar({
       </div>
 
       {/* View mode toggle */}
-      {session?.working_directory && (
+      {session?.working_directory && !railActive && (
         <div className="bg-accent/50 flex shrink-0 items-center rounded-md p-0.5">
           <ViewModeButton
             mode="terminal"

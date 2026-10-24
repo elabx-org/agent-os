@@ -614,7 +614,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
             style={{
               order: keybarAtTop ? -1 : undefined,
               paddingLeft: "env(safe-area-inset-left)",
-              paddingRight: "env(safe-area-inset-right)",
+              paddingRight: "var(--safe-right, env(safe-area-inset-right))",
             }}
           >
             {composerOn && (
