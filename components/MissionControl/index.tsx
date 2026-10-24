@@ -331,21 +331,24 @@ function Glance({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-5 pt-2 pb-6">
-      {/* The hero: what the glance is for */}
-      {waiting.length > 0 ? (
-        <p className="flex items-baseline gap-2.5">
-          <span className="text-6xl leading-none font-bold text-amber-400 tabular-nums">
-            {waiting.length}
-          </span>
-          <span className="text-2xl font-semibold">
-            {waiting.length === 1 ? "needs you" : "need you"}
-          </span>
-        </p>
-      ) : (
-        <p className="flex items-baseline gap-2.5">
-          <span className="text-2xl font-semibold">Nothing needs you</span>
-        </p>
-      )}
+      <div className="space-y-2">
+        {/* The hero: what the glance is for */}
+        {waiting.length > 0 ? (
+          <p className="flex items-baseline gap-2.5">
+            <span className="text-6xl leading-none font-bold text-amber-400 tabular-nums">
+              {waiting.length}
+            </span>
+            <span className="text-2xl font-semibold">
+              {waiting.length === 1 ? "needs you" : "need you"}
+            </span>
+          </p>
+        ) : (
+          <p className="flex items-baseline gap-2.5">
+            <span className="text-2xl font-semibold">Nothing needs you</span>
+          </p>
+        )}
+        <UsageMonitor />
+      </div>
 
       {first && (
         <ul className="space-y-2">
@@ -407,7 +410,6 @@ function Glance({
             </span>
           </GlanceRow>
         )}
-        <UsageMonitor />
       </div>
     </div>
   );
