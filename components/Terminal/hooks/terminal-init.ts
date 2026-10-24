@@ -6,6 +6,7 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
 import { SearchAddon } from "@xterm/addon-search";
 import { CanvasAddon } from "@xterm/addon-canvas";
 import { getTerminalThemeForApp } from "../constants";
+import { applyTypingAssist, getTypingAssist } from "../typing-assist";
 
 export interface TerminalCallbacks {
   /** Called when paste is requested (Cmd+V or Ctrl+Shift+V) */
@@ -59,15 +60,13 @@ export function createTerminal(
   term.loadAddon(new CanvasAddon());
   fitAddon.fit();
 
-  // Enable autocorrect/autocomplete on mobile for better typing experience
+  // Configure autocorrect/predictions for on-screen keyboards (user setting)
   // Xterm creates a hidden textarea for keyboard input
   setTimeout(() => {
     const textarea = container.querySelector("textarea");
-    if (textarea && isMobile) {
-      textarea.setAttribute("autocorrect", "on");
-      textarea.setAttribute("autocomplete", "on");
-      textarea.setAttribute("autocapitalize", "none");
-      textarea.setAttribute("spellcheck", "true");
+    const touch = window.matchMedia("(pointer: coarse)").matches;
+    if (textarea && (isMobile || touch)) {
+      applyTypingAssist(textarea, getTypingAssist());
     }
   }, 100);
 

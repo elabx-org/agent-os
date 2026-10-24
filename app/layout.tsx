@@ -1,17 +1,20 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
 import { Toaster } from "sonner";
 import { Providers } from "@/components/Providers";
 import "./globals.css";
 
-const geistSans = Geist({
+// IBM Plex: the Duo redesign's type (variable names kept for globals.css)
+const geistSans = IBM_Plex_Sans({
   variable: "--font-geist-sans",
   subsets: ["latin"],
+  weight: ["400", "500", "600"],
 });
 
-const geistMono = Geist_Mono({
+const geistMono = IBM_Plex_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
+  weight: ["400", "500"],
 });
 
 export const metadata: Metadata = {
@@ -19,6 +22,12 @@ export const metadata: Metadata = {
   description: "AI Agent Command Center",
   icons: {
     icon: "/icon.svg",
+    apple: "/icon-180.png",
+  },
+  appleWebApp: {
+    capable: true,
+    title: "AgentOS",
+    statusBarStyle: "black",
   },
 };
 
@@ -81,7 +90,7 @@ export default function RootLayout({
         />
       </head>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} font-sans antialiased`}
       >
         <Providers>{children}</Providers>
         <Toaster

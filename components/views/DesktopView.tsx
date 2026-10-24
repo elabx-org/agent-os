@@ -63,7 +63,7 @@ export function DesktopView({
     <div className="bg-background flex h-dvh overflow-hidden">
       {/* Desktop Sidebar */}
       <div
-        className={` ${sidebarOpen ? "w-60" : "w-0"} bg-sidebar-background flex-shrink-0 overflow-hidden shadow-xl shadow-black/10 transition-all duration-200 dark:shadow-black/30`}
+        className={` ${sidebarOpen ? "w-60" : "w-0"} kb-compact-hide bg-sidebar-background flex-shrink-0 overflow-hidden shadow-xl shadow-black/10 transition-all duration-200 dark:shadow-black/30`}
       >
         <div className="flex h-full flex-col">
           {/* Session list */}
@@ -97,7 +97,7 @@ export function DesktopView({
       {/* Main content */}
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Header */}
-        <header className="flex items-center justify-between px-4 py-2">
+        <header className="kb-compact-hide flex items-center justify-between px-4 py-2">
           <div className="flex items-center gap-2">
             <Button
               variant="ghost"

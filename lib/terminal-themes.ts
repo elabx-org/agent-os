@@ -146,6 +146,17 @@ const DARK_TERMINALS: Record<string, Partial<TerminalTheme>> = {
     cyan: "#14B8A6",
     brightCyan: "#2DD4BF",
   },
+  graphite: {
+    background: "#0E1013",
+    foreground: "#ECEFF3",
+    cursor: "#6AA8FF",
+    cursorAccent: "#0E1013",
+    selectionBackground: "#6AA8FF40",
+    blue: "#6AA8FF",
+    brightBlue: "#A9CBFF",
+    yellow: "#F5B13D",
+    brightYellow: "#F5C977",
+  },
   mocha: {
     background: "#1C1612",
     foreground: "#E6DDD4",

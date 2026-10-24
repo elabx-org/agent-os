@@ -186,7 +186,24 @@ export function useToolbarPreferences() {
 
 // --- Presets ---
 
+// Intent keys from the Duo redesign: what Claude Code needs, nothing else
+const INTENT_ROW1: ToolbarButtonId[] = [
+  "esc", "tab", "ctrl-c",
+  "arrow-left", "arrow-up", "arrow-down", "arrow-right",
+  "newline", "paste", "image", "snippets",
+];
+
 export const PRESETS = {
+  intent: {
+    label: "Intent",
+    description: "Esc, Tab, ^C, arrows and tools",
+    get: (): ToolbarPreferences => ({
+      layout: "single",
+      row1: [...INTENT_ROW1],
+      row2: [],
+      hidden: DEFAULT_ROW1.filter((id) => !INTENT_ROW1.includes(id)),
+    }),
+  },
   minimal: {
     label: "Minimal",
     description: "Essential buttons only",

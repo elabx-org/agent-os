@@ -234,8 +234,8 @@ export function useTerminalConnection({
       const wsManager = createWebSocketConnection(
         term,
         {
-          onConnected: () => {
-            callbacksRef.current.onConnected?.();
+          onConnected: (info) => {
+            callbacksRef.current.onConnected?.(info);
             // Restore scroll state after connection
             if (initialScrollStateRef.current && terminalRef.current) {
               setTimeout(() => {

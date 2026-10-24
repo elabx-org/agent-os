@@ -65,7 +65,11 @@ function detachSession(session: PtySession): void {
   }
 }
 
-function attachSession(session: PtySession, ws: WebSocket): void {
+function attachSession(
+  session: PtySession,
+  ws: WebSocket,
+  reattached = false
+): void {
   // Cancel kill timer — client reconnected
   if (session.killTimer) {
     clearTimeout(session.killTimer);
@@ -83,10 +87,13 @@ function attachSession(session: PtySession, ws: WebSocket): void {
   session.ws = ws;
 
   // Send session ID and buffered output
+  // reattached=false tells a reconnecting client its old PTY is gone (grace
+  // period expired or server restarted), so it must re-run its tmux attach
   ws.send(JSON.stringify({
     type: "session",
     sessionId: session.id,
     buffered: session.buffer,
+    reattached,
   }));
 
   // Start ping/pong heartbeat
@@ -248,7 +255,7 @@ app.prepare().then(() => {
     if (requestedSessionId) {
       const existing = sessions.get(requestedSessionId);
       if (existing) {
-        attachSession(existing, ws);
+        attachSession(existing, ws, true);
         return;
       }
     }

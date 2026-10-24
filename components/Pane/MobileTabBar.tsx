@@ -133,7 +133,7 @@ export function MobileTabBar({
 
   return (
     <div
-      className="bg-muted flex items-center gap-2 px-2 py-1.5"
+      className="bg-muted kb-compact-hide flex items-center gap-2 py-1.5 pr-[calc(0.5rem+env(safe-area-inset-right))] pl-[calc(0.5rem+env(safe-area-inset-left))]"
       onClick={(e) => e.stopPropagation()}
     >
       {/* Menu button */}

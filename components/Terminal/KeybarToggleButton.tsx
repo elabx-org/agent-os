@@ -6,7 +6,10 @@ import { cn } from "@/lib/utils";
 interface KeybarToggleButtonProps {
   isVisible: boolean;
   onToggle: () => void;
-  doubleRow?: boolean;
+  /** Measured keybar height, so the button sits just above it */
+  keybarHeight?: number;
+  /** Keybar moved to the top for a split/floating keyboard */
+  keybarAtTop?: boolean;
 }
 
 /**
@@ -16,13 +19,14 @@ interface KeybarToggleButtonProps {
 export function KeybarToggleButton({
   isVisible,
   onToggle,
-  doubleRow = false,
+  keybarHeight = 0,
+  keybarAtTop = false,
 }: KeybarToggleButtonProps) {
   return (
     <button
       onClick={onToggle}
       className={cn(
-        "absolute right-3 z-30",
+        "absolute right-[calc(0.75rem+env(safe-area-inset-right))] z-30",
         "flex items-center justify-center",
         "h-11 w-11 rounded-full",
         "bg-secondary/90 backdrop-blur-sm",
@@ -30,14 +34,17 @@ export function KeybarToggleButton({
         "text-muted-foreground hover:bg-accent hover:text-foreground",
         "touch-manipulation transition-all duration-200",
         "active:scale-95",
-        // Position: moves up when keyboard is visible (accounts for safe-area + taller keys + recent commands bar)
-        !isVisible
-          ? "bottom-[calc(1rem+env(safe-area-inset-bottom))]"
-          : doubleRow
-            ? "bottom-[301px]"
-            : "bottom-[265px]"
+        // Default position when the keybar is hidden or at the top
+        (!isVisible || keybarAtTop || !keybarHeight) &&
+          "bottom-[calc(1rem+env(safe-area-inset-bottom))]"
       )}
-      aria-label={isVisible ? "Hide keyboard" : "Show keyboard"}
+      style={
+        isVisible && !keybarAtTop && keybarHeight
+          ? { bottom: keybarHeight + 12 }
+          : undefined
+      }
+      aria-label={isVisible ? "Hide keys" : "Show keys"}
+      title={isVisible ? "Hide keys" : "Show keys"}
     >
       {isVisible ? (
         <KeyboardOff className="h-5 w-5" />

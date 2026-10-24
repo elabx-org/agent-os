@@ -91,7 +91,7 @@ export function DesktopTabBar({
   return (
     <div
       className={cn(
-        "flex items-center gap-1 overflow-x-auto px-1 pt-1 transition-colors",
+        "kb-compact-hide flex items-center gap-1 overflow-x-auto px-1 pt-1 transition-colors",
         isFocused ? "bg-muted" : "bg-muted/50"
       )}
     >
