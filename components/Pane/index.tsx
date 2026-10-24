@@ -206,7 +206,7 @@ export const Pane = memo(function Pane({
 
   // Create onConnected callback for a specific tab
   const getTerminalConnectedHandler = useCallback(
-    (tab: (typeof paneData.tabs)[0]) => () => {
+    (tab: (typeof paneData.tabs)[0]) => (info?: { replacedPty: boolean }) => {
       console.log(
         `[AgentOS] Terminal connected for pane: ${paneId}, tab: ${tab.id}`
       );
@@ -215,8 +215,9 @@ export const Pane = memo(function Pane({
 
       onRegisterTerminal(paneId, tab.id, handle);
 
-      // Skip tmux command on WebSocket reconnect — PTY is still alive with tmux running
-      if (initializedTabs.current.has(tab.id)) {
+      // Skip tmux command on WebSocket reconnect — PTY is still alive with tmux running.
+      // A replaced PTY (old one expired or server restarted) is a bare shell: re-attach.
+      if (initializedTabs.current.has(tab.id) && !info?.replacedPty) {
         console.log(`[AgentOS] Tab ${tab.id} already initialized, skipping tmux attach (reconnect)`);
         return;
       }

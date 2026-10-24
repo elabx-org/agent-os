@@ -58,7 +58,7 @@ export interface TerminalHandle {
 }
 
 interface TerminalProps {
-  onConnected?: () => void;
+  onConnected?: (info: { replacedPty: boolean }) => void;
   onDisconnected?: () => void;
   onBeforeUnmount?: (scrollState: TerminalScrollState) => void;
   initialScrollState?: TerminalScrollState;

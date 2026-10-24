@@ -4,7 +4,8 @@ import type { Terminal as XTerm } from "@xterm/xterm";
 import { WS_RECONNECT_BASE_DELAY, WS_RECONNECT_MAX_DELAY } from "../constants";
 
 export interface WebSocketCallbacks {
-  onConnected?: () => void;
+  /** replacedPty: a reconnect landed on a new PTY, so tmux must be re-attached */
+  onConnected?: (info: { replacedPty: boolean }) => void;
   onDisconnected?: () => void;
   onConnectionStateChange: (
     state: "connecting" | "connected" | "disconnected" | "reconnecting"
@@ -24,6 +25,9 @@ export interface WebSocketManager {
 
 // Application-level keepalive interval (keeps reverse proxy happy)
 const CLIENT_PING_INTERVAL_MS = 20_000; // 20s
+// The server answers every ping, so silence this long means a dead socket
+// that never fired onclose (phone slept, network changed)
+const SERVER_SILENCE_TIMEOUT_MS = 60_000;
 
 export function createWebSocketConnection(
   term: XTerm,
@@ -38,6 +42,7 @@ export function createWebSocketConnection(
   // Session ID for PTY reattachment across reconnects
   let sessionId: string | null = null;
   let clientPingInterval: ReturnType<typeof setInterval> | null = null;
+  let lastServerMessageAt = Date.now();
 
   function buildWsUrl(): string {
     const base = `${protocol}//${window.location.host}/ws/terminal`;
@@ -46,10 +51,18 @@ export function createWebSocketConnection(
 
   function startClientPing(ws: WebSocket) {
     stopClientPing();
+    lastServerMessageAt = Date.now();
     clientPingInterval = setInterval(() => {
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: "ping" }));
+      if (ws.readyState !== WebSocket.OPEN) return;
+      // Timers are throttled while hidden; visibilitychange handles that case
+      if (
+        document.visibilityState === "visible" &&
+        Date.now() - lastServerMessageAt > SERVER_SILENCE_TIMEOUT_MS
+      ) {
+        forceReconnect();
+        return;
       }
+      ws.send(JSON.stringify({ type: "ping" }));
     }, CLIENT_PING_INTERVAL_MS);
   }
 
@@ -92,13 +105,8 @@ export function createWebSocketConnection(
     callbacks.onSetConnected(true);
     callbacks.onConnectionStateChange("connected");
     reconnectDelayRef.current = WS_RECONNECT_BASE_DELAY;
-    // Only fire onConnected for fresh connections (sessionId is null).
-    // On reconnects (sessionId is set from previous connection), the PTY
-    // is still alive with tmux running — firing onConnected would re-send
-    // the tmux attach command into the active session.
-    if (!sessionId) {
-      callbacks.onConnected?.();
-    }
+    // onConnected fires from the "session" message, once the server says
+    // whether this is the same PTY (tmux still attached) or a new one
     sendResize(term.cols, term.rows);
     term.focus();
     startClientPing(wsRef.current!);
@@ -107,12 +115,25 @@ export function createWebSocketConnection(
   // Fight against Claude Code's forced top-scrolling bug
   // See: https://github.com/anthropics/claude-code/issues/826
   function handleMessage(event: MessageEvent) {
+    lastServerMessageAt = Date.now();
     try {
       const msg = JSON.parse(event.data);
 
       if (msg.type === "session") {
         // Server sent us the session ID (and optional buffered output)
+        const hadSession = sessionId !== null;
         sessionId = msg.sessionId;
+        if (!msg.reattached) {
+          // New PTY. On a reconnect the old one is gone (grace period expired
+          // or server restarted): clear the stale screen and re-attach tmux.
+          // Same PTY means tmux is still running, so attaching again would
+          // type the attach command into the live session.
+          if (hadSession) {
+            term.clear();
+            term.write("\x1b[2J\x1b[H");
+          }
+          callbacks.onConnected?.({ replacedPty: hadSession });
+        }
         if (msg.buffered) {
           // Clear existing terminal content before replaying buffer.
           // The buffer contains raw escape sequences (tmux borders, cursor
@@ -314,8 +335,19 @@ export function createWebSocketConnection(
   };
   document.addEventListener("visibilitychange", handleVisibilityChange);
 
+  // Restored from Safari's back/forward cache, or network came back:
+  // the socket is almost certainly dead even if readyState says OPEN
+  const handlePageShow = (e: PageTransitionEvent) => {
+    if (e.persisted) forceReconnect();
+  };
+  const handleOnline = () => forceReconnect();
+  window.addEventListener("pageshow", handlePageShow);
+  window.addEventListener("online", handleOnline);
+
   const cleanup = () => {
     document.removeEventListener("visibilitychange", handleVisibilityChange);
+    window.removeEventListener("pageshow", handlePageShow);
+    window.removeEventListener("online", handleOnline);
     stopClientPing();
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);

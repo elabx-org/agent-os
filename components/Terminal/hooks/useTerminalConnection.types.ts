@@ -12,7 +12,7 @@ export interface TerminalScrollState {
 
 export interface UseTerminalConnectionProps {
   terminalRef: RefObject<HTMLDivElement | null>;
-  onConnected?: () => void;
+  onConnected?: (info: { replacedPty: boolean }) => void;
   onDisconnected?: () => void;
   onBeforeUnmount?: (scrollState: TerminalScrollState) => void;
   initialScrollState?: TerminalScrollState;
