@@ -132,7 +132,8 @@ export function DesktopView({
             ? ""
             : sidebarOpen
               ? native
-                ? "border-border w-1/2 border-r"
+                ? // Lying flat the fold doesn't matter: a sidebar, not a page
+                  "border-border w-[min(20rem,40%)] border-r"
                 : "w-60"
               : "w-0"
         )}
