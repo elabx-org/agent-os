@@ -34,6 +34,7 @@ import { useSnapshot } from "valtio";
 import { InboxDialog } from "@/components/Inbox";
 import { mobileNavActions, mobileNavStore } from "@/stores/mobileNav";
 import { useIsNative } from "@/hooks/useIsNative";
+import { postureStore } from "@/stores/posture";
 
 export function DesktopView({
   sessions,
@@ -71,6 +72,10 @@ export function DesktopView({
   const { inboxOpen } = useSnapshot(mobileNavStore);
   // The iOS app has this header's actions in the system bar
   const native = useIsNative();
+  // Half open like a book: the list is the left page and the session the
+  // right, with nothing in the fold between them
+  const { fold } = useSnapshot(postureStore);
+  const book = fold?.axis === "vertical" ? fold : null;
 
   useEffect(() => {
     mobileNavStore.statuses = sessionStatuses;
@@ -121,7 +126,21 @@ export function DesktopView({
     >
       {/* Desktop Sidebar */}
       <div
-        className={` ${sidebarOpen ? (native ? "border-border w-1/2 border-r" : "w-60") : "w-0"} kb-compact-hide bg-sidebar-background flex-shrink-0 overflow-hidden shadow-xl shadow-black/10 transition-all duration-200 dark:shadow-black/30`}
+        className={cn(
+          "kb-compact-hide bg-sidebar-background flex-shrink-0 overflow-hidden shadow-xl shadow-black/10 transition-all duration-200 dark:shadow-black/30",
+          book
+            ? ""
+            : sidebarOpen
+              ? native
+                ? "border-border w-1/2 border-r"
+                : "w-60"
+              : "w-0"
+        )}
+        style={
+          book
+            ? { width: `calc(${book.start}px - env(safe-area-inset-left))` }
+            : undefined
+        }
       >
         <div className="flex h-full flex-col">
           {/* Session list */}
@@ -156,6 +175,14 @@ export function DesktopView({
           </div>
         </div>
       </div>
+
+      {book && (
+        <div
+          aria-hidden="true"
+          className="bg-background kb-compact-hide flex-shrink-0"
+          style={{ width: book.end - book.start }}
+        />
+      )}
 
       {/* Main content */}
       <div className="flex min-w-0 flex-1 flex-col">
