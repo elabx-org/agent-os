@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { cn } from "@/lib/utils";
+import { afterMenuCloses, cn } from "@/lib/utils";
 import {
   ChevronRight,
   ChevronDown,
@@ -172,7 +172,7 @@ export function ProjectCard({
           <>
             <MenuSeparator />
             <MenuItem
-              onSelect={() => onDelete()}
+              onSelect={() => afterMenuCloses(onDelete)}
               className="text-red-500 focus:text-red-500"
             >
               <Trash2 className="mr-2 h-3 w-3" />

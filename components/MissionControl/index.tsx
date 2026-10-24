@@ -154,7 +154,12 @@ export function MissionControl({
       <PushSettings open={pushOpen} onOpenChange={setPushOpen} />
 
       {tab === "projects" ? (
-        <div className="min-h-0 flex-1 overflow-hidden">{projectsView}</div>
+        <div className="flex min-h-0 flex-1 flex-col">
+          <div className="shrink-0 px-4 pt-1 pb-2">
+            <UsageMonitor />
+          </div>
+          <div className="min-h-0 flex-1 overflow-hidden">{projectsView}</div>
+        </div>
       ) : glance ? (
         <Glance
           rows={rows}
