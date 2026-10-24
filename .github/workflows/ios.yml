@@ -2,7 +2,7 @@ name: iOS app
 
 on:
   push:
-    branches: [main, duo-layout, "ios/**"]
+    branches: [main, "ios/**"]
     paths: ["ios/**", ".github/workflows/ios.yml"]
   pull_request:
     paths: ["ios/**", ".github/workflows/ios.yml"]
@@ -76,12 +76,11 @@ jobs:
           path: ios/AgentOS.ipa
           retention-days: 14
 
-      # Pushes become a GitHub release carrying the IPA plus a Feather/AltStore
-      # source. Feed URL to add in Feather:
-      #   https://github.com/elabx-org/agent-os/releases/latest/download/source.json
+      # Pushes to main become a GitHub release carrying the IPA. The Feather
+      # source lists the newest one: elabx-org/feather-source (source.json).
       - name: Prepare release
         id: release
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
           TAG="ios-build-${{ github.run_number }}"
           python3 scripts/make_source.py AgentOS.ipa "$TAG" "$APP_VERSION" "${{ github.run_number }}" source.json
@@ -89,7 +88,7 @@ jobs:
           echo "name=Agent-OS iOS $APP_VERSION (build ${{ github.run_number }})" >> "$GITHUB_OUTPUT"
 
       - name: Publish release
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.release.outputs.tag }}
