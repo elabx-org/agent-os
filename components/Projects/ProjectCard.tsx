@@ -256,7 +256,7 @@ export function ProjectCard({
             <Button
               variant="ghost"
               size="icon-sm"
-              className="h-7 w-7 flex-shrink-0 opacity-100 md:h-6 md:w-6 md:opacity-0 md:group-hover:opacity-100"
+              className="h-7 w-7 flex-shrink-0 opacity-100 md:pointer-fine:h-6 md:pointer-fine:w-6 md:pointer-fine:opacity-0 md:pointer-fine:group-hover:opacity-100"
             >
               <MoreHorizontal className="h-4 w-4" />
             </Button>

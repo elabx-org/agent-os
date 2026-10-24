@@ -121,7 +121,7 @@ export function DesktopTabBar({
                   e.stopPropagation();
                   onTabClose(tab.id);
                 }}
-                className="hover:text-foreground ml-1 opacity-0 group-hover:opacity-100"
+                className="hover:text-foreground ml-1 pointer-fine:opacity-0 pointer-fine:group-hover:opacity-100"
               >
                 <X className="h-3 w-3" />
               </button>

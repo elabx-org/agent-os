@@ -65,14 +65,16 @@ function InlineEdit({
 
   return (
     <span
-      className="cursor-pointer truncate rounded px-1 py-0.5 hover:bg-accent"
+      className="hover:bg-accent cursor-pointer truncate rounded px-1 py-0.5"
       onClick={() => {
         setDraft(value);
         setEditing(true);
       }}
       title="Click to edit"
     >
-      {value || <span className="text-muted-foreground italic">{placeholder}</span>}
+      {value || (
+        <span className="text-muted-foreground italic">{placeholder}</span>
+      )}
     </span>
   );
 }
@@ -111,7 +113,7 @@ function ScopeSection({
   return (
     <div>
       <div className="mb-1.5 flex items-center gap-2">
-        <span className="text-muted-foreground text-xs font-medium uppercase tracking-wide">
+        <span className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
           {label}
         </span>
         <div className="flex-1" />
@@ -155,9 +157,9 @@ function ScopeSection({
           <table className="w-full table-fixed text-sm">
             <thead>
               <tr className="text-muted-foreground border-b text-left text-xs">
-                <th className="w-[25%] pb-1.5 pr-2 font-medium">Name</th>
-                <th className="w-[45%] pb-1.5 pr-2 font-medium">Description</th>
-                <th className="w-[15%] pb-1.5 pr-2 font-medium">Source</th>
+                <th className="w-[25%] pr-2 pb-1.5 font-medium">Name</th>
+                <th className="w-[45%] pr-2 pb-1.5 font-medium">Description</th>
+                <th className="w-[15%] pr-2 pb-1.5 font-medium">Source</th>
                 <th className="w-[15%] pb-1.5 font-medium">Actions</th>
               </tr>
             </thead>
@@ -165,7 +167,7 @@ function ScopeSection({
               {items.map((item) => (
                 <tr
                   key={item.filePath}
-                  className="group border-b border-border/30 last:border-0"
+                  className="group border-border/30 border-b last:border-0"
                 >
                   <td className="overflow-hidden py-1.5 pr-2">
                     <InlineEdit
@@ -178,9 +180,7 @@ function ScopeSection({
                     <InlineEdit
                       value={item.description}
                       placeholder="No description"
-                      onSave={(v) =>
-                        onUpdateMetadata(item, { description: v })
-                      }
+                      onSave={(v) => onUpdateMetadata(item, { description: v })}
                     />
                   </td>
                   <td className="overflow-hidden py-1.5 pr-2">
@@ -193,7 +193,7 @@ function ScopeSection({
                       <Button
                         variant="ghost"
                         size="icon-sm"
-                        className="text-muted-foreground hover:text-foreground h-6 w-6 opacity-0 group-hover:opacity-100"
+                        className="text-muted-foreground hover:text-foreground h-6 w-6 pointer-fine:opacity-0 pointer-fine:group-hover:opacity-100"
                         onClick={() => onEdit(item)}
                         title="Edit source"
                       >
@@ -202,7 +202,7 @@ function ScopeSection({
                       <Button
                         variant="ghost"
                         size="icon-sm"
-                        className="text-muted-foreground hover:text-destructive h-6 w-6 opacity-0 group-hover:opacity-100"
+                        className="text-muted-foreground hover:text-destructive h-6 w-6 pointer-fine:opacity-0 pointer-fine:group-hover:opacity-100"
                         onClick={() => {
                           if (confirm(`Delete "${item.name}"?`)) {
                             onDelete(item);

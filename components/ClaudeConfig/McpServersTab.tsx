@@ -37,9 +37,10 @@ export function McpServersTab({ open, projectPath }: McpServersTabProps) {
 
   // Editing view
   if (editingServer !== null) {
-    const existing = editingServer !== "__new__"
-      ? mcp.servers.find((s) => s.name === editingServer)
-      : undefined;
+    const existing =
+      editingServer !== "__new__"
+        ? mcp.servers.find((s) => s.name === editingServer)
+        : undefined;
 
     return (
       <McpServerEditor
@@ -56,12 +57,10 @@ export function McpServersTab({ open, projectPath }: McpServersTabProps) {
   return (
     <div className="space-y-2 p-3">
       <div className="flex items-center gap-2">
-        <span className="text-muted-foreground text-xs font-medium uppercase tracking-wide">
+        <span className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
           MCP Servers
         </span>
-        <span className="text-muted-foreground text-xs">
-          (via claude mcp)
-        </span>
+        <span className="text-muted-foreground text-xs">(via claude mcp)</span>
         <div className="flex-1" />
         <Button
           variant="outline"
@@ -123,7 +122,7 @@ export function McpServersTab({ open, projectPath }: McpServersTabProps) {
               <Button
                 variant="ghost"
                 size="icon-sm"
-                className="text-muted-foreground hover:text-destructive h-6 w-6 shrink-0 opacity-0 group-hover:opacity-100"
+                className="text-muted-foreground hover:text-destructive h-6 w-6 shrink-0 pointer-fine:opacity-0 pointer-fine:group-hover:opacity-100"
                 onClick={(e) => {
                   e.stopPropagation();
                   if (confirm(`Delete MCP server "${server.name}"?`)) {

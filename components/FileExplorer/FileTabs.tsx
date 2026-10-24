@@ -83,7 +83,7 @@ export function FileTabs({
               }}
               className={cn(
                 "hover:bg-accent ml-1 flex-shrink-0 rounded p-0.5",
-                "opacity-0 group-hover:opacity-100",
+                "pointer-fine:opacity-0 pointer-fine:group-hover:opacity-100",
                 isActive && "opacity-100"
               )}
             >
