@@ -5,6 +5,7 @@ import { useSnapshot } from "valtio";
 import {
   ArrowUp,
   Bot,
+  CornerDownLeft,
   FilePlus,
   FileText,
   Globe,
@@ -222,6 +223,15 @@ export function ChatView({ session, active, onOpenTerminal }: ChatViewProps) {
   }, [rows, results, status]);
 
   const [draft, setDraft] = useState("");
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  // Return sends, so touch keyboards get a button for a line break
+  const insertNewline = () => {
+    const el = inputRef.current;
+    if (!el) return;
+    const { selectionStart: from, selectionEnd: to } = el;
+    setDraft((d) => d.slice(0, from) + "\n" + d.slice(to));
+    requestAnimationFrame(() => el.setSelectionRange(from + 1, from + 1));
+  };
   const [sending, setSending] = useState(false);
   const send = useCallback(async () => {
     const text = draft.trim();
@@ -315,7 +325,18 @@ export function ChatView({ session, active, onOpenTerminal }: ChatViewProps) {
       </div>
 
       <div className="border-border flex items-end gap-1.5 border-t px-2 py-1.5 pb-[calc(0.375rem+env(safe-area-inset-bottom))]">
+        <button
+          type="button"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={insertNewline}
+          aria-label="New line"
+          title="New line"
+          className="bg-secondary text-muted-foreground active:bg-accent flex h-[44px] w-[44px] flex-shrink-0 items-center justify-center rounded-full [@media(pointer:fine)]:hidden"
+        >
+          <CornerDownLeft className="h-5 w-5" />
+        </button>
         <textarea
+          ref={inputRef}
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {

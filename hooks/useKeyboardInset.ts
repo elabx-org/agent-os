@@ -28,6 +28,9 @@ const FLOATING_CONFIRM_MS = 600;
 // With a docked keyboard leaving less than this, chrome marked .kb-compact-hide
 // is hidden so the terminal keeps enough rows to show the line being typed
 const COMPACT_BELOW_HEIGHT = 560;
+// No keyboard covers more than this share of the screen; a bigger reading is
+// a stale measurement, not a keyboard
+const MAX_KEYBOARD_SHARE = 0.6;
 
 // inputmode="none" inputs (xterm while the composer is on) never open a keyboard
 const isTextInput = (el: Element | null) =>
@@ -59,23 +62,38 @@ export function useKeyboardInset(enabled: boolean): KeyboardInset {
     // Browsers honouring interactive-widget=resizes-content shrink the layout
     // viewport itself, so the keyboard shows up here rather than in visualViewport.
     const baselines = new Map<number, number>();
+    // Visual viewport height with no keyboard, per width. After a fold/unfold
+    // iOS Safari can keep a stale, too-tall innerHeight for the life of the
+    // tab (reloads included), so the keyboard is measured against this instead.
+    const visualBaselines = new Map<number, number>();
     let lastTouch = 0;
     let tappedIntoInput = false;
 
     const update = () => {
       const focused = isTextInput(document.activeElement);
-      if (!focused) baselines.set(window.innerWidth, window.innerHeight);
-      const baseline = baselines.get(window.innerWidth) ?? window.innerHeight;
+      const width = window.innerWidth;
+      if (!focused) {
+        baselines.set(width, window.innerHeight);
+        visualBaselines.set(width, vv.height + vv.offsetTop);
+      }
+      const baseline = baselines.get(width) ?? window.innerHeight;
       const layoutShrink = baseline - window.innerHeight;
 
-      const height = Math.max(
-        0,
-        Math.round(window.innerHeight - vv.height - vv.offsetTop)
-      );
+      // With nothing to type into there is no keyboard, whatever the numbers say
+      let height = 0;
+      if (focused) {
+        const layoutHeight = Math.min(
+          window.innerHeight,
+          visualBaselines.get(width) ?? window.innerHeight
+        );
+        height = Math.max(
+          0,
+          Math.round(layoutHeight - vv.height - vv.offsetTop)
+        );
+        if (height > layoutHeight * MAX_KEYBOARD_SHARE) height = 0;
+      }
       const mode: KeyboardMode = !focused
-        ? height >= DOCKED_MIN_HEIGHT
-          ? "docked"
-          : "hidden"
+        ? "hidden"
         : height >= DOCKED_MIN_HEIGHT || layoutShrink >= DOCKED_MIN_HEIGHT
           ? "docked"
           : tappedIntoInput
