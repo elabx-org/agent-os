@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import fs from "fs";
+import os from "os";
 import path from "path";
 
 const CREDENTIALS_PATH = path.join(
@@ -10,7 +11,15 @@ const CREDENTIALS_PATH = path.join(
 
 const USAGE_URL = "https://api.anthropic.com/api/oauth/usage";
 const TOKEN_URL = "https://console.anthropic.com/v1/oauth/token";
-const CACHE_TTL = 30_000; // 30 seconds
+const CACHE_TTL = 60_000;
+// Anthropic limits this endpoint per account, and Claude Code's own /usage
+// shares the limit: after a 429, wait this long (or Retry-After) before asking again
+const BACKOFF = 5 * 60_000;
+// The last good answer, so a restart or a 429 still has figures to show
+const CACHE_FILE = path.join(
+  process.env.AGENT_OS_HOME || path.join(os.homedir(), ".agent-os"),
+  "usage-cache.json"
+);
 
 interface UsageBlock {
   utilization: number | null;
@@ -34,7 +43,32 @@ interface UsageResponse {
 }
 
 // Module-level cache
-let cache: { data: UsageResponse; timestamp: number } | null = null;
+let cache: { data: UsageResponse; timestamp: number } | null = readCache();
+let backoffUntil = 0;
+
+function readCache() {
+  try {
+    return JSON.parse(fs.readFileSync(CACHE_FILE, "utf-8"));
+  } catch {
+    return null;
+  }
+}
+
+function writeCache() {
+  try {
+    fs.writeFileSync(CACHE_FILE, JSON.stringify(cache));
+  } catch {
+    // non-fatal: the in-memory copy still serves
+  }
+}
+
+/** The last good figures, marked stale, or the error if there are none */
+function lastGood(error: string, status: number) {
+  // An hour old is still useful; older could show a window that has reset
+  if (cache && Date.now() - cache.timestamp < 60 * 60_000)
+    return NextResponse.json({ ...cache.data, stale: true });
+  return NextResponse.json({ error }, { status });
+}
 
 const TIER_MAP: Record<string, string> = {
   default_claude_pro: "Pro",
@@ -62,9 +96,7 @@ function readCredentials(): {
   }
 }
 
-async function refreshToken(
-  refreshTokenValue: string
-): Promise<string | null> {
+async function refreshToken(refreshTokenValue: string): Promise<string | null> {
   try {
     const res = await fetch(TOKEN_URL, {
       method: "POST",
@@ -118,6 +150,9 @@ export async function GET() {
   if (cache && Date.now() - cache.timestamp < CACHE_TTL) {
     return NextResponse.json(cache.data);
   }
+  if (Date.now() < backoffUntil) {
+    return lastGood("Anthropic API error: 429", 429);
+  }
 
   const creds = readCredentials();
   if (!creds) {
@@ -140,14 +175,16 @@ export async function GET() {
   }
 
   if (!res.ok) {
-    return NextResponse.json(
-      { error: `Anthropic API error: ${res.status}` },
-      { status: res.status }
-    );
+    if (res.status === 429) {
+      const retryAfter = Number(res.headers.get("retry-after")) * 1000;
+      backoffUntil = Date.now() + (retryAfter > 0 ? retryAfter : BACKOFF);
+    }
+    return lastGood(`Anthropic API error: ${res.status}`, res.status);
   }
 
   const raw = await res.json();
-  const plan = TIER_MAP[creds.rateLimitTier] || creds.rateLimitTier || "Unknown";
+  const plan =
+    TIER_MAP[creds.rateLimitTier] || creds.rateLimitTier || "Unknown";
 
   const data: UsageResponse = {
     five_hour: raw.five_hour || { utilization: null, resets_at: null },
@@ -164,5 +201,6 @@ export async function GET() {
   };
 
   cache = { data, timestamp: Date.now() };
+  writeCache();
   return NextResponse.json(data);
 }
