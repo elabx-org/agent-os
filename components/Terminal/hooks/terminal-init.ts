@@ -3,6 +3,7 @@
 import { Terminal as XTerm } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
+import { openLink, registerWrappedLinks } from "./wrapped-links";
 import { SearchAddon } from "@xterm/addon-search";
 import { CanvasAddon } from "@xterm/addon-canvas";
 import { getTerminalThemeForApp } from "../constants";
@@ -55,7 +56,9 @@ export function createTerminal(
   const searchAddon = new SearchAddon();
 
   term.loadAddon(fitAddon);
-  term.loadAddon(new WebLinksAddon());
+  // First, so a wrapped URL beats WebLinksAddon's half of it
+  registerWrappedLinks(term);
+  term.loadAddon(new WebLinksAddon((_event, uri) => openLink(uri)));
   term.loadAddon(searchAddon);
   term.open(container);
   term.loadAddon(new CanvasAddon());

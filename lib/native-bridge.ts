@@ -24,6 +24,8 @@ export type NativeEvent =
   | { type: "nav"; action: NativeNavAction }
   /** A key from the keyboard's accessory bar, as terminal input */
   | { type: "key"; key: string }
+  /** Text from the bar's system Paste button */
+  | { type: "paste"; text: string }
   | { type: "keyboard"; visible: boolean }
   /** The fold while half open, in the page's CSS pixels */
   | { type: "posture"; fold: Fold | null }
@@ -70,7 +72,8 @@ export function postToNative(message: NativeState): void {
 export function onNativeEvent(
   handler: (event: NativeEvent) => void
 ): () => void {
-  const listener = (e: Event) => handler((e as CustomEvent<NativeEvent>).detail);
+  const listener = (e: Event) =>
+    handler((e as CustomEvent<NativeEvent>).detail);
   window.addEventListener(NATIVE_EVENT, listener);
   return () => window.removeEventListener(NATIVE_EVENT, listener);
 }

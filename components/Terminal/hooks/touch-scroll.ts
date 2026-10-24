@@ -7,10 +7,14 @@ interface TouchScrollConfig {
   term: XTerm;
   selectModeRef: RefObject<boolean>;
   wsRef: RefObject<WebSocket | null>;
+  /** A finger held still on the terminal (opens select mode to copy) */
+  onLongPressRef?: RefObject<(() => void) | undefined>;
 }
 
+const LONG_PRESS_MS = 500;
+
 export function setupTouchScroll(config: TouchScrollConfig): () => void {
-  const { term, selectModeRef, wsRef } = config;
+  const { term, selectModeRef, wsRef, onLongPressRef } = config;
 
   if (!term.element) return () => {};
 
@@ -56,6 +60,11 @@ export function setupTouchScroll(config: TouchScrollConfig): () => void {
 
     // Momentum animation state
     let momentumRaf: number | null = null;
+    let longPressTimer: ReturnType<typeof setTimeout> | null = null;
+    const cancelLongPress = () => {
+      if (longPressTimer) clearTimeout(longPressTimer);
+      longPressTimer = null;
+    };
 
     const stopMomentum = () => {
       if (momentumRaf !== null) {
@@ -150,6 +159,14 @@ export function setupTouchScroll(config: TouchScrollConfig): () => void {
         lastMoveTime: Date.now(),
         scrollAccumulator: 0,
       };
+      cancelLongPress();
+      if (onLongPressRef?.current && e.touches.length === 1) {
+        longPressTimer = setTimeout(() => {
+          longPressTimer = null;
+          resetTouchState();
+          onLongPressRef.current?.();
+        }, LONG_PRESS_MS);
+      }
     };
 
     handleTouchMove = (e: TouchEvent) => {
@@ -160,6 +177,8 @@ export function setupTouchScroll(config: TouchScrollConfig): () => void {
       const touch = e.touches[0];
       const deltaX = Math.abs(touch.clientX - initialX);
       const deltaY = Math.abs(touch.clientY - initialY);
+
+      if (deltaX > 10 || deltaY > 10) cancelLongPress();
 
       // Determine swipe direction on first significant movement
       if (isHorizontal === null && (deltaX > 10 || deltaY > 10)) {
@@ -181,7 +200,8 @@ export function setupTouchScroll(config: TouchScrollConfig): () => void {
       // Track velocity for momentum
       if (timeDelta > 0) {
         const instantVelocity = moveDeltaY / timeDelta;
-        touchState.velocityY = touchState.velocityY * 0.3 + instantVelocity * 0.7;
+        touchState.velocityY =
+          touchState.velocityY * 0.3 + instantVelocity * 0.7;
       }
 
       // Get the row height to scroll precisely
@@ -208,6 +228,7 @@ export function setupTouchScroll(config: TouchScrollConfig): () => void {
     };
 
     handleTouchEnd = () => {
+      cancelLongPress();
       const velocity = touchState.velocityY;
       if (Math.abs(velocity) > 0.15) {
         const rowHeight = term.element
@@ -221,6 +242,7 @@ export function setupTouchScroll(config: TouchScrollConfig): () => void {
     };
 
     handleTouchCancel = () => {
+      cancelLongPress();
       stopMomentum();
       resetTouchState();
     };

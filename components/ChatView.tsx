@@ -136,15 +136,17 @@ function Patch({ lines, all }: { lines: string[]; all: boolean }) {
             key={i}
             className={cn(
               "flex gap-2 px-3",
-              line[0] === "+" && "bg-blue-400/12 text-blue-700 dark:text-blue-200",
-              line[0] === "-" && "bg-amber-400/10 text-amber-700 dark:text-amber-200",
+              line[0] === "+" &&
+                "bg-blue-400/12 text-blue-700 dark:text-blue-200",
+              line[0] === "-" &&
+                "bg-amber-400/10 text-amber-700 dark:text-amber-200",
               line[0] !== "+" && line[0] !== "-" && "text-muted-foreground"
             )}
           >
             <span aria-hidden="true" className="w-2 shrink-0 select-none">
               {line[0] === "-" ? "−" : line[0] === "+" ? "+" : ""}
             </span>
-            <span className="min-w-0 whitespace-pre-wrap [overflow-wrap:anywhere]">
+            <span className="min-w-0 [overflow-wrap:anywhere] whitespace-pre-wrap">
               {line.slice(1) || " "}
             </span>
           </div>
@@ -287,16 +289,13 @@ export function ChatView({ session, active, onOpenTerminal }: ChatViewProps) {
     requestAnimationFrame(() => el.setSelectionRange(at, at));
   };
   const insertNewline = () => insertText("\n");
-  // The iOS app's keyboard bar has a new line, / and @ too
+  // The iOS app's keyboard bar has a new line, / and @ too, and Paste
   useEffect(
     () =>
       onNativeEvent((event) => {
-        if (
-          event.type === "key" &&
-          isTextKey(event.key) &&
-          document.activeElement === inputRef.current
-        )
-          insertText(event.key);
+        if (document.activeElement !== inputRef.current) return;
+        if (event.type === "key" && isTextKey(event.key)) insertText(event.key);
+        else if (event.type === "paste") insertText(event.text);
       }),
     // insertText only reads the ref and the setter
     []
@@ -400,7 +399,11 @@ export function ChatView({ session, active, onOpenTerminal }: ChatViewProps) {
       </div>
 
       {deck && (
-        <div aria-hidden="true" className="shrink-0" style={{ height: deck.gap }} />
+        <div
+          aria-hidden="true"
+          className="shrink-0"
+          style={{ height: deck.gap }}
+        />
       )}
       <div
         className={cn(

@@ -19,6 +19,8 @@ export interface UseTerminalConnectionProps {
   isMobile?: boolean;
   theme?: string;
   selectMode?: boolean;
+  /** Touch: a finger held on the terminal */
+  onLongPress?: () => void;
 }
 
 export interface UseTerminalConnectionReturn {

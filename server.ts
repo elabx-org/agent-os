@@ -148,7 +148,10 @@ function attachSession(
           break;
         case "exec":
           if (msg.command && typeof msg.command === "string") {
-            exec(msg.command, { timeout: 5000, shell: "/bin/bash" }, (err, stdout, stderr) => {
+            // AGENT_OS_TTY names this terminal's tmux client, so commands can
+            // target its pane rather than tmux's most recent session
+            const env = { ...process.env, AGENT_OS_TTY: (session.pty as { ptsName?: string }).ptsName ?? "" };
+            exec(msg.command, { timeout: 5000, shell: "/bin/bash", env }, (err, stdout, stderr) => {
               if (ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify({
                   type: "exec-result",

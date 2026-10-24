@@ -31,6 +31,7 @@ export function useTerminalConnection({
   isMobile = false,
   theme = "dark",
   selectMode = false,
+  onLongPress,
 }: UseTerminalConnectionProps): UseTerminalConnectionReturn {
   const [connected, setConnected] = useState(false);
   const [isAtBottom, setIsAtBottom] = useState(true);
@@ -55,6 +56,8 @@ export function useTerminalConnection({
   const initialScrollStateRef = useRef(initialScrollState);
   const selectModeRef = useRef(selectMode);
   selectModeRef.current = selectMode;
+  const onLongPressRef = useRef(onLongPress);
+  onLongPressRef.current = onLongPress;
 
   // Simple callbacks
   const scrollToBottom = useCallback(
@@ -110,7 +113,9 @@ export function useTerminalConnection({
             ws.removeEventListener("message", handler);
             resolve((msg.stdout || "").trim());
           }
-        } catch { /* ignore */ }
+        } catch {
+          /* ignore */
+        }
       };
       ws.addEventListener("message", handler);
       ws.send(JSON.stringify({ type: "exec", command, id }));
@@ -187,7 +192,9 @@ export function useTerminalConnection({
             try {
               const text = await navigator.clipboard?.readText?.();
               if (text && wsRef.current?.readyState === WebSocket.OPEN) {
-                wsRef.current.send(JSON.stringify({ type: "paste", data: text }));
+                wsRef.current.send(
+                  JSON.stringify({ type: "paste", data: text })
+                );
               }
             } catch {
               // Clipboard API not available or permission denied
@@ -204,7 +211,9 @@ export function useTerminalConnection({
                   await navigator.clipboard.writeText(text);
                   return;
                 }
-              } catch { /* fall through */ }
+              } catch {
+                /* fall through */
+              }
               const textarea = document.createElement("textarea");
               textarea.value = text;
               textarea.style.position = "fixed";
@@ -229,7 +238,12 @@ export function useTerminalConnection({
       });
 
       // Setup touch scroll
-      cleanupTouchScroll = setupTouchScroll({ term, selectModeRef, wsRef });
+      cleanupTouchScroll = setupTouchScroll({
+        term,
+        selectModeRef,
+        wsRef,
+        onLongPressRef,
+      });
 
       // Setup WebSocket
       const wsManager = createWebSocketConnection(

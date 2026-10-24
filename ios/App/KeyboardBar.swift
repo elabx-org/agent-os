@@ -1,10 +1,13 @@
 import UIKit
+import UniformTypeIdentifiers
 
 /// The terminal keys Claude Code needs, on the keyboard itself: Esc, Tab and
 /// Shift-Tab, ^C set apart, the arrows (they repeat while held), / and @ for
 /// the pickers, a new line, then a key to put the keyboard away.
 final class KeyboardBar: UIInputView {
     var onKey: ((String) -> Void)?
+    /// Text from the system Paste button
+    var onPaste: ((String) -> Void)?
     var onDismiss: (() -> Void)?
     /// The bar is in a window exactly while the keyboard shows
     var onVisibilityChange: ((Bool) -> Void)?
@@ -44,6 +47,8 @@ final class KeyboardBar: UIInputView {
     init() {
         super.init(frame: CGRect(x: 0, y: 0, width: 0, height: 52), inputViewStyle: .keyboard)
         allowsSelfSizing = true
+        // The system Paste button pastes into this view without the "Allow Paste" prompt
+        pasteConfiguration = UIPasteConfiguration(acceptableTypeIdentifiers: [UTType.plainText.identifier])
         build()
     }
 
@@ -60,7 +65,14 @@ final class KeyboardBar: UIInputView {
     }
 
     private func build() {
-        let keys = UIStackView(arrangedSubviews: groups.map { group in
+        var paste = UIPasteControl.Configuration()
+        paste.displayMode = .iconOnly
+        paste.cornerStyle = .medium
+        let pasteControl = UIPasteControl(configuration: paste)
+        pasteControl.target = self
+        pasteControl.widthAnchor.constraint(equalToConstant: 44).isActive = true
+
+        let keys = UIStackView(arrangedSubviews: [pasteControl] + groups.map { group in
             let row = UIStackView(arrangedSubviews: group.map(button))
             row.spacing = 6
             return row
@@ -134,6 +146,14 @@ final class KeyboardBar: UIInputView {
             button.addAction(UIAction { [weak self] _ in self?.press(key) }, for: .touchUpInside)
         }
         return button
+    }
+
+    override func paste(itemProviders: [NSItemProvider]) {
+        guard let provider = itemProviders.first(where: { $0.canLoadObject(ofClass: String.self) }) else { return }
+        _ = provider.loadObject(ofClass: String.self) { [weak self] text, _ in
+            guard let text, !text.isEmpty else { return }
+            DispatchQueue.main.async { self?.onPaste?(text) }
+        }
     }
 
     private func press(_ key: Key) {

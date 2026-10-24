@@ -42,6 +42,7 @@ struct AgentWebContainer: UIViewRepresentable {
         view.navigationDelegate = context.coordinator
         view.uiDelegate = context.coordinator
         view.keyboardBar.onKey = { [weak model] key in model?.key(key) }
+        view.keyboardBar.onPaste = { [weak model] text in model?.paste(text) }
         view.keyboardBar.onDismiss = { [weak view] in
             view?.evaluateJavaScript("document.activeElement && document.activeElement.blur()")
             view?.endEditing(true)

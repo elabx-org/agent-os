@@ -240,7 +240,11 @@ export function createWebSocketConnection(
       oldWs.onmessage = null;
       oldWs.onclose = null;
       oldWs.onerror = null;
-      try { oldWs.close(); } catch { /* ignore */ }
+      try {
+        oldWs.close();
+      } catch {
+        /* ignore */
+      }
       wsRef.current = null;
     }
 
@@ -283,7 +287,7 @@ export function createWebSocketConnection(
     // — never treat these as pastes regardless of length.
     // Multi-char data without a leading ESC is a native browser paste that bypassed
     // our Cmd+V/right-click interceptors (e.g. Ctrl+V into xterm's hidden textarea).
-    if (data.length > 1 && !data.startsWith('\x1b')) {
+    if (data.length > 1 && !data.startsWith("\x1b")) {
       sendPaste(data);
     } else {
       sendInput(data);
