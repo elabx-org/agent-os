@@ -72,7 +72,7 @@ interface SessionCardProps {
 }
 
 // Words carry the state as well as colour: blue working, amber needs you, grey idle
-const statusConfig: Record<
+export const statusConfig: Record<
   TmuxStatus,
   { color: string; label: string; word: string; icon: React.ReactNode }
 > = {
@@ -513,7 +513,7 @@ export function SessionCard({
   return cardContent;
 }
 
-function getTimeAgo(dateStr: string): string {
+export function getTimeAgo(dateStr: string): string {
   const date = new Date(dateStr + "Z"); // Assume UTC
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();

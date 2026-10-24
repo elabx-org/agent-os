@@ -3,6 +3,7 @@
 import { cn } from "@/lib/utils";
 import { useEffect, useMemo } from "react";
 import { SessionList } from "@/components/SessionList";
+import { MissionControl } from "@/components/MissionControl";
 import { NewSessionDialog } from "@/components/NewSessionDialog";
 import { NotificationSettings } from "@/components/NotificationSettings";
 import { StartServerDialog } from "@/components/DevServers/StartServerDialog";
@@ -92,6 +93,25 @@ export function DesktopView({
     [projects]
   );
 
+  const sessionList = (
+    <SessionList
+      activeSessionId={focusedActiveTab?.sessionId || undefined}
+      sessionStatuses={sessionStatuses}
+      onSelect={(id) => {
+        const session = sessions.find((s) => s.id === id);
+        if (session) attachToSession(session);
+      }}
+      onOpenInTab={(id) => {
+        const session = sessions.find((s) => s.id === id);
+        if (session) openSessionInNewTab(session);
+      }}
+      onNewSessionInProject={handleNewSessionInProject}
+      onOpenTerminal={handleOpenTerminal}
+      onStartDevServer={handleStartDevServer}
+      onCreateDevServer={handleCreateDevServer}
+    />
+  );
+
   return (
     // Pad once here for system columns (the iPhone Duo inner display keeps one
     // on the right); --safe-right: 0 stops children padding for it again
@@ -101,32 +121,30 @@ export function DesktopView({
     >
       {/* Desktop Sidebar */}
       <div
-        className={` ${sidebarOpen ? "w-60" : "w-0"} kb-compact-hide bg-sidebar-background flex-shrink-0 overflow-hidden shadow-xl shadow-black/10 transition-all duration-200 dark:shadow-black/30`}
+        className={` ${sidebarOpen ? (native ? "border-border w-1/2 border-r" : "w-60") : "w-0"} kb-compact-hide bg-sidebar-background flex-shrink-0 overflow-hidden shadow-xl shadow-black/10 transition-all duration-200 dark:shadow-black/30`}
       >
         <div className="flex h-full flex-col">
           {/* Session list */}
           <div className="min-h-0 flex-1 overflow-hidden">
-            <SessionList
-              activeSessionId={focusedActiveTab?.sessionId || undefined}
-              sessionStatuses={sessionStatuses}
-              onSelect={(id) => {
-                const session = sessions.find((s) => s.id === id);
-                if (session) attachToSession(session);
-              }}
-              onOpenInTab={(id) => {
-                const session = sessions.find((s) => s.id === id);
-                if (session) openSessionInNewTab(session);
-              }}
-              onNewSessionInProject={handleNewSessionInProject}
-              onOpenTerminal={handleOpenTerminal}
-              onStartDevServer={handleStartDevServer}
-              onCreateDevServer={handleCreateDevServer}
-            />
+            {native ? (
+              // In the app, the left page of the open display: mission control
+              <MissionControl
+                sessions={sessions}
+                sessionStatuses={sessionStatuses}
+                projectNames={projectNames}
+                activeSessionId={focusedActiveTab?.sessionId || undefined}
+                onOpenSession={attachToSession}
+                onNewSession={() => setShowNewSessionDialog(true)}
+                projectsView={sessionList}
+              />
+            ) : (
+              sessionList
+            )}
           </div>
 
           {/* Sidebar footer with theme toggle; usage moves here when the header is narrow */}
           <div className="mt-auto space-y-1 px-3 py-1.5">
-            <div className="space-y-1 xl:hidden">
+            <div className={cn("space-y-1 xl:hidden", native && "hidden")}>
               <UsageMonitor />
               <MinimaxUsageMonitor />
             </div>

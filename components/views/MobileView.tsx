@@ -4,6 +4,7 @@ import { useEffect, useMemo } from "react";
 import { useSnapshot } from "valtio";
 import { InboxDialog } from "@/components/Inbox";
 import { SessionList } from "@/components/SessionList";
+import { MissionControl } from "@/components/MissionControl";
 import { NewSessionDialog } from "@/components/NewSessionDialog";
 import { StartServerDialog } from "@/components/DevServers/StartServerDialog";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -19,6 +20,7 @@ import { mobileNavActions, mobileNavStore } from "@/stores/mobileNav";
 import { NavRail } from "@/components/mobile/NavRail";
 import { useSideRail } from "@/hooks/useSideRail";
 import { isNative } from "@/lib/native-bridge";
+import { useIsNative } from "@/hooks/useIsNative";
 
 export function MobileView({
   sessions,
@@ -47,6 +49,7 @@ export function MobileView({
 }: ViewProps) {
   // The iOS app puts this navigation in the system's own bar
   const railWidth = useSideRail(!isNative());
+  const native = useIsNative();
 
   useEffect(() => {
     mobileNavStore.statuses = sessionStatuses;
@@ -76,6 +79,27 @@ export function MobileView({
     [projects]
   );
 
+  const sessionList = (
+    <SessionList
+      activeSessionId={focusedActiveTab?.sessionId || undefined}
+      sessionStatuses={sessionStatuses}
+      onSelect={(id) => {
+        const session = sessions.find((s) => s.id === id);
+        if (session) attachToSession(session);
+        setSidebarOpen(false);
+      }}
+      onOpenInTab={(id) => {
+        const session = sessions.find((s) => s.id === id);
+        if (session) openSessionInNewTab(session);
+        setSidebarOpen(false);
+      }}
+      onNewSessionInProject={handleNewSessionInProject}
+      onOpenTerminal={handleOpenTerminal}
+      onStartDevServer={handleStartDevServer}
+      onCreateDevServer={handleCreateDevServer}
+    />
+  );
+
   return (
     <main
       className="bg-background flex h-dvh flex-col overflow-hidden"
@@ -91,43 +115,67 @@ export function MobileView({
           onNewSession={() => setShowNewSessionDialog(true)}
         />
       )}
-      {/* Swipe sidebar */}
-      <SwipeSidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)}>
-        <div className="flex h-full flex-col">
-          {/* Session list */}
-          <div className="min-h-0 flex-1 overflow-hidden">
-            <SessionList
-              activeSessionId={focusedActiveTab?.sessionId || undefined}
+      {native ? (
+        // The app's home, a page of its own rather than a drawer
+        sidebarOpen && (
+          <div className="bg-background fixed inset-0 z-40 pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)]">
+            <MissionControl
+              sessions={sessions}
               sessionStatuses={sessionStatuses}
-              onSelect={(id) => {
-                const session = sessions.find((s) => s.id === id);
-                if (session) attachToSession(session);
+              projectNames={projectNames}
+              activeSessionId={focusedActiveTab?.sessionId || undefined}
+              onOpenSession={(session) => {
+                attachToSession(session);
                 setSidebarOpen(false);
               }}
-              onOpenInTab={(id) => {
-                const session = sessions.find((s) => s.id === id);
-                if (session) openSessionInNewTab(session);
-                setSidebarOpen(false);
-              }}
-              onNewSessionInProject={handleNewSessionInProject}
-              onOpenTerminal={handleOpenTerminal}
-              onStartDevServer={handleStartDevServer}
-              onCreateDevServer={handleCreateDevServer}
+              onNewSession={() => setShowNewSessionDialog(true)}
+              projectsView={
+                <div className="flex h-full flex-col">
+                  <div className="min-h-0 flex-1 overflow-hidden">
+                    {sessionList}
+                  </div>
+                  <div className="space-y-1 px-4 py-2">
+                    <MinimaxUsageMonitor />
+                    <TextSizeControl />
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground text-xs">
+                        Theme
+                      </span>
+                      <ThemeToggle />
+                    </div>
+                  </div>
+                </div>
+              }
             />
           </div>
+        )
+      ) : (
+        <>
+          {/* Swipe sidebar */}
+          <SwipeSidebar
+            isOpen={sidebarOpen}
+            onClose={() => setSidebarOpen(false)}
+          >
+            <div className="flex h-full flex-col">
+              {/* Session list */}
+              <div className="min-h-0 flex-1 overflow-hidden">
+                {sessionList}
+              </div>
 
-          {/* Sidebar footer */}
-          <div className="mt-auto space-y-1 px-4 py-2">
-            <UsageMonitor />
-            <MinimaxUsageMonitor />
-            <TextSizeControl />
-            <div className="flex items-center justify-between">
-              <span className="text-muted-foreground text-xs">Theme</span>
-              <ThemeToggle />
+              {/* Sidebar footer */}
+              <div className="mt-auto space-y-1 px-4 py-2">
+                <UsageMonitor />
+                <MinimaxUsageMonitor />
+                <TextSizeControl />
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground text-xs">Theme</span>
+                  <ThemeToggle />
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
-      </SwipeSidebar>
+          </SwipeSidebar>
+        </>
+      )}
 
       {/* Terminal fills the screen */}
       <div className="min-h-0 w-full flex-1">
