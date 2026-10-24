@@ -30,6 +30,8 @@ import { ShellDrawer } from "@/components/ShellDrawer";
 import { useSnapshot } from "valtio";
 import { fileOpenStore, fileOpenActions } from "@/stores/fileOpen";
 import { mobileNavStore, mobileNavActions } from "@/stores/mobileNav";
+import { isNative } from "@/lib/native-bridge";
+import { useGitStatus } from "@/data/git/queries";
 
 // Dynamic imports for client-only components with loading states
 const Terminal = dynamic(
@@ -96,6 +98,8 @@ export const Pane = memo(function Pane({
   const [viewMode, setViewMode] = useState<ViewMode>("terminal");
   const [gitDrawerOpen, setGitDrawerOpen] = useState(() => {
     if (typeof window === "undefined") return true;
+    // The iOS app shows changes as a view instead
+    if (isNative()) return false;
     const stored = localStorage.getItem("gitDrawerOpen");
     // Default closed where it would squeeze the terminal (Duo inner display)
     return stored === null ? window.innerWidth >= 1280 : stored === "true";
@@ -182,10 +186,26 @@ export const Pane = memo(function Pane({
     if (isFocused) mobileNavStore.viewMode = viewMode;
   }, [isFocused, viewMode]);
 
+  // The iOS app badges Changes with the focused session's changed files
+  const { data: gitStatus } = useGitStatus(session?.working_directory ?? "", {
+    enabled: isFocused && isNative(),
+  });
+  useEffect(() => {
+    if (!isFocused || !isNative()) return;
+    mobileNavStore.changes = gitStatus
+      ? new Set(
+          [...gitStatus.staged, ...gitStatus.unstaged, ...gitStatus.untracked].map(
+            (f) => f.path
+          )
+        ).size
+      : 0;
+  }, [isFocused, gitStatus]);
+
   useEffect(() => {
     if (!navRequest || !isFocused) return;
-    if (navRequest.mode === "git" && !isMobile) {
-      // The wide layout shows changes in the git drawer beside the terminal
+    if (navRequest.mode === "git" && !isMobile && !isNative()) {
+      // The wide layout shows changes in the git drawer beside the terminal;
+      // the iOS app shows them as a view of the session, as on the phone
       if (session?.working_directory) setGitDrawerOpen((open) => !open);
     } else if (navRequest.mode === "terminal" || session?.working_directory) {
       setViewMode(navRequest.mode);
@@ -539,6 +559,17 @@ export const Pane = memo(function Pane({
                       <FileExplorer
                         workingDirectory={session.working_directory}
                         fileEditor={fileEditor}
+                      />
+                    </div>
+                  )}
+
+                  {/* Changes as a view (the iOS app); the drawer otherwise */}
+                  {viewMode === "git" && session?.working_directory && (
+                    <div className="h-full">
+                      <GitPanel
+                        workingDirectory={session.working_directory}
+                        projectId={currentProject?.id}
+                        repositories={projectRepositories}
                       />
                     </div>
                   )}

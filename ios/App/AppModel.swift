@@ -21,6 +21,8 @@ final class AppModel {
     var view: PaneView = .terminal
     /// Sessions waiting on an answer (the Inbox badge)
     var waiting = 0
+    /// Changed files in the focused session (the Changes badge)
+    var changes = 0
     var showingServer = false
     var fold: Fold? {
         didSet { if fold != oldValue { sendFold() } }
@@ -66,6 +68,7 @@ final class AppModel {
         guard let message = body as? [String: Any], message["type"] as? String == "state" else { return }
         if let raw = message["viewMode"] as? String, let mode = PaneView(rawValue: raw) { view = mode }
         if let count = message["waiting"] as? Int { waiting = count }
+        if let count = message["changes"] as? Int { changes = count }
     }
 
     /// `keep`: also store the event's value under that key on `window.agentosNative`

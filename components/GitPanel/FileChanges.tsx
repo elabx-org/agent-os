@@ -301,6 +301,24 @@ function FileItem({
               </span>
             )}
           </div>
+          {(file.additions !== undefined || file.status === "untracked") && (
+            <span className="flex-shrink-0 font-mono text-xs tabular-nums">
+              {file.status === "untracked" ? (
+                <span className="text-green-500">new</span>
+              ) : (
+                <>
+                  {!!file.additions && (
+                    <span className="text-green-500">+{file.additions}</span>
+                  )}
+                  {!!file.deletions && (
+                    <span className="ml-1.5 text-red-500">
+                      −{file.deletions}
+                    </span>
+                  )}
+                </>
+              )}
+            </span>
+          )}
         </button>
 
         {/* Action buttons - visible on hover (desktop) */}

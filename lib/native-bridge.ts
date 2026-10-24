@@ -32,6 +32,7 @@ export interface NativeState {
   type: "state";
   viewMode: PaneViewMode;
   waiting: number;
+  changes: number;
 }
 
 export const NATIVE_EVENT = "agentos-native";

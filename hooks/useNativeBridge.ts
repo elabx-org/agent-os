@@ -94,8 +94,14 @@ export function useNativeBridge({
         type: "state",
         viewMode: mobileNavStore.viewMode,
         waiting: waitingCount,
+        changes: mobileNavStore.changes,
       });
     report();
-    return subscribeKey(mobileNavStore, "viewMode", report);
+    const stopView = subscribeKey(mobileNavStore, "viewMode", report);
+    const stopChanges = subscribeKey(mobileNavStore, "changes", report);
+    return () => {
+      stopView();
+      stopChanges();
+    };
   }, [waitingCount]);
 }

@@ -127,13 +127,14 @@ export function DiffModal({
 interface DiffViewProps {
   diff: string;
   fileName?: string;
+  wrap?: boolean;
 }
 
 /**
  * Inline diff view (non-modal)
  * For embedding in other components
  */
-export function DiffView({ diff, fileName }: DiffViewProps) {
+export function DiffView({ diff, fileName, wrap }: DiffViewProps) {
   const parsedDiff = parseDiff(diff);
   const displayName = fileName || getDiffFileName(parsedDiff);
 
@@ -146,6 +147,11 @@ export function DiffView({ diff, fileName }: DiffViewProps) {
   }
 
   return (
-    <UnifiedDiff diff={parsedDiff} fileName={displayName} expanded={true} />
+    <UnifiedDiff
+      diff={parsedDiff}
+      fileName={displayName}
+      expanded={true}
+      wrap={wrap}
+    />
   );
 }

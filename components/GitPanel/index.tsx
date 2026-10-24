@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   GitBranch,
@@ -14,6 +14,8 @@ import {
   Plus,
   Minus,
   ArrowLeft,
+  ChevronLeft,
+  ChevronRight,
   FileCode,
   ExternalLink,
   X,
@@ -61,13 +63,37 @@ interface SelectedFile {
   repoPath?: string;
 }
 
-export function GitPanel({
+/** The one-column touch layout below this width, as on the right page of an open iPhone Duo */
+const NARROW_WIDTH = 640;
+
+export function GitPanel(props: GitPanelProps) {
+  const { isMobile } = useViewport();
+  const [root, setRoot] = useState<HTMLDivElement | null>(null);
+  const [width, setWidth] = useState(0);
+  useEffect(() => {
+    if (!root) return;
+    const observer = new ResizeObserver(() => setWidth(root.offsetWidth));
+    observer.observe(root);
+    return () => observer.disconnect();
+  }, [root]);
+
+  return (
+    <div ref={setRoot} className="h-full w-full">
+      <GitPanelContent
+        {...props}
+        narrow={isMobile || (width > 0 && width < NARROW_WIDTH)}
+      />
+    </div>
+  );
+}
+
+function GitPanelContent({
   workingDirectory,
   projectId,
   repositories = [],
   onClose,
-}: GitPanelProps) {
-  const { isMobile } = useViewport();
+  narrow,
+}: GitPanelProps & { narrow: boolean }) {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<GitTab>("changes");
   const [showPRModal, setShowPRModal] = useState(false);
@@ -354,11 +380,12 @@ export function GitPanel({
     status.unstaged.length > 0 ||
     status.untracked.length > 0;
 
-  // Mobile layout: full-screen list OR full-screen diff
-  if (isMobile) {
+  // Narrow layout: full-screen list OR full-screen diff
+  if (narrow) {
     return (
       <MobileGitPanel
         status={status}
+        files={[...status.staged, ...status.unstaged, ...status.untracked]}
         hasChanges={hasChanges}
         selectedFile={selectedFile}
         loadingDiff={loadingDiff}
@@ -638,6 +665,8 @@ export function GitPanel({
 // Mobile layout component
 interface MobileGitPanelProps {
   status: GitStatus;
+  /** Every changed file in list order, for moving between diffs */
+  files: GitFile[];
   hasChanges: boolean;
   selectedFile: SelectedFile | null;
   loadingDiff: boolean;
@@ -662,7 +691,7 @@ interface MobileGitPanelProps {
   onTabChange: (tab: GitTab) => void;
   onRefresh: () => void;
   onFileClick: (file: GitFile) => void;
-  onStage: (file: GitFile) => void;
+  onStage: (file: GitFile) => void | Promise<void>;
   onUnstage: (file: GitFile) => void;
   onDiscard: (file: GitFile) => void;
   onStageAll: () => void;
@@ -676,6 +705,7 @@ interface MobileGitPanelProps {
 
 function MobileGitPanel({
   status,
+  files,
   hasChanges,
   selectedFile,
   loadingDiff,
@@ -741,44 +771,16 @@ function MobileGitPanel({
   // Show diff view when file is selected
   if (selectedFile) {
     return (
-      <div className="bg-background flex h-full w-full flex-col">
-        {/* Header */}
-        <div className="bg-muted/30 flex items-center gap-2 p-2">
-          <Button variant="ghost" size="icon-sm" onClick={onBack}>
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium">
-              {selectedFile.file.path}
-            </p>
-          </div>
-          <Button
-            variant={selectedFile.file.staged ? "outline" : "default"}
-            size="sm"
-            onClick={() =>
-              selectedFile.file.staged
-                ? onUnstage(selectedFile.file)
-                : onStage(selectedFile.file)
-            }
-          >
-            {selectedFile.file.staged ? "Unstage" : "Stage"}
-          </Button>
-        </div>
-
-        {/* Diff content */}
-        <div className="flex-1 overflow-auto p-3">
-          {loadingDiff ? (
-            <div className="flex h-32 items-center justify-center">
-              <Loader2 className="text-muted-foreground h-6 w-6 animate-spin" />
-            </div>
-          ) : (
-            <DiffView
-              diff={selectedFile.diff}
-              fileName={selectedFile.file.path}
-            />
-          )}
-        </div>
-      </div>
+      <MobileDiff
+        file={selectedFile.file}
+        diff={selectedFile.diff}
+        files={files}
+        loading={loadingDiff}
+        onBack={onBack}
+        onOpen={onFileClick}
+        onStage={onStage}
+        onUnstage={onUnstage}
+      />
     );
   }
 
@@ -893,6 +895,123 @@ function MobileGitPanel({
           onClose={onClosePRModal}
         />
       )}
+    </div>
+  );
+}
+
+const SAME_FILE = (a: GitFile, b: GitFile) =>
+  a.path === b.path && a.staged === b.staged;
+
+/**
+ * One file's diff, full screen. Swipe or use the arrows to move through the
+ * changes; staging a file moves on to the next one still to review.
+ */
+function MobileDiff({
+  file,
+  diff,
+  files,
+  loading,
+  onBack,
+  onOpen,
+  onStage,
+  onUnstage,
+}: {
+  file: GitFile;
+  diff: string;
+  files: GitFile[];
+  loading: boolean;
+  onBack: () => void;
+  onOpen: (file: GitFile) => void;
+  onStage: (file: GitFile) => void | Promise<void>;
+  onUnstage: (file: GitFile) => void;
+}) {
+  const index = files.findIndex((f) => SAME_FILE(f, file));
+  const prev = index > 0 ? files[index - 1] : undefined;
+  const next = index >= 0 ? files[index + 1] : undefined;
+  const touch = useRef<{ x: number; y: number } | null>(null);
+
+  const stage = async () => {
+    const after = files
+      .slice(index + 1)
+      .find((f) => !f.staged && !SAME_FILE(f, file));
+    await onStage(file);
+    if (after) onOpen(after);
+    else onBack();
+  };
+
+  return (
+    <div className="bg-background flex h-full w-full flex-col">
+      <div className="bg-muted/30 flex items-center gap-1 p-2">
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={onBack}
+          aria-label="Back to changes"
+        >
+          <ArrowLeft className="h-5 w-5" />
+        </Button>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium">{file.path}</p>
+          {index >= 0 && (
+            <p className="text-muted-foreground text-xs">
+              {index + 1} of {files.length}
+              {file.staged ? " · staged" : ""}
+            </p>
+          )}
+        </div>
+        <Button
+          variant="ghost"
+          size="icon"
+          disabled={!prev}
+          onClick={() => prev && onOpen(prev)}
+          aria-label="Previous file"
+        >
+          <ChevronLeft className="h-5 w-5" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          disabled={!next}
+          onClick={() => next && onOpen(next)}
+          aria-label="Next file"
+        >
+          <ChevronRight className="h-5 w-5" />
+        </Button>
+        <Button
+          variant={file.staged ? "outline" : "default"}
+          className="h-9"
+          onClick={() => (file.staged ? onUnstage(file) : stage())}
+        >
+          {file.staged ? "Unstage" : "Stage"}
+        </Button>
+      </div>
+
+      <div
+        className="flex-1 overflow-auto overscroll-contain p-3"
+        onTouchStart={(e) => {
+          const t = e.touches[0];
+          touch.current = { x: t.clientX, y: t.clientY };
+        }}
+        onTouchEnd={(e) => {
+          const start = touch.current;
+          touch.current = null;
+          if (!start) return;
+          const t = e.changedTouches[0];
+          const dx = t.clientX - start.x;
+          const dy = t.clientY - start.y;
+          if (Math.abs(dx) < 70 || Math.abs(dx) < Math.abs(dy) * 2) return;
+          const target = dx < 0 ? next : prev;
+          if (target) onOpen(target);
+        }}
+      >
+        {loading ? (
+          <div className="flex h-32 items-center justify-center">
+            <Loader2 className="text-muted-foreground h-6 w-6 animate-spin" />
+          </div>
+        ) : (
+          <DiffView diff={diff} fileName={file.path} wrap />
+        )}
+      </div>
     </div>
   );
 }

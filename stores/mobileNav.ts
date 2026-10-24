@@ -18,6 +18,8 @@ export const mobileNavStore = proxy<{
   inboxOpen: boolean;
   /** Inside the iOS app, which shows the keys on the keyboard itself */
   nativeKeyboard: boolean;
+  /** Changed files in the focused session, for the iOS app's Changes badge */
+  changes: number;
 }>({
   viewMode: "terminal",
   request: null,
@@ -25,6 +27,7 @@ export const mobileNavStore = proxy<{
   railActive: false,
   inboxOpen: false,
   nativeKeyboard: false,
+  changes: 0,
 });
 
 export const mobileNavActions = {
