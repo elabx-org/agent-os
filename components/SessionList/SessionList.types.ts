@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { Session, Group } from "@/lib/db";
 
 export interface SessionStatus {
@@ -8,8 +9,8 @@ export interface SessionStatus {
 
 export interface SessionListProps {
   activeSessionId?: string;
-  /** The page already shows the app name */
-  hideTitle?: boolean;
+  /** Shown between the header and the projects */
+  belowHeader?: ReactNode;
   sessionStatuses?: Record<string, SessionStatus>;
   onSelect: (sessionId: string) => void;
   onOpenInTab?: (sessionId: string) => void;

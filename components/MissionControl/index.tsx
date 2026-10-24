@@ -5,6 +5,7 @@ import { Bell, GitBranch, Plus } from "lucide-react";
 import { InboxItem } from "@/components/Inbox";
 import { PushSettings } from "@/components/PushSettings";
 import { UsageMonitor } from "@/components/UsageMonitor";
+import { AppTitle } from "@/components/SessionList/SessionListHeader";
 import { getTimeAgo, statusConfig } from "@/components/SessionCard";
 import type { SessionStatus } from "@/components/views/types";
 import type { Session } from "@/lib/db";
@@ -153,10 +154,12 @@ export function MissionControl({
 
       <PushSettings open={pushOpen} onOpenChange={setPushOpen} />
 
-      <div className="shrink-0 space-y-1.5 px-4 pt-1 pb-2">
-        <h1 className="text-lg font-bold">Agent-OS</h1>
-        <UsageMonitor />
-      </div>
+      {tab === "now" && (
+        <div className="shrink-0 space-y-2 px-3 py-2">
+          <AppTitle />
+          <UsageMonitor />
+        </div>
+      )}
 
       {tab === "projects" ? (
         <div className="min-h-0 flex-1 overflow-hidden">{projectsView}</div>
