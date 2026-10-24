@@ -17,11 +17,13 @@ import type {
   PromptOptionKind,
 } from "@/lib/permission-prompt";
 
+// Amber is "needs you" throughout: the answer that lets Claude go on is the
+// filled one, the rest are outlined
 const KIND_STYLE: Record<PromptOptionKind, string> = {
-  allow: "bg-primary text-primary-foreground active:opacity-80",
-  always: "bg-secondary text-foreground border-border border active:bg-accent",
-  deny: "border border-red-500/40 bg-red-500/15 text-red-400 active:bg-red-500/25",
-  other: "bg-secondary text-foreground active:bg-accent",
+  allow: "bg-amber-400 font-semibold text-amber-950 active:opacity-80",
+  always: "border-border border text-foreground active:bg-accent",
+  deny: "border-border border text-foreground active:bg-accent",
+  other: "border-border border text-foreground active:bg-accent",
 };
 
 async function fetchPrompt(id: string): Promise<PermissionPrompt | null> {
@@ -75,7 +77,7 @@ export function InboxItem({
   if (questionsOnly && !prompt) return null;
 
   return (
-    <li className="bg-card border-border space-y-3 rounded-2xl border p-3.5">
+    <li className="space-y-3 rounded-2xl border border-amber-400/30 bg-amber-400/[0.06] p-3.5">
       <div className="flex items-start gap-2.5">
         <span
           aria-hidden="true"
@@ -120,7 +122,7 @@ export function InboxItem({
             </p>
           )}
           {prompt.detail && (
-            <pre className="bg-background border-border max-h-40 overflow-auto rounded-xl border px-3 py-2 font-mono text-xs leading-relaxed whitespace-pre-wrap">
+            <pre className="bg-background max-h-40 overflow-auto rounded-lg px-3 py-2 font-mono text-xs leading-relaxed whitespace-pre-wrap">
               {prompt.detail}
             </pre>
           )}

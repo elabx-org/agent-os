@@ -69,6 +69,10 @@ interface PaneProps {
 
 type ViewMode = "terminal" | "chat" | "files" | "git" | "workers";
 
+
+/** Each pane's view and session, by pane id */
+const paneViewModes = new Map<string, ViewMode>();
+const paneSessions = new Map<string, string | undefined>();
 export const Pane = memo(function Pane({
   paneId,
   sessions,
@@ -95,7 +99,20 @@ export const Pane = memo(function Pane({
     detachSession,
   } = usePanes();
 
-  const [viewMode, setViewMode] = useState<ViewMode>("terminal");
+  // Kept across remounts: folding an iPhone Duo swaps the layout around the
+  // pane, and the view you were reading should still be there
+  const [viewMode, setViewModeState] = useState<ViewMode>(
+    () => paneViewModes.get(paneId) ?? "terminal"
+  );
+  const setViewMode = useCallback(
+    (next: ViewMode | ((mode: ViewMode) => ViewMode)) =>
+      setViewModeState((mode) => {
+        const value = typeof next === "function" ? next(mode) : next;
+        paneViewModes.set(paneId, value);
+        return value;
+      }),
+    [paneId]
+  );
   const [gitDrawerOpen, setGitDrawerOpen] = useState(() => {
     if (typeof window === "undefined") return true;
     // The iOS app shows changes as a view instead
@@ -152,6 +169,10 @@ export const Pane = memo(function Pane({
 
   // Reset view mode and file editor when session changes
   useEffect(() => {
+    // A remount (folding) shows the same session: keep its view
+    const previous = paneSessions.get(paneId);
+    paneSessions.set(paneId, session?.id);
+    if (previous === session?.id) return;
     // Chat follows you to the next session; per-folder views don't
     setViewMode((mode) => (mode === "chat" ? "chat" : "terminal"));
     fileEditor.reset();

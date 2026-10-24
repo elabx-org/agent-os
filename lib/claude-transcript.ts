@@ -19,6 +19,8 @@ const execFileAsync = promisify(execFile);
 const TAIL_BYTES = 1_500_000;
 const MAX_ITEMS = 200;
 const PREVIEW_CHARS = 400;
+const MAX_PATCH_LINES = 120;
+const MAX_PATCH_LINE = 240;
 
 export type ChatItem =
   | { kind: "user"; id: string; text: string; ts: string }
@@ -38,6 +40,8 @@ export type ChatItem =
       preview: string;
       added?: number;
       removed?: number;
+      /** The edit's lines, prefixed "+", "-" or " " (capped) */
+      patch?: string[];
     };
 
 export interface TranscriptChunk {
@@ -226,19 +230,26 @@ function toolResult(part: any, meta: any, uuid: string): ChatItem {
         : "";
   let added: number | undefined;
   let removed: number | undefined;
+  let patch: string[] | undefined;
   if (meta && Array.isArray(meta.structuredPatch)) {
     added = 0;
     removed = 0;
+    const lines: string[] = [];
     for (const hunk of meta.structuredPatch) {
+      if (lines.length) lines.push("@");
       for (const l of hunk.lines ?? []) {
         if (l.startsWith("+")) added++;
         else if (l.startsWith("-")) removed++;
+        lines.push(String(l).slice(0, MAX_PATCH_LINE));
       }
     }
     // A new file has no patch; count its lines
     if (meta.type === "create" && typeof meta.content === "string") {
-      added = meta.content.split("\n").length;
+      const created: string[] = meta.content.split("\n");
+      added = created.length;
+      lines.push(...created.map((l) => `+${l.slice(0, MAX_PATCH_LINE)}`));
     }
+    patch = lines.length ? lines.slice(0, MAX_PATCH_LINES) : undefined;
   }
   return {
     kind: "result",
@@ -248,6 +259,7 @@ function toolResult(part: any, meta: any, uuid: string): ChatItem {
     preview: content.slice(0, PREVIEW_CHARS),
     added,
     removed,
+    patch,
   };
 }
 

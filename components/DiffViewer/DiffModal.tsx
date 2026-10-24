@@ -96,13 +96,13 @@ export function DiffModal({
       <div className="border-border bg-background/95 safe-area-bottom flex items-center justify-between border-t p-3 backdrop-blur-sm md:hidden">
         <div className="flex items-center gap-4">
           {parsedDiff.additions > 0 && (
-            <span className="flex items-center gap-1 text-sm text-green-500">
+            <span className="flex items-center gap-1 text-sm text-blue-400">
               <Plus className="h-4 w-4" />
               {parsedDiff.additions}
             </span>
           )}
           {parsedDiff.deletions > 0 && (
-            <span className="flex items-center gap-1 text-sm text-red-500">
+            <span className="flex items-center gap-1 text-sm text-amber-400">
               <Minus className="h-4 w-4" />
               {parsedDiff.deletions}
             </span>

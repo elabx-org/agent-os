@@ -192,7 +192,7 @@ export function MissionControl({
                   className={cn(
                     "h-8 shrink-0 rounded-full border px-3 text-xs font-medium transition-colors",
                     filter === id
-                      ? "border-primary bg-primary/15 text-foreground"
+                      ? "bg-accent text-foreground border-transparent"
                       : "border-border text-muted-foreground"
                   )}
                 >
@@ -205,7 +205,7 @@ export function MissionControl({
                 {rows.length ? "None right now" : "No sessions yet"}
               </p>
             ) : (
-              <ul className="divide-border bg-card border-border divide-y overflow-hidden rounded-2xl border">
+              <ul className="-mx-2 space-y-0.5">
                 {shown.map(({ session, status }) => {
                   const project = session.project_id
                     ? projectNames[session.project_id]
@@ -217,8 +217,8 @@ export function MissionControl({
                         type="button"
                         onClick={() => onOpenSession(session)}
                         className={cn(
-                          "active:bg-accent flex min-h-[56px] w-full items-center gap-3 px-3.5 py-2.5 text-left",
-                          session.id === activeSessionId && "bg-primary/10"
+                          "active:bg-accent flex min-h-[56px] w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left",
+                          session.id === activeSessionId && "bg-secondary"
                         )}
                       >
                         <span
@@ -230,12 +230,19 @@ export function MissionControl({
                         />
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-sm">
-                            {project && (
+                            {project ? (
+                              <>
+                                <span className="font-semibold">{project}</span>
+                                <span className="text-muted-foreground">
+                                  {" "}
+                                  · {session.name}
+                                </span>
+                              </>
+                            ) : (
                               <span className="font-semibold">
-                                {project} ·{" "}
+                                {session.name}
                               </span>
                             )}
-                            {session.name}
                           </span>
                           <span className="text-muted-foreground flex items-center gap-1 truncate text-xs">
                             <span
