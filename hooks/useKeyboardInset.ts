@@ -68,10 +68,20 @@ export function useKeyboardInset(enabled: boolean): KeyboardInset {
     const visualBaselines = new Map<number, number>();
     let lastTouch = 0;
     let tappedIntoInput = false;
+    let lastWidth = window.innerWidth;
 
     const update = () => {
-      const focused = isTextInput(document.activeElement);
       const width = window.innerWidth;
+      // Fold/unfold and rotation dismiss the keyboard but leave the input
+      // focused, which would read as a floating keyboard until a reload.
+      // Drop focus so the next tap starts clean.
+      if (width !== lastWidth) {
+        lastWidth = width;
+        tappedIntoInput = false;
+        const active = document.activeElement;
+        if (isTextInput(active)) (active as HTMLElement).blur();
+      }
+      const focused = isTextInput(document.activeElement);
       if (!focused) {
         baselines.set(width, window.innerHeight);
         visualBaselines.set(width, vv.height + vv.offsetTop);
