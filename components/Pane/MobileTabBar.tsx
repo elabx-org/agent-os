@@ -26,6 +26,7 @@ import type { Session, Project } from "@/lib/db";
 import type { LucideIcon } from "lucide-react";
 import { useSnapshot } from "valtio";
 import { mobileNavActions, mobileNavStore } from "@/stores/mobileNav";
+import { duoPreviewStore } from "@/stores/duoPreview";
 import type { SessionStatus } from "@/components/views/types";
 
 const STATUS_STRIP: Record<
@@ -100,6 +101,10 @@ export function MobileTabBar({
   onSelectSession,
 }: MobileTabBarProps) {
   const { railActive, statuses } = useSnapshot(mobileNavStore);
+  // In the iOS app's trial layout the title is part of the page: no band, no
+  // arrows (swipe the terminal sideways for the next session)
+  const { on: duoPreview } = useSnapshot(duoPreviewStore);
+  const pageTitle = duoPreview && railActive;
   const waitingCount = Object.values(statuses).filter(
     (s) => s.status === "waiting"
   ).length;
@@ -158,7 +163,12 @@ export function MobileTabBar({
 
   return (
     <div
-      className="native-top-inset bg-muted kb-compact-hide flex items-center gap-2 py-1.5 pr-[calc(0.5rem+var(--safe-right,env(safe-area-inset-right)))] pl-[calc(0.5rem+env(safe-area-inset-left))]"
+      className={cn(
+        "native-top-inset kb-compact-hide flex items-center gap-2 py-1.5 pr-[calc(0.5rem+var(--safe-right,env(safe-area-inset-right)))] pl-[calc(0.5rem+env(safe-area-inset-left))]",
+        pageTitle
+          ? "bg-background pl-[calc(0.75rem+env(safe-area-inset-left))]"
+          : "bg-muted"
+      )}
       onClick={(e) => e.stopPropagation()}
     >
       {/* Menu button */}
@@ -182,7 +192,11 @@ export function MobileTabBar({
           type="button"
           onClick={handlePrev}
           disabled={!hasPrev || isNavigating}
-          className="hover:bg-accent flex h-8 w-8 shrink-0 items-center justify-center rounded-md disabled:pointer-events-none disabled:opacity-50"
+          aria-label="Previous session"
+          className={cn(
+            "hover:bg-accent flex h-8 w-8 shrink-0 items-center justify-center rounded-md disabled:pointer-events-none disabled:opacity-50",
+            pageTitle && "hidden"
+          )}
         >
           <ChevronLeft className="h-4 w-4" />
         </button>
@@ -190,30 +204,62 @@ export function MobileTabBar({
         {/* Session selector dropdown */}
         <DropdownMenu modal={false}>
           <DropdownMenuTrigger asChild>
-            <button
-              type="button"
-              className="hover:bg-accent active:bg-accent flex min-h-10 min-w-0 flex-1 items-center gap-2.5 rounded-lg px-2 py-1 text-left"
-            >
-              {status && (
-                <span
-                  aria-hidden="true"
-                  className={cn("h-2 w-2 shrink-0 rounded-full", status.dot)}
-                />
-              )}
-              <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                <span className="truncate text-sm leading-tight font-semibold">
-                  {(hasProject ? projectName : session?.name) || "No session"}
+            {pageTitle ? (
+              <button
+                type="button"
+                className="active:bg-accent flex min-h-11 min-w-0 flex-1 flex-col items-start gap-0.5 rounded-lg px-1 py-1 text-left"
+              >
+                <span className="flex max-w-full min-w-0 items-center gap-1.5">
+                  <span className="truncate text-xl leading-tight font-bold">
+                    {(hasProject ? projectName : session?.name) || "No session"}
+                  </span>
+                  <ChevronDown className="text-muted-foreground h-4 w-4 shrink-0" />
                 </span>
                 {session && status && (
-                  <span className="text-muted-foreground truncate text-xs leading-tight">
-                    {hasProject
-                      ? `${session.name} · ${status.word}`
-                      : status.word}
+                  <span className="text-muted-foreground flex max-w-full min-w-0 items-center gap-1.5 text-xs leading-tight">
+                    <span
+                      aria-hidden="true"
+                      className={cn(
+                        "h-1.5 w-1.5 shrink-0 rounded-full",
+                        status.dot
+                      )}
+                    />
+                    <span className="truncate">
+                      {status.word}
+                      {hasProject && ` · ${session.name}`}
+                      {currentIndex >= 0 &&
+                        sessions.length > 1 &&
+                        ` · ${currentIndex + 1} of ${sessions.length}`}
+                    </span>
                   </span>
                 )}
-              </span>
-              <ChevronDown className="text-muted-foreground h-3 w-3 shrink-0" />
-            </button>
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="hover:bg-accent active:bg-accent flex min-h-10 min-w-0 flex-1 items-center gap-2.5 rounded-lg px-2 py-1 text-left"
+              >
+                {status && (
+                  <span
+                    aria-hidden="true"
+                    className={cn("h-2 w-2 shrink-0 rounded-full", status.dot)}
+                  />
+                )}
+                <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                  <span className="truncate text-sm leading-tight font-semibold">
+                    {(hasProject ? projectName : session?.name) || "No session"}
+                  </span>
+                  {session && status && (
+                    <span className="text-muted-foreground truncate text-xs leading-tight">
+                      {hasProject
+                        ? `${session.name} · ${status.word}`
+                        : status.word}
+                    </span>
+                  )}
+                </span>
+                <ChevronDown className="text-muted-foreground h-3 w-3 shrink-0" />
+              </button>
+            )}
           </DropdownMenuTrigger>
           <DropdownMenuContent
             align="center"
@@ -261,7 +307,11 @@ export function MobileTabBar({
           type="button"
           onClick={handleNext}
           disabled={!hasNext || isNavigating}
-          className="hover:bg-accent flex h-8 w-8 shrink-0 items-center justify-center rounded-md disabled:pointer-events-none disabled:opacity-50"
+          aria-label="Next session"
+          className={cn(
+            "hover:bg-accent flex h-8 w-8 shrink-0 items-center justify-center rounded-md disabled:pointer-events-none disabled:opacity-50",
+            pageTitle && "hidden"
+          )}
         >
           <ChevronRight className="h-4 w-4" />
         </button>
