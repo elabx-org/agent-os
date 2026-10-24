@@ -8,6 +8,7 @@ import {
   useState,
   useMemo,
   useEffect,
+  useLayoutEffect,
 } from "react";
 import { useTheme } from "next-themes";
 import "@xterm/xterm/css/xterm.css";
@@ -42,6 +43,7 @@ import { KeyboardDebugOverlay, useKeyboardDebug } from "./KeyboardDebugOverlay";
 import { useFileDrop } from "@/hooks/useFileDrop";
 import { uploadFileToTemp } from "@/lib/file-upload";
 import { ImagePicker } from "@/components/ImagePicker";
+import { joinWrappedUrls, linkify } from "./linkify";
 import {
   ContextMenu,
   ContextMenuTrigger,
@@ -141,6 +143,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
       isMobile,
       theme: terminalTheme,
       selectMode,
+      onLongPress: () => setSelectMode(true),
     });
 
     const {
@@ -355,37 +358,42 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
       };
     }, [composerOn, selectMode]);
 
+    /** Puts text in the composer at the caret, if the composer has focus */
+    const insertInComposer = useCallback((text: string) => {
+      const el = document.activeElement;
+      if (
+        !(el instanceof HTMLTextAreaElement) ||
+        el.dataset.composer === undefined
+      )
+        return false;
+      const { selectionStart: from, selectionEnd: to, value } = el;
+      setComposerText(value.slice(0, from) + text + value.slice(to));
+      const at = from + text.length;
+      requestAnimationFrame(() => el.setSelectionRange(at, at));
+      return true;
+    }, []);
+
     // The keybar's newline key adds a line to the composer while it has focus
     const keybarKeyPress = useCallback(
       (key: string) => {
-        const el = document.activeElement;
-        if (
-          isTextKey(key) &&
-          el instanceof HTMLTextAreaElement &&
-          el.dataset.composer !== undefined
-        ) {
-          const { selectionStart: from, selectionEnd: to, value } = el;
-          setComposerText(value.slice(0, from) + key + value.slice(to));
-          const at = from + key.length;
-          requestAnimationFrame(() => el.setSelectionRange(at, at));
-          return;
-        }
+        if (isTextKey(key) && insertInComposer(key)) return;
         sendInput(key);
       },
-      [sendInput]
+      [sendInput, insertInComposer]
     );
 
-    // Keys from the iOS app's keyboard bar go to the terminal being typed in
+    // Keys and pastes from the iOS app's keyboard bar go to the terminal being
+    // typed in; a paste into the terminal is bracketed, so Claude Code takes it
+    // as one block
     useEffect(
       () =>
         onNativeEvent((event) => {
-          if (
-            event.type === "key" &&
-            containerRef.current?.contains(document.activeElement)
-          )
-            keybarKeyPress(event.key);
+          if (!containerRef.current?.contains(document.activeElement)) return;
+          if (event.type === "key") keybarKeyPress(event.key);
+          else if (event.type === "paste" && !insertInComposer(event.text))
+            xtermRef.current?.paste(event.text);
         }),
-      [keybarKeyPress]
+      [keybarKeyPress, insertInComposer, xtermRef]
     );
 
     // Direct typing for Claude Code's / and @ pickers; back to the composer on blur
@@ -419,6 +427,18 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
     // Extract terminal text for select mode overlay
     // Select mode: capture full scrollback via tmux capture-pane
     const [terminalText, setTerminalText] = useState("");
+    const selectTextRef = useRef<HTMLPreElement>(null);
+    const selectScrolledRef = useRef(0);
+
+    // Open the copy view where you were reading, not at the top of history
+    useLayoutEffect(() => {
+      const pre = selectTextRef.current;
+      if (!pre || !terminalText) return;
+      const lines = terminalText.split("\n").length;
+      const bottomLine = Math.max(0, lines - selectScrolledRef.current);
+      pre.scrollTop =
+        (bottomLine / lines) * pre.scrollHeight - pre.clientHeight;
+    }, [terminalText]);
 
     useEffect(() => {
       if (!selectMode) {
@@ -426,11 +446,25 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
         return;
       }
 
-      // Try to get the full tmux scrollback first
+      // Try to get the full tmux scrollback first: -J keeps lines tmux
+      // wrapped whole, and the first line says how far up you had scrolled.
+      // The pane is this terminal's (the server sets AGENT_OS_TTY).
       const fetchTmuxBuffer = async () => {
-        const output = await execViaWs("tmux capture-pane -p -S -50000 2>/dev/null");
-        if (output.length > 0) {
-          setTerminalText(output);
+        const output = await execViaWs(
+          "P=$(tmux list-clients -F '#{client_tty} #{pane_id}' 2>/dev/null | awk -v t=\"$AGENT_OS_TTY\" '$1 == t { print $2 }'); " +
+            "tmux display ${P:+-t $P} -p 'scrolled:#{scroll_position}' 2>/dev/null; " +
+            "tmux capture-pane ${P:+-t $P} -pJ -S -50000 2>/dev/null"
+        );
+        const scrolled = output.match(/^scrolled:(\d*)\n/);
+        const text = scrolled ? output.slice(scrolled[0].length) : output;
+        if (text.trim().length > 0) {
+          selectScrolledRef.current = Number(scrolled?.[1]) || 0;
+          setTerminalText(
+            joinWrappedUrls(
+              text.replace(/\n+$/, ""),
+              xtermRef.current?.cols ?? 80
+            )
+          );
           return;
         }
 
@@ -527,7 +561,8 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
 
         {/* Terminal container - NO padding! FitAddon reads offsetHeight which includes padding */}
         <ContextMenu>
-          <ContextMenuTrigger asChild>
+          {/* On touch a long press opens select mode instead */}
+          <ContextMenuTrigger asChild disabled={isMobile}>
             <div
               ref={terminalRef}
               className={cn(
@@ -608,7 +643,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
             onTouchEnd={(e) => e.stopPropagation()}
           >
             <div className="bg-primary text-primary-foreground flex items-center justify-between px-3 py-2 text-xs font-medium">
-              <span>Select text below, then tap Copy</span>
+              <span>Hold to select and copy · tap a link to open it</span>
               <button
                 onClick={() => setSelectMode(false)}
                 className="bg-primary-foreground/20 rounded px-2 py-0.5 text-xs"
@@ -617,13 +652,14 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
               </button>
             </div>
             <pre
+              ref={selectTextRef}
               className="flex-1 overflow-auto p-3 font-mono text-xs break-all whitespace-pre-wrap select-text"
               style={{
                 userSelect: "text",
                 WebkitUserSelect: "text",
               }}
             >
-              {terminalText}
+              {linkify(terminalText)}
             </pre>
           </div>
         )}

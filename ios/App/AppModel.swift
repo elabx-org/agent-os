@@ -49,6 +49,11 @@ final class AppModel {
         send(["type": "key", "key": sequence])
     }
 
+    /// Text from the system Paste button: the message box, or the terminal as a paste
+    func paste(_ text: String) {
+        send(["type": "paste", "text": text])
+    }
+
     func keyboard(visible: Bool) {
         send(["type": "keyboard", "visible": visible])
     }
