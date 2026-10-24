@@ -172,7 +172,7 @@ export function ProjectCard({
           <>
             <MenuSeparator />
             <MenuItem
-              onClick={() => onDelete()}
+              onSelect={() => onDelete()}
               className="text-red-500 focus:text-red-500"
             >
               <Trash2 className="mr-2 h-3 w-3" />
