@@ -22,12 +22,8 @@ final class AppModel {
     /// Sessions waiting on an answer (the Inbox badge)
     var waiting = 0
     var showingServer = false
-    /// Set when sign-in failed or was cancelled; the page waits behind it
-    var signInError: String?
-    private var signingIn = false
 
     @ObservationIgnored weak var webView: WKWebView?
-    @ObservationIgnored private let nativeSignIn = NativeSignIn()
 
     init() {
         let saved = UserDefaults.standard.string(forKey: Self.serverKey).flatMap(URL.init(string:))
@@ -55,23 +51,6 @@ final class AppModel {
     func load(_ url: URL) {
         server = url
         webView?.load(URLRequest(url: url))
-    }
-
-    /// Signs in with the system sheet, hands the session to the page and
-    /// opens `returnTo` (a path on the server)
-    func signIn(returnTo: String = "/") async {
-        guard !signingIn else { return }
-        signingIn = true
-        defer { signingIn = false }
-        do {
-            let cookie = try await nativeSignIn.signIn(server: server)
-            await webView?.configuration.websiteDataStore.httpCookieStore.setCookie(cookie)
-            signInError = nil
-            let path = returnTo.hasPrefix("/") && !returnTo.hasPrefix("//") ? returnTo : "/"
-            webView?.load(URLRequest(url: URL(string: path, relativeTo: server) ?? server))
-        } catch {
-            signInError = error.localizedDescription
-        }
     }
 
     /// Reads the page's `state` message

@@ -72,22 +72,6 @@ struct AgentWebContainer: UIViewRepresentable {
             MainActor.assumeIsolated { model.receive(message.body) }
         }
 
-        // Agent-OS sending the page to sign in: the app does that with the
-        // system sheet instead, which shares Safari's sign-in and passkeys
-        func webView(
-            _ webView: WKWebView,
-            decidePolicyFor navigationAction: WKNavigationAction
-        ) async -> WKNavigationActionPolicy {
-            guard let url = navigationAction.request.url,
-                  navigationAction.targetFrame?.isMainFrame != false,
-                  url.host() == model.server.host(),
-                  url.path() == "/auth/login" else { return .allow }
-            let returnTo = URLComponents(url: url, resolvingAgainstBaseURL: false)?
-                .queryItems?.first(where: { $0.name == "return" })?.value ?? "/"
-            Task { await model.signIn(returnTo: returnTo) }
-            return .cancel
-        }
-
         // The page never scrolls as a whole; undo WebKit nudging it for the keyboard
         func scrollViewDidScroll(_ scrollView: UIScrollView) {
             if scrollView.contentOffset != .zero { scrollView.contentOffset = .zero }

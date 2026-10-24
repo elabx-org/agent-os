@@ -13,11 +13,6 @@ struct RootView: View {
                 .background(Color("LaunchBackground"))
                 .toolbarTitleDisplayMode(.inline)
                 .toolbar { NavToolbar(model: model) }
-                .overlay {
-                    if let error = model.signInError {
-                        SignInPrompt(model: model, error: error)
-                    }
-                }
         }
         .sheet(isPresented: $model.showingServer) {
             ServerSheet(model: model)
@@ -102,21 +97,3 @@ extension ToolbarContent {
     }
 }
 
-/// Shown when sign-in was cancelled or failed
-struct SignInPrompt: View {
-    let model: AppModel
-    let error: String
-
-    var body: some View {
-        ContentUnavailableView {
-            Label("Sign in to Agent-OS", systemImage: "person.badge.key")
-        } description: {
-            Text(error)
-        } actions: {
-            Button("Sign In") { Task { await model.signIn() } }
-                .buttonStyle(.borderedProminent)
-            Button("Change Server") { model.showingServer = true }
-        }
-        .background(Color("LaunchBackground"))
-    }
-}

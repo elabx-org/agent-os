@@ -13,10 +13,8 @@
  *   sessionSecret AUTH_SECRET          32+ random bytes; changing it signs everyone out
  *   groups        OIDC_ALLOWED_GROUPS  comma-separated; empty allows any user
  *
- * The browser gets a signed session cookie. The iOS app signs in through the
- * system's web authentication sheet (sharing Safari's provider session) and
- * trades a one-time code, bound to its own PKCE-style verifier, for the same
- * cookie (POST /auth/native/exchange).
+ * The browser gets a signed session cookie. The iOS app signs in the same
+ * way inside its web view.
  */
 
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "crypto";
@@ -29,9 +27,6 @@ const SESSION_COOKIE = "agentos_session";
 const LOGIN_COOKIE = "agentos_login";
 const SESSION_DAYS = 30;
 const LOGIN_MINUTES = 10;
-const NATIVE_CODE_SECONDS = 60;
-/** The iOS app's callback (ASWebAuthenticationSession callbackURLScheme) */
-const NATIVE_CALLBACK = "agentos://auth";
 
 interface AuthConfig {
   issuer: string;
@@ -53,8 +48,6 @@ interface LoginState {
   verifier: string;
   nonce: string;
   returnTo: string;
-  /** SHA-256 (base64url) of the app's verifier, for a native sign-in */
-  nativeChallenge?: string;
   exp: number;
 }
 
@@ -158,13 +151,13 @@ function cookie(name: string, value: string, maxAge: number): string {
   return `${name}=${value}; Path=/; Max-Age=${maxAge}; HttpOnly; Secure; SameSite=Lax`;
 }
 
-function sessionCookie(config: AuthConfig, sub: string, name: string) {
+function sessionCookie(config: AuthConfig, sub: string, name: string): string {
   const maxAge = SESSION_DAYS * 86400;
   const value = sign(
     { sub, name, exp: Math.floor(Date.now() / 1000) + maxAge },
     config.sessionSecret
   );
-  return { name: SESSION_COOKIE, value, maxAge };
+  return cookie(SESSION_COOKIE, value, maxAge);
 }
 
 // --- The gate ---
@@ -255,31 +248,9 @@ function safeReturn(value: string | null): string {
   return value && /^\/(?![/\\])/.test(value) ? value : "/";
 }
 
-const nativeCodes = new Map<
-  string,
-  { challenge: string; sub: string; name: string; exp: number }
->();
-
-function send(res: ServerResponse, status: number, body: object): void {
-  res.writeHead(status, {
-    "Content-Type": "application/json",
-    "Cache-Control": "no-store",
-  });
-  res.end(JSON.stringify(body));
-}
-
 function fail(res: ServerResponse, status: number, message: string): void {
   res.writeHead(status, { "Content-Type": "text/plain; charset=utf-8" });
   res.end(message);
-}
-
-async function readBody(req: IncomingMessage): Promise<string> {
-  let body = "";
-  for await (const chunk of req) {
-    body += chunk;
-    if (body.length > 10_000) throw new Error("body too large");
-  }
-  return body;
 }
 
 /** Handles /auth/*; returns false for other paths */
@@ -298,9 +269,6 @@ export async function handleAuthRoute(
         return true;
       case "GET /auth/callback":
         await callback(config, req, res, url);
-        return true;
-      case "POST /auth/native/exchange":
-        await nativeExchange(config, req, res);
         return true;
       case "GET /auth/logout":
       case "POST /auth/logout":
@@ -331,17 +299,11 @@ export async function handleAuthRoute(
 
 async function login(config: AuthConfig, res: ServerResponse, url: URL) {
   const { authorization_endpoint } = await discover(config);
-  const nativeChallenge = url.searchParams.get("native_challenge") ?? undefined;
-  if (nativeChallenge && !/^[A-Za-z0-9_-]{43}$/.test(nativeChallenge)) {
-    fail(res, 400, "Bad native_challenge");
-    return;
-  }
   const login: LoginState = {
     state: b64(randomBytes(24)),
     verifier: b64(randomBytes(48)),
     nonce: b64(randomBytes(24)),
     returnTo: safeReturn(url.searchParams.get("return")),
-    nativeChallenge,
     exp: Math.floor(Date.now() / 1000) + LOGIN_MINUTES * 60,
   };
   const target = new URL(authorization_endpoint);
@@ -448,69 +410,23 @@ async function callback(
 
   const name = claims.name || claims.preferred_username || claims.sub;
   const clearLogin = cookie(LOGIN_COOKIE, "", 0);
-  logSignIn(claims.sub, login.nativeChallenge ? "app" : "web");
+  logSignIn(claims.sub);
 
-  if (login.nativeChallenge) {
-    const handoff = b64(randomBytes(32));
-    nativeCodes.set(handoff, {
-      challenge: login.nativeChallenge,
-      sub: claims.sub,
-      name,
-      exp: Date.now() / 1000 + NATIVE_CODE_SECONDS,
-    });
-    res.writeHead(302, {
-      "Set-Cookie": clearLogin,
-      Location: `${NATIVE_CALLBACK}?code=${handoff}`,
-    });
-    res.end();
-    return;
-  }
-
-  const session = sessionCookie(config, claims.sub, name);
   res.writeHead(302, {
-    "Set-Cookie": [cookie(session.name, session.value, session.maxAge), clearLogin],
+    "Set-Cookie": [sessionCookie(config, claims.sub, name), clearLogin],
     Location: login.returnTo,
   });
   res.end();
 }
 
 /** One line per sign-in in $AGENT_OS_HOME/auth.log */
-function logSignIn(sub: string, via: string) {
+function logSignIn(sub: string) {
   const home = process.env.AGENT_OS_HOME || path.join(os.homedir(), ".agent-os");
-  const line = `${new Date().toISOString()} signed in ${sub} via ${via}\n`;
+  const line = `${new Date().toISOString()} signed in ${sub}\n`;
   console.log(`[auth] ${line.trim()}`);
   try {
     fs.appendFileSync(path.join(home, "auth.log"), line);
   } catch {
     // Logging is best effort
   }
-}
-
-async function nativeExchange(
-  config: AuthConfig,
-  req: IncomingMessage,
-  res: ServerResponse
-) {
-  let body: { code?: string; verifier?: string };
-  try {
-    body = JSON.parse(await readBody(req));
-  } catch {
-    send(res, 400, { error: "Bad request" });
-    return;
-  }
-  const entry = body.code ? nativeCodes.get(body.code) : undefined;
-  if (body.code) nativeCodes.delete(body.code);
-  for (const [code, value] of nativeCodes) {
-    if (value.exp < Date.now() / 1000) nativeCodes.delete(code);
-  }
-  if (
-    !entry ||
-    entry.exp < Date.now() / 1000 ||
-    !body.verifier ||
-    sha256(body.verifier) !== entry.challenge
-  ) {
-    send(res, 403, { error: "Sign-in expired. Try again." });
-    return;
-  }
-  send(res, 200, { cookie: sessionCookie(config, entry.sub, entry.name) });
 }
