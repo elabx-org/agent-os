@@ -18,6 +18,7 @@ import { fileOpenActions } from "@/stores/fileOpen";
 import { mobileNavActions, mobileNavStore } from "@/stores/mobileNav";
 import { NavRail } from "@/components/mobile/NavRail";
 import { useSideRail } from "@/hooks/useSideRail";
+import { isNative } from "@/lib/native-bridge";
 
 export function MobileView({
   sessions,
@@ -44,14 +45,15 @@ export function MobileView({
   setStartDevServerProjectId,
   renderPane,
 }: ViewProps) {
-  const railWidth = useSideRail(true);
+  // The iOS app puts this navigation in the system's own bar
+  const railWidth = useSideRail(!isNative());
 
   useEffect(() => {
     mobileNavStore.statuses = sessionStatuses;
   }, [sessionStatuses]);
 
   useEffect(() => {
-    mobileNavStore.railActive = railWidth > 0;
+    mobileNavStore.railActive = railWidth > 0 || isNative();
   }, [railWidth]);
 
   const waitingSessions = useMemo(

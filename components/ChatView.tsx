@@ -20,6 +20,7 @@ import { cn } from "@/lib/utils";
 import { renderMarkdown } from "@/components/ChatMessage";
 import { InboxItem } from "@/components/Inbox";
 import { mobileNavStore } from "@/stores/mobileNav";
+import { onNativeEvent } from "@/lib/native-bridge";
 import type { Session } from "@/lib/db";
 import type { ChatItem } from "@/lib/claude-transcript";
 
@@ -232,6 +233,20 @@ export function ChatView({ session, active, onOpenTerminal }: ChatViewProps) {
     setDraft((d) => d.slice(0, from) + "\n" + d.slice(to));
     requestAnimationFrame(() => el.setSelectionRange(from + 1, from + 1));
   };
+  // The iOS app's keyboard bar has a new-line key too
+  useEffect(
+    () =>
+      onNativeEvent((event) => {
+        if (
+          event.type === "key" &&
+          event.key === "\n" &&
+          document.activeElement === inputRef.current
+        )
+          insertNewline();
+      }),
+    // insertNewline only reads the ref and the setter
+    []
+  );
   const [sending, setSending] = useState(false);
   const send = useCallback(async () => {
     const text = draft.trim();

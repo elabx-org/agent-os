@@ -33,6 +33,9 @@ import { useTerminalConnection, useTerminalSearch } from "./hooks";
 import type { TerminalScrollState } from "./hooks";
 import { useViewport } from "@/hooks/useViewport";
 import { useKeyboardInset } from "@/hooks/useKeyboardInset";
+import { useSnapshot } from "valtio";
+import { isNative, onNativeEvent } from "@/lib/native-bridge";
+import { mobileNavStore } from "@/stores/mobileNav";
 import { KeyboardDebugOverlay, useKeyboardDebug } from "./KeyboardDebugOverlay";
 import { useFileDrop } from "@/hooks/useFileDrop";
 import { uploadFileToTemp } from "@/lib/file-upload";
@@ -274,7 +277,10 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
     // Keybar follows touch input, not width: the iPhone Duo inner display
     // is wider than the mobile breakpoint but still uses the on-screen keyboard
     const showKeybar = isMobile || isTouch;
-    const keyboard = useKeyboardInset(showKeybar);
+    // The iOS app sizes the page above the keyboard itself
+    const keyboard = useKeyboardInset(showKeybar && !isNative());
+    // ...and shows the keys on the keyboard, so the keybar steps aside
+    const { nativeKeyboard } = useSnapshot(mobileNavStore);
     // Split/floating keyboards cover the bottom without shrinking the viewport,
     // so move the keybar to the top where it stays reachable
     const keybarAtTop = keyboard.mode === "floating";
@@ -362,6 +368,19 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
         sendInput(key);
       },
       [sendInput]
+    );
+
+    // Keys from the iOS app's keyboard bar go to the terminal being typed in
+    useEffect(
+      () =>
+        onNativeEvent((event) => {
+          if (
+            event.type === "key" &&
+            containerRef.current?.contains(document.activeElement)
+          )
+            keybarKeyPress(event.key);
+        }),
+      [keybarKeyPress]
     );
 
     // Direct typing for Claude Code's / and @ pickers; back to the composer on blur
@@ -688,7 +707,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
               onCopy={copySelection}
               selectMode={selectMode}
               onSelectModeChange={setSelectMode}
-              visible={toolbarVisible}
+              visible={toolbarVisible && !nativeKeyboard}
             />
           </div>
         )}

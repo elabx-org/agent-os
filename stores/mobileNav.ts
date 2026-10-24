@@ -16,12 +16,15 @@ export const mobileNavStore = proxy<{
   /** The rail is showing, so the tab bar drops its own view switcher */
   railActive: boolean;
   inboxOpen: boolean;
+  /** Inside the iOS app, which shows the keys on the keyboard itself */
+  nativeKeyboard: boolean;
 }>({
   viewMode: "terminal",
   request: null,
   statuses: {},
   railActive: false,
   inboxOpen: false,
+  nativeKeyboard: false,
 });
 
 export const mobileNavActions = {
