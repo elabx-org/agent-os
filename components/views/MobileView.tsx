@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { cloneElement, useEffect, useMemo } from "react";
 import { useSnapshot } from "valtio";
 import { InboxDialog } from "@/components/Inbox";
 import { SessionList } from "@/components/SessionList";
@@ -142,7 +142,7 @@ export function MobileView({
               projectsView={
                 <div className="flex h-full flex-col">
                   <div className="min-h-0 flex-1 overflow-hidden">
-                    {sessionList}
+                    {cloneElement(sessionList, { hideTitle: true })}
                   </div>
                   <div className="space-y-1 px-4 py-2">
                     <MinimaxUsageMonitor />

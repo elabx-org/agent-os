@@ -153,13 +153,13 @@ export function MissionControl({
 
       <PushSettings open={pushOpen} onOpenChange={setPushOpen} />
 
+      <div className="shrink-0 space-y-1.5 px-4 pt-1 pb-2">
+        <h1 className="text-lg font-bold">Agent-OS</h1>
+        <UsageMonitor />
+      </div>
+
       {tab === "projects" ? (
-        <div className="flex min-h-0 flex-1 flex-col">
-          <div className="shrink-0 px-4 pt-1 pb-2">
-            <UsageMonitor />
-          </div>
-          <div className="min-h-0 flex-1 overflow-hidden">{projectsView}</div>
-        </div>
+        <div className="min-h-0 flex-1 overflow-hidden">{projectsView}</div>
       ) : glance ? (
         <Glance
           rows={rows}
@@ -170,8 +170,6 @@ export function MissionControl({
         />
       ) : (
         <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-4 pt-1 pb-6">
-          <UsageMonitor />
-
           {waiting.length > 0 && (
             <section className="space-y-2">
               <h2 className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
@@ -352,7 +350,6 @@ function Glance({
             <span className="text-2xl font-semibold">Nothing needs you</span>
           </p>
         )}
-        <UsageMonitor />
       </div>
 
       {first && (

@@ -24,6 +24,7 @@ interface SessionListHeaderProps {
   onOpenProject: () => void;
   onKillAll: () => void;
   onClaudeConfig: () => void;
+  hideTitle?: boolean;
 }
 
 export function SessionListHeader({
@@ -31,10 +32,11 @@ export function SessionListHeader({
   onOpenProject,
   onKillAll,
   onClaudeConfig,
+  hideTitle,
 }: SessionListHeaderProps) {
   return (
     <div className="flex items-center justify-between px-3 py-2">
-      <div className="flex items-center gap-2">
+      <div className={hideTitle ? "hidden" : "flex items-center gap-2"}>
         <svg
           xmlns="http://www.w3.org/2000/svg"
           viewBox="0 0 24 24"
@@ -54,7 +56,7 @@ export function SessionListHeader({
         </svg>
         <h2 className="font-semibold">AgentOS</h2>
       </div>
-      <div className="flex gap-1">
+      <div className="ml-auto flex gap-1">
         <DropdownMenu>
           <Tooltip>
             <TooltipTrigger asChild>
