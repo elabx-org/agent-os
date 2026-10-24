@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { X, ChevronUp, ChevronDown, RotateCcw } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
+import { getTypingAssist, setTypingAssist } from "./typing-assist";
 import {
   type ToolbarPreferences,
   type ToolbarButtonId,
@@ -32,6 +33,7 @@ export function ToolbarSettings({
     row2: [...preferences.row2],
     hidden: [...preferences.hidden],
   }));
+  const [typingAssist, setTypingAssistState] = useState(getTypingAssist);
 
   const apply = (next: ToolbarPreferences) => {
     setPrefs(next);
@@ -194,6 +196,18 @@ export function ToolbarSettings({
             <Switch
               checked={prefs.layout === "double"}
               onCheckedChange={toggleLayout}
+            />
+          </div>
+
+          {/* iOS predictions row costs terminal rows on short screens */}
+          <div className="flex items-center justify-between">
+            <span className="text-sm">Autocorrect and predictions</span>
+            <Switch
+              checked={typingAssist}
+              onCheckedChange={(checked) => {
+                setTypingAssistState(checked);
+                setTypingAssist(checked);
+              }}
             />
           </div>
 

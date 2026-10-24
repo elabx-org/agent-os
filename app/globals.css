@@ -168,6 +168,19 @@ body {
   max-height: var(--app-height, 100vh);
 }
 
+/* Docked keyboard on a short screen: hide secondary chrome so the terminal
+   keeps the rows holding the line being typed (set by useKeyboardInset) */
+html[data-keyboard-compact] .kb-compact-hide {
+  display: none;
+}
+
+/* Horizontally scrolling keybar rows: fade the right edge as a scroll hint */
+.keybar-row {
+  /* End padding keeps the last key clear of the fade when the row fits */
+  padding-right: 24px;
+  mask-image: linear-gradient(to right, black calc(100% - 24px), transparent);
+}
+
 /* Ensure terminal container respects visual viewport */
 @media (max-width: 767px) {
   .terminal-container {

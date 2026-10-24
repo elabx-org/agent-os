@@ -19,6 +19,12 @@ export const metadata: Metadata = {
   description: "AI Agent Command Center",
   icons: {
     icon: "/icon.svg",
+    apple: "/icon-180.png",
+  },
+  appleWebApp: {
+    capable: true,
+    title: "AgentOS",
+    statusBarStyle: "black",
   },
 };
 

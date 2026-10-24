@@ -30,6 +30,8 @@ import { KeybarToggleButton } from "./KeybarToggleButton";
 import { useTerminalConnection, useTerminalSearch } from "./hooks";
 import type { TerminalScrollState } from "./hooks";
 import { useViewport } from "@/hooks/useViewport";
+import { useKeyboardInset } from "@/hooks/useKeyboardInset";
+import { KeyboardDebugOverlay, useKeyboardDebug } from "./KeyboardDebugOverlay";
 import { useFileDrop } from "@/hooks/useFileDrop";
 import { uploadFileToTemp } from "@/lib/file-upload";
 import { ImagePicker } from "@/components/ImagePicker";
@@ -75,7 +77,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
   ) {
     const terminalRef = useRef<HTMLDivElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
-    const { isMobile } = useViewport();
+    const { isMobile, isTouch } = useViewport();
     const { theme: currentTheme, resolvedTheme } = useTheme();
     const [showImagePicker, setShowImagePicker] = useState(false);
     const [selectMode, setSelectMode] = useState(false);
@@ -86,7 +88,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
       const stored = localStorage.getItem("terminalToolbarVisible");
       return stored === null ? true : stored === "true";
     });
-    const [toolbarDoubleRow, setToolbarDoubleRow] = useState(false);
+    const keyboardDebug = useKeyboardDebug();
 
     // Use the full theme string (e.g., "dark-purple") for terminal theming
     const terminalTheme = useMemo(() => {
@@ -249,40 +251,26 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
       sendInput("\x02m");
     }, [sendInput]);
 
-    // Track visual viewport for iOS keyboard
-    // We use explicit height instead of fixed positioning to stay in document flow
-    const [keyboardHeight, setKeyboardHeight] = useState(0);
+    // Keybar follows touch input, not width: the iPhone Duo inner display
+    // is wider than the mobile breakpoint but still uses the on-screen keyboard
+    const showKeybar = isMobile || isTouch;
+    const keyboard = useKeyboardInset(showKeybar);
+    // Split/floating keyboards cover the bottom without shrinking the viewport,
+    // so move the keybar to the top where it stays reachable
+    const keybarAtTop = keyboard.mode === "floating";
 
+    // Keybar height changes with layout, compact mode and safe areas
+    const keybarRef = useRef<HTMLDivElement>(null);
+    const [keybarHeight, setKeybarHeight] = useState(0);
     useEffect(() => {
-      if (!isMobile || typeof window === "undefined") return;
-
-      const viewport = window.visualViewport;
-      if (!viewport) return;
-
-      // Track the initial full height to detect keyboard
-      const fullHeight = window.innerHeight;
-
-      const updateViewport = () => {
-        // Calculate how much space the keyboard is taking
-        const currentHeight = viewport.height;
-        const kbHeight = Math.max(
-          0,
-          fullHeight - currentHeight - viewport.offsetTop
-        );
-        setKeyboardHeight(kbHeight);
-      };
-
-      // Initial measurement
-      updateViewport();
-
-      viewport.addEventListener("resize", updateViewport);
-      viewport.addEventListener("scroll", updateViewport);
-
-      return () => {
-        viewport.removeEventListener("resize", updateViewport);
-        viewport.removeEventListener("scroll", updateViewport);
-      };
-    }, [isMobile]);
+      const el = keybarRef.current;
+      if (!el) return;
+      const observer = new ResizeObserver(() =>
+        setKeybarHeight(el.offsetHeight)
+      );
+      observer.observe(el);
+      return () => observer.disconnect();
+    }, [showKeybar]);
 
     // Extract terminal text for select mode overlay
     // Select mode: capture full scrollback via tmux capture-pane
@@ -378,8 +366,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
           width: "100%",
           height: "100%",
           // On mobile, shrink container when keyboard is open
-          paddingBottom:
-            isMobile && keyboardHeight > 0 ? keyboardHeight : undefined,
+          paddingBottom: keyboard.height > 0 ? keyboard.height : undefined,
         }}
         {...dragHandlers}
       >
@@ -518,7 +505,8 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
         )}
 
         {/* Image picker button — visible on all screen sizes for agent terminals */}
-        {showImageButton && (
+        {/* Touch devices use the keybar's image button; this one covers terminal output */}
+        {showImageButton && !showKeybar && (
           <button
             onClick={() => setShowImagePicker(true)}
             className="bg-secondary hover:bg-accent absolute top-3 right-3 z-40 flex h-9 w-9 items-center justify-center rounded-full shadow-lg transition-all"
@@ -541,10 +529,11 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
         <ScrollToBottomButton visible={!isAtBottom} onClick={scrollToBottom} />
 
         {/* Mobile: Keyboard toggle button */}
-        {isMobile && (
+        {showKeybar && (
           <KeybarToggleButton
             isVisible={toolbarVisible}
-            doubleRow={toolbarDoubleRow}
+            keybarAtTop={keybarAtTop}
+            keybarHeight={keybarHeight}
             onToggle={() => {
               const newValue = !toolbarVisible;
               setToolbarVisible(newValue);
@@ -554,16 +543,33 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
         )}
 
         {/* Mobile: Toolbar with special keys (native keyboard handles text) */}
-        {isMobile && (
-          <TerminalToolbar
-            onKeyPress={sendInput}
-            onPaste={sendPaste}
-            onImagePicker={() => setShowImagePicker(true)}
-            onCopy={copySelection}
-            selectMode={selectMode}
-            onSelectModeChange={setSelectMode}
-            visible={toolbarVisible}
-            onLayoutChange={(layout) => setToolbarDoubleRow(layout === "double")}
+        {showKeybar && (
+          <div
+            ref={keybarRef}
+            className="bg-background shrink-0"
+            style={{
+              order: keybarAtTop ? -1 : undefined,
+              paddingLeft: "env(safe-area-inset-left)",
+              paddingRight: "env(safe-area-inset-right)",
+            }}
+          >
+            <TerminalToolbar
+              onKeyPress={sendInput}
+              onPaste={sendPaste}
+              onImagePicker={() => setShowImagePicker(true)}
+              onCopy={copySelection}
+              selectMode={selectMode}
+              onSelectModeChange={setSelectMode}
+              visible={toolbarVisible}
+            />
+          </div>
+        )}
+
+        {keyboardDebug && (
+          <KeyboardDebugOverlay
+            keyboard={keyboard}
+            isMobile={isMobile}
+            isTouch={isTouch}
           />
         )}
 

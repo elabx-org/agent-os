@@ -874,7 +874,7 @@ export function TerminalToolbar({
 
       {/* Row 1 — always visible */}
       <div
-        className="bg-background/95 border-border scrollbar-none flex items-center gap-1 overflow-x-auto border-t px-2 py-1.5 backdrop-blur"
+        className="keybar-row bg-background/95 border-border scrollbar-none flex items-center gap-1 overflow-x-auto border-t px-2 py-1.5 backdrop-blur"
         onTouchEnd={(e) => e.stopPropagation()}
       >
         {renderRow(resolvedRow1)}
@@ -897,7 +897,7 @@ export function TerminalToolbar({
       {/* Row 2 — only when double layout with buttons */}
       {preferences.layout === "double" && resolvedRow2.length > 0 && (
         <div
-          className="bg-background/95 border-border scrollbar-none flex items-center gap-1 overflow-x-auto px-2 py-1.5 backdrop-blur"
+          className="keybar-row bg-background/95 border-border scrollbar-none kb-compact-hide flex items-center gap-1 overflow-x-auto px-2 py-1.5 backdrop-blur"
           onTouchEnd={(e) => e.stopPropagation()}
         >
           {renderRow(resolvedRow2)}

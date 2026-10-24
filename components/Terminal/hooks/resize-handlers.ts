@@ -39,11 +39,17 @@ export function setupResizeHandlers(config: ResizeHandlersConfig): () => void {
     fitTimeouts.forEach(clearTimeout);
     fitTimeouts = [];
 
-    // On mobile, save scroll position before fit to prevent keyboard open/close scroll
-    const savedScrollLine = isMobile ? term.buffer.active.viewportY : null;
+    // On mobile, save scroll position before fit to prevent keyboard open/close scroll.
+    // If the view was at the bottom, keep it there so the cursor line (the text
+    // being typed) stays visible when the keyboard shrinks the terminal.
+    const buffer = term.buffer.active;
+    const wasAtBottom = buffer.viewportY >= buffer.baseY;
+    const savedScrollLine = isMobile ? buffer.viewportY : null;
 
     const restoreScroll = () => {
-      if (savedScrollLine !== null) {
+      if (wasAtBottom) {
+        term.scrollToBottom();
+      } else if (savedScrollLine !== null) {
         term.scrollToLine(savedScrollLine);
       }
     };
