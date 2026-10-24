@@ -24,7 +24,32 @@ interface SessionListHeaderProps {
   onOpenProject: () => void;
   onKillAll: () => void;
   onClaudeConfig: () => void;
-  hideTitle?: boolean;
+}
+
+/** The logo and app name, as the Projects list shows them */
+export function AppTitle() {
+  return (
+    <div className="flex items-center gap-2">
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 24 24"
+        className="h-5 w-5"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        fill="none"
+      >
+        <path d="M12 8V4H8" />
+        <rect width="16" height="12" x="4" y="8" rx="2" />
+        <path d="M2 14h2" />
+        <path d="M20 14h2" />
+        <path d="M15 13v2" />
+        <path d="M9 13v2" />
+      </svg>
+      <h2 className="font-semibold">AgentOS</h2>
+    </div>
+  );
 }
 
 export function SessionListHeader({
@@ -32,31 +57,11 @@ export function SessionListHeader({
   onOpenProject,
   onKillAll,
   onClaudeConfig,
-  hideTitle,
 }: SessionListHeaderProps) {
   return (
     <div className="flex items-center justify-between px-3 py-2">
-      <div className={hideTitle ? "hidden" : "flex items-center gap-2"}>
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          viewBox="0 0 24 24"
-          className="h-5 w-5"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          fill="none"
-        >
-          <path d="M12 8V4H8" />
-          <rect width="16" height="12" x="4" y="8" rx="2" />
-          <path d="M2 14h2" />
-          <path d="M20 14h2" />
-          <path d="M15 13v2" />
-          <path d="M9 13v2" />
-        </svg>
-        <h2 className="font-semibold">AgentOS</h2>
-      </div>
-      <div className="ml-auto flex gap-1">
+      <AppTitle />
+      <div className="flex gap-1">
         <DropdownMenu>
           <Tooltip>
             <TooltipTrigger asChild>
