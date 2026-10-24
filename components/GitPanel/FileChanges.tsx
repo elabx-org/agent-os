@@ -308,10 +308,10 @@ function FileItem({
               ) : (
                 <>
                   {!!file.additions && (
-                    <span className="text-green-500">+{file.additions}</span>
+                    <span className="text-blue-400">+{file.additions}</span>
                   )}
                   {!!file.deletions && (
-                    <span className="ml-1.5 text-red-500">
+                    <span className="ml-1.5 text-amber-400">
                       −{file.deletions}
                     </span>
                   )}

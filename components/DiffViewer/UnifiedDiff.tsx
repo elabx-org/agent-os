@@ -54,13 +54,13 @@ export function UnifiedDiff({
         {/* Stats */}
         <span className="flex flex-shrink-0 items-center gap-2 text-xs">
           {diff.additions > 0 && (
-            <span className="flex items-center gap-0.5 text-green-500">
+            <span className="flex items-center gap-0.5 text-blue-400">
               <Plus className="h-3 w-3" />
               {diff.additions}
             </span>
           )}
           {diff.deletions > 0 && (
-            <span className="flex items-center gap-0.5 text-red-500">
+            <span className="flex items-center gap-0.5 text-amber-400">
               <Minus className="h-3 w-3" />
               {diff.deletions}
             </span>
@@ -182,9 +182,9 @@ function DiffLineRow({ line, wrap }: DiffLineRowProps) {
 function getLineBgColor(type: DiffLine["type"]): string {
   switch (type) {
     case "addition":
-      return "bg-green-500/10";
+      return "bg-blue-400/12";
     case "deletion":
-      return "bg-red-500/10";
+      return "bg-amber-400/10";
     default:
       return "";
   }
@@ -193,9 +193,9 @@ function getLineBgColor(type: DiffLine["type"]): string {
 function getLineTextColor(type: DiffLine["type"]): string {
   switch (type) {
     case "addition":
-      return "text-green-400";
+      return "text-blue-700 dark:text-blue-200";
     case "deletion":
-      return "text-red-400";
+      return "text-amber-700 dark:text-amber-200";
     default:
       return "text-foreground";
   }

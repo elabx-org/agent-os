@@ -115,18 +115,59 @@ function useTranscript(sessionId: string, active: boolean) {
   return { items, state, truncated };
 }
 
+/** Lines shown before "Show all": the first change with a line of context */
+const PATCH_PEEK = 5;
+
+function Patch({ lines, all }: { lines: string[]; all: boolean }) {
+  const first = Math.max(
+    0,
+    lines.findIndex((l) => l[0] === "+" || l[0] === "-") - 1
+  );
+  const shown = all ? lines : lines.slice(first, first + PATCH_PEEK);
+  return (
+    <div className="border-border overflow-x-auto border-t py-1.5 font-mono text-[11.5px] leading-relaxed">
+      {shown.map((line, i) =>
+        line === "@" ? (
+          <div key={i} className="text-muted-foreground px-3">
+            ⋯
+          </div>
+        ) : (
+          <div
+            key={i}
+            className={cn(
+              "flex gap-2 px-3",
+              line[0] === "+" && "bg-blue-400/12 text-blue-700 dark:text-blue-200",
+              line[0] === "-" && "bg-amber-400/10 text-amber-700 dark:text-amber-200",
+              line[0] !== "+" && line[0] !== "-" && "text-muted-foreground"
+            )}
+          >
+            <span aria-hidden="true" className="w-2 shrink-0 select-none">
+              {line[0] === "-" ? "−" : line[0] === "+" ? "+" : ""}
+            </span>
+            <span className="min-w-0 whitespace-pre-wrap [overflow-wrap:anywhere]">
+              {line.slice(1) || " "}
+            </span>
+          </div>
+        )
+      )}
+    </div>
+  );
+}
+
 function ToolRow({ tool, result }: { tool: ToolItem; result?: ResultItem }) {
   const [open, setOpen] = useState(false);
   const Icon = TOOL_ICONS[tool.name] ?? Wrench;
   const hasDiff = result?.added !== undefined;
+  const patch = result && !result.isError ? result.patch : undefined;
+  const expandable = !!(patch ? patch.length > PATCH_PEEK : result?.preview);
 
   return (
-    <div className="bg-card border-border rounded-xl border">
+    <div className="bg-card border-border overflow-hidden rounded-xl border">
       <button
         type="button"
-        onClick={() => result?.preview && setOpen((o) => !o)}
+        onClick={() => expandable && setOpen((o) => !o)}
         className="flex min-h-[40px] w-full items-center gap-2.5 px-3 py-2 text-left"
-        aria-expanded={open}
+        aria-expanded={expandable ? open : undefined}
       >
         <Icon className="text-muted-foreground h-4 w-4 shrink-0" />
         <span className="text-muted-foreground shrink-0 text-xs">
@@ -150,7 +191,17 @@ function ToolRow({ tool, result }: { tool: ToolItem; result?: ResultItem }) {
           </span>
         )}
       </button>
-      {open && result?.preview && (
+      {patch && <Patch lines={patch} all={open} />}
+      {patch && expandable && (
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          className="text-muted-foreground hover:text-foreground border-border w-full border-t px-3 py-2 text-left text-xs"
+        >
+          {open ? "Show less" : `Show all ${patch.length} lines`}
+        </button>
+      )}
+      {!patch && open && result?.preview && (
         <pre className="border-border text-muted-foreground max-h-56 overflow-auto border-t px-3 py-2 font-mono text-[11px] leading-relaxed whitespace-pre-wrap">
           {result.preview}
         </pre>
