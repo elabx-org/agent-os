@@ -30,14 +30,17 @@ async function fetchPrompt(id: string): Promise<PermissionPrompt | null> {
   return (await res.json()).prompt ?? null;
 }
 
-function InboxItem({
+export function InboxItem({
   session,
   projectName,
   onOpen,
+  questionsOnly,
 }: {
   session: Session;
   projectName?: string;
   onOpen: () => void;
+  /** Render nothing unless Claude is asking a question (inline in Chat) */
+  questionsOnly?: boolean;
 }) {
   const queryClient = useQueryClient();
   const queryKey = ["session-prompt", session.id];
@@ -69,6 +72,8 @@ function InboxItem({
     }
   };
 
+  if (questionsOnly && !prompt) return null;
+
   return (
     <li className="bg-card border-border space-y-3 rounded-2xl border p-3.5">
       <div className="flex items-start gap-2.5">
@@ -79,7 +84,7 @@ function InboxItem({
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold">{session.name}</p>
           <p className="text-muted-foreground truncate text-xs">
-            {[projectName, prompt?.title ?? "Waiting for you"]
+            {[projectName, prompt?.title ?? "Your turn"]
               .filter(Boolean)
               .join(" · ")}
           </p>
@@ -102,8 +107,8 @@ function InboxItem({
 
       {!isLoading && !prompt && (
         <p className="text-muted-foreground text-sm">
-          Claude is waiting on you, but not with a question I can answer here.
-          Open the session to reply.
+          Claude has finished or needs a typed reply. Open the session to
+          respond.
         </p>
       )}
 

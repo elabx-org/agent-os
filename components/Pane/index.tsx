@@ -42,6 +42,11 @@ const FileExplorer = dynamic(
   { ssr: false, loading: () => <FileExplorerSkeleton /> }
 );
 
+const ChatView = dynamic(
+  () => import("@/components/ChatView").then((mod) => mod.ChatView),
+  { ssr: false }
+);
+
 const GitPanel = dynamic(
   () => import("@/components/GitPanel").then((mod) => mod.GitPanel),
   { ssr: false, loading: () => <GitPanelSkeleton /> }
@@ -60,7 +65,7 @@ interface PaneProps {
   onSelectSession?: (sessionId: string) => void;
 }
 
-type ViewMode = "terminal" | "files" | "git" | "workers";
+type ViewMode = "terminal" | "chat" | "files" | "git" | "workers";
 
 export const Pane = memo(function Pane({
   paneId,
@@ -143,7 +148,8 @@ export const Pane = memo(function Pane({
 
   // Reset view mode and file editor when session changes
   useEffect(() => {
-    setViewMode("terminal");
+    // Chat follows you to the next session; per-folder views don't
+    setViewMode((mode) => (mode === "chat" ? "chat" : "terminal"));
     fileEditor.reset();
   }, [session?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -408,6 +414,15 @@ export const Pane = memo(function Pane({
             );
           })}
 
+          {/* Chat: mounted only while shown, it polls the transcript */}
+          {viewMode === "chat" && session && (
+            <ChatView
+              session={session}
+              active
+              onOpenTerminal={() => setViewMode("terminal")}
+            />
+          )}
+
           {/* Files */}
           {session?.working_directory && (
             <div className={viewMode === "files" ? "h-full" : "hidden"}>
@@ -505,6 +520,15 @@ export const Pane = memo(function Pane({
                       </div>
                     );
                   })}
+
+                  {/* Chat */}
+                  {viewMode === "chat" && session && (
+                    <ChatView
+                      session={session}
+                      active
+                      onOpenTerminal={() => setViewMode("terminal")}
+                    />
+                  )}
 
                   {/* Files */}
                   {session?.working_directory && (

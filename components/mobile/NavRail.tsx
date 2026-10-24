@@ -6,6 +6,7 @@ import {
   FolderOpen,
   GitBranch,
   Inbox,
+  MessageSquare,
   Plus,
   Search,
   SquareTerminal,
@@ -117,10 +118,21 @@ export function NavRail({
         onClick={onInbox}
       />
       <RailButton
+        icon={MessageSquare}
+        label="Chat"
+        selected={viewMode === "chat"}
+        ariaLabel="Chat (tap again for all sessions)"
+        onClick={() =>
+          viewMode === "chat"
+            ? onSessions()
+            : mobileNavActions.requestViewMode("chat")
+        }
+      />
+      <RailButton
         icon={SquareTerminal}
-        label="Session"
+        label="Terminal"
         selected={viewMode === "terminal"}
-        ariaLabel="Session (tap again for all sessions)"
+        ariaLabel="Terminal (tap again for all sessions)"
         onClick={() =>
           viewMode === "terminal"
             ? onSessions()

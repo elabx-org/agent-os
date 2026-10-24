@@ -185,7 +185,8 @@ export function updateTerminalDensity(
   const { terminalFontSize: newFontSize, terminalLineHeight: newLineHeight } =
     getDensity();
 
-  if (term.options.fontSize !== newFontSize) {
+  // Hidden terminals refit when shown; fitting now would shrink tmux
+  if (term.options.fontSize !== newFontSize && term.element?.offsetParent) {
     term.options.fontSize = newFontSize;
     term.options.lineHeight = newLineHeight;
     term.refresh(0, term.rows - 1);

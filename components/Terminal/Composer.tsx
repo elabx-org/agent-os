@@ -63,12 +63,15 @@ export function Composer({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={(e) => {
-          // Hardware keyboards: Cmd/Ctrl+Enter sends, Enter adds a line
-          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+          // Return sends, Shift+Return adds a line. On the on-screen keyboard
+          // the keybar's newline key adds a line instead.
+          if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
             e.preventDefault();
             send();
           }
         }}
+        data-composer=""
+        enterKeyHint="send"
         rows={1}
         placeholder="Message"
         autoCapitalize="sentences"

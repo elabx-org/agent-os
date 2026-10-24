@@ -19,6 +19,7 @@ import {
   ChevronDown,
   Circle,
   Inbox,
+  MessageSquare,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Session, Project } from "@/lib/db";
@@ -38,7 +39,7 @@ const STATUS_STRIP: Record<
   dead: { word: "Stopped", dot: "bg-muted-foreground/50" },
 };
 
-type ViewMode = "terminal" | "files" | "git" | "workers";
+type ViewMode = "terminal" | "chat" | "files" | "git" | "workers";
 
 interface ViewModeButtonProps {
   mode: ViewMode;
@@ -289,6 +290,12 @@ export function MobileTabBar({
             mode="terminal"
             currentMode={viewMode}
             icon={TerminalIcon}
+            onClick={onViewModeChange}
+          />
+          <ViewModeButton
+            mode="chat"
+            currentMode={viewMode}
+            icon={MessageSquare}
             onClick={onViewModeChange}
           />
           <ViewModeButton

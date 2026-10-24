@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { SessionList } from "@/components/SessionList";
 import { NewSessionDialog } from "@/components/NewSessionDialog";
 import { NotificationSettings } from "@/components/NotificationSettings";
@@ -66,6 +66,10 @@ export function DesktopView({
   renderPane,
 }: ViewProps) {
   const { inboxOpen } = useSnapshot(mobileNavStore);
+
+  useEffect(() => {
+    mobileNavStore.statuses = sessionStatuses;
+  }, [sessionStatuses]);
   const waitingSessions = useMemo(
     () =>
       sessions.filter(

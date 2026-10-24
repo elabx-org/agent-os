@@ -308,6 +308,62 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
       [sendInput, sendPaste]
     );
 
+    // With the composer on, xterm's keyboard is off, so a tap on the terminal
+    // (Claude's old prompt line included) goes to the composer instead.
+    // Scrolls, drags and select mode are left alone.
+    useEffect(() => {
+      const el = terminalRef.current;
+      if (!el || !composerOn || selectMode) return;
+      let start: { x: number; y: number; t: number } | null = null;
+      const onStart = (e: TouchEvent) => {
+        const t = e.touches[0];
+        start =
+          e.touches.length === 1
+            ? { x: t.clientX, y: t.clientY, t: Date.now() }
+            : null;
+      };
+      const onEnd = (e: TouchEvent) => {
+        const t = e.changedTouches[0];
+        if (!start || !t) return;
+        const moved = Math.hypot(t.clientX - start.x, t.clientY - start.y);
+        const quick = Date.now() - start.t < 400;
+        start = null;
+        if (moved > 10 || !quick) return;
+        const box = keybarRef.current?.querySelector<HTMLTextAreaElement>(
+          "textarea[data-composer]"
+        );
+        if (box && document.activeElement !== box) {
+          e.preventDefault();
+          box.focus();
+        }
+      };
+      el.addEventListener("touchstart", onStart, { passive: true });
+      el.addEventListener("touchend", onEnd);
+      return () => {
+        el.removeEventListener("touchstart", onStart);
+        el.removeEventListener("touchend", onEnd);
+      };
+    }, [composerOn, selectMode]);
+
+    // The keybar's newline key adds a line to the composer while it has focus
+    const keybarKeyPress = useCallback(
+      (key: string) => {
+        const el = document.activeElement;
+        if (
+          key === "\n" &&
+          el instanceof HTMLTextAreaElement &&
+          el.dataset.composer !== undefined
+        ) {
+          const { selectionStart: from, selectionEnd: to, value } = el;
+          setComposerText(value.slice(0, from) + "\n" + value.slice(to));
+          requestAnimationFrame(() => el.setSelectionRange(from + 1, from + 1));
+          return;
+        }
+        sendInput(key);
+      },
+      [sendInput]
+    );
+
     // Direct typing for Claude Code's / and @ pickers; back to the composer on blur
     const typeInTerminal = useCallback(() => {
       const textarea = terminalRef.current?.querySelector(".xterm textarea");
@@ -626,7 +682,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
               />
             )}
             <TerminalToolbar
-              onKeyPress={sendInput}
+              onKeyPress={keybarKeyPress}
               onPaste={sendPaste}
               onImagePicker={() => setShowImagePicker(true)}
               onCopy={copySelection}

@@ -1,7 +1,7 @@
 import { proxy } from "valtio";
 import type { SessionStatus } from "@/components/views/types";
 
-export type PaneViewMode = "terminal" | "files" | "git" | "workers";
+export type PaneViewMode = "terminal" | "chat" | "files" | "git" | "workers";
 
 /**
  * Bridges the mobile nav rail (outside the pane tree) and the focused pane,
