@@ -12,6 +12,7 @@ import {
   Loader2,
   Pencil,
   Search,
+  Square,
   SquareTerminal,
   Wrench,
   type LucideIcon,
@@ -300,11 +301,22 @@ export function ChatView({ session, active, onOpenTerminal }: ChatViewProps) {
     // insertText only reads the ref and the setter
     []
   );
-  // Half open like a laptop: while typing, the conversation stays above the
-  // fold and the composer sits on the deck below it
+  // Half open like a laptop or on a table: the conversation stays above the
+  // fold, and the composer and the controls sit on the deck below it
   const rootRef = useRef<HTMLDivElement>(null);
   const [composerFocused, setComposerFocused] = useState(false);
-  const deck = useFoldDeck(rootRef, 0, composerFocused || nativeKeyboard);
+  const deck = useFoldDeck(rootRef);
+  const deckControls = deck && !composerFocused && !nativeKeyboard;
+
+  const [stopping, setStopping] = useState(false);
+  const stop = async () => {
+    setStopping(true);
+    try {
+      await fetch(`/api/sessions/${session.id}/interrupt`, { method: "POST" });
+    } finally {
+      setStopping(false);
+    }
+  };
 
   const [sending, setSending] = useState(false);
   const send = useCallback(async () => {
@@ -386,7 +398,7 @@ export function ChatView({ session, active, onOpenTerminal }: ChatViewProps) {
               Claude is working
             </div>
           )}
-          {status === "waiting" && (
+          {status === "waiting" && !deckControls && (
             <ul>
               <InboxItem
                 session={session}
@@ -407,61 +419,98 @@ export function ChatView({ session, active, onOpenTerminal }: ChatViewProps) {
       )}
       <div
         className={cn(
-          "border-border flex gap-1.5 border-t px-2 py-1.5 pb-[calc(0.375rem+env(safe-area-inset-bottom))]",
-          deck ? "items-start" : "items-end"
+          "border-border border-t px-2 py-1.5 pb-[calc(0.375rem+env(safe-area-inset-bottom))]",
+          deck && "flex flex-col"
         )}
         style={{ height: deck?.deck }}
       >
-        <button
-          type="button"
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={insertNewline}
-          aria-label="New line"
-          title="New line"
-          className="bg-secondary text-muted-foreground active:bg-accent flex h-[44px] w-[44px] flex-shrink-0 items-center justify-center rounded-full [@media(pointer:fine)]:hidden"
-        >
-          <CornerDownLeft className="h-5 w-5" />
-        </button>
-        <textarea
-          ref={inputRef}
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onFocus={() => setComposerFocused(true)}
-          onBlur={() => setComposerFocused(false)}
-          onKeyDown={(e) => {
-            // Return sends, Shift+Return adds a line
-            if (
-              e.key === "Enter" &&
-              !e.shiftKey &&
-              !e.nativeEvent.isComposing
-            ) {
-              e.preventDefault();
-              send();
-            }
-          }}
-          enterKeyHint="send"
-          rows={1}
-          placeholder="Message Claude"
-          className="bg-secondary text-foreground placeholder:text-muted-foreground max-h-40 min-h-[44px] flex-1 resize-none rounded-2xl px-3.5 py-2.5 text-base leading-6 focus:outline-none"
-        />
-        <button
-          type="button"
-          onClick={send}
-          disabled={!draft.trim() || sending}
-          aria-label="Send"
+        <div
           className={cn(
-            "flex h-[44px] w-[44px] flex-shrink-0 items-center justify-center rounded-full",
-            draft.trim()
-              ? "bg-primary text-primary-foreground active:opacity-80"
-              : "bg-secondary text-muted-foreground"
+            "flex shrink-0 gap-1.5",
+            deck ? "items-start" : "items-end"
           )}
         >
-          {sending ? (
-            <Loader2 className="h-5 w-5 animate-spin" />
-          ) : (
-            <ArrowUp className="h-5 w-5" />
-          )}
-        </button>
+          <button
+            type="button"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={insertNewline}
+            aria-label="New line"
+            title="New line"
+            className="bg-secondary text-muted-foreground active:bg-accent flex h-[44px] w-[44px] flex-shrink-0 items-center justify-center rounded-full [@media(pointer:fine)]:hidden"
+          >
+            <CornerDownLeft className="h-5 w-5" />
+          </button>
+          <textarea
+            ref={inputRef}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onFocus={() => setComposerFocused(true)}
+            onBlur={() => setComposerFocused(false)}
+            onKeyDown={(e) => {
+              // Return sends, Shift+Return adds a line
+              if (
+                e.key === "Enter" &&
+                !e.shiftKey &&
+                !e.nativeEvent.isComposing
+              ) {
+                e.preventDefault();
+                send();
+              }
+            }}
+            enterKeyHint="send"
+            rows={1}
+            placeholder="Message Claude"
+            className="bg-secondary text-foreground placeholder:text-muted-foreground max-h-40 min-h-[44px] flex-1 resize-none rounded-2xl px-3.5 py-2.5 text-base leading-6 focus:outline-none"
+          />
+          <button
+            type="button"
+            onClick={send}
+            disabled={!draft.trim() || sending}
+            aria-label="Send"
+            className={cn(
+              "flex h-[44px] w-[44px] flex-shrink-0 items-center justify-center rounded-full",
+              draft.trim()
+                ? "bg-primary text-primary-foreground active:opacity-80"
+                : "bg-secondary text-muted-foreground"
+            )}
+          >
+            {sending ? (
+              <Loader2 className="h-5 w-5 animate-spin" />
+            ) : (
+              <ArrowUp className="h-5 w-5" />
+            )}
+          </button>
+        </div>
+        {/* On the deck, within the thumbs' reach: the answer Claude is
+          waiting for, or Stop while it works */}
+        {deckControls && (
+          <div className="flex min-h-0 flex-1 flex-col justify-end gap-3 overflow-y-auto px-2 pt-3">
+            {status === "waiting" && (
+              <ul>
+                <InboxItem
+                  session={session}
+                  onOpen={onOpenTerminal}
+                  questionsOnly
+                />
+              </ul>
+            )}
+            {status === "running" && (
+              <button
+                type="button"
+                onClick={stop}
+                disabled={stopping}
+                className="flex h-14 w-full shrink-0 items-center justify-center gap-2 rounded-2xl border border-red-500/40 bg-red-500/10 text-sm font-semibold text-red-400 active:opacity-70"
+              >
+                {stopping ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Square className="h-4 w-4 fill-current" />
+                )}
+                Stop Claude
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
