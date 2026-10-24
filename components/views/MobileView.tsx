@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo } from "react";
+import { useSnapshot } from "valtio";
+import { InboxDialog } from "@/components/Inbox";
 import { SessionList } from "@/components/SessionList";
 import { NewSessionDialog } from "@/components/NewSessionDialog";
 import { StartServerDialog } from "@/components/DevServers/StartServerDialog";
@@ -61,18 +63,16 @@ export function MobileView({
     [sessions, sessionStatuses]
   );
 
-  // Jump to the next session waiting on you, cycling past the current one
-  const openInbox = () => {
-    if (waitingSessions.length === 0) {
-      setSidebarOpen(true);
-      return;
-    }
-    const currentId = focusedActiveTab?.sessionId;
-    const at = waitingSessions.findIndex((s) => s.id === currentId);
-    const next = waitingSessions[(at + 1) % waitingSessions.length];
-    if (next.id !== currentId) attachToSession(next);
-    mobileNavActions.requestViewMode("terminal");
-  };
+  const { inboxOpen } = useSnapshot(mobileNavStore);
+  const projectNames = useMemo(
+    () =>
+      Object.fromEntries(
+        projects
+          .filter((p) => p.name !== "Uncategorized")
+          .map((p) => [p.id, p.name])
+      ),
+    [projects]
+  );
 
   return (
     <main
@@ -83,7 +83,7 @@ export function MobileView({
         <NavRail
           columnWidth={railWidth}
           waitingCount={waitingSessions.length}
-          onInbox={openInbox}
+          onInbox={() => mobileNavActions.setInboxOpen(true)}
           onSessions={() => setSidebarOpen(true)}
           onFind={() => setShowQuickSwitcher(true)}
           onNewSession={() => setShowNewSessionDialog(true)}
@@ -133,6 +133,16 @@ export function MobileView({
       </div>
 
       {/* Dialogs */}
+      <InboxDialog
+        open={inboxOpen}
+        onOpenChange={mobileNavActions.setInboxOpen}
+        waitingSessions={waitingSessions}
+        projectNames={projectNames}
+        onOpenSession={(session) => {
+          attachToSession(session);
+          mobileNavActions.requestViewMode("terminal");
+        }}
+      />
       <NewSessionDialog
         open={showNewSessionDialog}
         projects={projects}

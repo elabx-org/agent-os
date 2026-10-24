@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import { SessionList } from "@/components/SessionList";
 import { NewSessionDialog } from "@/components/NewSessionDialog";
 import { NotificationSettings } from "@/components/NotificationSettings";
@@ -14,6 +15,7 @@ import {
   Copy,
   Check,
   Command,
+  Inbox,
 } from "lucide-react";
 import { PaneLayout } from "@/components/PaneLayout";
 import {
@@ -26,6 +28,9 @@ import { UsageMonitor } from "@/components/UsageMonitor";
 import { MinimaxUsageMonitor } from "@/components/MinimaxUsageMonitor";
 import type { ViewProps } from "./types";
 import { fileOpenActions } from "@/stores/fileOpen";
+import { useSnapshot } from "valtio";
+import { InboxDialog } from "@/components/Inbox";
+import { mobileNavActions, mobileNavStore } from "@/stores/mobileNav";
 
 export function DesktopView({
   sessions,
@@ -60,6 +65,25 @@ export function DesktopView({
   setStartDevServerProjectId,
   renderPane,
 }: ViewProps) {
+  const { inboxOpen } = useSnapshot(mobileNavStore);
+  const waitingSessions = useMemo(
+    () =>
+      sessions.filter(
+        (s) =>
+          !s.conductor_session_id && sessionStatuses[s.id]?.status === "waiting"
+      ),
+    [sessions, sessionStatuses]
+  );
+  const projectNames = useMemo(
+    () =>
+      Object.fromEntries(
+        projects
+          .filter((p) => p.name !== "Uncategorized")
+          .map((p) => [p.id, p.name])
+      ),
+    [projects]
+  );
+
   return (
     // Pad once here for system columns (the iPhone Duo inner display keeps one
     // on the right); --safe-right: 0 stops children padding for it again
@@ -183,6 +207,17 @@ export function DesktopView({
           </div>
 
           <div className="flex shrink-0 items-center gap-2">
+            {waitingSessions.length > 0 && (
+              <button
+                type="button"
+                onClick={() => mobileNavActions.setInboxOpen(true)}
+                className="flex h-8 items-center gap-1.5 rounded-full bg-amber-400/15 px-3 text-xs font-semibold text-amber-400 hover:bg-amber-400/25"
+                aria-label={`Inbox, ${waitingSessions.length} waiting`}
+              >
+                <Inbox className="h-4 w-4" />
+                {waitingSessions.length}
+              </button>
+            )}
             <div className="hidden items-center gap-2 xl:flex">
               <UsageMonitor />
               <MinimaxUsageMonitor />
@@ -235,6 +270,13 @@ export function DesktopView({
       </div>
 
       {/* Dialogs */}
+      <InboxDialog
+        open={inboxOpen}
+        onOpenChange={mobileNavActions.setInboxOpen}
+        waitingSessions={waitingSessions}
+        projectNames={projectNames}
+        onOpenSession={attachToSession}
+      />
       <NewSessionDialog
         open={showNewSessionDialog}
         projects={projects}

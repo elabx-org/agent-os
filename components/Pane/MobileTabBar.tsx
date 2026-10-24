@@ -18,12 +18,13 @@ import {
   Users,
   ChevronDown,
   Circle,
+  Inbox,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Session, Project } from "@/lib/db";
 import type { LucideIcon } from "lucide-react";
 import { useSnapshot } from "valtio";
-import { mobileNavStore } from "@/stores/mobileNav";
+import { mobileNavActions, mobileNavStore } from "@/stores/mobileNav";
 import type { SessionStatus } from "@/components/views/types";
 
 const STATUS_STRIP: Record<
@@ -98,6 +99,9 @@ export function MobileTabBar({
   onSelectSession,
 }: MobileTabBarProps) {
   const { railActive, statuses } = useSnapshot(mobileNavStore);
+  const waitingCount = Object.values(statuses).filter(
+    (s) => s.status === "waiting"
+  ).length;
   const status = session
     ? STATUS_STRIP[statuses[session.id]?.status ?? "idle"]
     : null;
@@ -261,6 +265,22 @@ export function MobileTabBar({
           <ChevronRight className="h-4 w-4" />
         </button>
       </div>
+
+      {/* Inbox: the rail carries it when shown */}
+      {!railActive && waitingCount > 0 && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            mobileNavActions.setInboxOpen(true);
+          }}
+          className="flex h-8 shrink-0 items-center gap-1 rounded-full bg-amber-400/15 px-2.5 text-xs font-semibold text-amber-400"
+          aria-label={`Inbox, ${waitingCount} waiting`}
+        >
+          <Inbox className="h-3.5 w-3.5" />
+          {waitingCount}
+        </button>
+      )}
 
       {/* View mode toggle */}
       {session?.working_directory && !railActive && (

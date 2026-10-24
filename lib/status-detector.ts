@@ -16,6 +16,7 @@
 
 import { exec } from "child_process";
 import { promisify } from "util";
+import { parsePermissionPrompt } from "./permission-prompt";
 
 const execAsync = promisify(exec);
 
@@ -186,8 +187,12 @@ function checkBusyIndicators(content: string): boolean {
 }
 
 function checkWaitingPatterns(content: string): boolean {
-  const recentLines = content.split("\n").slice(-5).join("\n");
-  return WAITING_PATTERNS.some((p) => p.test(recentLines));
+  const lines = content.split("\n");
+  const recentLines = lines.slice(-5).join("\n");
+  if (WAITING_PATTERNS.some((p) => p.test(recentLines))) return true;
+  // Claude Code's selection prompts put the question well above the last
+  // five lines; the parser finds the whole block (width only affects wrapping)
+  return parsePermissionPrompt(lines, 1000) !== null;
 }
 
 class SessionStatusDetector {

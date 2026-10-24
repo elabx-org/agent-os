@@ -15,11 +15,13 @@ export const mobileNavStore = proxy<{
   statuses: Record<string, SessionStatus>;
   /** The rail is showing, so the tab bar drops its own view switcher */
   railActive: boolean;
+  inboxOpen: boolean;
 }>({
   viewMode: "terminal",
   request: null,
   statuses: {},
   railActive: false,
+  inboxOpen: false,
 });
 
 export const mobileNavActions = {
@@ -28,5 +30,8 @@ export const mobileNavActions = {
   },
   clearRequest: () => {
     mobileNavStore.request = null;
+  },
+  setInboxOpen: (open: boolean) => {
+    mobileNavStore.inboxOpen = open;
   },
 };
