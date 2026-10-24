@@ -360,9 +360,10 @@ function HomeContent() {
     openNewSession: () => setShowNewSessionDialog(true),
   });
 
-  // Set initial sidebar state based on viewport (only after hydration)
+  // Open beside the session on wide screens, closed on narrow ones; folding
+  // an iPhone Duo shut keeps the session rather than the list
   useEffect(() => {
-    if (isHydrated && !isMobile) setSidebarOpen(true);
+    if (isHydrated) setSidebarOpen(!isMobile);
   }, [isMobile, isHydrated]);
 
   // Keyboard shortcut: Cmd+K to open quick switcher
