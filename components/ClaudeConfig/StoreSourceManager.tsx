@@ -68,7 +68,7 @@ export function StoreSourceManager({
 
       {/* Built-in sources */}
       <div className="space-y-1">
-        <span className="text-muted-foreground text-[10px] font-medium uppercase tracking-wide">
+        <span className="text-muted-foreground text-[10px] font-medium tracking-wide uppercase">
           Built-in
         </span>
         {BUILT_IN_SOURCES.map((s) => (
@@ -78,7 +78,7 @@ export function StoreSourceManager({
           >
             <span
               className={cn(
-                "shrink-0 rounded px-1 py-0.5 text-[10px] font-medium leading-none",
+                "shrink-0 rounded px-1 py-0.5 text-[10px] leading-none font-medium",
                 s.type === "skill"
                   ? "bg-blue-500/10 text-blue-500"
                   : s.type === "agent"
@@ -96,7 +96,7 @@ export function StoreSourceManager({
       {/* Custom sources */}
       {sources.length > 0 && (
         <div className="space-y-1">
-          <span className="text-muted-foreground text-[10px] font-medium uppercase tracking-wide">
+          <span className="text-muted-foreground text-[10px] font-medium tracking-wide uppercase">
             Custom
           </span>
           {sources.map((s) => (
@@ -106,7 +106,7 @@ export function StoreSourceManager({
             >
               <span
                 className={cn(
-                  "shrink-0 rounded px-1 py-0.5 text-[10px] font-medium leading-none",
+                  "shrink-0 rounded px-1 py-0.5 text-[10px] leading-none font-medium",
                   s.type === "skill"
                     ? "bg-blue-500/10 text-blue-500"
                     : "bg-purple-500/10 text-purple-500"
@@ -123,7 +123,7 @@ export function StoreSourceManager({
               <Button
                 variant="ghost"
                 size="icon-sm"
-                className="text-muted-foreground hover:text-destructive h-5 w-5 shrink-0 opacity-0 group-hover:opacity-100"
+                className="text-muted-foreground hover:text-destructive h-5 w-5 shrink-0 pointer-fine:opacity-0 pointer-fine:group-hover:opacity-100"
                 onClick={() => onRemove(s.id)}
               >
                 <Trash2 className="h-3 w-3" />
@@ -135,7 +135,7 @@ export function StoreSourceManager({
 
       {/* Add form */}
       <form onSubmit={handleAdd} className="space-y-1.5">
-        <span className="text-muted-foreground text-[10px] font-medium uppercase tracking-wide">
+        <span className="text-muted-foreground text-[10px] font-medium tracking-wide uppercase">
           Add source
         </span>
         <div className="flex gap-1.5">

@@ -523,7 +523,7 @@ export function SessionCard({
             <Button
               variant="ghost"
               size="icon-sm"
-              className="h-6 w-6 flex-shrink-0 opacity-100 md:h-5 md:w-5 md:opacity-0 md:group-hover:opacity-100"
+              className="h-6 w-6 flex-shrink-0 opacity-100 md:pointer-fine:h-5 md:pointer-fine:w-5 md:pointer-fine:opacity-0 md:pointer-fine:group-hover:opacity-100"
             >
               <MoreHorizontal className="h-3 w-3" />
             </Button>
