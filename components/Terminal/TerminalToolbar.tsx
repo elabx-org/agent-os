@@ -321,10 +321,10 @@ function SimpleKeyButton({
         onKeyPress(keyCode);
       }}
       className={cn(
-        "flex-shrink-0 rounded-md px-2.5 py-1.5 text-xs font-medium",
+        "flex h-10 min-w-10 flex-shrink-0 items-center justify-center rounded-xl px-3 text-[13px] font-medium",
         "active:bg-primary active:text-primary-foreground",
         highlight
-          ? "bg-red-500/20 text-red-500"
+          ? "mx-1 border border-red-500/40 bg-red-500/15 text-red-400"
           : "bg-secondary text-secondary-foreground"
       )}
     >
@@ -350,7 +350,7 @@ function MicButton({
         onToggle();
       }}
       className={cn(
-        "flex-shrink-0 rounded-md px-2.5 py-1.5 text-xs font-medium",
+        "flex h-10 min-w-10 flex-shrink-0 items-center justify-center rounded-xl px-3 text-[13px] font-medium",
         isListening
           ? "animate-pulse bg-red-500 text-white"
           : "bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground"
@@ -374,7 +374,7 @@ function PasteButton({ onPaste }: { onPaste: () => void }) {
         e.stopPropagation();
         onPaste();
       }}
-      className="bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground flex-shrink-0 rounded-md px-2.5 py-1.5 text-xs font-medium"
+      className="bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground flex h-10 min-w-10 flex-shrink-0 items-center justify-center rounded-xl px-3 text-[13px] font-medium"
     >
       <Clipboard className="h-4 w-4" />
     </button>
@@ -397,7 +397,7 @@ function SelectModeButton({
         onToggle();
       }}
       className={cn(
-        "flex-shrink-0 rounded-md px-2.5 py-1.5 text-xs font-medium",
+        "flex h-10 min-w-10 flex-shrink-0 items-center justify-center rounded-xl px-3 text-[13px] font-medium",
         active
           ? "bg-primary text-primary-foreground"
           : "bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground"
@@ -417,7 +417,7 @@ function ImagePickerButton({ onPick }: { onPick: () => void }) {
         e.stopPropagation();
         onPick();
       }}
-      className="bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground flex-shrink-0 rounded-md px-2.5 py-1.5 text-xs font-medium"
+      className="bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground flex h-10 min-w-10 flex-shrink-0 items-center justify-center rounded-xl px-3 text-[13px] font-medium"
     >
       <ImagePlus className="h-4 w-4" />
     </button>
@@ -433,7 +433,7 @@ function SnippetsButton({ onOpen }: { onOpen: () => void }) {
         e.stopPropagation();
         onOpen();
       }}
-      className="bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground flex-shrink-0 rounded-md px-2.5 py-1.5 text-xs font-medium"
+      className="bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground flex h-10 min-w-10 flex-shrink-0 items-center justify-center rounded-xl px-3 text-[13px] font-medium"
     >
       <FileText className="h-4 w-4" />
     </button>
@@ -456,7 +456,7 @@ function ShiftButton({
         onToggle();
       }}
       className={cn(
-        "flex-shrink-0 rounded-md px-2.5 py-1.5 text-xs font-medium",
+        "flex h-10 min-w-10 flex-shrink-0 items-center justify-center rounded-xl px-3 text-[13px] font-medium",
         active
           ? "bg-primary text-primary-foreground"
           : "bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground"
@@ -482,7 +482,7 @@ function EnterButton({
         e.stopPropagation();
         onPress(shiftActive ? "\n" : "\r");
       }}
-      className="bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground flex-shrink-0 rounded-md px-2.5 py-1.5 text-xs font-medium"
+      className="bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground flex h-10 min-w-10 flex-shrink-0 items-center justify-center rounded-xl px-3 text-[13px] font-medium"
     >
       {"\u21B5"}
     </button>
@@ -544,7 +544,7 @@ function CursorTrackpadButton({
         }
       }}
       className={cn(
-        "flex-shrink-0 rounded-md px-3 py-1.5 text-xs font-medium",
+        "flex h-10 min-w-10 flex-shrink-0 items-center justify-center rounded-xl px-3 text-[13px] font-medium",
         cursorMoveMode
           ? "bg-primary text-primary-foreground"
           : "bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground"
@@ -594,7 +594,7 @@ function BackspaceButton({
         e.stopPropagation();
         onKeyPress("\x7f");
       }}
-      className="bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground flex-shrink-0 rounded-md px-2.5 py-1.5 text-xs font-medium"
+      className="bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground flex h-10 min-w-10 flex-shrink-0 items-center justify-center rounded-xl px-3 text-[13px] font-medium"
       title="Tap: delete | Hold: rapid delete"
     >
       {"\u232B"}
@@ -618,7 +618,7 @@ function CopyButton({
         onCopy();
       }}
       className={cn(
-        "flex-shrink-0 rounded-md px-2.5 py-1.5 text-xs font-medium",
+        "flex h-10 min-w-10 flex-shrink-0 items-center justify-center rounded-xl px-3 text-[13px] font-medium",
         copyFeedback
           ? "bg-green-500 text-white"
           : "bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground"
@@ -888,7 +888,7 @@ export function TerminalToolbar({
             e.stopPropagation();
             setShowSettings(true);
           }}
-          className="bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground flex-shrink-0 rounded-md px-2.5 py-1.5 text-xs font-medium"
+          className="bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground flex h-10 min-w-10 flex-shrink-0 items-center justify-center rounded-xl px-3 text-[13px] font-medium"
         >
           <Settings className="h-4 w-4" />
         </button>

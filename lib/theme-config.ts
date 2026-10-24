@@ -14,6 +14,7 @@ import {
   Sparkles,
   Waves,
   Coffee,
+  Layers,
   type LucideIcon,
 } from "lucide-react";
 
@@ -28,7 +29,8 @@ export type DarkThemeVariant =
   | "forest"
   | "purple"
   | "ocean"
-  | "mocha";
+  | "mocha"
+  | "graphite";
 export type LightThemeVariant =
   | "default"
   | "warm"
@@ -166,6 +168,17 @@ export const DARK_THEMES: ThemeOption[] = [
       background: "#1C1612",
       foreground: "#E6DDD4",
       accent: "#D4844A",
+    },
+  },
+  {
+    id: "graphite",
+    label: "Graphite",
+    description: "Calm graphite, blue and amber signals",
+    icon: Layers,
+    preview: {
+      background: "#0E1013",
+      foreground: "#ECEFF3",
+      accent: "#6AA8FF",
     },
   },
 ];

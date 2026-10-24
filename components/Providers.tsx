@@ -35,7 +35,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
     <QueryClientProvider client={queryClient}>
       <NextThemesProvider
         attribute="data-theme"
-        defaultTheme="dark"
+        defaultTheme="dark-graphite"
         enableSystem
         disableTransitionOnChange
         themes={getAllThemes()}

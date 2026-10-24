@@ -571,6 +571,37 @@
   }
 
   /* Dark Mocha - Rich brown, sophisticated */
+  /* Graphite: the Duo redesign palette. Blue = working/primary, amber = needs you */
+  .dark[data-theme-variant="graphite"] {
+    --background: 216 15.2% 6.5%;
+    --foreground: 214.3 22.6% 93.9%;
+    --card: 213.3 17% 10.4%;
+    --card-foreground: 214.3 22.6% 93.9%;
+    --popover: 216 16.1% 12.2%;
+    --popover-foreground: 214.3 22.6% 93.9%;
+    --primary: 215 100% 70.8%;
+    --primary-foreground: 215.6 55.1% 9.6%;
+    --secondary: 215 16.7% 14.1%;
+    --secondary-foreground: 214.3 22.6% 93.9%;
+    --muted: 215 16.7% 14.1%;
+    --muted-foreground: 214.3 12.4% 66.9%;
+    --accent: 215.5 20.8% 20.8%;
+    --accent-foreground: 214.3 22.6% 93.9%;
+    --destructive: 358.1 75.1% 59%;
+    --destructive-foreground: 214.3 22.6% 93.9%;
+    --border: 214.3 16.7% 16.5%;
+    --input: 213.3 17% 10.4%;
+    --ring: 215 100% 70.8%;
+    --sidebar-background: 217.5 18.2% 8.6%;
+    --sidebar-foreground: 214.3 12.4% 66.9%;
+    --sidebar-primary: 215 100% 70.8%;
+    --sidebar-primary-foreground: 215.6 55.1% 9.6%;
+    --sidebar-accent: 215.5 20.8% 20.8%;
+    --sidebar-accent-foreground: 214.3 22.6% 93.9%;
+    --sidebar-border: 214.3 16.7% 16.5%;
+    --sidebar-ring: 215 100% 70.8%;
+  }
+
   .dark[data-theme-variant="mocha"] {
     --background: 30 22% 10%;
     --foreground: 30 18% 88%;

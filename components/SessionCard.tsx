@@ -71,33 +71,39 @@ interface SessionCardProps {
   onHoverEnd?: () => void;
 }
 
+// Words carry the state as well as colour: blue working, amber needs you, grey idle
 const statusConfig: Record<
   TmuxStatus,
-  { color: string; label: string; icon: React.ReactNode }
+  { color: string; label: string; word: string; icon: React.ReactNode }
 > = {
   idle: {
     color: "text-muted-foreground",
     label: "idle",
+    word: "Idle",
     icon: <Circle className="h-2 w-2 fill-current" />,
   },
   running: {
-    color: "text-blue-500",
+    color: "text-blue-400",
     label: "running",
+    word: "Working",
     icon: <Loader2 className="h-3 w-3 animate-spin" />,
   },
   waiting: {
-    color: "text-yellow-500 animate-pulse",
+    color: "text-amber-400",
     label: "waiting",
+    word: "Needs you",
     icon: <AlertCircle className="h-3 w-3" />,
   },
   error: {
-    color: "text-red-500",
+    color: "text-red-400",
     label: "error",
+    word: "Error",
     icon: <Circle className="h-2 w-2 fill-current" />,
   },
   dead: {
     color: "text-muted-foreground/50",
     label: "stopped",
+    word: "Stopped",
     icon: <Circle className="h-2 w-2" />,
   },
 };
@@ -367,13 +373,13 @@ export function SessionCard({
       onMouseLeave={handleMouseLeave}
       className={cn(
         "group flex w-full cursor-pointer items-center gap-2 overflow-hidden rounded-md px-2 py-1.5 text-left transition-colors",
-        "min-h-[36px] md:min-h-0", // Compact touch target
+        "min-h-[48px] md:min-h-0", // Two-line row, 48px touch target
         isSelected
           ? "bg-primary/20"
           : isActive
             ? "bg-primary/10"
             : "hover:bg-accent/50",
-        status === "waiting" && !isActive && !isSelected && "bg-yellow-500/5"
+        status === "waiting" && !isActive && !isSelected && "bg-amber-400/5"
       )}
     >
       {/* Selection checkbox - visible when in select mode */}
@@ -423,7 +429,19 @@ export function SessionCard({
           className="border-primary min-w-0 flex-1 border-b bg-transparent text-sm outline-none"
         />
       ) : (
-        <span className="min-w-0 flex-1 truncate text-sm">{session.name}</span>
+        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <span className="truncate text-sm">{session.name}</span>
+          <span className="text-muted-foreground truncate text-xs">
+            <span
+              className={cn(
+                (status === "running" || status === "waiting") && config.color
+              )}
+            >
+              {config.word}
+            </span>
+            {` · ${timeAgo}`}
+          </span>
+        </span>
       )}
 
       {/* Fork indicator */}
@@ -461,11 +479,6 @@ export function SessionCard({
           </span>
         </a>
       )}
-
-      {/* Time ago */}
-      <span className="text-muted-foreground hidden flex-shrink-0 text-[10px] group-hover:hidden sm:block">
-        {timeAgo}
-      </span>
 
       {/* Actions menu (button) */}
       {hasActions && (
