@@ -27,6 +27,9 @@ export interface GitFile {
   status: FileStatus;
   staged: boolean;
   oldPath?: string; // For renamed files
+  /** Lines added and removed; absent for untracked and binary files */
+  additions?: number;
+  deletions?: number;
 }
 
 export interface GitStatus {
@@ -117,6 +120,9 @@ export function getGitStatus(workingDir: string): GitStatus {
       }
     }
 
+    addLineCounts(workingDir, staged, "--cached");
+    addLineCounts(workingDir, unstaged, "");
+
     return {
       branch: branchOutput || "HEAD",
       ahead,
@@ -129,6 +135,28 @@ export function getGitStatus(workingDir: string): GitStatus {
     throw new Error(
       `Failed to get git status: ${error instanceof Error ? error.message : "Unknown error"}`
     );
+  }
+}
+
+function addLineCounts(workingDir: string, files: GitFile[], flag: string) {
+  if (!files.length) return;
+  try {
+    const output = execSync(`git diff ${flag} --numstat --no-renames`, {
+      cwd: workingDir,
+      encoding: "utf-8",
+    });
+    const counts = new Map<string, [number, number]>();
+    for (const line of output.split("\n")) {
+      const [added, removed, path] = line.split("\t");
+      // Binary files show "-" for both
+      if (path && added !== "-") counts.set(path, [+added, +removed]);
+    }
+    for (const file of files) {
+      const count = counts.get(file.path);
+      if (count) [file.additions, file.deletions] = count;
+    }
+  } catch {
+    // Counts are a nicety; the status stands without them
   }
 }
 

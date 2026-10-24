@@ -51,7 +51,7 @@ struct NavToolbar: ToolbarContent {
         }
         .barPriority(true)
 
-        viewItem("Changes", symbol: "arrow.triangle.branch", view: .git, action: "git", high: false)
+        viewItem("Changes", symbol: "arrow.triangle.branch", view: .git, action: "git", high: false, badge: model.changes)
         viewItem("Files", symbol: "folder", view: .files, action: "files", high: false)
 
         ToolbarItem(placement: .topBarTrailing) {
@@ -73,7 +73,7 @@ struct NavToolbar: ToolbarContent {
     /// A view switch; the current view shows filled, and tapping it again
     /// opens the session list (as the web rail does)
     private func viewItem(
-        _ title: String, symbol: String, view: PaneView, action: String, high: Bool = true
+        _ title: String, symbol: String, view: PaneView, action: String, high: Bool = true, badge: Int = 0
     ) -> some ToolbarContent {
         let current = model.view == view
         return ToolbarItem(placement: .topBarTrailing) {
@@ -81,6 +81,7 @@ struct NavToolbar: ToolbarContent {
                 Label(title, systemImage: symbol)
                     .symbolVariant(current ? .fill : .none)
             }
+            .badge(badge)
             .accessibilityAddTraits(current ? .isSelected : [])
         }
         .barPriority(high)

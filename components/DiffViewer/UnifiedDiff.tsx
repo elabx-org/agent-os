@@ -10,6 +10,8 @@ interface UnifiedDiffProps {
   fileName: string;
   expanded?: boolean;
   onToggle?: () => void;
+  /** Wrap long lines instead of scrolling sideways, for narrow screens */
+  wrap?: boolean;
 }
 
 export function UnifiedDiff({
@@ -17,6 +19,7 @@ export function UnifiedDiff({
   fileName,
   expanded = true,
   onToggle,
+  wrap = false,
 }: UnifiedDiffProps) {
   const [localExpanded, setLocalExpanded] = useState(expanded);
   const isExpanded = onToggle ? expanded : localExpanded;
@@ -67,7 +70,7 @@ export function UnifiedDiff({
 
       {/* Diff content */}
       {isExpanded && (
-        <div className="overflow-x-auto">
+        <div className={wrap ? undefined : "overflow-x-auto"}>
           {diff.isBinary ? (
             <div className="text-muted-foreground px-4 py-8 text-center text-sm">
               Binary file not shown
@@ -79,7 +82,7 @@ export function UnifiedDiff({
           ) : (
             <div className="font-mono text-xs">
               {diff.hunks.map((hunk, index) => (
-                <Hunk key={index} hunk={hunk} />
+                <Hunk key={index} hunk={hunk} wrap={wrap} />
               ))}
             </div>
           )}
@@ -91,9 +94,10 @@ export function UnifiedDiff({
 
 interface HunkProps {
   hunk: DiffHunk;
+  wrap: boolean;
 }
 
-function Hunk({ hunk }: HunkProps) {
+function Hunk({ hunk, wrap }: HunkProps) {
   return (
     <div>
       {/* Hunk header */}
@@ -102,10 +106,12 @@ function Hunk({ hunk }: HunkProps) {
       </div>
 
       {/* Lines */}
-      <table className="w-full border-collapse">
+      <table
+        className={cn("w-full border-collapse", wrap && "table-fixed")}
+      >
         <tbody>
           {hunk.lines.map((line, index) => (
-            <DiffLineRow key={index} line={line} />
+            <DiffLineRow key={index} line={line} wrap={wrap} />
           ))}
         </tbody>
       </table>
@@ -115,9 +121,10 @@ function Hunk({ hunk }: HunkProps) {
 
 interface DiffLineRowProps {
   line: DiffLine;
+  wrap: boolean;
 }
 
-function DiffLineRow({ line }: DiffLineRowProps) {
+function DiffLineRow({ line, wrap }: DiffLineRowProps) {
   const bgColor = getLineBgColor(line.type);
   const textColor = getLineTextColor(line.type);
 
@@ -129,22 +136,43 @@ function DiffLineRow({ line }: DiffLineRowProps) {
   return (
     <tr className={cn("hover:bg-muted/30", bgColor)}>
       {/* Old line number */}
-      <td className="text-muted-foreground border-border/50 w-12 border-r px-2 py-0.5 text-right tabular-nums select-none">
+      <td
+        className={cn(
+          "text-muted-foreground border-border/50 border-r px-2 py-0.5 text-right align-top tabular-nums select-none",
+          wrap ? "w-10 px-1" : "w-12"
+        )}
+      >
         {line.oldLineNumber || ""}
       </td>
 
       {/* New line number */}
-      <td className="text-muted-foreground border-border/50 w-12 border-r px-2 py-0.5 text-right tabular-nums select-none">
+      <td
+        className={cn(
+          "text-muted-foreground border-border/50 border-r px-2 py-0.5 text-right align-top tabular-nums select-none",
+          wrap ? "w-10 px-1" : "w-12"
+        )}
+      >
         {line.newLineNumber || ""}
       </td>
 
       {/* Line marker */}
-      <td className={cn("w-6 px-1 py-0.5 text-center select-none", textColor)}>
+      <td
+        className={cn(
+          "w-6 px-1 py-0.5 text-center align-top select-none",
+          textColor
+        )}
+      >
         {getLineMarker(line.type)}
       </td>
 
       {/* Content */}
-      <td className={cn("px-2 py-0.5 whitespace-pre", textColor)}>
+      <td
+        className={cn(
+          "px-2 py-0.5",
+          wrap ? "whitespace-pre-wrap [overflow-wrap:anywhere]" : "whitespace-pre",
+          textColor
+        )}
+      >
         {line.content || " "}
       </td>
     </tr>
