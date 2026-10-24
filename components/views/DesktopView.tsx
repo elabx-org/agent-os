@@ -121,7 +121,7 @@ export function DesktopView({
     // Pad once here for system columns (the iPhone Duo inner display keeps one
     // on the right); --safe-right: 0 stops children padding for it again
     <div
-      className="bg-background flex h-dvh overflow-hidden pr-[env(safe-area-inset-right)] pl-[env(safe-area-inset-left)]"
+      className="bg-background flex h-dvh overflow-hidden pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pl-[env(safe-area-inset-left)]"
       style={{ "--safe-right": "0px" } as React.CSSProperties}
     >
       {/* Desktop Sidebar */}

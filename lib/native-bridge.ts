@@ -37,6 +37,8 @@ export interface NativeState {
   viewMode: PaneViewMode;
   waiting: number;
   changes: number;
+  /** The page's background (getComputedStyle), for the edges the app shows around it */
+  background?: string;
 }
 
 export const NATIVE_EVENT = "agentos-native";

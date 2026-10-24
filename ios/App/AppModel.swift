@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import SwiftUI
 import WebKit
 
 /// The web app's views that the system bar switches between
@@ -24,6 +25,8 @@ final class AppModel {
     /// Changed files in the focused session (the Changes badge)
     var changes = 0
     var showingServer = false
+    /// The page's background colour, for the edges it doesn't cover
+    var pageBackground: Color?
     var fold: Fold? {
         didSet { if fold != oldValue { sendFold() } }
     }
@@ -123,6 +126,16 @@ final class AppModel {
         if let raw = message["viewMode"] as? String, let mode = PaneView(rawValue: raw) { view = mode }
         if let count = message["waiting"] as? Int { waiting = count }
         if let count = message["changes"] as? Int { changes = count }
+        if let css = message["background"] as? String, let color = Self.color(css: css) {
+            pageBackground = color
+        }
+    }
+
+    /// "rgb(r, g, b)" or "rgba(r, g, b, a)" from getComputedStyle
+    private static func color(css: String) -> Color? {
+        let parts = css.split(whereSeparator: { !"0123456789.".contains($0) }).compactMap { Double($0) }
+        guard parts.count >= 3 else { return nil }
+        return Color(red: parts[0] / 255, green: parts[1] / 255, blue: parts[2] / 255)
     }
 
     /// `keep`: also store the event's value under that key on `window.agentosNative`

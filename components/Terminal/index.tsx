@@ -300,6 +300,12 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
     // the fold, and the key rows fill the deck between the fold and the keyboard
     const laptopKeys = !!deck && nativeKeyboard;
 
+    const toggleToolbar = () => {
+      const next = !toolbarVisible;
+      setToolbarVisible(next);
+      localStorage.setItem("terminalToolbarVisible", String(next));
+    };
+
     // On the deck the page's key rows replace the app's keyboard bar
     const nativeBarHidden = !!deck && isNative();
     useEffect(() => {
@@ -724,17 +730,14 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
         {/* Scroll to bottom button */}
         <ScrollToBottomButton visible={!isAtBottom} onClick={scrollToBottom} />
 
-        {/* Mobile: Keyboard toggle button (not on the deck: it would sit in the fold) */}
-        {showKeybar && !deck && (
+        {/* Mobile: Keyboard toggle button (not on the deck: it would sit in the
+            fold; with the composer it sits in the composer's row instead) */}
+        {showKeybar && !deck && !composerOn && (
           <KeybarToggleButton
             isVisible={toolbarVisible}
             keybarAtTop={keybarAtTop}
             keybarHeight={keybarHeight}
-            onToggle={() => {
-              const newValue = !toolbarVisible;
-              setToolbarVisible(newValue);
-              localStorage.setItem("terminalToolbarVisible", String(newValue));
-            }}
+            onToggle={toggleToolbar}
           />
         )}
 
@@ -779,6 +782,15 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
                   onChange={setComposerText}
                   onSend={sendFromComposer}
                   onTypeInTerminal={typeInTerminal}
+                  extra={
+                    !deck && (
+                      <KeybarToggleButton
+                        inline
+                        isVisible={toolbarVisible}
+                        onToggle={toggleToolbar}
+                      />
+                    )
+                  }
                 />
               )}
             </div>
