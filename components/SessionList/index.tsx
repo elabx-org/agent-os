@@ -33,6 +33,7 @@ export type { SessionListProps } from "./SessionList.types";
 
 export function SessionList({
   activeSessionId,
+  hideTitle,
   sessionStatuses,
   onSelect,
   onOpenInTab,
@@ -151,6 +152,7 @@ export function SessionList({
     <div className="flex h-full flex-col overflow-hidden">
       {/* Header */}
       <SessionListHeader
+        hideTitle={hideTitle}
         onNewProject={() => setShowNewProjectDialog(true)}
         onOpenProject={() => setShowFolderPicker(true)}
         onKillAll={() => setShowKillAllConfirm(true)}

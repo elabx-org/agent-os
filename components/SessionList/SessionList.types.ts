@@ -8,6 +8,8 @@ export interface SessionStatus {
 
 export interface SessionListProps {
   activeSessionId?: string;
+  /** The page already shows the app name */
+  hideTitle?: boolean;
   sessionStatuses?: Record<string, SessionStatus>;
   onSelect: (sessionId: string) => void;
   onOpenInTab?: (sessionId: string) => void;
