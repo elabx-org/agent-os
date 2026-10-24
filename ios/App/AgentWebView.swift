@@ -97,6 +97,10 @@ struct AgentWebContainer: UIViewRepresentable {
             origin.host == webView.url?.host ? .grant : .prompt
         }
 
+        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            MainActor.assumeIsolated { model.sendFold() }
+        }
+
         func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
             webView.reload()
         }

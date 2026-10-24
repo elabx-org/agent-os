@@ -22,6 +22,9 @@ final class AppModel {
     /// Sessions waiting on an answer (the Inbox badge)
     var waiting = 0
     var showingServer = false
+    var fold: Fold? {
+        didSet { if fold != oldValue { sendFold() } }
+    }
 
     @ObservationIgnored weak var webView: WKWebView?
 
@@ -44,6 +47,11 @@ final class AppModel {
         send(["type": "keyboard", "visible": visible])
     }
 
+    /// The page also keeps it on `agentosNative`, for when it loads later
+    func sendFold() {
+        send(["type": "posture", "fold": fold?.json ?? NSNull()], keep: "fold")
+    }
+
     func reload() {
         webView?.reload()
     }
@@ -60,12 +68,14 @@ final class AppModel {
         if let count = message["waiting"] as? Int { waiting = count }
     }
 
-    private func send(_ event: [String: Any]) {
+    /// `keep`: also store the event's value under that key on `window.agentosNative`
+    private func send(_ event: [String: Any], keep: String? = nil) {
         guard let webView,
               let data = try? JSONSerialization.data(withJSONObject: event),
               let json = String(data: data, encoding: .utf8) else { return }
+        let store = keep.map { "if (window.agentosNative) window.agentosNative.\($0) = e.\($0);" } ?? ""
         webView.evaluateJavaScript(
-            "window.dispatchEvent(new CustomEvent('agentos-native', { detail: \(json) }))"
+            "(() => { const e = \(json); \(store) window.dispatchEvent(new CustomEvent('agentos-native', { detail: e })); })()"
         )
     }
 }

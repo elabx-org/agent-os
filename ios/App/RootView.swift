@@ -10,6 +10,8 @@ struct RootView: View {
         NavigationStack {
             AgentWebContainer(model: model)
                 .ignoresSafeArea(.container, edges: .bottom)
+                // Half open: the page puts its input below the fold (laptop pose)
+                .onGeometryChange(for: Fold?.self) { Fold($0) } action: { model.fold = $0 }
                 .background(Color("LaunchBackground"))
                 .toolbarTitleDisplayMode(.inline)
                 .toolbar { NavToolbar(model: model) }
