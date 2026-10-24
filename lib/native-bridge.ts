@@ -8,6 +8,7 @@
  */
 
 import type { PaneViewMode } from "@/stores/mobileNav";
+import type { Fold } from "@/stores/posture";
 
 export type NativeNavAction =
   | "inbox"
@@ -23,7 +24,9 @@ export type NativeEvent =
   | { type: "nav"; action: NativeNavAction }
   /** A key from the keyboard's accessory bar, as terminal input */
   | { type: "key"; key: string }
-  | { type: "keyboard"; visible: boolean };
+  | { type: "keyboard"; visible: boolean }
+  /** The fold while half open, in the page's CSS pixels */
+  | { type: "posture"; fold: Fold | null };
 
 export interface NativeState {
   type: "state";
@@ -35,7 +38,7 @@ export const NATIVE_EVENT = "agentos-native";
 
 declare global {
   interface Window {
-    agentosNative?: { platform: string; version: string };
+    agentosNative?: { platform: string; version: string; fold?: Fold | null };
     webkit?: {
       messageHandlers?: Record<string, { postMessage: (msg: unknown) => void }>;
     };

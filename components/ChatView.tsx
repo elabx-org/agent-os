@@ -21,6 +21,7 @@ import { renderMarkdown } from "@/components/ChatMessage";
 import { InboxItem } from "@/components/Inbox";
 import { mobileNavStore } from "@/stores/mobileNav";
 import { onNativeEvent } from "@/lib/native-bridge";
+import { useFoldDeck } from "@/hooks/useFoldDeck";
 import type { Session } from "@/lib/db";
 import type { ChatItem } from "@/lib/claude-transcript";
 
@@ -195,7 +196,7 @@ interface ChatViewProps {
 /** Claude Code's session as a conversation, read from its transcript */
 export function ChatView({ session, active, onOpenTerminal }: ChatViewProps) {
   const { items, state, truncated } = useTranscript(session.id, active);
-  const { statuses } = useSnapshot(mobileNavStore);
+  const { statuses, nativeKeyboard } = useSnapshot(mobileNavStore);
   const status = statuses[session.id]?.status;
 
   const { rows, results } = useMemo(() => {
@@ -247,6 +248,12 @@ export function ChatView({ session, active, onOpenTerminal }: ChatViewProps) {
     // insertNewline only reads the ref and the setter
     []
   );
+  // Half open like a laptop: while typing, the conversation stays above the
+  // fold and the composer sits on the deck below it
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [composerFocused, setComposerFocused] = useState(false);
+  const deck = useFoldDeck(rootRef, 0, composerFocused || nativeKeyboard);
+
   const [sending, setSending] = useState(false);
   const send = useCallback(async () => {
     const text = draft.trim();
@@ -268,7 +275,7 @@ export function ChatView({ session, active, onOpenTerminal }: ChatViewProps) {
   }, [draft, session.id]);
 
   return (
-    <div className="bg-background flex h-full flex-col">
+    <div ref={rootRef} className="bg-background flex h-full flex-col">
       <div
         ref={scrollRef}
         onScroll={(e) => {
@@ -339,7 +346,16 @@ export function ChatView({ session, active, onOpenTerminal }: ChatViewProps) {
         </div>
       </div>
 
-      <div className="border-border flex items-end gap-1.5 border-t px-2 py-1.5 pb-[calc(0.375rem+env(safe-area-inset-bottom))]">
+      {deck && (
+        <div aria-hidden="true" className="shrink-0" style={{ height: deck.gap }} />
+      )}
+      <div
+        className={cn(
+          "border-border flex gap-1.5 border-t px-2 py-1.5 pb-[calc(0.375rem+env(safe-area-inset-bottom))]",
+          deck ? "items-start" : "items-end"
+        )}
+        style={{ height: deck?.deck }}
+      >
         <button
           type="button"
           onMouseDown={(e) => e.preventDefault()}
@@ -354,6 +370,8 @@ export function ChatView({ session, active, onOpenTerminal }: ChatViewProps) {
           ref={inputRef}
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
+          onFocus={() => setComposerFocused(true)}
+          onBlur={() => setComposerFocused(false)}
           onKeyDown={(e) => {
             // Return sends, Shift+Return adds a line
             if (

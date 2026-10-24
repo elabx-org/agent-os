@@ -28,6 +28,7 @@ import { useNotifications } from "@/hooks/useNotifications";
 import { useViewport } from "@/hooks/useViewport";
 import { useViewportHeight } from "@/hooks/useViewportHeight";
 import { useNativeBridge } from "@/hooks/useNativeBridge";
+import { useFoldPosture } from "@/hooks/useFoldPosture";
 import { useSessions } from "@/hooks/useSessions";
 import { useProjects } from "@/hooks/useProjects";
 import { useDevServersManager } from "@/hooks/useDevServersManager";
@@ -348,6 +349,7 @@ function HomeContent() {
     checkStateChanges,
   });
 
+  useFoldPosture();
   useNativeBridge({
     waitingCount: sessions.filter(
       (s) =>

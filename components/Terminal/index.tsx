@@ -28,6 +28,8 @@ import { ScrollToBottomButton } from "./ScrollToBottomButton";
 import { TerminalToolbar } from "./TerminalToolbar";
 import { KeybarToggleButton } from "./KeybarToggleButton";
 import { Composer } from "./Composer";
+import { DeckPad } from "./DeckPad";
+import { useFoldDeck } from "@/hooks/useFoldDeck";
 import { COMPOSER_EVENT, getComposerEnabled } from "./typing-assist";
 import { useTerminalConnection, useTerminalSearch } from "./hooks";
 import type { TerminalScrollState } from "./hooks";
@@ -283,7 +285,9 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
     const { nativeKeyboard } = useSnapshot(mobileNavStore);
     // Split/floating keyboards cover the bottom without shrinking the viewport,
     // so move the keybar to the top where it stays reachable
-    const keybarAtTop = keyboard.mode === "floating";
+    // Half open like a laptop: output above the fold, input on the deck below
+    const deck = useFoldDeck(containerRef, keyboard.height, showKeybar);
+    const keybarAtTop = keyboard.mode === "floating" && !deck;
 
     const composerOn = showKeybar && composerEnabled;
     composerOnRef.current = composerOn;
@@ -667,8 +671,8 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
         {/* Scroll to bottom button */}
         <ScrollToBottomButton visible={!isAtBottom} onClick={scrollToBottom} />
 
-        {/* Mobile: Keyboard toggle button */}
-        {showKeybar && (
+        {/* Mobile: Keyboard toggle button (not on the deck: it would sit in the fold) */}
+        {showKeybar && !deck && (
           <KeybarToggleButton
             isVisible={toolbarVisible}
             keybarAtTop={keybarAtTop}
@@ -681,12 +685,18 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
           />
         )}
 
+        {/* Nothing in the fold */}
+        {showKeybar && deck && (
+          <div aria-hidden="true" className="shrink-0" style={{ height: deck.gap }} />
+        )}
+
         {/* Mobile: Toolbar with special keys (native keyboard handles text) */}
         {showKeybar && (
           <div
             ref={keybarRef}
-            className="bg-background shrink-0"
+            className={cn("bg-background shrink-0", deck && "flex flex-col")}
             style={{
+              height: deck?.deck,
               order: keybarAtTop ? -1 : undefined,
               paddingLeft: "env(safe-area-inset-left)",
               paddingRight: "var(--safe-right, env(safe-area-inset-right))",
@@ -709,6 +719,9 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
               onSelectModeChange={setSelectMode}
               visible={toolbarVisible && !nativeKeyboard}
             />
+            {deck && !nativeKeyboard && keyboard.height === 0 && (
+              <DeckPad onKeyPress={keybarKeyPress} />
+            )}
           </div>
         )}
 
