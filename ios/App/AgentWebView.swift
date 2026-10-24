@@ -98,6 +98,65 @@ struct AgentWebContainer: UIViewRepresentable {
             origin.host == webView.url?.host ? .grant : .prompt
         }
 
+        // WebKit answers alert(), confirm() and prompt() itself (no, empty)
+        // unless the app shows them, so the page's "Delete this?" did nothing
+        func webView(
+            _ webView: WKWebView,
+            runJavaScriptAlertPanelWithMessage message: String,
+            initiatedByFrame frame: WKFrameInfo,
+            completionHandler: @escaping () -> Void
+        ) {
+            MainActor.assumeIsolated {
+                let alert = UIAlertController(title: nil, message: message, preferredStyle: .alert)
+                alert.addAction(UIAlertAction(title: "OK", style: .default) { _ in completionHandler() })
+                present(alert, from: webView, orElse: completionHandler)
+            }
+        }
+
+        func webView(
+            _ webView: WKWebView,
+            runJavaScriptConfirmPanelWithMessage message: String,
+            initiatedByFrame frame: WKFrameInfo,
+            completionHandler: @escaping (Bool) -> Void
+        ) {
+            MainActor.assumeIsolated {
+                let alert = UIAlertController(title: nil, message: message, preferredStyle: .alert)
+                // Name the button by what it does when the page asks to delete
+                let verb = ["Delete", "Kill", "Remove"].first { message.hasPrefix($0) }
+                alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in completionHandler(false) })
+                alert.addAction(UIAlertAction(title: verb ?? "OK", style: verb == nil ? .default : .destructive) { _ in
+                    completionHandler(true)
+                })
+                present(alert, from: webView) { completionHandler(false) }
+            }
+        }
+
+        func webView(
+            _ webView: WKWebView,
+            runJavaScriptTextInputPanelWithPrompt prompt: String,
+            defaultText: String?,
+            initiatedByFrame frame: WKFrameInfo,
+            completionHandler: @escaping (String?) -> Void
+        ) {
+            MainActor.assumeIsolated {
+                let alert = UIAlertController(title: nil, message: prompt, preferredStyle: .alert)
+                alert.addTextField { $0.text = defaultText }
+                alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in completionHandler(nil) })
+                alert.addAction(UIAlertAction(title: "OK", style: .default) { [weak alert] _ in
+                    completionHandler(alert?.textFields?.first?.text ?? "")
+                })
+                present(alert, from: webView) { completionHandler(nil) }
+            }
+        }
+
+        @MainActor
+        private func present(_ alert: UIAlertController, from webView: WKWebView, orElse fail: () -> Void) {
+            var top = webView.window?.rootViewController
+            while let next = top?.presentedViewController { top = next }
+            guard let top else { return fail() }
+            top.present(alert, animated: true)
+        }
+
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             MainActor.assumeIsolated { model.pageLoaded() }
         }
