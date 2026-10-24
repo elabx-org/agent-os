@@ -128,7 +128,7 @@ export function GroupSection({
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <DropdownMenuItem
-              onClick={(e) => {
+              onSelect={(e) => {
                 e.stopPropagation();
                 setShowNewGroupInput(group.path);
               }}
@@ -138,7 +138,7 @@ export function GroupSection({
             </DropdownMenuItem>
             {group.path !== "sessions" && (
               <DropdownMenuItem
-                onClick={(e) => {
+                onSelect={(e) => {
                   e.stopPropagation();
                   onDeleteGroup(group.path);
                 }}
@@ -157,13 +157,13 @@ export function GroupSection({
         <ContextMenu>
           <ContextMenuTrigger asChild>{groupHeader}</ContextMenuTrigger>
           <ContextMenuContent>
-            <ContextMenuItem onClick={() => setShowNewGroupInput(group.path)}>
+            <ContextMenuItem onSelect={() => setShowNewGroupInput(group.path)}>
               <FolderPlus className="mr-2 h-3 w-3" />
               Add subgroup
             </ContextMenuItem>
             {group.path !== "sessions" && (
               <ContextMenuItem
-                onClick={() => onDeleteGroup(group.path)}
+                onSelect={() => onDeleteGroup(group.path)}
                 className="text-red-500 focus:text-red-500"
               >
                 <Trash2 className="mr-2 h-3 w-3" />

@@ -336,7 +336,7 @@ export function SessionCard({
         )}
         {onCreatePR && session.branch_name && (
           <MenuItem
-            onClick={() => {
+            onSelect={() => {
               if (session.pr_url) {
                 window.open(session.pr_url, "_blank");
               } else {
@@ -360,7 +360,7 @@ export function SessionCard({
                 .map((project) => (
                   <MenuItem
                     key={project.id}
-                    onClick={() => onMoveToProject(project.id)}
+                    onSelect={() => onMoveToProject(project.id)}
                   >
                     {project.name}
                   </MenuItem>
@@ -378,7 +378,10 @@ export function SessionCard({
               {groups
                 .filter((g) => g.path !== session.group_path)
                 .map((group) => (
-                  <MenuItem key={group.path} onClick={() => onMove(group.path)}>
+                  <MenuItem
+                    key={group.path}
+                    onSelect={() => onMove(group.path)}
+                  >
                     {group.name}
                   </MenuItem>
                 ))}
@@ -389,7 +392,7 @@ export function SessionCard({
           <>
             <MenuSeparator />
             <MenuItem
-              onClick={() => onDelete()}
+              onSelect={() => onDelete()}
               className="text-red-500 focus:text-red-500"
             >
               <Trash2 className="mr-2 h-3 w-3" />
