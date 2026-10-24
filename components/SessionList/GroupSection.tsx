@@ -1,5 +1,6 @@
 "use client";
 
+import { afterMenuCloses } from "@/lib/utils";
 import { useState } from "react";
 import { SessionCard } from "@/components/SessionCard";
 import { Button } from "@/components/ui/button";
@@ -140,7 +141,7 @@ export function GroupSection({
               <DropdownMenuItem
                 onSelect={(e) => {
                   e.stopPropagation();
-                  onDeleteGroup(group.path);
+                  afterMenuCloses(() => onDeleteGroup(group.path));
                 }}
                 className="text-red-500"
               >
@@ -163,7 +164,9 @@ export function GroupSection({
             </ContextMenuItem>
             {group.path !== "sessions" && (
               <ContextMenuItem
-                onSelect={() => onDeleteGroup(group.path)}
+                onSelect={() =>
+                  afterMenuCloses(() => onDeleteGroup(group.path))
+                }
                 className="text-red-500 focus:text-red-500"
               >
                 <Trash2 className="mr-2 h-3 w-3" />
