@@ -92,7 +92,8 @@ export const Pane = memo(function Pane({
   const [gitDrawerOpen, setGitDrawerOpen] = useState(() => {
     if (typeof window === "undefined") return true;
     const stored = localStorage.getItem("gitDrawerOpen");
-    return stored === null ? true : stored === "true";
+    // Default closed where it would squeeze the terminal (Duo inner display)
+    return stored === null ? window.innerWidth >= 1280 : stored === "true";
   });
   const [shellDrawerOpen, setShellDrawerOpen] = useState(() => {
     if (typeof window === "undefined") return false;

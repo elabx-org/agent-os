@@ -5,6 +5,7 @@ import { NewSessionDialog } from "@/components/NewSessionDialog";
 import { NotificationSettings } from "@/components/NotificationSettings";
 import { StartServerDialog } from "@/components/DevServers/StartServerDialog";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { TextSizeControl } from "@/components/TextSizeControl";
 import { Button } from "@/components/ui/button";
 import {
   PanelLeftClose,
@@ -60,7 +61,12 @@ export function DesktopView({
   renderPane,
 }: ViewProps) {
   return (
-    <div className="bg-background flex h-dvh overflow-hidden">
+    // Pad once here for system columns (the iPhone Duo inner display keeps one
+    // on the right); --safe-right: 0 stops children padding for it again
+    <div
+      className="bg-background flex h-dvh overflow-hidden pr-[env(safe-area-inset-right)] pl-[env(safe-area-inset-left)]"
+      style={{ "--safe-right": "0px" } as React.CSSProperties}
+    >
       {/* Desktop Sidebar */}
       <div
         className={` ${sidebarOpen ? "w-60" : "w-0"} kb-compact-hide bg-sidebar-background flex-shrink-0 overflow-hidden shadow-xl shadow-black/10 transition-all duration-200 dark:shadow-black/30`}
@@ -86,10 +92,17 @@ export function DesktopView({
             />
           </div>
 
-          {/* Sidebar footer with theme toggle */}
-          <div className="mt-auto flex items-center justify-between px-3 py-1.5">
-            <span className="text-muted-foreground text-xs">Theme</span>
-            <ThemeToggle />
+          {/* Sidebar footer with theme toggle; usage moves here when the header is narrow */}
+          <div className="mt-auto space-y-1 px-3 py-1.5">
+            <div className="space-y-1 xl:hidden">
+              <UsageMonitor />
+              <MinimaxUsageMonitor />
+            </div>
+            <TextSizeControl />
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground text-xs">Theme</span>
+              <ThemeToggle />
+            </div>
           </div>
         </div>
       </div>
@@ -97,8 +110,8 @@ export function DesktopView({
       {/* Main content */}
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Header */}
-        <header className="kb-compact-hide flex items-center justify-between px-4 py-2">
-          <div className="flex items-center gap-2">
+        <header className="kb-compact-hide flex items-center justify-between gap-2 px-4 py-2">
+          <div className="flex min-w-0 items-center gap-2">
             <Button
               variant="ghost"
               size="icon-sm"
@@ -112,10 +125,12 @@ export function DesktopView({
             </Button>
 
             {activeSession && (
-              <div className="flex items-center gap-2">
-                <span className="font-medium">{activeSession.name}</span>
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="truncate font-medium whitespace-nowrap">
+                  {activeSession.name}
+                </span>
                 {activeSession.tmux_name && (
-                  <span className="text-muted-foreground text-xs">
+                  <span className="text-muted-foreground hidden truncate text-xs whitespace-nowrap xl:inline">
                     {activeSession.tmux_name}
                   </span>
                 )}
@@ -167,9 +182,11 @@ export function DesktopView({
             )}
           </div>
 
-          <div className="flex items-center gap-2">
-            <UsageMonitor />
-            <MinimaxUsageMonitor />
+          <div className="flex shrink-0 items-center gap-2">
+            <div className="hidden items-center gap-2 xl:flex">
+              <UsageMonitor />
+              <MinimaxUsageMonitor />
+            </div>
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
@@ -200,9 +217,13 @@ export function DesktopView({
                 if (session) attachToSession(session);
               }}
             />
-            <Button size="sm" onClick={() => setShowNewSessionDialog(true)}>
-              <Plus className="mr-1 h-4 w-4" />
-              New Session
+            <Button
+              size="sm"
+              onClick={() => setShowNewSessionDialog(true)}
+              aria-label="New session"
+            >
+              <Plus className="h-4 w-4 lg:mr-1" />
+              <span className="hidden lg:inline">New Session</span>
             </Button>
           </div>
         </header>

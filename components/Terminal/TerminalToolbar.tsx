@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState, useMemo } from "react";
+import { useCallback, useEffect, useState, useMemo } from "react";
 import {
   Clipboard,
   X,
@@ -321,7 +321,7 @@ function SimpleKeyButton({
         onKeyPress(keyCode);
       }}
       className={cn(
-        "flex h-10 min-w-10 flex-shrink-0 items-center justify-center rounded-xl px-3 text-[13px] font-medium",
+        "flex h-[40px] min-w-[40px] flex-shrink-0 items-center justify-center rounded-xl px-3 text-[13px] font-medium",
         "active:bg-primary active:text-primary-foreground",
         highlight
           ? "mx-1 border border-red-500/40 bg-red-500/15 text-red-400"
@@ -350,7 +350,7 @@ function MicButton({
         onToggle();
       }}
       className={cn(
-        "flex h-10 min-w-10 flex-shrink-0 items-center justify-center rounded-xl px-3 text-[13px] font-medium",
+        "flex h-[40px] min-w-[40px] flex-shrink-0 items-center justify-center rounded-xl px-3 text-[13px] font-medium",
         isListening
           ? "animate-pulse bg-red-500 text-white"
           : "bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground"
@@ -374,7 +374,7 @@ function PasteButton({ onPaste }: { onPaste: () => void }) {
         e.stopPropagation();
         onPaste();
       }}
-      className="bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground flex h-10 min-w-10 flex-shrink-0 items-center justify-center rounded-xl px-3 text-[13px] font-medium"
+      className="bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground flex h-[40px] min-w-[40px] flex-shrink-0 items-center justify-center rounded-xl px-3 text-[13px] font-medium"
     >
       <Clipboard className="h-4 w-4" />
     </button>
@@ -397,7 +397,7 @@ function SelectModeButton({
         onToggle();
       }}
       className={cn(
-        "flex h-10 min-w-10 flex-shrink-0 items-center justify-center rounded-xl px-3 text-[13px] font-medium",
+        "flex h-[40px] min-w-[40px] flex-shrink-0 items-center justify-center rounded-xl px-3 text-[13px] font-medium",
         active
           ? "bg-primary text-primary-foreground"
           : "bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground"
@@ -417,7 +417,7 @@ function ImagePickerButton({ onPick }: { onPick: () => void }) {
         e.stopPropagation();
         onPick();
       }}
-      className="bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground flex h-10 min-w-10 flex-shrink-0 items-center justify-center rounded-xl px-3 text-[13px] font-medium"
+      className="bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground flex h-[40px] min-w-[40px] flex-shrink-0 items-center justify-center rounded-xl px-3 text-[13px] font-medium"
     >
       <ImagePlus className="h-4 w-4" />
     </button>
@@ -433,7 +433,7 @@ function SnippetsButton({ onOpen }: { onOpen: () => void }) {
         e.stopPropagation();
         onOpen();
       }}
-      className="bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground flex h-10 min-w-10 flex-shrink-0 items-center justify-center rounded-xl px-3 text-[13px] font-medium"
+      className="bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground flex h-[40px] min-w-[40px] flex-shrink-0 items-center justify-center rounded-xl px-3 text-[13px] font-medium"
     >
       <FileText className="h-4 w-4" />
     </button>
@@ -456,7 +456,7 @@ function ShiftButton({
         onToggle();
       }}
       className={cn(
-        "flex h-10 min-w-10 flex-shrink-0 items-center justify-center rounded-xl px-3 text-[13px] font-medium",
+        "flex h-[40px] min-w-[40px] flex-shrink-0 items-center justify-center rounded-xl px-3 text-[13px] font-medium",
         active
           ? "bg-primary text-primary-foreground"
           : "bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground"
@@ -482,7 +482,7 @@ function EnterButton({
         e.stopPropagation();
         onPress(shiftActive ? "\n" : "\r");
       }}
-      className="bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground flex h-10 min-w-10 flex-shrink-0 items-center justify-center rounded-xl px-3 text-[13px] font-medium"
+      className="bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground flex h-[40px] min-w-[40px] flex-shrink-0 items-center justify-center rounded-xl px-3 text-[13px] font-medium"
     >
       {"\u21B5"}
     </button>
@@ -544,7 +544,7 @@ function CursorTrackpadButton({
         }
       }}
       className={cn(
-        "flex h-10 min-w-10 flex-shrink-0 items-center justify-center rounded-xl px-3 text-[13px] font-medium",
+        "flex h-[40px] min-w-[40px] flex-shrink-0 items-center justify-center rounded-xl px-3 text-[13px] font-medium",
         cursorMoveMode
           ? "bg-primary text-primary-foreground"
           : "bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground"
@@ -594,7 +594,7 @@ function BackspaceButton({
         e.stopPropagation();
         onKeyPress("\x7f");
       }}
-      className="bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground flex h-10 min-w-10 flex-shrink-0 items-center justify-center rounded-xl px-3 text-[13px] font-medium"
+      className="bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground flex h-[40px] min-w-[40px] flex-shrink-0 items-center justify-center rounded-xl px-3 text-[13px] font-medium"
       title="Tap: delete | Hold: rapid delete"
     >
       {"\u232B"}
@@ -618,7 +618,7 @@ function CopyButton({
         onCopy();
       }}
       className={cn(
-        "flex h-10 min-w-10 flex-shrink-0 items-center justify-center rounded-xl px-3 text-[13px] font-medium",
+        "flex h-[40px] min-w-[40px] flex-shrink-0 items-center justify-center rounded-xl px-3 text-[13px] font-medium",
         copyFeedback
           ? "bg-green-500 text-white"
           : "bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground"
@@ -726,6 +726,19 @@ export function TerminalToolbar({
         return true;
       }),
     [preferences.row2, isMicSupported, onImagePicker, onSelectModeChange]
+  );
+
+  // Short landscape screens (iPhone Duo inner display, phones on their side)
+  // can't spare height for a second row, so it joins the first one, which scrolls
+  const shortLandscape = useShortLandscape();
+  const mergeRows =
+    preferences.layout === "double" && resolvedRow2.length > 0 && shortLandscape;
+  const row1Ids = useMemo(
+    () =>
+      mergeRows
+        ? Array.from(new Set([...resolvedRow1, ...resolvedRow2]))
+        : resolvedRow1,
+    [mergeRows, resolvedRow1, resolvedRow2]
   );
 
   // Render a single button by ID
@@ -877,7 +890,7 @@ export function TerminalToolbar({
         className="keybar-row bg-background/95 border-border scrollbar-none flex items-center gap-1 overflow-x-auto border-t px-2 py-1.5 backdrop-blur"
         onTouchEnd={(e) => e.stopPropagation()}
       >
-        {renderRow(resolvedRow1)}
+        {renderRow(row1Ids)}
 
         {/* Gear icon — always last, separated */}
         <div className="bg-border mx-1 h-6 w-px" />
@@ -888,14 +901,14 @@ export function TerminalToolbar({
             e.stopPropagation();
             setShowSettings(true);
           }}
-          className="bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground flex h-10 min-w-10 flex-shrink-0 items-center justify-center rounded-xl px-3 text-[13px] font-medium"
+          className="bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground flex h-[40px] min-w-[40px] flex-shrink-0 items-center justify-center rounded-xl px-3 text-[13px] font-medium"
         >
           <Settings className="h-4 w-4" />
         </button>
       </div>
 
       {/* Row 2 — only when double layout with buttons */}
-      {preferences.layout === "double" && resolvedRow2.length > 0 && (
+      {preferences.layout === "double" && resolvedRow2.length > 0 && !mergeRows && (
         <div
           className="keybar-row bg-background/95 border-border scrollbar-none kb-compact-hide flex items-center gap-1 overflow-x-auto px-2 py-1.5 backdrop-blur"
           onTouchEnd={(e) => e.stopPropagation()}
@@ -905,4 +918,18 @@ export function TerminalToolbar({
       )}
     </>
   );
+}
+
+const SHORT_LANDSCAPE = "(orientation: landscape) and (max-height: 719px)";
+
+function useShortLandscape() {
+  const [matches, setMatches] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia(SHORT_LANDSCAPE);
+    const update = () => setMatches(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
+  return matches;
 }

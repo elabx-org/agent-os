@@ -5,6 +5,7 @@ import { SessionList } from "@/components/SessionList";
 import { NewSessionDialog } from "@/components/NewSessionDialog";
 import { StartServerDialog } from "@/components/DevServers/StartServerDialog";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { TextSizeControl } from "@/components/TextSizeControl";
 import { PaneLayout } from "@/components/PaneLayout";
 import { SwipeSidebar } from "@/components/mobile/SwipeSidebar";
 import { QuickSwitcher } from "@/components/QuickSwitcher";
@@ -117,6 +118,7 @@ export function MobileView({
           <div className="mt-auto space-y-1 px-4 py-2">
             <UsageMonitor />
             <MinimaxUsageMonitor />
+            <TextSizeControl />
             <div className="flex items-center justify-between">
               <span className="text-muted-foreground text-xs">Theme</span>
               <ThemeToggle />

@@ -52,7 +52,7 @@ export function Composer({
         type="button"
         onMouseDown={(e) => e.preventDefault()}
         onClick={onTypeInTerminal}
-        className="bg-secondary text-muted-foreground active:bg-primary active:text-primary-foreground flex h-11 w-11 flex-shrink-0 touch-manipulation items-center justify-center rounded-full"
+        className="bg-secondary text-muted-foreground active:bg-primary active:text-primary-foreground flex h-[44px] w-[44px] flex-shrink-0 touch-manipulation items-center justify-center rounded-full"
         aria-label="Type in terminal"
         title="Type in terminal (for / and @ suggestions)"
       >
@@ -72,14 +72,14 @@ export function Composer({
         rows={1}
         placeholder="Message"
         autoCapitalize="sentences"
-        className="bg-secondary text-foreground placeholder:text-muted-foreground min-h-11 flex-1 resize-none rounded-2xl px-3.5 py-2.5 text-base leading-6 focus:outline-none"
+        className="bg-secondary text-foreground placeholder:text-muted-foreground min-h-[44px] flex-1 resize-none rounded-2xl px-3.5 py-2.5 text-base leading-6 focus:outline-none"
       />
       <button
         type="button"
         onMouseDown={(e) => e.preventDefault()}
         onClick={send}
         className={cn(
-          "flex h-11 w-11 flex-shrink-0 touch-manipulation items-center justify-center rounded-full",
+          "flex h-[44px] w-[44px] flex-shrink-0 touch-manipulation items-center justify-center rounded-full",
           value
             ? "bg-primary text-primary-foreground active:opacity-80"
             : "bg-secondary text-muted-foreground active:bg-primary active:text-primary-foreground"

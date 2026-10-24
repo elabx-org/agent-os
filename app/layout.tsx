@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
 import { Toaster } from "sonner";
 import { Providers } from "@/components/Providers";
+import { DENSITY_BOOT_SCRIPT } from "@/lib/display-density";
 import "./globals.css";
 
 // IBM Plex: the Duo redesign's type (variable names kept for globals.css)
@@ -48,6 +49,8 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
+        {/* Per-display text size, set before paint */}
+        <script dangerouslySetInnerHTML={{ __html: DENSITY_BOOT_SCRIPT }} />
         {/* Theme initialization script - prevents flash of unstyled content */}
         <script
           dangerouslySetInnerHTML={{
