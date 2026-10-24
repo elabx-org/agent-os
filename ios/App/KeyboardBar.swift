@@ -3,12 +3,15 @@ import UniformTypeIdentifiers
 
 /// The terminal keys Claude Code needs, on the keyboard itself: Esc, Tab and
 /// Shift-Tab, ^C set apart, the arrows (they repeat while held), / and @ for
-/// the pickers, a new line, then a key to put the keyboard away.
+/// the pickers, a new line, then a key to put the keyboard away. Paste and
+/// Add image come first.
 final class KeyboardBar: UIInputView {
     var onKey: ((String) -> Void)?
     /// Text from the system Paste button
     var onPaste: ((String) -> Void)?
     var onDismiss: (() -> Void)?
+    /// The page's image picker, for attaching a screenshot or photo
+    var onImage: (() -> Void)?
     /// The bar is in a window exactly while the keyboard shows
     var onVisibilityChange: ((Bool) -> Void)?
 
@@ -81,7 +84,21 @@ final class KeyboardBar: UIInputView {
         pasteControl.target = self
         pasteControl.widthAnchor.constraint(equalToConstant: 44).isActive = true
 
-        let keys = UIStackView(arrangedSubviews: [pasteControl] + groups.map { group in
+        var imageConfig = UIButton.Configuration.gray()
+        imageConfig.cornerStyle = .medium
+        imageConfig.image = UIImage(systemName: "photo.badge.plus")
+        let image = UIButton(configuration: imageConfig)
+        image.accessibilityLabel = "Add image"
+        image.widthAnchor.constraint(equalToConstant: 44).isActive = true
+        image.addAction(UIAction { [weak self] _ in
+            self?.haptics.impactOccurred()
+            self?.onImage?()
+        }, for: .touchUpInside)
+
+        let tools = UIStackView(arrangedSubviews: [pasteControl, image])
+        tools.spacing = 6
+
+        let keys = UIStackView(arrangedSubviews: [tools] + groups.map { group in
             let row = UIStackView(arrangedSubviews: group.map(button))
             row.spacing = 6
             return row
@@ -102,11 +119,13 @@ final class KeyboardBar: UIInputView {
         addSubview(scroll)
         addSubview(dismiss)
         NSLayoutConstraint.activate([
-            scroll.leadingAnchor.constraint(equalTo: safeAreaLayoutGuide.leadingAnchor),
+            // The keyboard runs the full width, so the bar does too; its safe
+            // area would leave the system column's inset beside the keyboard
+            scroll.leadingAnchor.constraint(equalTo: leadingAnchor),
             scroll.topAnchor.constraint(equalTo: topAnchor),
             scroll.bottomAnchor.constraint(equalTo: bottomAnchor),
             scroll.trailingAnchor.constraint(equalTo: dismiss.leadingAnchor),
-            dismiss.trailingAnchor.constraint(equalTo: safeAreaLayoutGuide.trailingAnchor, constant: -4),
+            dismiss.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -4),
             dismiss.centerYAnchor.constraint(equalTo: centerYAnchor),
             dismiss.widthAnchor.constraint(equalToConstant: 44),
             dismiss.heightAnchor.constraint(equalToConstant: 44),

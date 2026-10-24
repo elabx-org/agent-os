@@ -26,6 +26,8 @@ export type NativeEvent =
   | { type: "key"; key: string }
   /** Text from the bar's system Paste button */
   | { type: "paste"; text: string }
+  /** The bar's Add image button */
+  | { type: "image" }
   | { type: "keyboard"; visible: boolean }
   /** The fold while half open, in the page's CSS pixels */
   | { type: "posture"; fold: Fold | null }

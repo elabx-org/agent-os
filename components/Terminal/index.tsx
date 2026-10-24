@@ -414,6 +414,11 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
           if (event.type === "key") keybarKeyPress(event.key);
           else if (event.type === "paste" && !insertInComposer(event.text))
             xtermRef.current?.paste(event.text);
+          else if (event.type === "image") {
+            // The picker is a sheet the keyboard would cover
+            (document.activeElement as HTMLElement | null)?.blur();
+            setShowImagePicker(true);
+          }
         }),
       [keybarKeyPress, insertInComposer, xtermRef]
     );
