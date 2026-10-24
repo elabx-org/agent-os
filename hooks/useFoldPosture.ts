@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { isNative, onNativeEvent } from "@/lib/native-bridge";
 import { setFold, type Fold } from "@/stores/posture";
 
-/** ?fold=h simulates a half-open fold across the middle (for testing) */
+/** ?fold=h (laptop) or ?fold=v (book) simulates a half-open fold through the middle (for testing) */
 const SIMULATED_GAP = 24;
 
 interface ViewportSegments {
@@ -27,26 +27,45 @@ function segmentsFold(): Fold | null {
 }
 
 function simulatedFold(): Fold | null {
-  if (new URLSearchParams(window.location.search).get("fold") !== "h")
-    return null;
-  const middle = window.innerHeight / 2;
+  const param = new URLSearchParams(window.location.search).get("fold");
+  if (param !== "h" && param !== "v") return null;
+  const middle = (param === "h" ? window.innerHeight : window.innerWidth) / 2;
   return {
-    axis: "horizontal",
+    axis: param === "h" ? "horizontal" : "vertical",
     start: middle - SIMULATED_GAP / 2,
     end: middle + SIMULATED_GAP / 2,
   };
 }
 
+/** The book pose for CSS: html[data-fold="vertical"] and --fold-start/--fold-end */
+function markFold(fold: Fold | null) {
+  const root = document.documentElement;
+  if (fold?.axis === "vertical") {
+    root.dataset.fold = "vertical";
+    root.style.setProperty("--fold-start", `${fold.start}px`);
+    root.style.setProperty("--fold-end", `${fold.end}px`);
+  } else {
+    delete root.dataset.fold;
+    root.style.removeProperty("--fold-start");
+    root.style.removeProperty("--fold-end");
+  }
+}
+
+function applyFold(fold: Fold | null) {
+  setFold(fold);
+  markFold(fold);
+}
+
 /** Keeps postureStore.fold current; mount once */
 export function useFoldPosture() {
   useEffect(() => {
-    if (isNative()) {
-      setFold(window.agentosNative?.fold ?? null);
+    if (isNative() && !simulatedFold()) {
+      applyFold(window.agentosNative?.fold ?? null);
       return onNativeEvent((event) => {
-        if (event.type === "posture") setFold(event.fold);
+        if (event.type === "posture") applyFold(event.fold);
       });
     }
-    const update = () => setFold(simulatedFold() ?? segmentsFold());
+    const update = () => applyFold(simulatedFold() ?? segmentsFold());
     update();
     window.addEventListener("resize", update);
     return () => window.removeEventListener("resize", update);
