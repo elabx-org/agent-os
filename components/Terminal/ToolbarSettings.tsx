@@ -3,7 +3,12 @@
 import { useState } from "react";
 import { X, ChevronUp, ChevronDown, RotateCcw } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
-import { getTypingAssist, setTypingAssist } from "./typing-assist";
+import {
+  getComposerEnabled,
+  getTypingAssist,
+  setComposerEnabled,
+  setTypingAssist,
+} from "./typing-assist";
 import {
   type ToolbarPreferences,
   type ToolbarButtonId,
@@ -34,6 +39,7 @@ export function ToolbarSettings({
     hidden: [...preferences.hidden],
   }));
   const [typingAssist, setTypingAssistState] = useState(getTypingAssist);
+  const [composer, setComposer] = useState(getComposerEnabled);
 
   const apply = (next: ToolbarPreferences) => {
     setPrefs(next);
@@ -196,6 +202,18 @@ export function ToolbarSettings({
             <Switch
               checked={prefs.layout === "double"}
               onCheckedChange={toggleLayout}
+            />
+          </div>
+
+          {/* Text box above the keys instead of typing straight into xterm */}
+          <div className="flex items-center justify-between">
+            <span className="text-sm">Compose box</span>
+            <Switch
+              checked={composer}
+              onCheckedChange={(checked) => {
+                setComposer(checked);
+                setComposerEnabled(checked);
+              }}
             />
           </div>
 

@@ -27,6 +27,8 @@ import { SearchBar } from "./SearchBar";
 import { ScrollToBottomButton } from "./ScrollToBottomButton";
 import { TerminalToolbar } from "./TerminalToolbar";
 import { KeybarToggleButton } from "./KeybarToggleButton";
+import { Composer } from "./Composer";
+import { COMPOSER_EVENT, getComposerEnabled } from "./typing-assist";
 import { useTerminalConnection, useTerminalSearch } from "./hooks";
 import type { TerminalScrollState } from "./hooks";
 import { useViewport } from "@/hooks/useViewport";
@@ -89,6 +91,17 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
       return stored === null ? true : stored === "true";
     });
     const keyboardDebug = useKeyboardDebug();
+    const [composerEnabled, setComposerEnabled] = useState(() =>
+      typeof window === "undefined" ? true : getComposerEnabled()
+    );
+    const [composerText, setComposerText] = useState("");
+
+    useEffect(() => {
+      const onChange = (e: Event) =>
+        setComposerEnabled((e as CustomEvent<boolean>).detail);
+      window.addEventListener(COMPOSER_EVENT, onChange);
+      return () => window.removeEventListener(COMPOSER_EVENT, onChange);
+    }, []);
 
     // Use the full theme string (e.g., "dark-purple") for terminal theming
     const terminalTheme = useMemo(() => {
@@ -135,11 +148,18 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
       findPrevious,
     } = useTerminalSearch(searchAddonRef, xtermRef);
 
-    // Handle image selection - paste file path into terminal
+    // Handle image selection - add file path to the composer, or paste into terminal
+    const composerOnRef = useRef(false);
     const handleImageSelect = useCallback(
       (filePath: string) => {
-        sendInput(filePath);
         setShowImagePicker(false);
+        if (composerOnRef.current) {
+          setComposerText(
+            (t) => (t && !t.endsWith(" ") ? `${t} ` : t) + filePath
+          );
+          return;
+        }
+        sendInput(filePath);
         focus();
       },
       [sendInput, focus]
@@ -258,6 +278,50 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
     // Split/floating keyboards cover the bottom without shrinking the viewport,
     // so move the keybar to the top where it stays reachable
     const keybarAtTop = keyboard.mode === "floating";
+
+    const composerOn = showKeybar && composerEnabled;
+    composerOnRef.current = composerOn;
+
+    // With the composer on, tapping the terminal (scroll, select) shouldn't
+    // open the keyboard: xterm's textarea gets inputmode="none"
+    useEffect(() => {
+      const apply = () => {
+        const textarea = terminalRef.current?.querySelector(".xterm textarea");
+        if (!textarea) return;
+        if (composerOn) textarea.setAttribute("inputmode", "none");
+        else textarea.removeAttribute("inputmode");
+      };
+      apply();
+      // xterm creates its textarea after connecting
+      const timer = setTimeout(apply, 500);
+      return () => clearTimeout(timer);
+    }, [composerOn, connectionState]);
+
+    // Claude Code treats input arriving with a newline as a paste, so Enter
+    // goes separately after the text has been taken
+    const sendFromComposer = useCallback(
+      (text: string) => {
+        if (text.includes("\n")) sendPaste(text);
+        else if (text) sendInput(text);
+        setTimeout(() => sendInput("\r"), text ? 80 : 0);
+      },
+      [sendInput, sendPaste]
+    );
+
+    // Direct typing for Claude Code's / and @ pickers; back to the composer on blur
+    const typeInTerminal = useCallback(() => {
+      const textarea = terminalRef.current?.querySelector(".xterm textarea");
+      if (!textarea) return;
+      textarea.setAttribute("inputmode", "text");
+      textarea.addEventListener(
+        "blur",
+        () => {
+          if (composerOnRef.current) textarea.setAttribute("inputmode", "none");
+        },
+        { once: true }
+      );
+      focus();
+    }, [focus]);
 
     // Keybar height changes with layout, compact mode and safe areas
     const keybarRef = useRef<HTMLDivElement>(null);
@@ -553,6 +617,14 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
               paddingRight: "env(safe-area-inset-right)",
             }}
           >
+            {composerOn && (
+              <Composer
+                value={composerText}
+                onChange={setComposerText}
+                onSend={sendFromComposer}
+                onTypeInTerminal={typeInTerminal}
+              />
+            )}
             <TerminalToolbar
               onKeyPress={sendInput}
               onPaste={sendPaste}

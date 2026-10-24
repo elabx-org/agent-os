@@ -29,8 +29,10 @@ const FLOATING_CONFIRM_MS = 600;
 // is hidden so the terminal keeps enough rows to show the line being typed
 const COMPACT_BELOW_HEIGHT = 560;
 
+// inputmode="none" inputs (xterm while the composer is on) never open a keyboard
 const isTextInput = (el: Element | null) =>
   !!el &&
+  el.getAttribute("inputmode") !== "none" &&
   (el.tagName === "TEXTAREA" ||
     (el.tagName === "INPUT" &&
       !["button", "checkbox", "radio", "submit"].includes(

@@ -35,3 +35,24 @@ export function setTypingAssist(enabled: boolean) {
     .querySelectorAll<HTMLTextAreaElement>(".xterm textarea")
     .forEach((textarea) => applyTypingAssist(textarea, enabled));
 }
+
+const COMPOSER_KEY = "terminalComposer";
+export const COMPOSER_EVENT = "agentos:composer";
+
+/** Composer box on touch devices (on unless turned off in keybar settings) */
+export function getComposerEnabled(): boolean {
+  try {
+    return localStorage.getItem(COMPOSER_KEY) !== "false";
+  } catch {
+    return true;
+  }
+}
+
+export function setComposerEnabled(enabled: boolean) {
+  try {
+    localStorage.setItem(COMPOSER_KEY, String(enabled));
+  } catch {
+    // Storage unavailable: still notify open terminals
+  }
+  window.dispatchEvent(new CustomEvent(COMPOSER_EVENT, { detail: enabled }));
+}
