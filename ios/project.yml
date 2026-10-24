@@ -1,0 +1,57 @@
+# XcodeGen spec — the single source of truth for the Xcode project.
+# Run `xcodegen generate` in ios/ to produce AgentOS.xcodeproj (git-ignored).
+name: AgentOS
+
+options:
+  bundleIdPrefix: org.elabx
+  deploymentTarget:
+    iOS: "26.0"
+  createIntermediateGroups: true
+  developmentLanguage: en
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    # Builds are unsigned; Feather signs on-device with your own certificate.
+    DEVELOPMENT_TEAM: ""
+    CODE_SIGN_STYLE: Manual
+    CODE_SIGNING_ALLOWED: "NO"
+    TARGETED_DEVICE_FAMILY: "1"
+    ENABLE_USER_SCRIPT_SANDBOXING: "YES"
+
+targets:
+  AgentOS:
+    type: application
+    platform: iOS
+    sources:
+      - App
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleDisplayName: Agent-OS
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        UILaunchScreen:
+          UIColorName: LaunchBackground
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        # The inner display ignores these; the outer one honours them (tent pose)
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UIUserInterfaceStyle: Dark
+        ITSAppUsesNonExemptEncryption: false
+        # A self-hosted server may be plain http on the LAN
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoadsInWebContent: true
+        NSMicrophoneUsageDescription: Dictate prompts to your coding sessions.
+        NSCameraUsageDescription: Attach photos to your coding sessions.
+        NSPhotoLibraryUsageDescription: Attach images to your coding sessions.
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: org.elabx.agentos
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        GENERATE_INFOPLIST_FILE: "NO"
