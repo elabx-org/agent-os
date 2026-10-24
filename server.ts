@@ -6,6 +6,13 @@ import * as pty from "node-pty";
 import { exec } from "child_process";
 import { randomBytes } from "crypto";
 import { scheduleStoreSync } from "./lib/store-sync";
+import {
+  authConfig,
+  deny,
+  handleAuthRoute,
+  isAllowed,
+  isSameOrigin,
+} from "./lib/auth";
 
 const dev = process.env.NODE_ENV !== "production";
 const hostname = "0.0.0.0";
@@ -221,10 +228,19 @@ function createPtySession(ws: WebSocket): PtySession | null {
 
 // --- Server setup ---
 
+// Fail at startup, not on the first request, when sign-in is half-configured
+authConfig();
+
 app.prepare().then(() => {
   const server = createServer(async (req, res) => {
     try {
       const parsedUrl = parse(req.url!, true);
+      const url = new URL(req.url!, "http://localhost");
+      if (await handleAuthRoute(req, res, url)) return;
+      if (!isAllowed(req, url.pathname)) {
+        deny(req, res);
+        return;
+      }
       await handle(req, res, parsedUrl);
     } catch (err) {
       console.error("Error occurred handling", req.url, err);
@@ -237,6 +253,12 @@ app.prepare().then(() => {
 
   server.on("upgrade", (request, socket, head) => {
     const parsed = parse(request.url || "", true);
+    // A terminal runs commands: signed in, and only from our own pages
+    if (!isAllowed(request, parsed.pathname || "/") || !isSameOrigin(request)) {
+      socket.write("HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n");
+      socket.destroy();
+      return;
+    }
 
     if (parsed.pathname === "/ws/terminal") {
       terminalWss.handleUpgrade(request, socket, head, (ws) => {
