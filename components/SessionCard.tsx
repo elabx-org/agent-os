@@ -18,7 +18,9 @@ import {
   Square,
   CheckSquare,
   ExternalLink,
+  Hash,
 } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "./ui/button";
 import {
   DropdownMenu,
@@ -244,6 +246,29 @@ export function SessionCard({
     onToggleSelect?.(e.shiftKey);
   };
 
+  // For `claude --resume <id>`, or finding the conversation's transcript
+  const copyClaudeSessionId = async () => {
+    const id = session.claude_session_id;
+    if (!id) return;
+    let copied = false;
+    try {
+      await navigator.clipboard.writeText(id);
+      copied = true;
+    } catch {
+      // No Clipboard API outside https: copy from a selected field instead
+      const field = document.createElement("textarea");
+      field.value = id;
+      field.style.position = "fixed";
+      field.style.opacity = "0";
+      document.body.appendChild(field);
+      field.select();
+      copied = document.execCommand("copy");
+      field.remove();
+    }
+    if (copied) toast.success("Copied the session ID");
+    else toast.error(`Couldn't copy it. The ID is ${id}`);
+  };
+
   // Shared menu items renderer for both context menu and dropdown
   const renderMenuItems = (isContextMenu: boolean) => {
     const MenuItem = isContextMenu ? ContextMenuItem : DropdownMenuItem;
@@ -286,6 +311,17 @@ export function SessionCard({
           <MenuItem onSelect={() => onFork()}>
             <Copy className="mr-2 h-3 w-3" />
             Fork session
+          </MenuItem>
+        )}
+        {session.claude_session_id && (
+          <MenuItem onSelect={() => copyClaudeSessionId()}>
+            <Hash className="mr-2 h-3 w-3 shrink-0" />
+            <span className="flex min-w-0 flex-col">
+              <span>Copy Claude session ID</span>
+              <span className="text-muted-foreground truncate font-mono text-[11px]">
+                {session.claude_session_id}
+              </span>
+            </span>
           </MenuItem>
         )}
         {onSummarize && (
