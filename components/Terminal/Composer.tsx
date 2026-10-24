@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowUp, TerminalSquare } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -30,16 +30,26 @@ export function Composer({
   extra,
 }: ComposerProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  // Once the text needs a second line, the buttons move under it and the
+  // text gets the whole width. It stays that way until the box is empty, so
+  // the wider box fitting the text on one line again doesn't flip it back.
+  const [stacked, setStacked] = useState(false);
 
   // Grow with content up to MAX_ROWS, then scroll
   useEffect(() => {
     const el = textareaRef.current;
     if (!el) return;
     el.style.height = "auto";
-    const lineHeight = parseFloat(getComputedStyle(el).lineHeight) || 20;
+    const style = getComputedStyle(el);
+    const lineHeight = parseFloat(style.lineHeight) || 20;
+    const paddingY =
+      parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
+    if (!value) setStacked(false);
+    else if (!stacked && el.scrollHeight > lineHeight * 1.5 + paddingY)
+      setStacked(true);
     const padding = el.offsetHeight - el.clientHeight + 16;
     el.style.height = `${Math.min(el.scrollHeight, lineHeight * MAX_ROWS + padding)}px`;
-  }, [value]);
+  }, [value, stacked]);
 
   const send = () => {
     onSend(value);
@@ -48,7 +58,10 @@ export function Composer({
 
   return (
     <div
-      className="border-border flex items-end gap-1.5 border-t px-2 py-1.5"
+      className={cn(
+        "border-border flex items-end gap-1.5 border-t px-2 py-1.5",
+        stacked && "flex-wrap"
+      )}
       onTouchEnd={(e) => e.stopPropagation()}
     >
       <button
@@ -78,8 +91,12 @@ export function Composer({
         rows={1}
         placeholder="Message"
         autoCapitalize="sentences"
-        className="bg-secondary text-foreground placeholder:text-muted-foreground min-h-[44px] flex-1 resize-none rounded-2xl px-3.5 py-2.5 text-base leading-6 focus:outline-none"
+        className={cn(
+          "bg-secondary text-foreground placeholder:text-muted-foreground min-h-[44px] flex-1 resize-none rounded-2xl px-3.5 py-2.5 text-base leading-6 focus:outline-none",
+          stacked && "order-first basis-full"
+        )}
       />
+      {stacked && <span className="flex-1" aria-hidden="true" />}
       {extra}
       <button
         type="button"
