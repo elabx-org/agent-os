@@ -9,6 +9,7 @@ import {
   type NativeNavAction,
 } from "@/lib/native-bridge";
 import { mobileNavActions, mobileNavStore } from "@/stores/mobileNav";
+import { startClientLog } from "@/lib/client-log";
 
 interface NativeBridgeOptions {
   waitingCount: number;
@@ -56,11 +57,34 @@ export function useNativeBridge({
       }
     };
 
-    return onNativeEvent((event) => {
+    // iOS can put the keyboard away while the text box keeps focus; a tap on
+    // an already-focused box then brings back neither keyboard nor caret
+    let blurTimer: ReturnType<typeof setTimeout> | undefined;
+    const keyboardHidden = () => {
+      clearTimeout(blurTimer);
+      blurTimer = setTimeout(() => {
+        const el = document.activeElement;
+        if (
+          !mobileNavStore.nativeKeyboard &&
+          (el instanceof HTMLTextAreaElement || el instanceof HTMLInputElement)
+        )
+          el.blur();
+      }, 300);
+    };
+
+    const stop = onNativeEvent((event) => {
       if (event.type === "nav") nav(event.action);
-      else if (event.type === "keyboard")
+      else if (event.type === "keyboard") {
         mobileNavStore.nativeKeyboard = event.visible;
+        if (!event.visible) keyboardHidden();
+      }
     });
+    const stopLog = startClientLog();
+    return () => {
+      clearTimeout(blurTimer);
+      stop();
+      stopLog();
+    };
   }, []);
 
   useEffect(() => {

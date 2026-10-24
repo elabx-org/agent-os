@@ -19,6 +19,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { useIsNative } from "@/hooks/useIsNative";
 import type { Session } from "@/lib/db";
 
 type ViewMode = "terminal" | "chat" | "files" | "git" | "workers";
@@ -80,6 +81,7 @@ export function DesktopTabBar({
   onClose,
   onDetach,
 }: DesktopTabBarProps) {
+  const native = useIsNative();
   const getTabName = (tab: Tab) => {
     if (tab.sessionId) {
       const s = sessions.find((sess) => sess.id === tab.sessionId);
@@ -147,82 +149,87 @@ export function DesktopTabBar({
       {/* View Toggle */}
       {session?.working_directory && (
         <div className="bg-accent/50 mx-2 flex items-center rounded-md p-0.5">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onViewModeChange("terminal");
-                }}
-                className={cn(
-                  "rounded px-2 py-1 transition-colors",
-                  viewMode === "terminal"
-                    ? "bg-secondary text-foreground"
-                    : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                <Home className="h-3.5 w-3.5" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>Terminal</TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onViewModeChange("chat");
-                }}
-                className={cn(
-                  "rounded px-2 py-1 transition-colors",
-                  viewMode === "chat"
-                    ? "bg-secondary text-foreground"
-                    : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                <MessageSquare className="h-3.5 w-3.5" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>Chat</TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onViewModeChange("files");
-                }}
-                className={cn(
-                  "rounded px-2 py-1 transition-colors",
-                  viewMode === "files"
-                    ? "bg-secondary text-foreground"
-                    : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                <FolderOpen className="h-3.5 w-3.5" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>Files</TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onGitDrawerToggle();
-                }}
-                className={cn(
-                  "rounded px-2 py-1 transition-colors",
-                  gitDrawerOpen
-                    ? "bg-secondary text-foreground"
-                    : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                <GitBranch className="h-3.5 w-3.5" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>Git</TooltipContent>
-          </Tooltip>
+          {/* The iOS app switches views from the system bar */}
+          {!native && (
+            <>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onViewModeChange("terminal");
+                    }}
+                    className={cn(
+                      "rounded px-2 py-1 transition-colors",
+                      viewMode === "terminal"
+                        ? "bg-secondary text-foreground"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    <Home className="h-3.5 w-3.5" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>Terminal</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onViewModeChange("chat");
+                    }}
+                    className={cn(
+                      "rounded px-2 py-1 transition-colors",
+                      viewMode === "chat"
+                        ? "bg-secondary text-foreground"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    <MessageSquare className="h-3.5 w-3.5" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>Chat</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onViewModeChange("files");
+                    }}
+                    className={cn(
+                      "rounded px-2 py-1 transition-colors",
+                      viewMode === "files"
+                        ? "bg-secondary text-foreground"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    <FolderOpen className="h-3.5 w-3.5" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>Files</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onGitDrawerToggle();
+                    }}
+                    className={cn(
+                      "rounded px-2 py-1 transition-colors",
+                      gitDrawerOpen
+                        ? "bg-secondary text-foreground"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    <GitBranch className="h-3.5 w-3.5" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>Git</TooltipContent>
+              </Tooltip>
+            </>
+          )}
           <Tooltip>
             <TooltipTrigger asChild>
               <button

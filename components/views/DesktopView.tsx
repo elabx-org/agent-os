@@ -1,5 +1,6 @@
 "use client";
 
+import { cn } from "@/lib/utils";
 import { useEffect, useMemo } from "react";
 import { SessionList } from "@/components/SessionList";
 import { NewSessionDialog } from "@/components/NewSessionDialog";
@@ -31,6 +32,7 @@ import { fileOpenActions } from "@/stores/fileOpen";
 import { useSnapshot } from "valtio";
 import { InboxDialog } from "@/components/Inbox";
 import { mobileNavActions, mobileNavStore } from "@/stores/mobileNav";
+import { useIsNative } from "@/hooks/useIsNative";
 
 export function DesktopView({
   sessions,
@@ -66,6 +68,8 @@ export function DesktopView({
   renderPane,
 }: ViewProps) {
   const { inboxOpen } = useSnapshot(mobileNavStore);
+  // The iOS app has this header's actions in the system bar
+  const native = useIsNative();
 
   useEffect(() => {
     mobileNavStore.statuses = sessionStatuses;
@@ -138,7 +142,12 @@ export function DesktopView({
       {/* Main content */}
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Header */}
-        <header className="kb-compact-hide flex items-center justify-between gap-2 px-4 py-2">
+        <header
+          className={cn(
+            "kb-compact-hide flex items-center justify-between gap-2 px-4 py-2",
+            native && "hidden"
+          )}
+        >
           <div className="flex min-w-0 items-center gap-2">
             <Button
               variant="ghost"

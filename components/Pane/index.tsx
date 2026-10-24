@@ -184,11 +184,14 @@ export const Pane = memo(function Pane({
 
   useEffect(() => {
     if (!navRequest || !isFocused) return;
-    if (navRequest.mode === "terminal" || session?.working_directory) {
+    if (navRequest.mode === "git" && !isMobile) {
+      // The wide layout shows changes in the git drawer beside the terminal
+      if (session?.working_directory) setGitDrawerOpen((open) => !open);
+    } else if (navRequest.mode === "terminal" || session?.working_directory) {
       setViewMode(navRequest.mode);
     }
     mobileNavActions.clearRequest();
-  }, [navRequest, isFocused, session?.working_directory]);
+  }, [navRequest, isFocused, isMobile, session?.working_directory]);
 
   const handleFocus = useCallback(() => {
     focusPane(paneId);

@@ -20,7 +20,7 @@ import { cn } from "@/lib/utils";
 import { renderMarkdown } from "@/components/ChatMessage";
 import { InboxItem } from "@/components/Inbox";
 import { mobileNavStore } from "@/stores/mobileNav";
-import { onNativeEvent } from "@/lib/native-bridge";
+import { isTextKey, onNativeEvent } from "@/lib/native-bridge";
 import { useFoldDeck } from "@/hooks/useFoldDeck";
 import type { Session } from "@/lib/db";
 import type { ChatItem } from "@/lib/claude-transcript";
@@ -227,25 +227,27 @@ export function ChatView({ session, active, onOpenTerminal }: ChatViewProps) {
   const [draft, setDraft] = useState("");
   const inputRef = useRef<HTMLTextAreaElement>(null);
   // Return sends, so touch keyboards get a button for a line break
-  const insertNewline = () => {
+  const insertText = (text: string) => {
     const el = inputRef.current;
     if (!el) return;
     const { selectionStart: from, selectionEnd: to } = el;
-    setDraft((d) => d.slice(0, from) + "\n" + d.slice(to));
-    requestAnimationFrame(() => el.setSelectionRange(from + 1, from + 1));
+    setDraft((d) => d.slice(0, from) + text + d.slice(to));
+    const at = from + text.length;
+    requestAnimationFrame(() => el.setSelectionRange(at, at));
   };
-  // The iOS app's keyboard bar has a new-line key too
+  const insertNewline = () => insertText("\n");
+  // The iOS app's keyboard bar has a new line, / and @ too
   useEffect(
     () =>
       onNativeEvent((event) => {
         if (
           event.type === "key" &&
-          event.key === "\n" &&
+          isTextKey(event.key) &&
           document.activeElement === inputRef.current
         )
-          insertNewline();
+          insertText(event.key);
       }),
-    // insertNewline only reads the ref and the setter
+    // insertText only reads the ref and the setter
     []
   );
   // Half open like a laptop: while typing, the conversation stays above the

@@ -36,7 +36,7 @@ import type { TerminalScrollState } from "./hooks";
 import { useViewport } from "@/hooks/useViewport";
 import { useKeyboardInset } from "@/hooks/useKeyboardInset";
 import { useSnapshot } from "valtio";
-import { isNative, onNativeEvent } from "@/lib/native-bridge";
+import { isNative, isTextKey, onNativeEvent } from "@/lib/native-bridge";
 import { mobileNavStore } from "@/stores/mobileNav";
 import { KeyboardDebugOverlay, useKeyboardDebug } from "./KeyboardDebugOverlay";
 import { useFileDrop } from "@/hooks/useFileDrop";
@@ -360,13 +360,14 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
       (key: string) => {
         const el = document.activeElement;
         if (
-          key === "\n" &&
+          isTextKey(key) &&
           el instanceof HTMLTextAreaElement &&
           el.dataset.composer !== undefined
         ) {
           const { selectionStart: from, selectionEnd: to, value } = el;
-          setComposerText(value.slice(0, from) + "\n" + value.slice(to));
-          requestAnimationFrame(() => el.setSelectionRange(from + 1, from + 1));
+          setComposerText(value.slice(0, from) + key + value.slice(to));
+          const at = from + key.length;
+          requestAnimationFrame(() => el.setSelectionRange(at, at));
           return;
         }
         sendInput(key);
