@@ -29,6 +29,7 @@ import { ScrollToBottomButton } from "./ScrollToBottomButton";
 import { TerminalToolbar } from "./TerminalToolbar";
 import { KeybarToggleButton } from "./KeybarToggleButton";
 import { Composer } from "./Composer";
+import { matchQueued, readClaudePrompt } from "./queued-messages";
 import { DeckPad } from "./DeckPad";
 import { useFoldDeck } from "@/hooks/useFoldDeck";
 import { COMPOSER_EVENT, getComposerEnabled } from "./typing-assist";
@@ -334,8 +335,10 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
 
     // Claude Code treats input arriving with a newline as a paste, so Enter
     // goes separately after the text has been taken
+    const sentRef = useRef<string[]>([]);
     const sendFromComposer = useCallback(
       (text: string) => {
+        if (text) sentRef.current = [...sentRef.current, text].slice(-5);
         if (text.includes("\n")) sendPaste(text);
         else if (text) sendInput(text);
         setTimeout(() => sendInput("\r"), text ? 80 : 0);
@@ -395,13 +398,35 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
       return true;
     }, []);
 
+    // Esc puts Claude's queued messages back in its own prompt. If they came
+    // from the composer, move them back there: clear the prompt (^C clears
+    // typed input without interrupting) once Claude has stopped
+    const reclaimQueued = useCallback(() => {
+      let tries = 0;
+      const check = () => {
+        const term = xtermRef.current;
+        const prompt = term && readClaudePrompt(term);
+        const restored = prompt && matchQueued(prompt.text, sentRef.current);
+        if (restored && !prompt.busy) {
+          sentRef.current = sentRef.current.slice(0, -restored.length);
+          sendInput("\x03");
+          setComposerText((current) =>
+            [...restored, current].filter(Boolean).join("\n")
+          );
+        } else if (++tries < 8) setTimeout(check, 250);
+      };
+      setTimeout(check, 250);
+    }, [xtermRef, sendInput]);
+
     // The keybar's newline key adds a line to the composer while it has focus
     const keybarKeyPress = useCallback(
       (key: string) => {
         if (isTextKey(key) && insertInComposer(key)) return;
         sendInput(key);
+        if (key === "\x1b" && composerOnRef.current && sentRef.current.length)
+          reclaimQueued();
       },
-      [sendInput, insertInComposer]
+      [sendInput, insertInComposer, reclaimQueued]
     );
 
     // Keys and pastes from the iOS app's keyboard bar go to the terminal being
