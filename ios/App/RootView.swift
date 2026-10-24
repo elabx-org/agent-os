@@ -9,12 +9,16 @@ struct RootView: View {
     var body: some View {
         NavigationStack {
             AgentWebContainer(model: model)
-                // Under the system column too, so the page shows through its
-                // Liquid Glass; the page keeps its content clear of it
-                .ignoresSafeArea(.container, edges: [.bottom, .trailing])
+                // Edge to edge: under the system column, so the page shows
+                // through its Liquid Glass, and under the status strip at the
+                // top. The page keeps its content clear of both (env(safe-area-*)).
+                // Not the keyboard: the page still sits above it.
+                .ignoresSafeArea(.container, edges: [.top, .bottom])
+                .ignoresSafeArea(.all, edges: .trailing)
                 // Half open: the page puts its input below the fold (laptop pose)
                 .onGeometryChange(for: Fold?.self) { Fold($0) } action: { model.fold = $0 }
-                .background(Color("LaunchBackground"))
+                // Whatever the page doesn't cover matches it, not the launch colour
+                .background(model.pageBackground ?? Color("LaunchBackground"))
                 .toolbarTitleDisplayMode(.inline)
                 .toolbar { NavToolbar(model: model) }
         }

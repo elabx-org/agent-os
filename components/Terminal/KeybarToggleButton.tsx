@@ -10,6 +10,8 @@ interface KeybarToggleButtonProps {
   keybarHeight?: number;
   /** Keybar moved to the top for a split/floating keyboard */
   keybarAtTop?: boolean;
+  /** In the composer's row instead of floating over the terminal's last lines */
+  inline?: boolean;
 }
 
 /**
@@ -21,7 +23,27 @@ export function KeybarToggleButton({
   onToggle,
   keybarHeight = 0,
   keybarAtTop = false,
+  inline = false,
 }: KeybarToggleButtonProps) {
+  const label = isVisible ? "Hide keys" : "Show keys";
+  if (inline) {
+    return (
+      <button
+        type="button"
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={onToggle}
+        className="text-muted-foreground active:bg-accent flex h-[44px] w-9 flex-shrink-0 touch-manipulation items-center justify-center rounded-full"
+        aria-label={label}
+        title={label}
+      >
+        {isVisible ? (
+          <KeyboardOff className="h-5 w-5" />
+        ) : (
+          <Keyboard className="h-5 w-5" />
+        )}
+      </button>
+    );
+  }
   return (
     <button
       onClick={onToggle}
@@ -43,8 +65,8 @@ export function KeybarToggleButton({
           ? { bottom: keybarHeight + 12 }
           : undefined
       }
-      aria-label={isVisible ? "Hide keys" : "Show keys"}
-      title={isVisible ? "Hide keys" : "Show keys"}
+      aria-label={label}
+      title={label}
     >
       {isVisible ? (
         <KeyboardOff className="h-5 w-5" />

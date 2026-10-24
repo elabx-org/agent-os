@@ -13,6 +13,8 @@ interface ComposerProps {
   onSend: (text: string) => void;
   /** Hand the keyboard to the terminal (Claude Code's / and @ pickers) */
   onTypeInTerminal: () => void;
+  /** A control beside the send button (the keybar toggle) */
+  extra?: React.ReactNode;
 }
 
 /**
@@ -25,6 +27,7 @@ export function Composer({
   onChange,
   onSend,
   onTypeInTerminal,
+  extra,
 }: ComposerProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -77,6 +80,7 @@ export function Composer({
         autoCapitalize="sentences"
         className="bg-secondary text-foreground placeholder:text-muted-foreground min-h-[44px] flex-1 resize-none rounded-2xl px-3.5 py-2.5 text-base leading-6 focus:outline-none"
       />
+      {extra}
       <button
         type="button"
         onMouseDown={(e) => e.preventDefault()}

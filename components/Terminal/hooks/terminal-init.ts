@@ -67,6 +67,7 @@ export function createTerminal(
   term.loadAddon(searchAddon);
   term.open(container);
   term.loadAddon(new CanvasAddon());
+  paintPadding(term);
   fitAddon.fit();
 
   // Configure autocorrect/predictions for on-screen keyboards (user setting)
@@ -206,4 +207,11 @@ export function updateTerminalDensity(
 export function updateTerminalTheme(term: XTerm, theme: string): void {
   const terminalTheme = getTerminalThemeForApp(theme || "dark");
   term.options.theme = terminalTheme;
+  paintPadding(term);
+}
+
+/** The element's padding (the iOS app's left margin) in the terminal's own colour */
+function paintPadding(term: XTerm) {
+  if (term.element)
+    term.element.style.backgroundColor = term.options.theme?.background ?? "";
 }

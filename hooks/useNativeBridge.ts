@@ -95,13 +95,21 @@ export function useNativeBridge({
         viewMode: mobileNavStore.viewMode,
         waiting: waitingCount,
         changes: mobileNavStore.changes,
+        background: getComputedStyle(document.body).backgroundColor,
       });
     report();
     const stopView = subscribeKey(mobileNavStore, "viewMode", report);
     const stopChanges = subscribeKey(mobileNavStore, "changes", report);
+    // A theme change repaints the page: tell the app the new background
+    const themes = new MutationObserver(report);
+    themes.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["class", "data-theme", "style"],
+    });
     return () => {
       stopView();
       stopChanges();
+      themes.disconnect();
     };
   }, [waitingCount]);
 }
