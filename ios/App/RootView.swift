@@ -36,9 +36,9 @@ struct NavToolbar: ToolbarContent {
             Button { model.nav("inbox") } label: {
                 Label("Inbox", systemImage: model.waiting > 0 ? "tray.full" : "tray")
             }
+            .badge(model.waiting)
             .accessibilityValue(model.waiting > 0 ? "\(model.waiting) waiting" : "Nothing waiting")
         }
-        .badge(model.waiting)
         .barPriority(true)
 
         viewItem("Chat", symbol: "text.bubble", view: .chat, action: "chat")
