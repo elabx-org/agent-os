@@ -31,9 +31,9 @@ import { KeybarToggleButton } from "./KeybarToggleButton";
 import { Composer } from "./Composer";
 import {
   hasQueued,
-  isCleared,
-  matchQueued,
+  isClaudeBusy,
   readClaudePrompt,
+  showsQueued,
 } from "./queued-messages";
 import { DeckPad } from "./DeckPad";
 import { useFoldDeck } from "@/hooks/useFoldDeck";
@@ -340,15 +340,23 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
 
     // Claude Code treats input arriving with a newline as a paste, so Enter
     // goes separately after the text has been taken
-    const sentRef = useRef<string[]>([]);
+    // What the composer sent while Claude was busy: Claude queues it
+    const queuedRef = useRef<string[]>([]);
     const sendFromComposer = useCallback(
       (text: string) => {
-        if (text) sentRef.current = [...sentRef.current, text].slice(-5);
+        const term = xtermRef.current;
+        // Added to what's already waiting, if anything is
+        if (text && term)
+          queuedRef.current = !isClaudeBusy(term)
+            ? []
+            : hasQueued(term)
+              ? [...queuedRef.current, text]
+              : [text];
         if (text.includes("\n")) sendPaste(text);
         else if (text) sendInput(text);
         setTimeout(() => sendInput("\r"), text ? 80 : 0);
       },
-      [sendInput, sendPaste]
+      [sendInput, sendPaste, xtermRef]
     );
 
     // With the composer on, xterm's keyboard is off, so a tap on the terminal
@@ -409,26 +417,33 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
     // (^C would), and a backspace joins the line above.
     const reclaimQueued = useCallback(() => {
       const term = xtermRef.current;
-      if (!term) return;
+      const queued = queuedRef.current;
+      if (!term || !queued.length) return;
       const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
       void (async () => {
-        let restored: string[] | null = null;
-        for (let tries = 0; tries < 8 && !restored; tries++) {
+        let back = false;
+        for (let tries = 0; tries < 8 && !back; tries++) {
           await wait(150);
-          const prompt = readClaudePrompt(term);
-          restored =
-            prompt === null ? null : matchQueued(prompt, sentRef.current);
+          back = showsQueued(readClaudePrompt(term), queued);
         }
-        if (!restored) return;
-        for (let step = 0; step < 60; step++) {
-          if (isCleared(readClaudePrompt(term), restored)) break;
+        if (!back) return;
+        const steps = 2 * Math.ceil(queued.join("\n").length / 20) + 10;
+        // Gone twice in a row: a short terminal can show just the emptied line
+        const gone = async () => {
+          if (showsQueued(readClaudePrompt(term), queued)) return false;
+          await wait(150);
+          return !showsQueued(readClaudePrompt(term), queued);
+        };
+        let cleared = false;
+        for (let step = 0; step < steps && !cleared; step++) {
           sendInput(step % 2 ? "\x7f" : "\x15");
-          await wait(60);
+          await wait(50);
+          cleared = await gone();
         }
-        if (!isCleared(readClaudePrompt(term), restored)) return;
-        sentRef.current = sentRef.current.slice(0, -restored.length);
+        if (!cleared) return;
+        queuedRef.current = [];
         setComposerText((current) =>
-          [...restored, current].filter(Boolean).join("\n")
+          [...queued, current].filter(Boolean).join("\n")
         );
       })();
     }, [xtermRef, sendInput]);
@@ -441,7 +456,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
         const queued =
           (key === "\x1b[A" || key === "\x1b") &&
           composerOnRef.current &&
-          sentRef.current.length > 0 &&
+          queuedRef.current.length > 0 &&
           !!term &&
           hasQueued(term);
         sendInput(key);

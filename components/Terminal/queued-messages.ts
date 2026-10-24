@@ -13,46 +13,43 @@ function screen(term: XTerm) {
   return lines;
 }
 
+/** Claude Code is working, or holding messages sent while it works */
+export function isClaudeBusy(term: XTerm) {
+  return screen(term).some(
+    (line) =>
+      line.includes("esc to interru") || line.includes("edit queued messages")
+  );
+}
+
 /** Claude Code is holding messages sent while it works */
 export const hasQueued = (term: XTerm) =>
   screen(term).some((line) => line.includes("edit queued messages"));
 
 /**
- * The text in Claude Code's input box (between the last two rules), or null
- * if there's no box. Wrapped and newline-separated lines look alike, so it's
- * only good for comparing with whitespace ignored.
+ * What shows of Claude Code's input box: the ❯ line under a rule and the
+ * indented lines after it. On a short terminal Claude shows only part of a
+ * long input, and the bottom rule and footer may be off screen, so this is
+ * only good for comparing with whitespace ignored. Null if there's no box.
  */
 export function readClaudePrompt(term: XTerm) {
   const lines = screen(term);
-  const rules = lines.flatMap((line, i) => (RULE.test(line) ? [i] : []));
-  if (rules.length < 2) return null;
-  const [top, end] = rules.slice(-2);
-  const box = lines.slice(top + 1, end);
-  if (!/^[❯>]/.test(box[0] ?? "")) return null;
-  return box.join(" ").replace(/^[❯>]/, "");
-}
-
-/**
- * The restored text is gone from the prompt. It's cleared from the end, so
- * its start goes last; an empty prompt may show a placeholder instead.
- */
-export function isCleared(prompt: string | null, restored: string[]) {
-  if (prompt === null) return false;
-  const start = squash(restored.join("")).slice(0, 8);
-  return !squash(prompt).startsWith(start);
-}
-
-/**
- * Which of the composer's recent sends Claude put back in its prompt (Up
- * returns queued messages there, oldest first), or null if the prompt holds
- * something else
- */
-export function matchQueued(prompt: string, sends: string[]) {
-  const target = squash(prompt);
-  if (!target) return null;
-  for (let k = sends.length; k > 0; k--) {
-    const restored = sends.slice(-k);
-    if (squash(restored.join("")) === target) return restored;
+  let start = -1;
+  for (let i = lines.length - 1; i > 0; i--) {
+    if (/^[❯>]/.test(lines[i]) && RULE.test(lines[i - 1])) {
+      start = i;
+      break;
+    }
   }
-  return null;
+  if (start < 0) return null;
+  const box = [lines[start].replace(/^[❯>]/, "")];
+  for (const line of lines.slice(start + 1)) {
+    if (RULE.test(line) || line.includes("⏵⏵") || !line.startsWith("  ")) break;
+    box.push(line);
+  }
+  return squash(box.join(""));
+}
+
+/** The prompt shows (part of) the messages Claude put back */
+export function showsQueued(prompt: string | null, queued: string[]) {
+  return !!prompt && squash(queued.join("")).includes(prompt);
 }
