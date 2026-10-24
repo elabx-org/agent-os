@@ -415,7 +415,7 @@ export const Pane = memo(function Pane({
       {/* Content Area - Mobile: simple flex, Desktop: resizable panels */}
       {isMobile ? (
         <div
-          className="relative min-h-0 w-full flex-1"
+          className="native-column-inset relative min-h-0 w-full flex-1"
           onTouchStart={handleTouchStart}
           onTouchEnd={handleTouchEnd}
         >

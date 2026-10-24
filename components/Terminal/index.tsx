@@ -37,7 +37,12 @@ import type { TerminalScrollState } from "./hooks";
 import { useViewport } from "@/hooks/useViewport";
 import { useKeyboardInset } from "@/hooks/useKeyboardInset";
 import { useSnapshot } from "valtio";
-import { isNative, isTextKey, onNativeEvent } from "@/lib/native-bridge";
+import {
+  isNative,
+  isTextKey,
+  onNativeEvent,
+  postToNative,
+} from "@/lib/native-bridge";
 import { mobileNavStore } from "@/stores/mobileNav";
 import { KeyboardDebugOverlay, useKeyboardDebug } from "./KeyboardDebugOverlay";
 import { useFileDrop } from "@/hooks/useFileDrop";
@@ -291,6 +296,17 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
     // Half open like a laptop: output above the fold, input on the deck below
     const deck = useFoldDeck(containerRef, keyboard.height, showKeybar);
     const keybarAtTop = keyboard.mode === "floating" && !deck;
+    // Laptop pose while typing: the composer is the screen's last line, above
+    // the fold, and the key rows fill the deck between the fold and the keyboard
+    const laptopKeys = !!deck && nativeKeyboard;
+
+    // On the deck the page's key rows replace the app's keyboard bar
+    const nativeBarHidden = !!deck && isNative();
+    useEffect(() => {
+      if (!nativeBarHidden) return;
+      postToNative({ type: "keybar", hidden: true });
+      return () => postToNative({ type: "keybar", hidden: false });
+    }, [nativeBarHidden]);
 
     const composerOn = showKeybar && composerEnabled;
     composerOnRef.current = composerOn;
@@ -724,38 +740,63 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
 
         {/* Nothing in the fold */}
         {showKeybar && deck && (
-          <div aria-hidden="true" className="shrink-0" style={{ height: deck.gap }} />
+          <div
+            aria-hidden="true"
+            className="shrink-0"
+            style={{ height: deck.gap, order: laptopKeys ? 2 : undefined }}
+          />
         )}
 
         {/* Mobile: Toolbar with special keys (native keyboard handles text) */}
         {showKeybar && (
+          // Laptop typing: `contents`, so the composer and the rows can sit
+          // either side of the fold without remounting (the composer keeps focus)
           <div
             ref={keybarRef}
-            className={cn("bg-background shrink-0", deck && "flex flex-col")}
-            style={{
-              height: deck?.deck,
-              order: keybarAtTop ? -1 : undefined,
-              paddingLeft: "env(safe-area-inset-left)",
-              paddingRight: "var(--safe-right, env(safe-area-inset-right))",
-            }}
-          >
-            {composerOn && (
-              <Composer
-                value={composerText}
-                onChange={setComposerText}
-                onSend={sendFromComposer}
-                onTypeInTerminal={typeInTerminal}
-              />
+            className={cn(
+              "bg-background shrink-0",
+              laptopKeys ? "contents" : deck && "flex flex-col"
             )}
-            <TerminalToolbar
-              onKeyPress={keybarKeyPress}
-              onPaste={sendPaste}
-              onImagePicker={() => setShowImagePicker(true)}
-              onCopy={copySelection}
-              selectMode={selectMode}
-              onSelectModeChange={setSelectMode}
-              visible={toolbarVisible && !nativeKeyboard}
-            />
+            style={
+              laptopKeys
+                ? undefined
+                : {
+                    height: deck?.deck,
+                    order: keybarAtTop ? -1 : undefined,
+                    paddingLeft: "env(safe-area-inset-left)",
+                    paddingRight:
+                      "var(--safe-right, env(safe-area-inset-right))",
+                  }
+            }
+          >
+            <div
+              className="bg-background shrink-0"
+              style={{ order: laptopKeys ? 1 : undefined }}
+            >
+              {composerOn && (
+                <Composer
+                  value={composerText}
+                  onChange={setComposerText}
+                  onSend={sendFromComposer}
+                  onTypeInTerminal={typeInTerminal}
+                />
+              )}
+            </div>
+            <div
+              className={cn(laptopKeys && "keybar-fill bg-background min-h-0")}
+              style={laptopKeys ? { order: 3, height: deck.deck } : undefined}
+            >
+              <TerminalToolbar
+                onKeyPress={keybarKeyPress}
+                onPaste={sendPaste}
+                onImagePicker={() => setShowImagePicker(true)}
+                onCopy={copySelection}
+                selectMode={selectMode}
+                onSelectModeChange={setSelectMode}
+                visible={toolbarVisible && (!nativeKeyboard || laptopKeys)}
+                keepRows={laptopKeys}
+              />
+            </div>
             {deck && !nativeKeyboard && keyboard.height === 0 && (
               <DeckPad onKeyPress={keybarKeyPress} />
             )}

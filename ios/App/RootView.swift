@@ -9,7 +9,9 @@ struct RootView: View {
     var body: some View {
         NavigationStack {
             AgentWebContainer(model: model)
-                .ignoresSafeArea(.container, edges: .bottom)
+                // Under the system column too, so the page shows through its
+                // Liquid Glass; the page keeps its content clear of it
+                .ignoresSafeArea(.container, edges: [.bottom, .trailing])
                 // Half open: the page puts its input below the fold (laptop pose)
                 .onGeometryChange(for: Fold?.self) { Fold($0) } action: { model.fold = $0 }
                 .background(Color("LaunchBackground"))

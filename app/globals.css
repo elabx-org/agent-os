@@ -174,12 +174,38 @@ html[data-keyboard-compact] .kb-compact-hide {
   display: none;
 }
 
+/* In the iOS app the page runs under the system column on the right, so its
+   background shows through the Liquid Glass. Bars pad themselves for it
+   (var(--safe-right, env(...))); content stops at the column's edge. */
+html[data-native] .native-column-inset {
+  padding-right: env(safe-area-inset-right);
+  --safe-right: 0px;
+}
+html[data-native] [data-slot="dialog-content"] {
+  left: calc((100vw - env(safe-area-inset-right)) / 2);
+  max-width: min(32rem, calc(100vw - env(safe-area-inset-right) - 2rem));
+}
+
 /* Book pose (vertical fold, set by useFoldPosture): dialogs sit on the right
    page instead of across the fold */
 html[data-fold="vertical"] [data-slot="dialog-content"] {
   --page-width: calc(100vw - var(--fold-end) - env(safe-area-inset-right));
   left: calc(var(--fold-end) + var(--page-width) / 2);
   max-width: min(32rem, calc(var(--page-width) - 2rem));
+}
+
+/* Laptop pose while typing: the key rows share the deck above the keyboard,
+   growing into keys taller than usual instead of leaving a gap */
+.keybar-fill {
+  display: flex;
+  flex-direction: column;
+}
+.keybar-fill > .keybar-row {
+  flex: 1 1 0;
+  max-height: 76px;
+}
+.keybar-fill > .keybar-row > button {
+  height: 100%;
 }
 
 /* Horizontally scrolling keybar rows: fade the right edge as a scroll hint */

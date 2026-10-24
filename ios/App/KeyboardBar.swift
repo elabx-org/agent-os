@@ -41,6 +41,15 @@ final class KeyboardBar: UIInputView {
         [Key(title: "", symbol: "return", sequence: "\n", label: "New line")],
     ]
 
+    /// No keys and no height: the page shows its own rows above the keyboard
+    var collapsed = false {
+        didSet {
+            guard collapsed != oldValue else { return }
+            subviews.forEach { $0.isHidden = collapsed }
+            invalidateIntrinsicContentSize()
+        }
+    }
+
     private let haptics = UIImpactFeedbackGenerator(style: .light)
     private var repeatTimer: Timer?
 
@@ -56,7 +65,7 @@ final class KeyboardBar: UIInputView {
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
 
     override var intrinsicContentSize: CGSize {
-        CGSize(width: UIView.noIntrinsicMetric, height: 52)
+        CGSize(width: UIView.noIntrinsicMetric, height: collapsed ? 0 : 52)
     }
 
     override func didMoveToWindow() {

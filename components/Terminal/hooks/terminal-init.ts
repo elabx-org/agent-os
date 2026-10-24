@@ -50,6 +50,11 @@ export function createTerminal(
     cursorWidth: 2,
     allowProposedApi: true,
     theme: terminalTheme,
+    // FitAddon keeps the ruler's width free for a scrollbar (14px unless set);
+    // on touch the scrollbar overlays the text, so give the columns back
+    ...(window.matchMedia("(pointer: coarse)").matches && {
+      overviewRuler: { width: 1 },
+    }),
   });
 
   const fitAddon = new FitAddon();
