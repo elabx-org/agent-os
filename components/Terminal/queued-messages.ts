@@ -1,38 +1,50 @@
 import type { Terminal as XTerm } from "@xterm/xterm";
 
-const RULE = /^─{10,}/;
+// The box's top rule can carry a label ("─── History 3/14 ───")
+const RULE = /^─{3}/;
 const squash = (text: string) => text.replace(/\s+/g, "");
 
-/**
- * Claude Code's input box, read off the screen: the text between the last
- * two rules, and whether Claude is still working. Wrapped and
- * newline-separated lines look alike, so the text is only good for comparing
- * with whitespace ignored.
- */
-export function readClaudePrompt(term: XTerm) {
+function screen(term: XTerm) {
   const buffer = term.buffer.active;
   const lines: string[] = [];
-  const bottom = buffer.baseY + term.rows - 1;
-  for (let y = bottom; y >= buffer.baseY; y--) {
-    lines.unshift(buffer.getLine(y)?.translateToString(true) ?? "");
+  for (let y = buffer.baseY; y < buffer.baseY + term.rows; y++) {
+    lines.push(buffer.getLine(y)?.translateToString(true) ?? "");
   }
+  return lines;
+}
+
+/** Claude Code is holding messages sent while it works */
+export const hasQueued = (term: XTerm) =>
+  screen(term).some((line) => line.includes("edit queued messages"));
+
+/**
+ * The text in Claude Code's input box (between the last two rules), or null
+ * if there's no box. Wrapped and newline-separated lines look alike, so it's
+ * only good for comparing with whitespace ignored.
+ */
+export function readClaudePrompt(term: XTerm) {
+  const lines = screen(term);
   const rules = lines.flatMap((line, i) => (RULE.test(line) ? [i] : []));
   if (rules.length < 2) return null;
   const [top, end] = rules.slice(-2);
   const box = lines.slice(top + 1, end);
   if (!/^[❯>]/.test(box[0] ?? "")) return null;
-  return {
-    text: box.join(" ").replace(/^[❯>]/, ""),
-    // The hint sits on the spinner or in the footer, often cut short
-    busy: [...lines.slice(0, top), ...lines.slice(end)].some((line) =>
-      line.includes("esc to interru")
-    ),
-  };
+  return box.join(" ").replace(/^[❯>]/, "");
 }
 
 /**
- * Which of the composer's recent sends Claude put back in its prompt (Esc
- * returns queued messages there, newest last), or null if the prompt holds
+ * The restored text is gone from the prompt. It's cleared from the end, so
+ * its start goes last; an empty prompt may show a placeholder instead.
+ */
+export function isCleared(prompt: string | null, restored: string[]) {
+  if (prompt === null) return false;
+  const start = squash(restored.join("")).slice(0, 8);
+  return !squash(prompt).startsWith(start);
+}
+
+/**
+ * Which of the composer's recent sends Claude put back in its prompt (Up
+ * returns queued messages there, oldest first), or null if the prompt holds
  * something else
  */
 export function matchQueued(prompt: string, sends: string[]) {
