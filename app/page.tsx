@@ -28,6 +28,8 @@ import { useNotifications } from "@/hooks/useNotifications";
 import { useViewport } from "@/hooks/useViewport";
 import { useViewportHeight } from "@/hooks/useViewportHeight";
 import { useNativeBridge } from "@/hooks/useNativeBridge";
+import { useSessionLinks } from "@/hooks/useSessionLinks";
+import { usePresence } from "@/hooks/usePresence";
 import { useFoldPosture } from "@/hooks/useFoldPosture";
 import { useSessions } from "@/hooks/useSessions";
 import { useProjects } from "@/hooks/useProjects";
@@ -359,6 +361,13 @@ function HomeContent() {
     openFind: () => setShowQuickSwitcher(true),
     openNewSession: () => setShowNewSessionDialog(true),
   });
+
+  // Notification links open their session; on a phone, over the session list
+  useSessionLinks(sessions, (session) => {
+    attachToSession(session);
+    if (isMobile) setSidebarOpen(false);
+  });
+  usePresence(focusedActiveTab?.sessionId ?? undefined);
 
   // Open beside the session on wide screens, closed on narrow ones; folding
   // an iPhone Duo shut keeps the session rather than the list

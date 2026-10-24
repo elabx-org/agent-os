@@ -50,6 +50,10 @@ targets:
         NSMicrophoneUsageDescription: Dictate prompts to your coding sessions.
         NSCameraUsageDescription: Attach photos to your coding sessions.
         NSPhotoLibraryUsageDescription: Attach images to your coding sessions.
+        # agentos://session/<id> opens a session (ntfy notifications link here)
+        CFBundleURLTypes:
+          - CFBundleURLName: org.elabx.agentos
+            CFBundleURLSchemes: [agentos]
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: org.elabx.agentos

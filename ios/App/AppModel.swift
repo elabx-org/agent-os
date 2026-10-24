@@ -29,6 +29,10 @@ final class AppModel {
     }
 
     @ObservationIgnored weak var webView: WKWebView?
+    /// A session to open once the page has loaded (a notification or link launched the app)
+    @ObservationIgnored private var pendingSession: String?
+    /// The APNs device token, handed to the server from the page so it carries the login
+    @ObservationIgnored private var pushToken: String?
 
     init() {
         let saved = UserDefaults.standard.string(forKey: Self.serverKey).flatMap(URL.init(string:))
@@ -52,6 +56,45 @@ final class AppModel {
     /// The page also keeps it on `agentosNative`, for when it loads later
     func sendFold() {
         send(["type": "posture", "fold": fold?.json ?? NSNull()], keep: "fold")
+    }
+
+    /// agentos://session/<id>, from an ntfy notification or anywhere else
+    func handle(url: URL) {
+        guard url.scheme == "agentos", url.host == "session",
+              let id = url.pathComponents.dropFirst().first, !id.isEmpty else { return }
+        openSession(id)
+    }
+
+    func openSession(_ id: String) {
+        pendingSession = id
+        if webView?.isLoading == false { flushPending() }
+    }
+
+    func setPushToken(_ token: Data) {
+        pushToken = token.map { String(format: "%02x", $0) }.joined()
+        if webView?.isLoading == false { registerPushToken() }
+    }
+
+    /// The page finished loading: deliver what waited for it
+    func pageLoaded() {
+        sendFold()
+        flushPending()
+        registerPushToken()
+    }
+
+    private func flushPending() {
+        guard let id = pendingSession else { return }
+        pendingSession = nil
+        // Kept on agentosNative too, for a page still starting up
+        send(["type": "open", "sessionId": id], keep: "open")
+    }
+
+    private func registerPushToken() {
+        guard let pushToken, let webView else { return }
+        webView.evaluateJavaScript("""
+            fetch('/api/push/devices', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ token: '\(pushToken)' }) }).catch(() => {})
+            """)
     }
 
     func reload() {

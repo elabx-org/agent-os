@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { GitBranch, Plus } from "lucide-react";
+import { Bell, GitBranch, Plus } from "lucide-react";
 import { InboxItem } from "@/components/Inbox";
+import { PushSettings } from "@/components/PushSettings";
 import { UsageMonitor } from "@/components/UsageMonitor";
 import { getTimeAgo, statusConfig } from "@/components/SessionCard";
 import type { SessionStatus } from "@/components/views/types";
@@ -65,6 +66,7 @@ export function MissionControl({
 }: MissionControlProps) {
   const [tab, setTab] = useState<Tab>("now");
   const [filter, setFilter] = useState<Filter>("all");
+  const [pushOpen, setPushOpen] = useState(false);
 
   useEffect(() => {
     try {
@@ -130,6 +132,14 @@ export function MissionControl({
         </div>
         <button
           type="button"
+          onClick={() => setPushOpen(true)}
+          aria-label="Phone notifications"
+          className="text-muted-foreground active:bg-accent flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
+        >
+          <Bell className="h-4 w-4" />
+        </button>
+        <button
+          type="button"
           onClick={onNewSession}
           aria-label="New session"
           className="bg-primary text-primary-foreground flex h-9 w-9 shrink-0 items-center justify-center rounded-lg active:opacity-80"
@@ -137,6 +147,8 @@ export function MissionControl({
           <Plus className="h-4 w-4" />
         </button>
       </div>
+
+      <PushSettings open={pushOpen} onOpenChange={setPushOpen} />
 
       {tab === "projects" ? (
         <div className="min-h-0 flex-1 overflow-hidden">{projectsView}</div>

@@ -98,7 +98,7 @@ struct AgentWebContainer: UIViewRepresentable {
         }
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-            MainActor.assumeIsolated { model.sendFold() }
+            MainActor.assumeIsolated { model.pageLoaded() }
         }
 
         func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {

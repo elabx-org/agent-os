@@ -26,7 +26,9 @@ export type NativeEvent =
   | { type: "key"; key: string }
   | { type: "keyboard"; visible: boolean }
   /** The fold while half open, in the page's CSS pixels */
-  | { type: "posture"; fold: Fold | null };
+  | { type: "posture"; fold: Fold | null }
+  /** Open a session: a tapped notification or an agentos://session/<id> link */
+  | { type: "open"; sessionId: string };
 
 export interface NativeState {
   type: "state";
@@ -39,7 +41,13 @@ export const NATIVE_EVENT = "agentos-native";
 
 declare global {
   interface Window {
-    agentosNative?: { platform: string; version: string; fold?: Fold | null };
+    agentosNative?: {
+      platform: string;
+      version: string;
+      fold?: Fold | null;
+      /** A session to open, set when a link launched the app */
+      open?: string;
+    };
     webkit?: {
       messageHandlers?: Record<string, { postMessage: (msg: unknown) => void }>;
     };

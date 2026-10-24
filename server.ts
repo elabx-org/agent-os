@@ -6,6 +6,7 @@ import * as pty from "node-pty";
 import { exec } from "child_process";
 import { randomBytes } from "crypto";
 import { scheduleStoreSync } from "./lib/store-sync";
+import { startPushWatcher } from "./lib/push/watcher";
 import {
   authConfig,
   deny,
@@ -296,5 +297,6 @@ app.prepare().then(() => {
   server.listen(port, () => {
     console.log(`> Agent-OS ready on http://${hostname}:${port}`);
     scheduleStoreSync();
+    startPushWatcher();
   });
 });
