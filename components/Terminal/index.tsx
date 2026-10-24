@@ -29,7 +29,12 @@ import { ScrollToBottomButton } from "./ScrollToBottomButton";
 import { TerminalToolbar } from "./TerminalToolbar";
 import { KeybarToggleButton } from "./KeybarToggleButton";
 import { Composer } from "./Composer";
-import { matchQueued, readClaudePrompt } from "./queued-messages";
+import {
+  hasQueued,
+  isCleared,
+  matchQueued,
+  readClaudePrompt,
+} from "./queued-messages";
 import { DeckPad } from "./DeckPad";
 import { useFoldDeck } from "@/hooks/useFoldDeck";
 import { COMPOSER_EVENT, getComposerEnabled } from "./typing-assist";
@@ -398,35 +403,51 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
       return true;
     }, []);
 
-    // Esc puts Claude's queued messages back in its own prompt. If they came
-    // from the composer, move them back there: clear the prompt (^C clears
-    // typed input without interrupting) once Claude has stopped
+    // Up (or Esc) puts the messages Claude is holding back in its own prompt,
+    // which the composer hides. If they came from the composer, move them
+    // back there. ^U clears a line of the prompt without interrupting Claude
+    // (^C would), and a backspace joins the line above.
     const reclaimQueued = useCallback(() => {
-      let tries = 0;
-      const check = () => {
-        const term = xtermRef.current;
-        const prompt = term && readClaudePrompt(term);
-        const restored = prompt && matchQueued(prompt.text, sentRef.current);
-        if (restored && !prompt.busy) {
-          sentRef.current = sentRef.current.slice(0, -restored.length);
-          sendInput("\x03");
-          setComposerText((current) =>
-            [...restored, current].filter(Boolean).join("\n")
-          );
-        } else if (++tries < 8) setTimeout(check, 250);
-      };
-      setTimeout(check, 250);
+      const term = xtermRef.current;
+      if (!term) return;
+      const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+      void (async () => {
+        let restored: string[] | null = null;
+        for (let tries = 0; tries < 8 && !restored; tries++) {
+          await wait(150);
+          const prompt = readClaudePrompt(term);
+          restored =
+            prompt === null ? null : matchQueued(prompt, sentRef.current);
+        }
+        if (!restored) return;
+        for (let step = 0; step < 60; step++) {
+          if (isCleared(readClaudePrompt(term), restored)) break;
+          sendInput(step % 2 ? "\x7f" : "\x15");
+          await wait(60);
+        }
+        if (!isCleared(readClaudePrompt(term), restored)) return;
+        sentRef.current = sentRef.current.slice(0, -restored.length);
+        setComposerText((current) =>
+          [...restored, current].filter(Boolean).join("\n")
+        );
+      })();
     }, [xtermRef, sendInput]);
 
     // The keybar's newline key adds a line to the composer while it has focus
     const keybarKeyPress = useCallback(
       (key: string) => {
         if (isTextKey(key) && insertInComposer(key)) return;
+        const term = xtermRef.current;
+        const queued =
+          (key === "\x1b[A" || key === "\x1b") &&
+          composerOnRef.current &&
+          sentRef.current.length > 0 &&
+          !!term &&
+          hasQueued(term);
         sendInput(key);
-        if (key === "\x1b" && composerOnRef.current && sentRef.current.length)
-          reclaimQueued();
+        if (queued) reclaimQueued();
       },
-      [sendInput, insertInComposer, reclaimQueued]
+      [sendInput, insertInComposer, reclaimQueued, xtermRef]
     );
 
     // Keys and pastes from the iOS app's keyboard bar go to the terminal being
