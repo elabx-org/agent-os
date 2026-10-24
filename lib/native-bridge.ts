@@ -65,7 +65,13 @@ export function isTextKey(key: string): boolean {
   return key === "\n" || /^[^\x00-\x1f\x7f]+$/.test(key);
 }
 
-export function postToNative(message: NativeState): void {
+/** The page's own key rows stand in for the keyboard bar (laptop pose) */
+export interface NativeKeybar {
+  type: "keybar";
+  hidden: boolean;
+}
+
+export function postToNative(message: NativeState | NativeKeybar): void {
   window.webkit?.messageHandlers?.agentos?.postMessage(message);
 }
 

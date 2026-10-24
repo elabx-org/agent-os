@@ -34,6 +34,8 @@ interface TerminalToolbarProps {
   onSelectModeChange?: (enabled: boolean) => void;
   visible?: boolean;
   onLayoutChange?: (layout: "single" | "double") => void;
+  /** Rows fill a deck of their own (laptop pose): keep both, however short the screen */
+  keepRows?: boolean;
 }
 
 interface Snippet {
@@ -494,7 +496,9 @@ function CursorTrackpadButton({
 }: {
   onKeyPress: (key: string) => void;
 }) {
-  const [cursorMoveMode, setCursorMoveMode] = useState<"left" | "right" | null>(null);
+  const [cursorMoveMode, setCursorMoveMode] = useState<"left" | "right" | null>(
+    null
+  );
   const [lastCursorMove, setLastCursorMove] = useState(0);
   const [cursorStartX, setCursorStartX] = useState(0);
 
@@ -525,10 +529,13 @@ function CursorTrackpadButton({
 
           const touch = e.touches[0];
           const deltaX = touch.clientX - cursorStartX;
-          const newMode = deltaX > 20 ? "right" : deltaX < -20 ? "left" : cursorMoveMode;
+          const newMode =
+            deltaX > 20 ? "right" : deltaX < -20 ? "left" : cursorMoveMode;
 
           setCursorMoveMode(newMode);
-          onKeyPress(newMode === "right" ? SPECIAL_KEYS.RIGHT : SPECIAL_KEYS.LEFT);
+          onKeyPress(
+            newMode === "right" ? SPECIAL_KEYS.RIGHT : SPECIAL_KEYS.LEFT
+          );
           setLastCursorMove(now);
         }
       }}
@@ -551,7 +558,11 @@ function CursorTrackpadButton({
       )}
       title="Tap: space | Hold: slide left/right to move cursor"
     >
-      {cursorMoveMode ? (cursorMoveMode === "left" ? "\u25C4" : "\u25BA") : "\u2395"}
+      {cursorMoveMode
+        ? cursorMoveMode === "left"
+          ? "\u25C4"
+          : "\u25BA"
+        : "\u2395"}
     </button>
   );
 }
@@ -561,7 +572,8 @@ function BackspaceButton({
 }: {
   onKeyPress: (key: string) => void;
 }) {
-  const [longPressInterval, setLongPressInterval] = useState<NodeJS.Timeout | null>(null);
+  const [longPressInterval, setLongPressInterval] =
+    useState<NodeJS.Timeout | null>(null);
 
   const stopLongPress = useCallback(() => {
     if (longPressInterval) {
@@ -582,7 +594,9 @@ function BackspaceButton({
           const id = setInterval(() => onKeyPress("\x7f"), 80);
           setLongPressInterval(id);
         }, 400);
-        (e.currentTarget as HTMLElement).dataset.timeout = String(timeout as unknown as number);
+        (e.currentTarget as HTMLElement).dataset.timeout = String(
+          timeout as unknown as number
+        );
       }}
       onTouchEnd={(e) => {
         e.preventDefault();
@@ -640,13 +654,15 @@ export function TerminalToolbar({
   onSelectModeChange,
   visible = true,
   onLayoutChange,
+  keepRows = false,
 }: TerminalToolbarProps) {
   const [showPasteModal, setShowPasteModal] = useState(false);
   const [showSnippetsModal, setShowSnippetsModal] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [shiftActive, setShiftActive] = useState(false);
   const [copyFeedback, setCopyFeedback] = useState(false);
-  const { preferences, updatePreferences: persistPreferences } = useToolbarPreferences();
+  const { preferences, updatePreferences: persistPreferences } =
+    useToolbarPreferences();
 
   // Send text character-by-character to terminal
   const sendText = useCallback(
@@ -732,7 +748,10 @@ export function TerminalToolbar({
   // can't spare height for a second row, so it joins the first one, which scrolls
   const shortLandscape = useShortLandscape();
   const mergeRows =
-    preferences.layout === "double" && resolvedRow2.length > 0 && shortLandscape;
+    preferences.layout === "double" &&
+    resolvedRow2.length > 0 &&
+    shortLandscape &&
+    !keepRows;
   const row1Ids = useMemo(
     () =>
       mergeRows
@@ -908,14 +927,16 @@ export function TerminalToolbar({
       </div>
 
       {/* Row 2 — only when double layout with buttons */}
-      {preferences.layout === "double" && resolvedRow2.length > 0 && !mergeRows && (
-        <div
-          className="keybar-row bg-background/95 border-border scrollbar-none kb-compact-hide flex items-center gap-1 overflow-x-auto px-2 py-1.5 backdrop-blur"
-          onTouchEnd={(e) => e.stopPropagation()}
-        >
-          {renderRow(resolvedRow2)}
-        </div>
-      )}
+      {preferences.layout === "double" &&
+        resolvedRow2.length > 0 &&
+        !mergeRows && (
+          <div
+            className="keybar-row bg-background/95 border-border scrollbar-none kb-compact-hide flex items-center gap-1 overflow-x-auto px-2 py-1.5 backdrop-blur"
+            onTouchEnd={(e) => e.stopPropagation()}
+          >
+            {renderRow(resolvedRow2)}
+          </div>
+        )}
     </>
   );
 }

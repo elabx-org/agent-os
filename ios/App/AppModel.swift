@@ -113,7 +113,13 @@ final class AppModel {
 
     /// Reads the page's `state` message
     func receive(_ body: Any) {
-        guard let message = body as? [String: Any], message["type"] as? String == "state" else { return }
+        guard let message = body as? [String: Any] else { return }
+        if message["type"] as? String == "keybar" {
+            // Half open like a laptop, the page's key rows sit right above the keyboard
+            (webView as? AgentWebView)?.keyboardBar.collapsed = message["hidden"] as? Bool ?? false
+            return
+        }
+        guard message["type"] as? String == "state" else { return }
         if let raw = message["viewMode"] as? String, let mode = PaneView(rawValue: raw) { view = mode }
         if let count = message["waiting"] as? Int { waiting = count }
         if let count = message["changes"] as? Int { changes = count }
