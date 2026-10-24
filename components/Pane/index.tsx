@@ -29,6 +29,7 @@ import { GitDrawer } from "@/components/GitDrawer";
 import { ShellDrawer } from "@/components/ShellDrawer";
 import { useSnapshot } from "valtio";
 import { fileOpenStore, fileOpenActions } from "@/stores/fileOpen";
+import { mobileNavStore, mobileNavActions } from "@/stores/mobileNav";
 
 // Dynamic imports for client-only components with loading states
 const Terminal = dynamic(
@@ -39,6 +40,11 @@ const Terminal = dynamic(
 const FileExplorer = dynamic(
   () => import("@/components/FileExplorer").then((mod) => mod.FileExplorer),
   { ssr: false, loading: () => <FileExplorerSkeleton /> }
+);
+
+const ChatView = dynamic(
+  () => import("@/components/ChatView").then((mod) => mod.ChatView),
+  { ssr: false }
 );
 
 const GitPanel = dynamic(
@@ -59,7 +65,7 @@ interface PaneProps {
   onSelectSession?: (sessionId: string) => void;
 }
 
-type ViewMode = "terminal" | "files" | "git" | "workers";
+type ViewMode = "terminal" | "chat" | "files" | "git" | "workers";
 
 export const Pane = memo(function Pane({
   paneId,
@@ -91,7 +97,8 @@ export const Pane = memo(function Pane({
   const [gitDrawerOpen, setGitDrawerOpen] = useState(() => {
     if (typeof window === "undefined") return true;
     const stored = localStorage.getItem("gitDrawerOpen");
-    return stored === null ? true : stored === "true";
+    // Default closed where it would squeeze the terminal (Duo inner display)
+    return stored === null ? window.innerWidth >= 1280 : stored === "true";
   });
   const [shellDrawerOpen, setShellDrawerOpen] = useState(() => {
     if (typeof window === "undefined") return false;
@@ -141,7 +148,8 @@ export const Pane = memo(function Pane({
 
   // Reset view mode and file editor when session changes
   useEffect(() => {
-    setViewMode("terminal");
+    // Chat follows you to the next session; per-folder views don't
+    setViewMode((mode) => (mode === "chat" ? "chat" : "terminal"));
     fileEditor.reset();
   }, [session?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -166,6 +174,21 @@ export const Pane = memo(function Pane({
       // TODO: Scroll to line (requires FileEditor enhancement)
     }
   }, [fileOpenRequest, isFocused, session, fileEditor]);
+
+  // Mobile nav rail: mirror the focused pane's view and take view requests
+  const { request: navRequest } = useSnapshot(mobileNavStore);
+
+  useEffect(() => {
+    if (isFocused) mobileNavStore.viewMode = viewMode;
+  }, [isFocused, viewMode]);
+
+  useEffect(() => {
+    if (!navRequest || !isFocused) return;
+    if (navRequest.mode === "terminal" || session?.working_directory) {
+      setViewMode(navRequest.mode);
+    }
+    mobileNavActions.clearRequest();
+  }, [navRequest, isFocused, session?.working_directory]);
 
   const handleFocus = useCallback(() => {
     focusPane(paneId);
@@ -391,6 +414,15 @@ export const Pane = memo(function Pane({
             );
           })}
 
+          {/* Chat: mounted only while shown, it polls the transcript */}
+          {viewMode === "chat" && session && (
+            <ChatView
+              session={session}
+              active
+              onOpenTerminal={() => setViewMode("terminal")}
+            />
+          )}
+
           {/* Files */}
           {session?.working_directory && (
             <div className={viewMode === "files" ? "h-full" : "hidden"}>
@@ -488,6 +520,15 @@ export const Pane = memo(function Pane({
                       </div>
                     );
                   })}
+
+                  {/* Chat */}
+                  {viewMode === "chat" && session && (
+                    <ChatView
+                      session={session}
+                      active
+                      onOpenTerminal={() => setViewMode("terminal")}
+                    />
+                  )}
 
                   {/* Files */}
                   {session?.working_directory && (

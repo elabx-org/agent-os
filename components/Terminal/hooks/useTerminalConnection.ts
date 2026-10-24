@@ -12,12 +12,13 @@ import type {
 } from "./useTerminalConnection.types";
 import {
   createTerminal,
-  updateTerminalForMobile,
+  updateTerminalDensity,
   updateTerminalTheme,
 } from "./terminal-init";
 import { setupTouchScroll } from "./touch-scroll";
 import { createWebSocketConnection } from "./websocket-connection";
 import { setupResizeHandlers } from "./resize-handlers";
+import { DENSITY_EVENT } from "@/lib/display-density";
 
 export type { TerminalScrollState } from "./useTerminalConnection.types";
 
@@ -311,17 +312,21 @@ export function useTerminalConnection({
     };
   }, [isMobile, terminalRef, theme]);
 
-  // Handle isMobile changes dynamically
+  // Follow the display's text size: fold/unfold and the A−/A+ control
   useEffect(() => {
-    const term = xtermRef.current;
-    const fitAddon = fitAddonRef.current;
-    if (!term || !fitAddon) return;
-
-    updateTerminalForMobile(term, fitAddon, isMobile, (cols, rows) => {
-      if (wsRef.current?.readyState === WebSocket.OPEN) {
-        wsRef.current.send(JSON.stringify({ type: "resize", cols, rows }));
-      }
-    });
+    const update = () => {
+      const term = xtermRef.current;
+      const fitAddon = fitAddonRef.current;
+      if (!term || !fitAddon) return;
+      updateTerminalDensity(term, fitAddon, (cols, rows) => {
+        if (wsRef.current?.readyState === WebSocket.OPEN) {
+          wsRef.current.send(JSON.stringify({ type: "resize", cols, rows }));
+        }
+      });
+    };
+    update();
+    window.addEventListener(DENSITY_EVENT, update);
+    return () => window.removeEventListener(DENSITY_EVENT, update);
   }, [isMobile]);
 
   // Handle theme changes dynamically

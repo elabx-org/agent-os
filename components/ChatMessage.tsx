@@ -16,7 +16,7 @@ interface ChatMessageProps {
  * Lightweight markdown renderer for Claude's output.
  * Handles code fences, headings, bold, italic, inline code, and lists.
  */
-function renderMarkdown(content: string): React.ReactNode[] {
+export function renderMarkdown(content: string): React.ReactNode[] {
   // Split on fenced code blocks: ```lang\n...\n```
   const parts = content.split(/(```[\s\S]*?```)/g);
   const elements: React.ReactNode[] = [];

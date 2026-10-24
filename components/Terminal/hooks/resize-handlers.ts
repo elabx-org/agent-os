@@ -34,10 +34,27 @@ export function setupResizeHandlers(config: ResizeHandlersConfig): () => void {
     }
   };
 
+  // A hidden terminal (Chat, Files or Git showing) measures tiny; fitting it
+  // then would shrink the tmux window for every client (window-size latest).
+  // The ResizeObserver refits when it's shown again.
+  const isVisible = () => {
+    const el = containerRef.current;
+    return !!el && el.offsetParent !== null && el.clientWidth > 0;
+  };
+
+  const fitIfVisible = (restoreScroll: () => void) => {
+    if (!isVisible()) return;
+    fitAddon.fit();
+    fixMobileScrollbarWidth();
+    restoreScroll();
+    sendResize(term.cols, term.rows);
+  };
+
   const doFit = () => {
     // Clear any pending fit timeouts
     fitTimeouts.forEach(clearTimeout);
     fitTimeouts = [];
+    if (!isVisible()) return;
 
     // On mobile, save scroll position before fit to prevent keyboard open/close scroll.
     // If the view was at the bottom, keep it there so the cursor line (the text
@@ -56,30 +73,13 @@ export function setupResizeHandlers(config: ResizeHandlersConfig): () => void {
 
     requestAnimationFrame(() => {
       // First fit - immediate
-      fitAddon.fit();
-      fixMobileScrollbarWidth();
-      restoreScroll();
-      sendResize(term.cols, term.rows);
+      fitIfVisible(restoreScroll);
 
       // Second fit - after 100ms (handles most delayed layout updates)
-      fitTimeouts.push(
-        setTimeout(() => {
-          fitAddon.fit();
-          fixMobileScrollbarWidth();
-          restoreScroll();
-          sendResize(term.cols, term.rows);
-        }, 100)
-      );
+      fitTimeouts.push(setTimeout(() => fitIfVisible(restoreScroll), 100));
 
       // Third fit - after 250ms (handles slow layout updates, e.g., DevTools toggle)
-      fitTimeouts.push(
-        setTimeout(() => {
-          fitAddon.fit();
-          fixMobileScrollbarWidth();
-          restoreScroll();
-          sendResize(term.cols, term.rows);
-        }, 250)
-      );
+      fitTimeouts.push(setTimeout(() => fitIfVisible(restoreScroll), 250));
     });
   };
 

@@ -1,0 +1,101 @@
+name: iOS app
+
+on:
+  push:
+    branches: [main, duo-layout, "ios/**"]
+    paths: ["ios/**", ".github/workflows/ios.yml"]
+  pull_request:
+    paths: ["ios/**", ".github/workflows/ios.yml"]
+  workflow_dispatch:
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build unsigned IPA
+    runs-on: xcode-27
+    permissions:
+      contents: write
+    defaults:
+      run:
+        working-directory: ios
+    steps:
+      - uses: actions/checkout@v5
+
+      # iPhone Duo needs apps built with Xcode 27.1 or later: older builds run
+      # letterboxed, beside the status column instead of using it.
+      - name: Select Xcode 27.1
+        run: |
+          sudo xcode-select -s /Applications/Xcode_27.1.app
+          xcodebuild -version
+
+      - name: Generate Xcode project
+        run: |
+          brew install xcodegen
+          xcodegen generate
+
+      # Feather only offers an update when the version string changes, so the
+      # patch number is the CI run number: 0.1.0 in project.yml ships as 0.1.<run>.
+      - name: Set version
+        run: |
+          BASE=$(sed -n 's/^ *MARKETING_VERSION: *"\{0,1\}\([^"]*\)"\{0,1\}$/\1/p' project.yml | head -1)
+          echo "APP_VERSION=${BASE%.*}.${{ github.run_number }}" >> "$GITHUB_ENV"
+
+      - name: Build (unsigned)
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project AgentOS.xcodeproj \
+            -scheme AgentOS \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            CURRENT_PROJECT_VERSION=${{ github.run_number }} \
+            MARKETING_VERSION="$APP_VERSION" \
+            build 2>&1 | tee xcodebuild.log || {
+            # Compile errors as annotations, readable from the checks API without the raw log.
+            grep -E ": error: " xcodebuild.log | sort -u | head -40 | sed 's/^/::error::/'
+            exit 1
+          }
+
+      - name: Package IPA
+        run: |
+          mkdir -p Payload
+          cp -R build/Build/Products/Release-iphoneos/AgentOS.app Payload/
+          zip -qry AgentOS.ipa Payload
+          ls -lh AgentOS.ipa
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AgentOS-unsigned-ipa
+          path: ios/AgentOS.ipa
+          retention-days: 14
+
+      # Pushes become a GitHub release carrying the IPA plus a Feather/AltStore
+      # source. Feed URL to add in Feather:
+      #   https://github.com/elabx-org/agent-os/releases/latest/download/source.json
+      - name: Prepare release
+        id: release
+        if: github.event_name == 'push'
+        run: |
+          TAG="ios-build-${{ github.run_number }}"
+          python3 scripts/make_source.py AgentOS.ipa "$TAG" "$APP_VERSION" "${{ github.run_number }}" source.json
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "name=Agent-OS iOS $APP_VERSION (build ${{ github.run_number }})" >> "$GITHUB_OUTPUT"
+
+      - name: Publish release
+        if: github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release.outputs.tag }}
+          name: ${{ steps.release.outputs.name }}
+          target_commitish: ${{ github.sha }}
+          files: |
+            ios/AgentOS.ipa
+            ios/source.json
+          make_latest: true

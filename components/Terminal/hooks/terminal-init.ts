@@ -6,6 +6,7 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
 import { SearchAddon } from "@xterm/addon-search";
 import { CanvasAddon } from "@xterm/addon-canvas";
 import { getTerminalThemeForApp } from "../constants";
+import { getDensity } from "@/lib/display-density";
 import { applyTypingAssist, getTypingAssist } from "../typing-assist";
 
 export interface TerminalCallbacks {
@@ -28,7 +29,7 @@ export function createTerminal(
   theme: string,
   callbacks?: TerminalCallbacks
 ): TerminalInstance {
-  const fontSize = isMobile ? 11 : 14;
+  const { terminalFontSize: fontSize, terminalLineHeight } = getDensity();
   const terminalTheme = getTerminalThemeForApp(theme || "dark");
 
   const term = new XTerm({
@@ -39,7 +40,7 @@ export function createTerminal(
     fontWeight: "400",
     fontWeightBold: "600",
     letterSpacing: 0,
-    lineHeight: isMobile ? 1.15 : 1.2,
+    lineHeight: terminalLineHeight,
     scrollback: 15000,
     scrollSensitivity: isMobile ? 3 : 3,
     fastScrollSensitivity: 10,
@@ -175,16 +176,17 @@ export function createTerminal(
   return { term, fitAddon, searchAddon, cleanup };
 }
 
-export function updateTerminalForMobile(
+/** Match the font to the current display's density (see lib/display-density) */
+export function updateTerminalDensity(
   term: XTerm,
   fitAddon: FitAddon,
-  isMobile: boolean,
   sendResize: (cols: number, rows: number) => void
 ): void {
-  const newFontSize = isMobile ? 11 : 14;
-  const newLineHeight = isMobile ? 1.15 : 1.2;
+  const { terminalFontSize: newFontSize, terminalLineHeight: newLineHeight } =
+    getDensity();
 
-  if (term.options.fontSize !== newFontSize) {
+  // Hidden terminals refit when shown; fitting now would shrink tmux
+  if (term.options.fontSize !== newFontSize && term.element?.offsetParent) {
     term.options.fontSize = newFontSize;
     term.options.lineHeight = newLineHeight;
     term.refresh(0, term.rows - 1);

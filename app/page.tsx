@@ -27,6 +27,8 @@ import { Pane } from "@/components/Pane";
 import { useNotifications } from "@/hooks/useNotifications";
 import { useViewport } from "@/hooks/useViewport";
 import { useViewportHeight } from "@/hooks/useViewportHeight";
+import { useNativeBridge } from "@/hooks/useNativeBridge";
+import { useFoldPosture } from "@/hooks/useFoldPosture";
 import { useSessions } from "@/hooks/useSessions";
 import { useProjects } from "@/hooks/useProjects";
 import { useDevServersManager } from "@/hooks/useDevServersManager";
@@ -345,6 +347,17 @@ function HomeContent() {
     sessions,
     activeSessionId: focusedActiveTab?.sessionId,
     checkStateChanges,
+  });
+
+  useFoldPosture();
+  useNativeBridge({
+    waitingCount: sessions.filter(
+      (s) =>
+        !s.conductor_session_id && sessionStatuses[s.id]?.status === "waiting"
+    ).length,
+    openSessions: () => setSidebarOpen((open) => !open),
+    openFind: () => setShowQuickSwitcher(true),
+    openNewSession: () => setShowNewSessionDialog(true),
   });
 
   // Set initial sidebar state based on viewport (only after hydration)

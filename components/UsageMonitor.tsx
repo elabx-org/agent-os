@@ -172,7 +172,7 @@ export function UsageMonitor() {
         <TooltipTrigger asChild>
           <button
             onClick={() => setDialogOpen(true)}
-            className="hover:bg-accent flex items-center gap-3 rounded-md px-2 py-1 transition-colors"
+            className="hover:bg-accent flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md px-2 py-1 transition-colors"
           >
             <MiniBar label="Session" pct={sessionPct} />
             <div className="bg-border h-3 w-px" />

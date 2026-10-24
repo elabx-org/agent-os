@@ -1,9 +1,13 @@
 "use client";
 
+import { useEffect, useMemo } from "react";
+import { useSnapshot } from "valtio";
+import { InboxDialog } from "@/components/Inbox";
 import { SessionList } from "@/components/SessionList";
 import { NewSessionDialog } from "@/components/NewSessionDialog";
 import { StartServerDialog } from "@/components/DevServers/StartServerDialog";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { TextSizeControl } from "@/components/TextSizeControl";
 import { PaneLayout } from "@/components/PaneLayout";
 import { SwipeSidebar } from "@/components/mobile/SwipeSidebar";
 import { QuickSwitcher } from "@/components/QuickSwitcher";
@@ -11,6 +15,10 @@ import { UsageMonitor } from "@/components/UsageMonitor";
 import { MinimaxUsageMonitor } from "@/components/MinimaxUsageMonitor";
 import type { ViewProps } from "./types";
 import { fileOpenActions } from "@/stores/fileOpen";
+import { mobileNavActions, mobileNavStore } from "@/stores/mobileNav";
+import { NavRail } from "@/components/mobile/NavRail";
+import { useSideRail } from "@/hooks/useSideRail";
+import { isNative } from "@/lib/native-bridge";
 
 export function MobileView({
   sessions,
@@ -37,8 +45,52 @@ export function MobileView({
   setStartDevServerProjectId,
   renderPane,
 }: ViewProps) {
+  // The iOS app puts this navigation in the system's own bar
+  const railWidth = useSideRail(!isNative());
+
+  useEffect(() => {
+    mobileNavStore.statuses = sessionStatuses;
+  }, [sessionStatuses]);
+
+  useEffect(() => {
+    mobileNavStore.railActive = railWidth > 0 || isNative();
+  }, [railWidth]);
+
+  const waitingSessions = useMemo(
+    () =>
+      sessions.filter(
+        (s) =>
+          !s.conductor_session_id && sessionStatuses[s.id]?.status === "waiting"
+      ),
+    [sessions, sessionStatuses]
+  );
+
+  const { inboxOpen } = useSnapshot(mobileNavStore);
+  const projectNames = useMemo(
+    () =>
+      Object.fromEntries(
+        projects
+          .filter((p) => p.name !== "Uncategorized")
+          .map((p) => [p.id, p.name])
+      ),
+    [projects]
+  );
+
   return (
-    <main className="bg-background flex h-dvh flex-col overflow-hidden">
+    <main
+      className="bg-background flex h-dvh flex-col overflow-hidden"
+      style={railWidth ? { paddingRight: railWidth } : undefined}
+    >
+      {railWidth > 0 && (
+        <NavRail
+          columnWidth={railWidth}
+          waitingCount={waitingSessions.length}
+          onInbox={() => mobileNavActions.setInboxOpen(true)}
+          onSessions={() => setSidebarOpen(true)}
+          onFind={() => setShowQuickSwitcher(true)}
+          onNewSession={() => setShowNewSessionDialog(true)}
+        />
+      )}
       {/* Swipe sidebar */}
       <SwipeSidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)}>
         <div className="flex h-full flex-col">
@@ -68,6 +120,7 @@ export function MobileView({
           <div className="mt-auto space-y-1 px-4 py-2">
             <UsageMonitor />
             <MinimaxUsageMonitor />
+            <TextSizeControl />
             <div className="flex items-center justify-between">
               <span className="text-muted-foreground text-xs">Theme</span>
               <ThemeToggle />
@@ -82,6 +135,16 @@ export function MobileView({
       </div>
 
       {/* Dialogs */}
+      <InboxDialog
+        open={inboxOpen}
+        onOpenChange={mobileNavActions.setInboxOpen}
+        waitingSessions={waitingSessions}
+        projectNames={projectNames}
+        onOpenSession={(session) => {
+          attachToSession(session);
+          mobileNavActions.requestViewMode("terminal");
+        }}
+      />
       <NewSessionDialog
         open={showNewSessionDialog}
         projects={projects}

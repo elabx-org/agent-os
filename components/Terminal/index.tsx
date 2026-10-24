@@ -28,11 +28,16 @@ import { ScrollToBottomButton } from "./ScrollToBottomButton";
 import { TerminalToolbar } from "./TerminalToolbar";
 import { KeybarToggleButton } from "./KeybarToggleButton";
 import { Composer } from "./Composer";
+import { DeckPad } from "./DeckPad";
+import { useFoldDeck } from "@/hooks/useFoldDeck";
 import { COMPOSER_EVENT, getComposerEnabled } from "./typing-assist";
 import { useTerminalConnection, useTerminalSearch } from "./hooks";
 import type { TerminalScrollState } from "./hooks";
 import { useViewport } from "@/hooks/useViewport";
 import { useKeyboardInset } from "@/hooks/useKeyboardInset";
+import { useSnapshot } from "valtio";
+import { isNative, onNativeEvent } from "@/lib/native-bridge";
+import { mobileNavStore } from "@/stores/mobileNav";
 import { KeyboardDebugOverlay, useKeyboardDebug } from "./KeyboardDebugOverlay";
 import { useFileDrop } from "@/hooks/useFileDrop";
 import { uploadFileToTemp } from "@/lib/file-upload";
@@ -274,10 +279,15 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
     // Keybar follows touch input, not width: the iPhone Duo inner display
     // is wider than the mobile breakpoint but still uses the on-screen keyboard
     const showKeybar = isMobile || isTouch;
-    const keyboard = useKeyboardInset(showKeybar);
+    // The iOS app sizes the page above the keyboard itself
+    const keyboard = useKeyboardInset(showKeybar && !isNative());
+    // ...and shows the keys on the keyboard, so the keybar steps aside
+    const { nativeKeyboard } = useSnapshot(mobileNavStore);
     // Split/floating keyboards cover the bottom without shrinking the viewport,
     // so move the keybar to the top where it stays reachable
-    const keybarAtTop = keyboard.mode === "floating";
+    // Half open like a laptop: output above the fold, input on the deck below
+    const deck = useFoldDeck(containerRef, keyboard.height, showKeybar);
+    const keybarAtTop = keyboard.mode === "floating" && !deck;
 
     const composerOn = showKeybar && composerEnabled;
     composerOnRef.current = composerOn;
@@ -306,6 +316,75 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
         setTimeout(() => sendInput("\r"), text ? 80 : 0);
       },
       [sendInput, sendPaste]
+    );
+
+    // With the composer on, xterm's keyboard is off, so a tap on the terminal
+    // (Claude's old prompt line included) goes to the composer instead.
+    // Scrolls, drags and select mode are left alone.
+    useEffect(() => {
+      const el = terminalRef.current;
+      if (!el || !composerOn || selectMode) return;
+      let start: { x: number; y: number; t: number } | null = null;
+      const onStart = (e: TouchEvent) => {
+        const t = e.touches[0];
+        start =
+          e.touches.length === 1
+            ? { x: t.clientX, y: t.clientY, t: Date.now() }
+            : null;
+      };
+      const onEnd = (e: TouchEvent) => {
+        const t = e.changedTouches[0];
+        if (!start || !t) return;
+        const moved = Math.hypot(t.clientX - start.x, t.clientY - start.y);
+        const quick = Date.now() - start.t < 400;
+        start = null;
+        if (moved > 10 || !quick) return;
+        const box = keybarRef.current?.querySelector<HTMLTextAreaElement>(
+          "textarea[data-composer]"
+        );
+        if (box && document.activeElement !== box) {
+          e.preventDefault();
+          box.focus();
+        }
+      };
+      el.addEventListener("touchstart", onStart, { passive: true });
+      el.addEventListener("touchend", onEnd);
+      return () => {
+        el.removeEventListener("touchstart", onStart);
+        el.removeEventListener("touchend", onEnd);
+      };
+    }, [composerOn, selectMode]);
+
+    // The keybar's newline key adds a line to the composer while it has focus
+    const keybarKeyPress = useCallback(
+      (key: string) => {
+        const el = document.activeElement;
+        if (
+          key === "\n" &&
+          el instanceof HTMLTextAreaElement &&
+          el.dataset.composer !== undefined
+        ) {
+          const { selectionStart: from, selectionEnd: to, value } = el;
+          setComposerText(value.slice(0, from) + "\n" + value.slice(to));
+          requestAnimationFrame(() => el.setSelectionRange(from + 1, from + 1));
+          return;
+        }
+        sendInput(key);
+      },
+      [sendInput]
+    );
+
+    // Keys from the iOS app's keyboard bar go to the terminal being typed in
+    useEffect(
+      () =>
+        onNativeEvent((event) => {
+          if (
+            event.type === "key" &&
+            containerRef.current?.contains(document.activeElement)
+          )
+            keybarKeyPress(event.key);
+        }),
+      [keybarKeyPress]
     );
 
     // Direct typing for Claude Code's / and @ pickers; back to the composer on blur
@@ -592,8 +671,8 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
         {/* Scroll to bottom button */}
         <ScrollToBottomButton visible={!isAtBottom} onClick={scrollToBottom} />
 
-        {/* Mobile: Keyboard toggle button */}
-        {showKeybar && (
+        {/* Mobile: Keyboard toggle button (not on the deck: it would sit in the fold) */}
+        {showKeybar && !deck && (
           <KeybarToggleButton
             isVisible={toolbarVisible}
             keybarAtTop={keybarAtTop}
@@ -606,15 +685,21 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
           />
         )}
 
+        {/* Nothing in the fold */}
+        {showKeybar && deck && (
+          <div aria-hidden="true" className="shrink-0" style={{ height: deck.gap }} />
+        )}
+
         {/* Mobile: Toolbar with special keys (native keyboard handles text) */}
         {showKeybar && (
           <div
             ref={keybarRef}
-            className="bg-background shrink-0"
+            className={cn("bg-background shrink-0", deck && "flex flex-col")}
             style={{
+              height: deck?.deck,
               order: keybarAtTop ? -1 : undefined,
               paddingLeft: "env(safe-area-inset-left)",
-              paddingRight: "env(safe-area-inset-right)",
+              paddingRight: "var(--safe-right, env(safe-area-inset-right))",
             }}
           >
             {composerOn && (
@@ -626,14 +711,17 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
               />
             )}
             <TerminalToolbar
-              onKeyPress={sendInput}
+              onKeyPress={keybarKeyPress}
               onPaste={sendPaste}
               onImagePicker={() => setShowImagePicker(true)}
               onCopy={copySelection}
               selectMode={selectMode}
               onSelectModeChange={setSelectMode}
-              visible={toolbarVisible}
+              visible={toolbarVisible && !nativeKeyboard}
             />
+            {deck && !nativeKeyboard && keyboard.height === 0 && (
+              <DeckPad onKeyPress={keybarKeyPress} />
+            )}
           </div>
         )}
 

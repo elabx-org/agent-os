@@ -26,7 +26,7 @@ export function KeybarToggleButton({
     <button
       onClick={onToggle}
       className={cn(
-        "absolute right-[calc(0.75rem+env(safe-area-inset-right))] z-30",
+        "absolute right-[calc(0.75rem+var(--safe-right,env(safe-area-inset-right)))] z-30",
         "flex items-center justify-center",
         "h-11 w-11 rounded-full",
         "bg-secondary/90 backdrop-blur-sm",
