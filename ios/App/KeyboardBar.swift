@@ -1,7 +1,8 @@
 import UIKit
 
-/// The terminal keys Claude Code needs, on the keyboard itself: Esc, Tab,
-/// ^C set apart, the arrows and a new line, then a key to put the keyboard away.
+/// The terminal keys Claude Code needs, on the keyboard itself: Esc, Tab and
+/// Shift-Tab, ^C set apart, the arrows (they repeat while held), / and @ for
+/// the pickers, a new line, then a key to put the keyboard away.
 final class KeyboardBar: UIInputView {
     var onKey: ((String) -> Void)?
     var onDismiss: (() -> Void)?
@@ -14,24 +15,31 @@ final class KeyboardBar: UIInputView {
         let sequence: String
         var label: String?
         var destructive = false
+        var repeats = false
     }
 
     private let groups: [[Key]] = [
         [
             Key(title: "Esc", sequence: "\u{1b}", label: "Escape"),
             Key(title: "Tab", sequence: "\t"),
+            Key(title: "⇧Tab", sequence: "\u{1b}[Z", label: "Shift Tab"),
         ],
         [Key(title: "^C", sequence: "\u{03}", label: "Control C", destructive: true)],
         [
-            Key(title: "", symbol: "arrow.left", sequence: "\u{1b}[D", label: "Left"),
-            Key(title: "", symbol: "arrow.up", sequence: "\u{1b}[A", label: "Up"),
-            Key(title: "", symbol: "arrow.down", sequence: "\u{1b}[B", label: "Down"),
-            Key(title: "", symbol: "arrow.right", sequence: "\u{1b}[C", label: "Right"),
+            Key(title: "", symbol: "arrow.left", sequence: "\u{1b}[D", label: "Left", repeats: true),
+            Key(title: "", symbol: "arrow.up", sequence: "\u{1b}[A", label: "Up", repeats: true),
+            Key(title: "", symbol: "arrow.down", sequence: "\u{1b}[B", label: "Down", repeats: true),
+            Key(title: "", symbol: "arrow.right", sequence: "\u{1b}[C", label: "Right", repeats: true),
+        ],
+        [
+            Key(title: "/", sequence: "/", label: "Slash"),
+            Key(title: "@", sequence: "@", label: "At"),
         ],
         [Key(title: "", symbol: "return", sequence: "\n", label: "New line")],
     ]
 
     private let haptics = UIImpactFeedbackGenerator(style: .light)
+    private var repeatTimer: Timer?
 
     init() {
         super.init(frame: CGRect(x: 0, y: 0, width: 0, height: 52), inputViewStyle: .keyboard)
@@ -106,10 +114,38 @@ final class KeyboardBar: UIInputView {
         let button = UIButton(configuration: config)
         button.accessibilityLabel = key.label ?? key.title
         button.widthAnchor.constraint(greaterThanOrEqualToConstant: 44).isActive = true
-        button.addAction(UIAction { [weak self] _ in
-            self?.haptics.impactOccurred()
-            self?.onKey?(key.sequence)
-        }, for: .touchUpInside)
+        if key.repeats {
+            // Fires on touch down, then again after a pause while held
+            button.addAction(UIAction { [weak self] _ in
+                guard let self else { return }
+                self.press(key)
+                self.repeatTimer?.invalidate()
+                self.repeatTimer = Timer.scheduledTimer(withTimeInterval: 0.4, repeats: false) { [weak self] _ in
+                    self?.repeatTimer = Timer.scheduledTimer(withTimeInterval: 0.08, repeats: true) { [weak self] _ in
+                        self?.onKey?(key.sequence)
+                    }
+                }
+            }, for: .touchDown)
+            button.addAction(UIAction { [weak self] _ in
+                self?.repeatTimer?.invalidate()
+                self?.repeatTimer = nil
+            }, for: [.touchUpInside, .touchUpOutside, .touchCancel])
+        } else {
+            button.addAction(UIAction { [weak self] _ in self?.press(key) }, for: .touchUpInside)
+        }
         return button
+    }
+
+    private func press(_ key: Key) {
+        haptics.impactOccurred()
+        onKey?(key.sequence)
+    }
+
+    override func willMove(toWindow newWindow: UIWindow?) {
+        super.willMove(toWindow: newWindow)
+        if newWindow == nil {
+            repeatTimer?.invalidate()
+            repeatTimer = nil
+        }
     }
 }

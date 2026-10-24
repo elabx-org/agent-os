@@ -49,6 +49,11 @@ export function isNative(): boolean {
   return typeof window !== "undefined" && !!window.agentosNative;
 }
 
+/** Keys from the bar that are text (/, @, a new line) rather than terminal controls */
+export function isTextKey(key: string): boolean {
+  return key === "\n" || /^[^\x00-\x1f\x7f]+$/.test(key);
+}
+
 export function postToNative(message: NativeState): void {
   window.webkit?.messageHandlers?.agentos?.postMessage(message);
 }
