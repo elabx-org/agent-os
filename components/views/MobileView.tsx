@@ -21,6 +21,12 @@ import { NavRail } from "@/components/mobile/NavRail";
 import { useSideRail } from "@/hooks/useSideRail";
 import { isNative } from "@/lib/native-bridge";
 import { useIsNative } from "@/hooks/useIsNative";
+import { Switch } from "@/components/ui/switch";
+import {
+  duoPreviewStore,
+  loadDuoPreview,
+  setDuoPreview,
+} from "@/stores/duoPreview";
 
 export function MobileView({
   sessions,
@@ -51,6 +57,8 @@ export function MobileView({
   const railWidth = useSideRail(!isNative());
   const native = useIsNative();
 
+  useEffect(loadDuoPreview, []);
+
   useEffect(() => {
     mobileNavStore.statuses = sessionStatuses;
   }, [sessionStatuses]);
@@ -69,6 +77,7 @@ export function MobileView({
   );
 
   const { inboxOpen } = useSnapshot(mobileNavStore);
+  const { on: duoPreview } = useSnapshot(duoPreviewStore);
   const projectNames = useMemo(
     () =>
       Object.fromEntries(
@@ -129,6 +138,7 @@ export function MobileView({
                 setSidebarOpen(false);
               }}
               onNewSession={() => setShowNewSessionDialog(true)}
+              glance={native && duoPreview}
               projectsView={
                 <div className="flex h-full flex-col">
                   <div className="min-h-0 flex-1 overflow-hidden">
@@ -143,6 +153,15 @@ export function MobileView({
                       </span>
                       <ThemeToggle />
                     </div>
+                    <label className="flex min-h-[44px] items-center justify-between gap-3">
+                      <span className="text-muted-foreground text-xs">
+                        New closed-screen layout (trial)
+                      </span>
+                      <Switch
+                        checked={duoPreview}
+                        onCheckedChange={setDuoPreview}
+                      />
+                    </label>
                   </div>
                 </div>
               }
