@@ -5,6 +5,7 @@ import { Bell, GitBranch, Plus } from "lucide-react";
 import { InboxItem } from "@/components/Inbox";
 import { PushSettings } from "@/components/PushSettings";
 import { UsageMonitor } from "@/components/UsageMonitor";
+import { BackgroundAgents } from "@/components/BackgroundAgents";
 import { AppTitle } from "@/components/SessionList/SessionListHeader";
 import { getTimeAgo, statusConfig } from "@/components/SessionCard";
 import type { SessionStatus } from "@/components/views/types";
@@ -292,6 +293,8 @@ export function MissionControl({
               </ul>
             )}
           </section>
+
+          <BackgroundAgents />
         </div>
       )}
     </div>
