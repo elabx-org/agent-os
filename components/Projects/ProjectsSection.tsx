@@ -171,6 +171,16 @@ export function ProjectsSection({
         const runningServers = getProjectRunningServers(project.id);
         const projectDevServers = getProjectDevServers(project.id);
 
+        // Uncategorized only holds sessions that have no project: show it
+        // when it holds something, or when it's the only project
+        if (
+          project.is_uncategorized &&
+          projects.length > 1 &&
+          projectSessions.length === 0 &&
+          projectDevServers.length === 0
+        )
+          return null;
+
         return (
           <div key={project.id} className="space-y-0.5">
             {/* Project header */}
