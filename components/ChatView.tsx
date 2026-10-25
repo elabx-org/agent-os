@@ -24,6 +24,9 @@ import {
   Wrench,
   type LucideIcon,
   ChevronRight,
+  ChevronLeft,
+  Check,
+  CircleSlash,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Markdown } from "@/components/Markdown";
@@ -33,6 +36,7 @@ import { isTextKey, onNativeEvent } from "@/lib/native-bridge";
 import { useFoldDeck } from "@/hooks/useFoldDeck";
 import type { Session } from "@/lib/db";
 import type { ChatItem } from "@/lib/claude-transcript";
+import type { SubagentInfo } from "@/lib/claude-subagents";
 
 const POLL_MS = 1500;
 /** Runs of tool calls longer than this collapse to their last few */
@@ -70,7 +74,8 @@ interface TranscriptResponse {
   unsupported?: boolean;
 }
 
-function useTranscript(sessionId: string, active: boolean) {
+/** `base` is the session's API path, or one of its subagents' */
+function useTranscript(base: string, active: boolean) {
   const [items, setItems] = useState<ChatItem[]>([]);
   const [state, setState] = useState<"loading" | "ready" | "missing">(
     "loading"
@@ -84,7 +89,7 @@ function useTranscript(sessionId: string, active: boolean) {
     cursor.current = {};
     setItems([]);
     setState("loading");
-  }, [sessionId]);
+  }, [base]);
 
   // The page of history above what's shown
   const loadEarlier = useCallback(async () => {
@@ -94,7 +99,7 @@ function useTranscript(sessionId: string, active: boolean) {
     setLoadingEarlier(true);
     try {
       const res = await fetch(
-        `/api/sessions/${sessionId}/transcript?before=${start}&sid=${sid ?? ""}`
+        `${base}/transcript?before=${start}&sid=${sid ?? ""}`
       );
       const data: TranscriptResponse = await res.json();
       // A different Claude session now: the poll will start over
@@ -108,7 +113,7 @@ function useTranscript(sessionId: string, active: boolean) {
       busy.current = false;
       setLoadingEarlier(false);
     }
-  }, [sessionId]);
+  }, [base]);
 
   useEffect(() => {
     if (!active) return;
@@ -120,7 +125,7 @@ function useTranscript(sessionId: string, active: boolean) {
       const qs =
         offset === undefined ? "" : `?since=${offset}&sid=${sid ?? ""}`;
       try {
-        const res = await fetch(`/api/sessions/${sessionId}/transcript${qs}`);
+        const res = await fetch(`${base}/transcript${qs}`);
         const data: TranscriptResponse = await res.json();
         if (stopped) return;
         if (data.notFound || data.unsupported || !data.items) {
@@ -151,9 +156,57 @@ function useTranscript(sessionId: string, active: boolean) {
       stopped = true;
       clearTimeout(timer);
     };
-  }, [sessionId, active]);
+  }, [base, active]);
 
   return { items, state, truncated, loadEarlier, loadingEarlier };
+}
+
+const AGENTS_POLL_MS = 3000;
+
+/** The subagents the session has started, by the Agent call that started each */
+function useSubagents(sessionId: string, active: boolean) {
+  const [agents, setAgents] = useState<SubagentInfo[]>([]);
+  useEffect(() => {
+    setAgents([]);
+    if (!active) return;
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const poll = async () => {
+      try {
+        const res = await fetch(`/api/sessions/${sessionId}/subagents`);
+        const data = await res.json();
+        if (!stopped) setAgents(data.subagents ?? []);
+      } catch {
+        // Try again next tick
+      }
+      if (!stopped) timer = setTimeout(poll, AGENTS_POLL_MS);
+    };
+    poll();
+    return () => {
+      stopped = true;
+      clearTimeout(timer);
+    };
+  }, [sessionId, active]);
+  return agents;
+}
+
+function useRows(items: ChatItem[]) {
+  return useMemo(() => {
+    const results = new Map<string, ResultItem>();
+    const rows: Row[] = [];
+    for (const item of items) {
+      if (item.kind === "result") {
+        results.set(item.toolUseId, item);
+      } else if (item.kind === "tool") {
+        const last = rows[rows.length - 1];
+        if (last?.kind === "tools") last.tools.push(item);
+        else rows.push({ kind: "tools", id: item.id, tools: [item] });
+      } else {
+        rows.push(item);
+      }
+    }
+    return { rows, results };
+  }, [items]);
 }
 
 /** Lines shown before "Show all": the first change with a line of context */
@@ -253,12 +306,67 @@ function ToolRow({ tool, result }: { tool: ToolItem; result?: ResultItem }) {
   );
 }
 
+function AgentStatus({ agent }: { agent: SubagentInfo }) {
+  if (agent.status === "running")
+    return (
+      <Loader2 className="text-primary h-3.5 w-3.5 shrink-0 animate-spin" />
+    );
+  if (agent.status === "done")
+    return <Check className="h-3.5 w-3.5 shrink-0 text-emerald-400" />;
+  return <CircleSlash className="text-muted-foreground h-3.5 w-3.5 shrink-0" />;
+}
+
+/** A subagent the session started: what it's doing, and a way into it */
+function AgentRow({
+  agent,
+  onOpen,
+}: {
+  agent: SubagentInfo;
+  onOpen: (agentId: string) => void;
+}) {
+  const label =
+    agent.status === "running"
+      ? "Working"
+      : agent.status === "done"
+        ? "Done"
+        : "Stopped";
+  return (
+    <button
+      type="button"
+      onClick={() => onOpen(agent.agentId)}
+      className="bg-card border-border active:bg-accent hover:bg-accent/50 flex min-h-[52px] w-full items-center gap-2.5 rounded-xl border px-3 py-2 text-left"
+    >
+      <Bot className="text-muted-foreground h-4 w-4 shrink-0" />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm">{agent.description}</span>
+        <span className="text-muted-foreground block truncate text-xs">
+          {[
+            agent.agentType,
+            label,
+            agent.steps !== null
+              ? `${agent.steps} ${agent.steps === 1 ? "step" : "steps"}`
+              : null,
+          ]
+            .filter(Boolean)
+            .join(" · ")}
+        </span>
+      </span>
+      <AgentStatus agent={agent} />
+      <ChevronRight className="text-muted-foreground h-4 w-4 shrink-0" />
+    </button>
+  );
+}
+
 function ToolRun({
   tools,
   results,
+  agents,
+  onOpenAgent,
 }: {
   tools: ToolItem[];
   results: Map<string, ResultItem>;
+  agents?: Map<string, SubagentInfo>;
+  onOpenAgent?: (agentId: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const hidden = expanded ? 0 : Math.max(0, tools.length - TOOL_RUN_VISIBLE);
@@ -273,10 +381,67 @@ function ToolRun({
           {hidden} earlier {hidden === 1 ? "step" : "steps"}
         </button>
       )}
-      {tools.slice(hidden).map((tool) => (
-        <ToolRow key={tool.id} tool={tool} result={results.get(tool.id)} />
-      ))}
+      {tools.slice(hidden).map((tool) => {
+        const agent = agents?.get(tool.id);
+        return agent && onOpenAgent ? (
+          <AgentRow key={tool.id} agent={agent} onOpen={onOpenAgent} />
+        ) : (
+          <ToolRow key={tool.id} tool={tool} result={results.get(tool.id)} />
+        );
+      })}
     </div>
+  );
+}
+
+/** The conversation's messages and tool calls, as rows */
+function Conversation({
+  rows,
+  results,
+  agents,
+  onOpenAgent,
+}: {
+  rows: Row[];
+  results: Map<string, ResultItem>;
+  agents?: Map<string, SubagentInfo>;
+  onOpenAgent?: (agentId: string) => void;
+}) {
+  return (
+    <>
+      {rows.map((row) =>
+        row.kind === "user" ? (
+          <div
+            key={row.id}
+            className="bg-accent ml-8 max-w-full min-w-0 self-end rounded-2xl rounded-br-md px-3.5 py-2 text-sm [overflow-wrap:anywhere] whitespace-pre-wrap"
+          >
+            {row.text}
+          </div>
+        ) : row.kind === "summary" ? (
+          <details key={row.id} className="group text-xs">
+            <summary className="text-muted-foreground flex cursor-pointer list-none items-center gap-3 py-2 [&::-webkit-details-marker]:hidden">
+              <span className="bg-border h-px flex-1" />
+              <span className="flex items-center gap-1">
+                <ChevronRight className="h-3.5 w-3.5 transition-transform group-open:rotate-90" />
+                Earlier conversation summarised
+              </span>
+              <span className="bg-border h-px flex-1" />
+            </summary>
+            <div className="bg-secondary/40 mt-1 max-h-[60vh] overflow-y-auto rounded-xl p-3">
+              <Markdown text={row.text} className="text-xs break-words" />
+            </div>
+          </details>
+        ) : row.kind === "assistant" ? (
+          <Markdown key={row.id} text={row.text} className="break-words" />
+        ) : (
+          <ToolRun
+            key={row.id}
+            tools={row.tools}
+            results={results}
+            agents={agents}
+            onOpenAgent={onOpenAgent}
+          />
+        )
+      )}
+    </>
   );
 }
 
@@ -290,26 +455,24 @@ interface ChatViewProps {
 /** Claude Code's session as a conversation, read from its transcript */
 export function ChatView({ session, active, onOpenTerminal }: ChatViewProps) {
   const { items, state, truncated, loadEarlier, loadingEarlier } =
-    useTranscript(session.id, active);
+    useTranscript(`/api/sessions/${session.id}`, active);
   const { statuses, nativeKeyboard } = useSnapshot(mobileNavStore);
   const status = statuses[session.id]?.status;
+  const { rows, results } = useRows(items);
 
-  const { rows, results } = useMemo(() => {
-    const results = new Map<string, ResultItem>();
-    const rows: Row[] = [];
-    for (const item of items) {
-      if (item.kind === "result") {
-        results.set(item.toolUseId, item);
-      } else if (item.kind === "tool") {
-        const last = rows[rows.length - 1];
-        if (last?.kind === "tools") last.tools.push(item);
-        else rows.push({ kind: "tools", id: item.id, tools: [item] });
-      } else {
-        rows.push(item);
-      }
-    }
-    return { rows, results };
-  }, [items]);
+  const agents = useSubagents(session.id, active);
+  const agentsByTool = useMemo(
+    () =>
+      new Map(
+        agents.flatMap((a) => (a.toolUseId ? [[a.toolUseId, a] as const] : []))
+      ),
+    [agents]
+  );
+  const running = agents.filter((a) => a.status === "running");
+  const [openAgent, setOpenAgent] = useState<string | null>(null);
+  const [agentList, setAgentList] = useState(false);
+  useEffect(() => setOpenAgent(null), [session.id]);
+  const opened = agents.find((a) => a.agentId === openAgent);
 
   // Follow new output while the reader is at the bottom
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -404,7 +567,296 @@ export function ChatView({ session, active, onOpenTerminal }: ChatViewProps) {
   }, [draft, session.id]);
 
   return (
-    <div ref={rootRef} className="bg-background flex h-full flex-col">
+    <div className="relative flex h-full">
+      <div
+        ref={rootRef}
+        className="bg-background flex h-full min-w-0 flex-1 flex-col"
+      >
+        {agents.length > 0 && (
+          <div className="border-border shrink-0 border-b px-3 py-1.5">
+            <button
+              type="button"
+              onClick={() => setAgentList((v) => !v)}
+              aria-expanded={agentList}
+              className="text-muted-foreground active:bg-accent hover:bg-accent flex h-9 items-center gap-2 rounded-full px-3 text-xs"
+            >
+              {running.length > 0 ? (
+                <Loader2 className="text-primary h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Bot className="h-3.5 w-3.5" />
+              )}
+              {running.length > 0
+                ? `${running.length} ${running.length === 1 ? "agent" : "agents"} working`
+                : `${agents.length} ${agents.length === 1 ? "agent" : "agents"}`}
+              <ChevronRight
+                className={cn(
+                  "h-3.5 w-3.5 transition-transform",
+                  agentList && "rotate-90"
+                )}
+              />
+            </button>
+            {agentList && (
+              <div className="mx-auto flex max-h-[40vh] max-w-3xl flex-col gap-1.5 overflow-y-auto pt-1.5 pb-1">
+                {[
+                  ...running,
+                  ...agents.filter((a) => a.status !== "running").reverse(),
+                ].map((agent) => (
+                  <AgentRow
+                    key={agent.agentId}
+                    agent={agent}
+                    onOpen={(id) => {
+                      setOpenAgent(id);
+                      setAgentList(false);
+                    }}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+        <div
+          ref={scrollRef}
+          onScroll={(e) => {
+            const el = e.currentTarget;
+            atBottom.current =
+              el.scrollHeight - el.scrollTop - el.clientHeight < 48;
+          }}
+          className="min-h-0 flex-1 overflow-y-auto px-3 py-3"
+        >
+          <div className="mx-auto flex max-w-3xl flex-col gap-3">
+            {state === "loading" && (
+              <div className="text-muted-foreground flex items-center gap-2 py-8 text-sm">
+                <Loader2 className="h-4 w-4 animate-spin" /> Loading the
+                conversation…
+              </div>
+            )}
+            {state === "missing" && (
+              <div className="text-muted-foreground py-8 text-sm">
+                No Claude Code conversation found for this session.{" "}
+                <button
+                  type="button"
+                  onClick={onOpenTerminal}
+                  className="text-primary underline-offset-2 hover:underline"
+                >
+                  Open the terminal
+                </button>
+              </div>
+            )}
+            {state === "ready" && truncated && (
+              <div ref={topRef} className="flex justify-center py-1">
+                <button
+                  type="button"
+                  onClick={loadEarlier}
+                  disabled={loadingEarlier}
+                  className="text-muted-foreground active:bg-accent hover:bg-accent flex h-9 items-center gap-2 rounded-full px-4 text-xs"
+                >
+                  {loadingEarlier && (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  )}
+                  {loadingEarlier
+                    ? "Loading earlier messages…"
+                    : "Earlier messages"}
+                </button>
+              </div>
+            )}
+            <Conversation
+              rows={rows}
+              results={results}
+              agents={agentsByTool}
+              onOpenAgent={setOpenAgent}
+            />
+            {status === "running" && (
+              <div className="text-muted-foreground flex items-center gap-2 text-xs">
+                <Loader2 className="text-primary h-3.5 w-3.5 animate-spin" />
+                Claude is working
+              </div>
+            )}
+            {status === "waiting" && !deckControls && (
+              <ul>
+                <InboxItem
+                  session={session}
+                  onOpen={onOpenTerminal}
+                  questionsOnly
+                />
+              </ul>
+            )}
+          </div>
+        </div>
+
+        {deck && (
+          <div
+            aria-hidden="true"
+            className="shrink-0"
+            style={{ height: deck.gap }}
+          />
+        )}
+        <div
+          className={cn(
+            "border-border border-t px-2 py-1.5 pb-[calc(0.375rem+env(safe-area-inset-bottom))]",
+            deck && "flex flex-col"
+          )}
+          style={{ height: deck?.deck }}
+        >
+          <div
+            className={cn(
+              "flex shrink-0 gap-1.5",
+              deck ? "items-start" : "items-end"
+            )}
+          >
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={insertNewline}
+              aria-label="New line"
+              title="New line"
+              className="bg-secondary text-muted-foreground active:bg-accent flex h-[44px] w-[44px] flex-shrink-0 items-center justify-center rounded-full [@media(pointer:fine)]:hidden"
+            >
+              <CornerDownLeft className="h-5 w-5" />
+            </button>
+            <textarea
+              ref={inputRef}
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onFocus={() => setComposerFocused(true)}
+              onBlur={() => setComposerFocused(false)}
+              onKeyDown={(e) => {
+                // Return sends, Shift+Return adds a line
+                if (
+                  e.key === "Enter" &&
+                  !e.shiftKey &&
+                  !e.nativeEvent.isComposing
+                ) {
+                  e.preventDefault();
+                  send();
+                }
+              }}
+              enterKeyHint="send"
+              rows={1}
+              placeholder="Message Claude"
+              className="bg-secondary text-foreground placeholder:text-muted-foreground max-h-40 min-h-[44px] flex-1 resize-none rounded-2xl px-3.5 py-2.5 text-base leading-6 focus:outline-none"
+            />
+            <button
+              type="button"
+              onClick={send}
+              disabled={!draft.trim() || sending}
+              aria-label="Send"
+              className={cn(
+                "flex h-[44px] w-[44px] flex-shrink-0 items-center justify-center rounded-full",
+                draft.trim()
+                  ? "bg-primary text-primary-foreground active:opacity-80"
+                  : "bg-secondary text-muted-foreground"
+              )}
+            >
+              {sending ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : (
+                <ArrowUp className="h-5 w-5" />
+              )}
+            </button>
+          </div>
+          {/* On the deck, within the thumbs' reach: the answer Claude is
+          waiting for, or Stop while it works */}
+          {deckControls && (
+            <div className="flex min-h-0 flex-1 flex-col justify-end gap-3 overflow-y-auto px-2 pt-3">
+              {status === "waiting" && (
+                <ul>
+                  <InboxItem
+                    session={session}
+                    onOpen={onOpenTerminal}
+                    questionsOnly
+                  />
+                </ul>
+              )}
+              {status === "running" && (
+                <button
+                  type="button"
+                  onClick={stop}
+                  disabled={stopping}
+                  className="flex h-14 w-full shrink-0 items-center justify-center gap-2 rounded-2xl border border-red-500/40 bg-red-500/10 text-sm font-semibold text-red-400 active:opacity-70"
+                >
+                  {stopping ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Square className="h-4 w-4 fill-current" />
+                  )}
+                  Stop Claude
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+      {opened && (
+        <SubagentPanel
+          key={opened.agentId}
+          sessionId={session.id}
+          agent={opened}
+          onClose={() => setOpenAgent(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * One subagent's own conversation: over the chat on a phone, beside it when
+ * there's room (an iPhone Duo opened flat, a desktop)
+ */
+function SubagentPanel({
+  sessionId,
+  agent,
+  onClose,
+}: {
+  sessionId: string;
+  agent: SubagentInfo;
+  onClose: () => void;
+}) {
+  const { items, state, truncated, loadEarlier, loadingEarlier } =
+    useTranscript(
+      `/api/sessions/${sessionId}/subagents/${agent.agentId}`,
+      true
+    );
+  const { rows, results } = useRows(items);
+
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const atBottom = useRef(true);
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (el && atBottom.current) el.scrollTop = el.scrollHeight;
+  }, [items]);
+
+  return (
+    <section
+      aria-label={agent.description}
+      className="bg-background border-border absolute inset-0 z-10 flex flex-col md:static md:w-[46%] md:max-w-xl md:shrink-0 md:border-l"
+    >
+      <header className="border-border flex shrink-0 items-center gap-2 border-b px-2 py-1.5">
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Back to the conversation"
+          className="text-primary active:bg-accent hover:bg-accent flex h-10 w-10 shrink-0 items-center justify-center rounded-full"
+        >
+          <ChevronLeft className="h-5 w-5" />
+        </button>
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-sm font-medium">
+            {agent.description}
+          </div>
+          <div className="text-muted-foreground truncate text-xs">
+            {[
+              agent.agentType || "Agent",
+              agent.status === "running"
+                ? "Working"
+                : agent.status === "done"
+                  ? "Done"
+                  : "Stopped",
+            ].join(" · ")}
+          </div>
+        </div>
+        <AgentStatus agent={agent} />
+        <span className="w-2" />
+      </header>
       <div
         ref={scrollRef}
         onScroll={(e) => {
@@ -412,29 +864,21 @@ export function ChatView({ session, active, onOpenTerminal }: ChatViewProps) {
           atBottom.current =
             el.scrollHeight - el.scrollTop - el.clientHeight < 48;
         }}
-        className="min-h-0 flex-1 overflow-y-auto px-3 py-3"
+        className="min-h-0 flex-1 overflow-y-auto px-3 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]"
       >
         <div className="mx-auto flex max-w-3xl flex-col gap-3">
           {state === "loading" && (
             <div className="text-muted-foreground flex items-center gap-2 py-8 text-sm">
-              <Loader2 className="h-4 w-4 animate-spin" /> Loading the
-              conversation…
+              <Loader2 className="h-4 w-4 animate-spin" /> Loading…
             </div>
           )}
           {state === "missing" && (
             <div className="text-muted-foreground py-8 text-sm">
-              No Claude Code conversation found for this session.{" "}
-              <button
-                type="button"
-                onClick={onOpenTerminal}
-                className="text-primary underline-offset-2 hover:underline"
-              >
-                Open the terminal
-              </button>
+              This agent&apos;s conversation isn&apos;t available.
             </div>
           )}
           {state === "ready" && truncated && (
-            <div ref={topRef} className="flex justify-center py-1">
+            <div className="flex justify-center py-1">
               <button
                 type="button"
                 onClick={loadEarlier}
@@ -444,160 +888,19 @@ export function ChatView({ session, active, onOpenTerminal }: ChatViewProps) {
                 {loadingEarlier && (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 )}
-                {loadingEarlier
-                  ? "Loading earlier messages…"
-                  : "Earlier messages"}
+                Earlier messages
               </button>
             </div>
           )}
-          {rows.map((row) =>
-            row.kind === "user" ? (
-              <div
-                key={row.id}
-                className="bg-accent ml-8 max-w-full min-w-0 self-end rounded-2xl rounded-br-md px-3.5 py-2 text-sm [overflow-wrap:anywhere] whitespace-pre-wrap"
-              >
-                {row.text}
-              </div>
-            ) : row.kind === "summary" ? (
-              <details key={row.id} className="group text-xs">
-                <summary className="text-muted-foreground flex cursor-pointer list-none items-center gap-3 py-2 [&::-webkit-details-marker]:hidden">
-                  <span className="bg-border h-px flex-1" />
-                  <span className="flex items-center gap-1">
-                    <ChevronRight className="h-3.5 w-3.5 transition-transform group-open:rotate-90" />
-                    Earlier conversation summarised
-                  </span>
-                  <span className="bg-border h-px flex-1" />
-                </summary>
-                <div className="bg-secondary/40 mt-1 max-h-[60vh] overflow-y-auto rounded-xl p-3">
-                  <Markdown text={row.text} className="text-xs break-words" />
-                </div>
-              </details>
-            ) : row.kind === "assistant" ? (
-              <Markdown key={row.id} text={row.text} className="break-words" />
-            ) : (
-              <ToolRun key={row.id} tools={row.tools} results={results} />
-            )
-          )}
-          {status === "running" && (
+          <Conversation rows={rows} results={results} />
+          {agent.status === "running" && (
             <div className="text-muted-foreground flex items-center gap-2 text-xs">
               <Loader2 className="text-primary h-3.5 w-3.5 animate-spin" />
-              Claude is working
+              Working
             </div>
           )}
-          {status === "waiting" && !deckControls && (
-            <ul>
-              <InboxItem
-                session={session}
-                onOpen={onOpenTerminal}
-                questionsOnly
-              />
-            </ul>
-          )}
         </div>
       </div>
-
-      {deck && (
-        <div
-          aria-hidden="true"
-          className="shrink-0"
-          style={{ height: deck.gap }}
-        />
-      )}
-      <div
-        className={cn(
-          "border-border border-t px-2 py-1.5 pb-[calc(0.375rem+env(safe-area-inset-bottom))]",
-          deck && "flex flex-col"
-        )}
-        style={{ height: deck?.deck }}
-      >
-        <div
-          className={cn(
-            "flex shrink-0 gap-1.5",
-            deck ? "items-start" : "items-end"
-          )}
-        >
-          <button
-            type="button"
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={insertNewline}
-            aria-label="New line"
-            title="New line"
-            className="bg-secondary text-muted-foreground active:bg-accent flex h-[44px] w-[44px] flex-shrink-0 items-center justify-center rounded-full [@media(pointer:fine)]:hidden"
-          >
-            <CornerDownLeft className="h-5 w-5" />
-          </button>
-          <textarea
-            ref={inputRef}
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onFocus={() => setComposerFocused(true)}
-            onBlur={() => setComposerFocused(false)}
-            onKeyDown={(e) => {
-              // Return sends, Shift+Return adds a line
-              if (
-                e.key === "Enter" &&
-                !e.shiftKey &&
-                !e.nativeEvent.isComposing
-              ) {
-                e.preventDefault();
-                send();
-              }
-            }}
-            enterKeyHint="send"
-            rows={1}
-            placeholder="Message Claude"
-            className="bg-secondary text-foreground placeholder:text-muted-foreground max-h-40 min-h-[44px] flex-1 resize-none rounded-2xl px-3.5 py-2.5 text-base leading-6 focus:outline-none"
-          />
-          <button
-            type="button"
-            onClick={send}
-            disabled={!draft.trim() || sending}
-            aria-label="Send"
-            className={cn(
-              "flex h-[44px] w-[44px] flex-shrink-0 items-center justify-center rounded-full",
-              draft.trim()
-                ? "bg-primary text-primary-foreground active:opacity-80"
-                : "bg-secondary text-muted-foreground"
-            )}
-          >
-            {sending ? (
-              <Loader2 className="h-5 w-5 animate-spin" />
-            ) : (
-              <ArrowUp className="h-5 w-5" />
-            )}
-          </button>
-        </div>
-        {/* On the deck, within the thumbs' reach: the answer Claude is
-          waiting for, or Stop while it works */}
-        {deckControls && (
-          <div className="flex min-h-0 flex-1 flex-col justify-end gap-3 overflow-y-auto px-2 pt-3">
-            {status === "waiting" && (
-              <ul>
-                <InboxItem
-                  session={session}
-                  onOpen={onOpenTerminal}
-                  questionsOnly
-                />
-              </ul>
-            )}
-            {status === "running" && (
-              <button
-                type="button"
-                onClick={stop}
-                disabled={stopping}
-                className="flex h-14 w-full shrink-0 items-center justify-center gap-2 rounded-2xl border border-red-500/40 bg-red-500/10 text-sm font-semibold text-red-400 active:opacity-70"
-              >
-                {stopping ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Square className="h-4 w-4 fill-current" />
-                )}
-                Stop Claude
-              </button>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
+    </section>
   );
 }
