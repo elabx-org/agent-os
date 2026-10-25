@@ -422,7 +422,7 @@ function HomeContent() {
   useEffect(() => {
     const onAttach = (e: Event) => {
       const { id } = (e as CustomEvent<{ id: string }>).detail;
-      if (!/^[\w-]+$/.test(id)) return;
+      if (!/^\w[\w-]*$/.test(id)) return;
       const terminalInfo = getTerminalWithFallback();
       if (!terminalInfo) return;
       const { terminal, paneId } = terminalInfo;

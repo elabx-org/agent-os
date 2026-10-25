@@ -25,7 +25,8 @@ export interface BackgroundAgent {
   startedAt: number;
 }
 
-const AGENT_ID = /^[\w-]+$/;
+// Never a leading "-": it would reach the CLI as a flag
+const AGENT_ID = /^\w[\w-]*$/;
 
 export function isAgentId(id: string): boolean {
   return AGENT_ID.test(id);
