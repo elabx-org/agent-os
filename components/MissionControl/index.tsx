@@ -410,6 +410,8 @@ function Glance({
         </section>
       )}
 
+      <BackgroundAgents />
+
       <div className="mt-auto space-y-3">
         {resting > 0 && (
           <GlanceRow dot={DOT.idle} onClick={onShowIdle}>
