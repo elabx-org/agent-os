@@ -5,6 +5,7 @@ import { findTranscript, readTranscript } from "@/lib/claude-transcript";
 // GET /api/sessions/[id]/transcript?since=<offset>&sid=<claude session id>
 // First call (no since) returns the recent history; later calls return what
 // was appended. A different Claude session (e.g. after /clear) resets.
+// ?before=<start>&sid=... returns the page of history above `start`.
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -27,19 +28,29 @@ export async function GET(
   const sinceParam = url.searchParams.get("since");
   const reset = !!sid && sid !== found.sessionId;
   const since = sinceParam !== null && !reset ? Number(sinceParam) : undefined;
+  const beforeParam = url.searchParams.get("before");
+  const before =
+    beforeParam !== null && !reset ? Number(beforeParam) : undefined;
 
   if (!found.file) {
     return NextResponse.json({
       sessionId: found.sessionId,
       items: [],
       offset: 0,
+      start: 0,
       truncated: false,
       reset,
     });
   }
 
   try {
-    const chunk = readTranscript(found.file, found.sessionId, found.cwd, since);
+    const chunk = readTranscript(
+      found.file,
+      found.sessionId,
+      found.cwd,
+      since,
+      before
+    );
     return NextResponse.json({ ...chunk, reset });
   } catch (error) {
     console.error("Error reading transcript:", error);

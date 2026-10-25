@@ -71,7 +71,7 @@ async function lastReply(tmuxName: string): Promise<string | null> {
     for (let i = items.length - 1; i >= 0; i--) {
       const item = items[i];
       if (item.kind === "assistant" && item.text.trim()) return item.text;
-      if (item.kind === "user") return null;
+      if (item.kind === "user" || item.kind === "summary") return null;
     }
   } catch {
     // No transcript to read

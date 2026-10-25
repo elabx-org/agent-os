@@ -25,6 +25,8 @@ const MAX_PATCH_LINE = 240;
 export type ChatItem =
   | { kind: "user"; id: string; text: string; ts: string }
   | { kind: "assistant"; id: string; text: string; ts: string }
+  /** Where the conversation was compacted: the summary it continued from */
+  | { kind: "summary"; id: string; text: string; ts: string }
   | {
       kind: "tool";
       id: string;
@@ -49,6 +51,8 @@ export interface TranscriptChunk {
   items: ChatItem[];
   /** Byte offset to pass as `since` for the next poll */
   offset: number;
+  /** Where these items begin: pass as `before` to read the history above */
+  start: number;
   /** Earlier history exists that wasn't read */
   truncated: boolean;
 }
@@ -103,49 +107,83 @@ export async function findTranscript(
   return { sessionId, file: null, cwd };
 }
 
+function readRange(file: string, from: number, to: number): string {
+  if (to <= from) return "";
+  const fd = fs.openSync(file, "r");
+  try {
+    const buf = Buffer.alloc(to - from);
+    fs.readSync(fd, buf, 0, buf.length, from);
+    return buf.toString("utf8");
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
+/**
+ * The latest history (no `since` or `before`), what was appended after
+ * `since`, or the page of history that ends at `before`. A page is at most
+ * TAIL_BYTES of file and MAX_ITEMS items, cut at a line so pages join up.
+ */
 export function readTranscript(
   file: string,
   sessionId: string,
   cwd: string,
-  since?: number
+  since?: number,
+  before?: number
 ): TranscriptChunk {
   const size = fs.statSync(file).size;
   const resume = since !== undefined && since >= 0 && since <= size;
-  const start = resume ? since : Math.max(0, size - TAIL_BYTES);
+  const end =
+    !resume && before !== undefined && before >= 0 && before <= size
+      ? before
+      : size;
+  let from = resume ? since : Math.max(0, end - TAIL_BYTES);
 
-  let text = "";
-  if (size > start) {
-    const fd = fs.openSync(file, "r");
-    try {
-      const buf = Buffer.alloc(size - start);
-      fs.readSync(fd, buf, 0, buf.length, start);
-      text = buf.toString("utf8");
-    } finally {
-      fs.closeSync(fd);
-    }
+  let lines = readRange(file, from, end).split("\n");
+  // A page that starts mid-file starts mid-line
+  if (!resume && from > 0) {
+    from += Buffer.byteLength(lines[0], "utf8") + 1;
+    lines = lines.slice(1);
   }
-
-  let lines = text.split("\n");
-  // A tail read starts mid-line; a partial last line is still being written
-  if (!resume && start > 0) lines = lines.slice(1);
+  // Partial if it's still being written (empty after a final newline)
   const last = lines.pop() ?? "";
-  const consumed = size - Buffer.byteLength(last, "utf8");
+  const consumed = end - Buffer.byteLength(last, "utf8");
 
-  const items: ChatItem[] = [];
+  const parsed: { at: number; items: ChatItem[] }[] = [];
+  let at = from;
   for (const line of lines) {
-    if (!line) continue;
-    try {
-      items.push(...toItems(JSON.parse(line), cwd));
-    } catch {
-      // Skip malformed lines
+    if (line) {
+      try {
+        parsed.push({ at, items: toItems(JSON.parse(line), cwd) });
+      } catch {
+        // Skip malformed lines
+      }
+    }
+    at += Buffer.byteLength(line, "utf8") + 1;
+  }
+
+  // Keep whole lines from the end until the page is full
+  let start = from;
+  let first = 0;
+  if (!resume) {
+    let count = 0;
+    for (let i = parsed.length - 1; i >= 0; i--) {
+      if (count >= MAX_ITEMS) {
+        start = parsed[i + 1].at;
+        first = i + 1;
+        break;
+      }
+      count += parsed[i].items.length;
     }
   }
+  const items = parsed.slice(first).flatMap((p) => p.items);
 
   return {
     sessionId,
-    items: resume ? items : items.slice(-MAX_ITEMS),
-    offset: consumed,
-    truncated: !resume && (start > 0 || items.length > MAX_ITEMS),
+    items,
+    offset: end === size ? consumed : size,
+    start: resume ? (since ?? 0) : start,
+    truncated: !resume && start > 0,
   };
 }
 
@@ -157,6 +195,9 @@ function toItems(entry: any, cwd: string): ChatItem[] {
   const ts: string = entry.timestamp ?? "";
 
   if (entry.type === "user") {
+    if (entry.isCompactSummary && typeof msg.content === "string") {
+      return [{ kind: "summary", id: entry.uuid, text: msg.content, ts }];
+    }
     if (typeof msg.content === "string") {
       if (entry.origin && entry.origin.kind !== "human") return [];
       const text = userText(msg.content);
