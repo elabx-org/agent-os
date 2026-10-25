@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useSnapshot } from "valtio";
 import {
   ArrowUp,
@@ -16,6 +23,7 @@ import {
   SquareTerminal,
   Wrench,
   type LucideIcon,
+  ChevronRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Markdown } from "@/components/Markdown";
@@ -33,7 +41,7 @@ const TOOL_RUN_VISIBLE = 3;
 type ToolItem = Extract<ChatItem, { kind: "tool" }>;
 type ResultItem = Extract<ChatItem, { kind: "result" }>;
 type Row =
-  | Extract<ChatItem, { kind: "user" | "assistant" }>
+  | Extract<ChatItem, { kind: "user" | "assistant" | "summary" }>
   | { kind: "tools"; id: string; tools: ToolItem[] };
 
 const TOOL_ICONS: Record<string, LucideIcon> = {
@@ -55,6 +63,7 @@ interface TranscriptResponse {
   sessionId?: string;
   items?: ChatItem[];
   offset?: number;
+  start?: number;
   truncated?: boolean;
   reset?: boolean;
   notFound?: boolean;
@@ -67,12 +76,38 @@ function useTranscript(sessionId: string, active: boolean) {
     "loading"
   );
   const [truncated, setTruncated] = useState(false);
-  const cursor = useRef<{ offset?: number; sid?: string }>({});
+  const [loadingEarlier, setLoadingEarlier] = useState(false);
+  const busy = useRef(false);
+  const cursor = useRef<{ offset?: number; sid?: string; start?: number }>({});
 
   useEffect(() => {
     cursor.current = {};
     setItems([]);
     setState("loading");
+  }, [sessionId]);
+
+  // The page of history above what's shown
+  const loadEarlier = useCallback(async () => {
+    const { start, sid } = cursor.current;
+    if (start === undefined || start <= 0 || busy.current) return;
+    busy.current = true;
+    setLoadingEarlier(true);
+    try {
+      const res = await fetch(
+        `/api/sessions/${sessionId}/transcript?before=${start}&sid=${sid ?? ""}`
+      );
+      const data: TranscriptResponse = await res.json();
+      // A different Claude session now: the poll will start over
+      if (!data.items || data.reset || cursor.current.start !== start) return;
+      cursor.current.start = data.start;
+      setItems((prev) => [...data.items!, ...prev]);
+      setTruncated(!!data.truncated);
+    } catch {
+      // Try again on the next scroll up
+    } finally {
+      busy.current = false;
+      setLoadingEarlier(false);
+    }
   }, [sessionId]);
 
   useEffect(() => {
@@ -92,8 +127,13 @@ function useTranscript(sessionId: string, active: boolean) {
           setState("missing");
         } else {
           const fresh = offset === undefined || data.reset;
-          cursor.current = { offset: data.offset, sid: data.sessionId };
+          cursor.current = {
+            ...cursor.current,
+            offset: data.offset,
+            sid: data.sessionId,
+          };
           if (fresh) {
+            cursor.current.start = data.start;
             setItems(data.items);
             setTruncated(!!data.truncated);
           } else if (data.items.length) {
@@ -113,7 +153,7 @@ function useTranscript(sessionId: string, active: boolean) {
     };
   }, [sessionId, active]);
 
-  return { items, state, truncated };
+  return { items, state, truncated, loadEarlier, loadingEarlier };
 }
 
 /** Lines shown before "Show all": the first change with a line of context */
@@ -249,7 +289,8 @@ interface ChatViewProps {
 
 /** Claude Code's session as a conversation, read from its transcript */
 export function ChatView({ session, active, onOpenTerminal }: ChatViewProps) {
-  const { items, state, truncated } = useTranscript(session.id, active);
+  const { items, state, truncated, loadEarlier, loadingEarlier } =
+    useTranscript(session.id, active);
   const { statuses, nativeKeyboard } = useSnapshot(mobileNavStore);
   const status = statuses[session.id]?.status;
 
@@ -273,10 +314,34 @@ export function ChatView({ session, active, onOpenTerminal }: ChatViewProps) {
   // Follow new output while the reader is at the bottom
   const scrollRef = useRef<HTMLDivElement>(null);
   const atBottom = useRef(true);
-  useEffect(() => {
+  // Earlier history goes in above: keep what's on screen where it was
+  const shown = useRef<{ first?: string; height: number }>({ height: 0 });
+  useLayoutEffect(() => {
     const el = scrollRef.current;
-    if (el && atBottom.current) el.scrollTop = el.scrollHeight;
-  }, [rows, results, status]);
+    if (!el) return;
+    const { first, height } = shown.current;
+    const prepended =
+      first !== undefined &&
+      items[0]?.id !== first &&
+      items.some((i) => i.id === first);
+    if (prepended) el.scrollTop += el.scrollHeight - height;
+    else if (atBottom.current) el.scrollTop = el.scrollHeight;
+    shown.current = { first: items[0]?.id, height: el.scrollHeight };
+  }, [items, rows, results, status]);
+
+  // Scrolling near the top loads the page above
+  const topRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = topRef.current;
+    if (!el || !truncated) return;
+    const io = new IntersectionObserver(
+      ([entry]) => entry.isIntersecting && loadEarlier(),
+      { root: scrollRef.current, rootMargin: "400px 0px 0px 0px" }
+    );
+    io.observe(el);
+    return () => io.disconnect();
+    // Again after each page, in case the top is still in view
+  }, [truncated, loadEarlier, state, items.length]);
 
   const [draft, setDraft] = useState("");
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -369,18 +434,44 @@ export function ChatView({ session, active, onOpenTerminal }: ChatViewProps) {
             </div>
           )}
           {state === "ready" && truncated && (
-            <p className="text-muted-foreground text-center text-xs">
-              Showing recent messages
-            </p>
+            <div ref={topRef} className="flex justify-center py-1">
+              <button
+                type="button"
+                onClick={loadEarlier}
+                disabled={loadingEarlier}
+                className="text-muted-foreground active:bg-accent hover:bg-accent flex h-9 items-center gap-2 rounded-full px-4 text-xs"
+              >
+                {loadingEarlier && (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                )}
+                {loadingEarlier
+                  ? "Loading earlier messages…"
+                  : "Earlier messages"}
+              </button>
+            </div>
           )}
           {rows.map((row) =>
             row.kind === "user" ? (
               <div
                 key={row.id}
-                className="bg-accent ml-8 self-end rounded-2xl rounded-br-md px-3.5 py-2 text-sm whitespace-pre-wrap"
+                className="bg-accent ml-8 max-w-full min-w-0 self-end rounded-2xl rounded-br-md px-3.5 py-2 text-sm [overflow-wrap:anywhere] whitespace-pre-wrap"
               >
                 {row.text}
               </div>
+            ) : row.kind === "summary" ? (
+              <details key={row.id} className="group text-xs">
+                <summary className="text-muted-foreground flex cursor-pointer list-none items-center gap-3 py-2 [&::-webkit-details-marker]:hidden">
+                  <span className="bg-border h-px flex-1" />
+                  <span className="flex items-center gap-1">
+                    <ChevronRight className="h-3.5 w-3.5 transition-transform group-open:rotate-90" />
+                    Earlier conversation summarised
+                  </span>
+                  <span className="bg-border h-px flex-1" />
+                </summary>
+                <div className="bg-secondary/40 mt-1 max-h-[60vh] overflow-y-auto rounded-xl p-3">
+                  <Markdown text={row.text} className="text-xs break-words" />
+                </div>
+              </details>
             ) : row.kind === "assistant" ? (
               <Markdown key={row.id} text={row.text} className="break-words" />
             ) : (
