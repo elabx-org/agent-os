@@ -43,7 +43,22 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       initialPrompt,
       expanded,
       gitSyncInterval,
+      instructions,
     } = body;
+
+    if (instructions !== undefined) {
+      const { getDb } = await import("@/lib/db");
+      getDb()
+        .prepare(
+          "UPDATE projects SET instructions = ?, updated_at = datetime('now') WHERE id = ? AND is_uncategorized = 0"
+        )
+        .run(
+          typeof instructions === "string" && instructions.trim()
+            ? instructions.trim()
+            : null,
+          id
+        );
+    }
 
     // Handle expanded toggle separately
     if (typeof expanded === "boolean") {

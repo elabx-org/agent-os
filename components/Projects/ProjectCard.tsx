@@ -306,6 +306,15 @@ export function ProjectCard({
         </span>
       )}
 
+      {/* Suggested instructions waiting in the project's settings */}
+      {!!project.suggestions && (
+        <span
+          role="img"
+          aria-label={`${project.suggestions} suggested instruction${project.suggestions === 1 ? "" : "s"}`}
+          className="bg-primary h-2 w-2 flex-shrink-0 rounded-full"
+        />
+      )}
+
       {/* Running servers indicator */}
       {hasRunningServers && (
         <Tooltip>

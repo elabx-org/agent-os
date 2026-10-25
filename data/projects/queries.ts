@@ -162,6 +162,7 @@ export function useUpdateProject() {
       agentType,
       defaultModel,
       initialPrompt,
+      instructions,
     }: {
       projectId: string;
       name?: string;
@@ -169,6 +170,7 @@ export function useUpdateProject() {
       agentType?: string;
       defaultModel?: string;
       initialPrompt?: string | null;
+      instructions?: string | null;
     }) => {
       const res = await fetch(`/api/projects/${projectId}`, {
         method: "PATCH",
@@ -179,6 +181,7 @@ export function useUpdateProject() {
           agentType,
           defaultModel,
           initialPrompt,
+          instructions,
         }),
       });
       if (!res.ok) throw new Error("Failed to update project");

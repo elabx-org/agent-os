@@ -27,13 +27,15 @@ import {
   GitBranch,
   Star,
   FolderOpen,
+  ScrollText,
 } from "lucide-react";
 import { FolderPicker } from "@/components/FolderPicker";
-import { useUpdateProject } from "@/data/projects";
+import { useUpdateProject, projectKeys } from "@/data/projects";
 import { useQueryClient } from "@tanstack/react-query";
 import { devServerKeys } from "@/data/dev-servers";
 import { repositoryKeys } from "@/data/repositories";
 import type { AgentType } from "@/lib/providers";
+import type { Suggestion as ProjectSuggestion } from "@/lib/project-context";
 import type {
   ProjectWithRepositories,
   DetectedDevServer,
@@ -92,6 +94,9 @@ export function ProjectSettingsDialog({
   const [agentType, setAgentType] = useState<AgentType>("claude");
   const [defaultModel, setDefaultModel] = useState("sonnet");
   const [initialPrompt, setInitialPrompt] = useState("");
+  const [instructions, setInstructions] = useState("");
+  const [suggestions, setSuggestions] = useState<ProjectSuggestion[]>([]);
+  const [note, setNote] = useState<string | null>(null);
   const [devServers, setDevServers] = useState<DevServerConfig[]>([]);
   const [repositories, setRepositories] = useState<RepositoryConfig[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -105,6 +110,50 @@ export function ProjectSettingsDialog({
   const updateProject = useUpdateProject();
   const queryClient = useQueryClient();
 
+  // What a session in this project starts with, and suggested instructions
+  useEffect(() => {
+    if (!open || !project) return;
+    let live = true;
+    fetch(`/api/projects/${project.id}/context`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (!live) return;
+        setNote(data.note ?? null);
+        setSuggestions(data.suggestions ?? []);
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [open, project]);
+
+  const answerSuggestion = async (
+    suggestion: ProjectSuggestion,
+    action: "accept" | "dismiss"
+  ) => {
+    if (!project) return;
+    const res = await fetch(
+      `/api/projects/${project.id}/suggestions/${encodeURIComponent(suggestion.id)}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      }
+    );
+    const data = await res.json().catch(() => ({}));
+    setSuggestions(
+      data.suggestions ?? suggestions.filter((s) => s.id !== suggestion.id)
+    );
+    queryClient.invalidateQueries({ queryKey: projectKeys.all });
+    if (res.ok && action === "accept") {
+      // Saved already; keep it in the form too, with any unsaved edits
+      const line = `- ${suggestion.text.replace(/\s*\n\s*/g, " ").replace(/^[-*]\s+/, "")}`;
+      setInstructions((prev) =>
+        prev.trim() ? `${prev.trim()}\n${line}` : line
+      );
+    }
+  };
+
   // Initialize form when project changes
   useEffect(() => {
     if (project) {
@@ -113,6 +162,7 @@ export function ProjectSettingsDialog({
       setAgentType(project.agent_type);
       setDefaultModel(project.default_model);
       setInitialPrompt(project.initial_prompt || "");
+      setInstructions(project.instructions || "");
       setDevServers(
         project.devServers.map((ds) => ({
           id: ds.id,
@@ -325,6 +375,7 @@ export function ProjectSettingsDialog({
         agentType,
         defaultModel,
         initialPrompt: initialPrompt.trim() || null,
+        instructions: instructions.trim() || null,
       });
 
       // Handle dev server changes
@@ -502,9 +553,77 @@ export function ProjectSettingsDialog({
               </Select>
             </div>
 
+            {/* Instructions: every Claude session in the project starts with them */}
+            <div className="space-y-2">
+              <label className="flex items-center gap-2 text-sm font-medium">
+                <ScrollText className="h-4 w-4" />
+                Instructions
+              </label>
+              <Textarea
+                value={instructions}
+                onChange={(e) => setInstructions(e.target.value)}
+                placeholder="e.g. The iOS app sets the mobile experience; the web app follows it."
+                rows={4}
+                className="resize-y"
+              />
+              <p className="text-muted-foreground text-xs">
+                Standing rules for every Claude session in this project: new
+                ones, and running ones after a restart.
+              </p>
+
+              {suggestions.length > 0 && (
+                <div className="space-y-2 pt-1">
+                  <p className="text-sm font-medium">Suggested by sessions</p>
+                  <ul className="bg-secondary/60 divide-border/60 divide-y overflow-hidden rounded-xl">
+                    {suggestions.map((s) => (
+                      <li key={s.id} className="space-y-2 p-3">
+                        <p className="text-sm whitespace-pre-wrap">{s.text}</p>
+                        <div className="flex items-center gap-2">
+                          <span className="text-muted-foreground min-w-0 flex-1 truncate text-xs">
+                            {s.from ?? "A session"}
+                          </span>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => answerSuggestion(s, "dismiss")}
+                          >
+                            Dismiss
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            onClick={() => answerSuggestion(s, "accept")}
+                          >
+                            Add
+                          </Button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {note && (
+                <details className="group">
+                  <summary className="text-primary cursor-pointer py-1 text-sm">
+                    What sessions see
+                  </summary>
+                  <pre className="bg-secondary/60 mt-2 max-h-72 overflow-auto rounded-xl p-3 font-mono text-[12px] leading-relaxed whitespace-pre-wrap">
+                    {note}
+                  </pre>
+                  <p className="text-muted-foreground mt-1 text-xs">
+                    As last saved, for a session in this project.
+                  </p>
+                </details>
+              )}
+            </div>
+
             {/* Initial Prompt */}
             <div className="space-y-2">
-              <label className="text-sm font-medium">Initial Prompt</label>
+              <label className="text-sm font-medium">
+                First message for new sessions
+              </label>
               <Textarea
                 value={initialPrompt}
                 onChange={(e) => setInitialPrompt(e.target.value)}
@@ -513,8 +632,7 @@ export function ProjectSettingsDialog({
                 className="resize-none"
               />
               <p className="text-muted-foreground text-xs">
-                This prompt will be automatically prepended to all new sessions
-                created in this project.
+                Sent once, at the start of each new session's first message.
               </p>
             </div>
 

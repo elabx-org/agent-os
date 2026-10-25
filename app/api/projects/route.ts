@@ -4,11 +4,15 @@ import {
   createProject,
   validateWorkingDirectory,
 } from "@/lib/projects";
+import { listSuggestions } from "@/lib/project-context";
 
 // GET /api/projects - List all projects with dev server configs
 export async function GET() {
   try {
-    const projects = getAllProjectsWithDevServers();
+    const projects = getAllProjectsWithDevServers().map((project) => ({
+      ...project,
+      suggestions: listSuggestions(project.id).length,
+    }));
     return NextResponse.json({ projects });
   } catch (error) {
     console.error("Error getting projects:", error);
