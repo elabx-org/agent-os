@@ -191,7 +191,22 @@ function HomeContent() {
           ? session.branch_name
           : undefined;
 
+      // A Claude session in a project starts knowing the other sessions in it
+      let systemPromptFile: string | undefined;
+      if (provider.id === "claude") {
+        try {
+          const res = await fetch(
+            `/api/sessions/${session.id}/project-context`,
+            { method: "POST" }
+          );
+          systemPromptFile = (await res.json()).file || undefined;
+        } catch {
+          // Starts without the note
+        }
+      }
+
       const flags = provider.buildFlags({
+        systemPromptFile,
         sessionId: session.claude_session_id,
         parentSessionId,
         autoApprove: session.auto_approve,
@@ -386,6 +401,18 @@ function HomeContent() {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
+
+  // A restarted session (lib/restart-session.ts) starts again in the terminal
+  useEffect(() => {
+    const onRestarted = (e: Event) => {
+      const session = (e as CustomEvent<{ session: Session }>).detail.session;
+      attachToSession(session);
+      if (isMobile) setSidebarOpen(false);
+    };
+    window.addEventListener("agentos-session-restarted", onRestarted);
+    return () =>
+      window.removeEventListener("agentos-session-restarted", onRestarted);
+  }, [attachToSession, isMobile]);
 
   // Session selection handler
   const handleSelectSession = useCallback(

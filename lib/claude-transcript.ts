@@ -61,9 +61,14 @@ function claudeDir(): string {
   return process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), ".claude");
 }
 
-export async function findTranscript(
+/**
+ * What Claude Code says about the session running in a tmux pane, from
+ * ~/.claude/sessions/<pid>.json: its id, folder and the name other sessions
+ * reach it by (ListAgents / SendMessage)
+ */
+export async function readClaudeSessionMeta(
   tmuxName: string
-): Promise<{ sessionId: string; file: string | null; cwd: string } | null> {
+): Promise<{ sessionId: string; cwd: string; name?: string } | null> {
   let pid: string;
   try {
     const { stdout } = await execFileAsync("tmux", [
@@ -79,7 +84,7 @@ export async function findTranscript(
   }
   if (!/^\d+$/.test(pid)) return null;
 
-  let meta: { sessionId?: string; cwd?: string };
+  let meta: { sessionId?: string; cwd?: string; name?: unknown };
   try {
     meta = JSON.parse(
       fs.readFileSync(path.join(claudeDir(), "sessions", `${pid}.json`), "utf8")
@@ -89,6 +94,16 @@ export async function findTranscript(
   }
   const { sessionId, cwd } = meta;
   if (!sessionId || !cwd || !/^[0-9a-f-]{36}$/.test(sessionId)) return null;
+  const name = typeof meta.name === "string" ? meta.name : undefined;
+  return { sessionId, cwd, name };
+}
+
+export async function findTranscript(
+  tmuxName: string
+): Promise<{ sessionId: string; file: string | null; cwd: string } | null> {
+  const meta = await readClaudeSessionMeta(tmuxName);
+  if (!meta) return null;
+  const { sessionId, cwd } = meta;
 
   const projects = path.join(claudeDir(), "projects");
   const direct = path.join(
