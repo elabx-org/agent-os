@@ -193,13 +193,16 @@ function HomeContent() {
 
       // A Claude session in a project starts knowing the other sessions in it
       let systemPromptFile: string | undefined;
+      let settingsFile: string | undefined;
       if (provider.id === "claude") {
         try {
           const res = await fetch(
             `/api/sessions/${session.id}/project-context`,
             { method: "POST" }
           );
-          systemPromptFile = (await res.json()).file || undefined;
+          const context = await res.json();
+          systemPromptFile = context.file || undefined;
+          settingsFile = context.settings || undefined;
         } catch {
           // Starts without the note
         }
@@ -207,6 +210,7 @@ function HomeContent() {
 
       const flags = provider.buildFlags({
         systemPromptFile,
+        settingsFile,
         sessionId: session.claude_session_id,
         parentSessionId,
         autoApprove: session.auto_approve,

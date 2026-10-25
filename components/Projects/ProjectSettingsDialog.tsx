@@ -28,6 +28,7 @@ import {
   Star,
   FolderOpen,
   ScrollText,
+  Webhook,
 } from "lucide-react";
 import { FolderPicker } from "@/components/FolderPicker";
 import { useUpdateProject, projectKeys } from "@/data/projects";
@@ -36,6 +37,13 @@ import { devServerKeys } from "@/data/dev-servers";
 import { repositoryKeys } from "@/data/repositories";
 import type { AgentType } from "@/lib/providers";
 import type { Suggestion as ProjectSuggestion } from "@/lib/project-context";
+import {
+  HOOK_EVENTS,
+  HOOK_EVENT_LABELS,
+  TOOL_EVENTS,
+  parseProjectHooks,
+  type ProjectHook,
+} from "@/lib/project-hooks";
 import type {
   ProjectWithRepositories,
   DetectedDevServer,
@@ -95,6 +103,7 @@ export function ProjectSettingsDialog({
   const [defaultModel, setDefaultModel] = useState("sonnet");
   const [initialPrompt, setInitialPrompt] = useState("");
   const [instructions, setInstructions] = useState("");
+  const [hooks, setHooks] = useState<ProjectHook[]>([]);
   const [suggestions, setSuggestions] = useState<ProjectSuggestion[]>([]);
   const [note, setNote] = useState<string | null>(null);
   const [devServers, setDevServers] = useState<DevServerConfig[]>([]);
@@ -163,6 +172,7 @@ export function ProjectSettingsDialog({
       setDefaultModel(project.default_model);
       setInitialPrompt(project.initial_prompt || "");
       setInstructions(project.instructions || "");
+      setHooks(parseProjectHooks(project.hooks));
       setDevServers(
         project.devServers.map((ds) => ({
           id: ds.id,
@@ -376,6 +386,7 @@ export function ProjectSettingsDialog({
         defaultModel,
         initialPrompt: initialPrompt.trim() || null,
         instructions: instructions.trim() || null,
+        hooks: hooks.filter((h) => h.command.trim()),
       });
 
       // Handle dev server changes
@@ -567,8 +578,8 @@ export function ProjectSettingsDialog({
                 className="resize-y"
               />
               <p className="text-muted-foreground text-xs">
-                Standing rules for every Claude session in this project: new
-                ones, and running ones after a restart.
+                Standing rules for every Claude session in this project. Running
+                sessions get changes with your next message to them.
               </p>
 
               {suggestions.length > 0 && (
@@ -617,6 +628,92 @@ export function ProjectSettingsDialog({
                   </p>
                 </details>
               )}
+            </div>
+
+            {/* Hooks: Claude Code hooks every session in the project gets */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="flex items-center gap-2 text-sm font-medium">
+                  <Webhook className="h-4 w-4" />
+                  Hooks
+                </label>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() =>
+                    setHooks((prev) => [
+                      ...prev,
+                      { event: "PostToolUse", matcher: "", command: "" },
+                    ])
+                  }
+                >
+                  <Plus className="mr-1 h-3 w-3" />
+                  Add hook
+                </Button>
+              </div>
+              {hooks.map((hook, i) => {
+                const update = (patch: Partial<ProjectHook>) =>
+                  setHooks((prev) =>
+                    prev.map((h, j) => (j === i ? { ...h, ...patch } : h))
+                  );
+                return (
+                  <div
+                    key={i}
+                    className="bg-secondary/60 space-y-2 rounded-xl p-3"
+                  >
+                    <div className="flex items-center gap-2">
+                      <Select
+                        value={hook.event}
+                        onValueChange={(v) =>
+                          update({ event: v as ProjectHook["event"] })
+                        }
+                      >
+                        <SelectTrigger className="min-w-0 flex-1">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {HOOK_EVENTS.map((event) => (
+                            <SelectItem key={event} value={event}>
+                              {HOOK_EVENT_LABELS[event]}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        aria-label="Remove hook"
+                        onClick={() =>
+                          setHooks((prev) => prev.filter((_, j) => j !== i))
+                        }
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    {TOOL_EVENTS.has(hook.event) && (
+                      <Input
+                        value={hook.matcher ?? ""}
+                        onChange={(e) => update({ matcher: e.target.value })}
+                        placeholder="Tools, e.g. Bash or Edit|Write (empty: all)"
+                        className="font-mono text-xs"
+                      />
+                    )}
+                    <Input
+                      value={hook.command}
+                      onChange={(e) => update({ command: e.target.value })}
+                      placeholder="Command, e.g. npx prettier --write ."
+                      className="font-mono text-xs"
+                    />
+                  </div>
+                );
+              })}
+              <p className="text-muted-foreground text-xs">
+                Claude Code hooks for every Claude session in this project,
+                given when it starts. Changes reach a running session when you
+                restart it.
+              </p>
             </div>
 
             {/* Initial Prompt */}
