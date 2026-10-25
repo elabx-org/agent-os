@@ -1,6 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useState, useMemo } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useState,
+  useMemo,
+} from "react";
 import {
   Clipboard,
   X,
@@ -752,13 +758,62 @@ export function TerminalToolbar({
     resolvedRow2.length > 0 &&
     shortLandscape &&
     !keepRows;
-  const row1Ids = useMemo(
-    () =>
-      mergeRows
-        ? Array.from(new Set([...resolvedRow1, ...resolvedRow2]))
-        : resolvedRow1,
-    [mergeRows, resolvedRow1, resolvedRow2]
-  );
+  // A narrow screen (the closed phone) can't fit a long first row: its last
+  // keys move to the start of the second row, so none hide past the edge.
+  // A row that still doesn't fit scrolls, with a fade at the end as a hint.
+  const [row1El, row1Ref] = useState<HTMLDivElement | null>(null);
+  const [row2El, row2Ref] = useState<HTMLDivElement | null>(null);
+  const rowWidth = useRowWidth(row1El);
+  const twoRows =
+    preferences.layout === "double" && resolvedRow2.length > 0 && !mergeRows;
+  // What measuring found for these keys at this width: keys to move down
+  // (dividers take room too) and which rows still scroll
+  const fitKey = [
+    rowWidth,
+    twoRows,
+    mergeRows,
+    resolvedRow1.join(),
+    resolvedRow2.join(),
+  ].join("|");
+  const [fitAt, setFitAt] = useState({
+    key: "",
+    trim: 0,
+    scrolls1: false,
+    scrolls2: false,
+  });
+  const fit =
+    fitAt.key === fitKey
+      ? fitAt
+      : { key: fitKey, trim: 0, scrolls1: false, scrolls2: false };
+  const { row1Ids, row2Ids } = useMemo(() => {
+    if (mergeRows)
+      return {
+        row1Ids: Array.from(new Set([...resolvedRow1, ...resolvedRow2])),
+        row2Ids: [],
+      };
+    // Room for this many keys at their narrowest, less one for the gear
+    const fits = rowWidth
+      ? Math.floor((rowWidth - ROW_INSET_PX) / KEY_STEP_PX) - 1 - fit.trim
+      : Infinity;
+    if (!twoRows || resolvedRow1.length <= fits || fits < 1)
+      return { row1Ids: resolvedRow1, row2Ids: resolvedRow2 };
+    return {
+      row1Ids: resolvedRow1.slice(0, fits),
+      row2Ids: [...resolvedRow1.slice(fits), ...resolvedRow2],
+    };
+  }, [mergeRows, twoRows, rowWidth, fit.trim, resolvedRow1, resolvedRow2]);
+  useLayoutEffect(() => {
+    if (!row1El || !rowWidth) return;
+    const over = (el: HTMLDivElement | null) =>
+      !!el && el.scrollWidth > el.clientWidth + 1;
+    if (over(row1El) && !fit.scrolls1) {
+      if (twoRows && row1Ids.length > 1)
+        setFitAt({ ...fit, trim: fit.trim + 1 });
+      else setFitAt({ ...fit, scrolls1: true });
+    } else if (over(row2El) && !fit.scrolls2) {
+      setFitAt({ ...fit, scrolls2: true });
+    }
+  });
 
   // Render a single button by ID
   const renderButton = useCallback(
@@ -906,7 +961,11 @@ export function TerminalToolbar({
 
       {/* Row 1 — always visible */}
       <div
-        className="keybar-row bg-background/95 border-border scrollbar-none flex items-center gap-1 overflow-x-auto border-t px-2 py-1.5 backdrop-blur"
+        ref={row1Ref}
+        className={cn(
+          "keybar-row bg-background/95 border-border scrollbar-none flex items-center gap-1 overflow-x-auto border-t px-2 py-1.5 backdrop-blur",
+          fit.scrolls1 && "keybar-scrolls"
+        )}
         onTouchEnd={(e) => e.stopPropagation()}
       >
         {renderRow(row1Ids)}
@@ -927,18 +986,38 @@ export function TerminalToolbar({
       </div>
 
       {/* Row 2 — only when double layout with buttons */}
-      {preferences.layout === "double" &&
-        resolvedRow2.length > 0 &&
-        !mergeRows && (
-          <div
-            className="keybar-row bg-background/95 border-border scrollbar-none kb-compact-hide flex items-center gap-1 overflow-x-auto px-2 py-1.5 backdrop-blur"
-            onTouchEnd={(e) => e.stopPropagation()}
-          >
-            {renderRow(resolvedRow2)}
-          </div>
-        )}
+      {twoRows && (
+        <div
+          ref={row2Ref}
+          className={cn(
+            "keybar-row bg-background/95 border-border scrollbar-none kb-compact-hide flex items-center gap-1 overflow-x-auto px-2 py-1.5 backdrop-blur",
+            fit.scrolls2 && "keybar-scrolls"
+          )}
+          onTouchEnd={(e) => e.stopPropagation()}
+        >
+          {renderRow(row2Ids)}
+        </div>
+      )}
     </>
   );
+}
+
+// A key at its narrowest (globals.css) plus the gap after it, and the
+// row's padding and the divider before the gear, less the last key's gap
+const KEY_STEP_PX = 32;
+const ROW_INSET_PX = 21;
+
+/** The row's width inside its border (padding included, so a row that
+    switches to scrolling doesn't change it) */
+function useRowWidth(el: HTMLDivElement | null) {
+  const [width, setWidth] = useState(0);
+  useEffect(() => {
+    if (!el) return;
+    const ro = new ResizeObserver(() => setWidth(el.clientWidth));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [el]);
+  return width;
 }
 
 const SHORT_LANDSCAPE = "(orientation: landscape) and (max-height: 719px)";
