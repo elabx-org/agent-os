@@ -3,6 +3,8 @@
 import { useState, useRef, useEffect } from "react";
 import { afterMenuCloses, cn } from "@/lib/utils";
 import {
+  ArrowDown,
+  ArrowUp,
   ChevronRight,
   ChevronDown,
   MoreHorizontal,
@@ -49,6 +51,8 @@ interface ProjectCardProps {
   onOpenInEditor?: () => void;
   onDelete?: () => void;
   onRename?: (newName: string) => void;
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
 }
 
 export function ProjectCard({
@@ -64,6 +68,8 @@ export function ProjectCard({
   onOpenInEditor,
   onDelete,
   onRename,
+  onMoveUp,
+  onMoveDown,
 }: ProjectCardProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState(project.name);
@@ -151,6 +157,18 @@ export function ProjectCard({
           <MenuItem onSelect={() => setIsEditing(true)}>
             <Pencil className="mr-2 h-3 w-3" />
             Rename
+          </MenuItem>
+        )}
+        {onMoveUp && (
+          <MenuItem onSelect={() => onMoveUp()}>
+            <ArrowUp className="mr-2 h-3 w-3" />
+            Move up
+          </MenuItem>
+        )}
+        {onMoveDown && (
+          <MenuItem onSelect={() => onMoveDown()}>
+            <ArrowDown className="mr-2 h-3 w-3" />
+            Move down
           </MenuItem>
         )}
         {onOpenInEditor && (

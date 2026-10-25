@@ -56,6 +56,47 @@ export function useToggleProject() {
   });
 }
 
+export function useReorderProjects() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (ids: string[]) => {
+      const res = await fetch("/api/projects/reorder", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids }),
+      });
+      if (!res.ok) throw new Error("Failed to reorder projects");
+      return res.json();
+    },
+    onMutate: async (ids) => {
+      await queryClient.cancelQueries({ queryKey: projectKeys.list() });
+      const previous = queryClient.getQueryData<ProjectWithRepositories[]>(
+        projectKeys.list()
+      );
+      const rank = new Map(ids.map((id, i) => [id, i]));
+      queryClient.setQueryData<ProjectWithRepositories[]>(
+        projectKeys.list(),
+        (old) =>
+          old &&
+          [...old].sort(
+            (a, b) =>
+              (rank.get(a.id) ?? Infinity) - (rank.get(b.id) ?? Infinity)
+          )
+      );
+      return { previous };
+    },
+    onError: (_, __, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(projectKeys.list(), context.previous);
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: projectKeys.list() });
+    },
+  });
+}
+
 export function useDeleteProject() {
   const queryClient = useQueryClient();
 
