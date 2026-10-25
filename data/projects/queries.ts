@@ -1,4 +1,6 @@
+import { useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { usePendingRemoval } from "@/stores/pendingRemoval";
 import type { ProjectWithRepositories } from "@/lib/projects";
 import { projectKeys } from "./keys";
 import { sessionKeys } from "../sessions/keys";
@@ -11,10 +13,18 @@ async function fetchProjects(): Promise<ProjectWithRepositories[]> {
 }
 
 export function useProjectsQuery() {
+  // Leave out what's deleted but can still be undone
+  const removed = usePendingRemoval();
+  const select = useCallback(
+    (data: ProjectWithRepositories[]) =>
+      data.filter((p) => !removed.projects[p.id]),
+    [removed]
+  );
   return useQuery({
     queryKey: projectKeys.list(),
     queryFn: fetchProjects,
     staleTime: 30000,
+    select,
   });
 }
 
@@ -104,6 +114,7 @@ export function useDeleteProject() {
     mutationFn: async (projectId: string) => {
       const res = await fetch(`/api/projects/${projectId}`, {
         method: "DELETE",
+        keepalive: true,
       });
       if (!res.ok) throw new Error("Failed to delete project");
       return res.json();

@@ -195,6 +195,15 @@ html[data-native] [data-slot="dialog-content"] {
   max-width: min(32rem, calc(100vw - env(safe-area-inset-right) - 2rem));
 }
 
+/* Bottom sheets stop at the system column; in the book pose they sit on the
+   right page */
+html[data-native] [data-slot="sheet-content"] {
+  right: env(safe-area-inset-right);
+}
+html[data-fold="vertical"] [data-slot="sheet-content"] {
+  left: var(--fold-end);
+}
+
 /* Book pose (vertical fold, set by useFoldPosture): dialogs sit on the right
    page instead of across the fold */
 html[data-fold="vertical"] [data-slot="dialog-content"] {

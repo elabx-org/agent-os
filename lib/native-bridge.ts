@@ -75,7 +75,24 @@ export interface NativeKeybar {
   hidden: boolean;
 }
 
-export function postToNative(message: NativeState | NativeKeybar): void {
+/** A tap felt through the iOS app (older app builds ignore it) */
+export interface NativeHaptic {
+  type: "haptic";
+  style: HapticStyle;
+}
+
+export type HapticStyle =
+  | "light"
+  | "medium"
+  | "rigid"
+  | "selection"
+  | "success"
+  | "warning"
+  | "error";
+
+export function postToNative(
+  message: NativeState | NativeKeybar | NativeHaptic
+): void {
   window.webkit?.messageHandlers?.agentos?.postMessage(message);
 }
 

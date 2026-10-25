@@ -99,6 +99,13 @@ export default function RootLayout({
         <Toaster
           position="top-center"
           closeButton
+          // Clear of the status strip, and of the iOS app's system column
+          offset={{ top: "max(16px, env(safe-area-inset-top))" }}
+          mobileOffset={{
+            top: "max(12px, env(safe-area-inset-top))",
+            left: "12px",
+            right: "calc(12px + env(safe-area-inset-right))",
+          }}
           toastOptions={{
             className: "!bg-card !border-border !text-foreground !shadow-lg",
           }}
