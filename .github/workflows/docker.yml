@@ -12,6 +12,8 @@ env:
 
 jobs:
   build-and-push:
+    # Not in a build-only copy of the repo (elabx-org/agent-os-build)
+    if: github.repository == 'elabx-org/agent-os'
     runs-on: ubuntu-latest
 
     permissions:
