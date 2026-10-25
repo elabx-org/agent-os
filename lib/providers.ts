@@ -52,6 +52,7 @@ export interface BuildFlagsOptions {
   model?: string;
   initialPrompt?: string; // Initial prompt to send to agent
   worktreeName?: string; // If set, use provider's native worktree flag with this name
+  systemPromptFile?: string; // Appended to the system prompt (the project note)
 }
 
 // Common spinner characters used across CLIs
@@ -98,6 +99,11 @@ export const claudeProvider: AgentProvider = {
       flags.push("--fork-session");
     } else if (options.continueSession && def.continueFlag) {
       flags.push(def.continueFlag);
+    }
+
+    // Read once at start; a path Agent-OS wrote, so quoting is enough
+    if (options.systemPromptFile) {
+      flags.push(`--append-system-prompt-file '${options.systemPromptFile}'`);
     }
 
     // Initial prompt (positional argument for Claude)

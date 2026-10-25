@@ -21,12 +21,14 @@ import {
   Hash,
   Pin,
   PinOff,
+  RotateCcw,
 } from "lucide-react";
 import { ActionSheet, type SheetAction } from "./ui/action-sheet";
 import { SwipeRow } from "./ui/swipe-row";
 import { useLongPress } from "@/hooks/useLongPress";
 import { useViewport } from "@/hooks/useViewport";
 import { toast } from "sonner";
+import { restartSession } from "@/lib/restart-session";
 import { Button } from "./ui/button";
 import {
   DropdownMenu,
@@ -338,6 +340,15 @@ export function SessionCard({
       ...(onFork && session.agent_type === "claude"
         ? [{ label: "Fork session", icon: Copy, onSelect: onFork }]
         : []),
+      ...(session.agent_type === "claude"
+        ? [
+            {
+              label: "Restart",
+              icon: RotateCcw,
+              onSelect: () => restartSession(session),
+            },
+          ]
+        : []),
       ...(session.claude_session_id
         ? [
             {
@@ -477,6 +488,14 @@ export function SessionCard({
           <MenuItem onSelect={() => onFork()}>
             <Copy className="mr-2 h-3 w-3" />
             Fork session
+          </MenuItem>
+        )}
+        {session.agent_type === "claude" && (
+          <MenuItem
+            onSelect={() => afterMenuCloses(() => restartSession(session))}
+          >
+            <RotateCcw className="mr-2 h-3 w-3" />
+            Restart
           </MenuItem>
         )}
         {session.claude_session_id && (
