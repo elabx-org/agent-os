@@ -2,15 +2,43 @@
 
 import * as React from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
+import { Drawer as SheetPrimitive } from "vaul";
 import { XIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { useViewport } from "@/hooks/useViewport";
+
+/**
+ * On touch every dialog is a bottom sheet (vaul, built on the same Radix
+ * dialog, so titles and close buttons work unchanged); with a mouse it's
+ * the centred dialog.
+ */
+const AsSheet = React.createContext(false);
 
 function Dialog({
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Root>) {
+  const { isTouch } = useViewport();
+  if (isTouch) {
+    return (
+      <AsSheet.Provider value>
+        <SheetPrimitive.Root data-slot="dialog" {...props} />
+      </AsSheet.Provider>
+    );
+  }
   return <DialogPrimitive.Root data-slot="dialog" {...props} />;
 }
+
+// A dialog's own size and position don't apply to a sheet; its layout does
+const SIZING =
+  /^(?:[a-z]+:)*(?:max-w|w|h|max-h|min-h|top|left|translate-[xy])-/;
+const sheetClasses = (className?: string) =>
+  className
+    ?.split(/\s+/)
+    .filter((c) => !SIZING.test(c))
+    .join(" ");
+const fillsHeight = (className?: string) =>
+  /(?:^|\s)h-\[/.test(className ?? "");
 
 function DialogTrigger({
   ...props
@@ -54,6 +82,43 @@ function DialogContent({
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   showCloseButton?: boolean;
 }) {
+  const asSheet = React.useContext(AsSheet);
+  if (asSheet) {
+    return (
+      <SheetPrimitive.Portal>
+        <SheetPrimitive.Overlay
+          data-slot="sheet-overlay"
+          className="fixed inset-0 z-50 bg-black/50"
+        />
+        <SheetPrimitive.Content
+          data-slot="sheet-content"
+          className={cn(
+            "bg-popover text-popover-foreground fixed inset-x-0 bottom-0 z-50 mx-auto flex max-h-[92dvh] w-full max-w-lg flex-col gap-4 overflow-y-auto rounded-t-[28px] px-5 shadow-2xl outline-none",
+            fillsHeight(className) && "h-[92dvh]",
+            sheetClasses(className),
+            // Room for the grabber, and clear of the home indicator
+            "pt-7 pb-[max(1rem,env(safe-area-inset-bottom))]"
+          )}
+          {...(props as React.ComponentProps<typeof SheetPrimitive.Content>)}
+        >
+          <div
+            aria-hidden
+            className="bg-muted-foreground/30 absolute top-2.5 left-1/2 h-1.5 w-10 -translate-x-1/2 rounded-full"
+          />
+          {children}
+          {showCloseButton && (
+            <DialogPrimitive.Close
+              data-slot="dialog-close"
+              className="bg-secondary text-muted-foreground active:bg-accent absolute top-4 right-4 flex h-8 w-8 items-center justify-center rounded-full [&_svg]:size-4"
+            >
+              <XIcon />
+              <span className="sr-only">Close</span>
+            </DialogPrimitive.Close>
+          )}
+        </SheetPrimitive.Content>
+      </SheetPrimitive.Portal>
+    );
+  }
   return (
     <DialogPortal data-slot="dialog-portal">
       <DialogOverlay />

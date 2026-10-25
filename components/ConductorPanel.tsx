@@ -12,6 +12,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { confirmAction } from "@/components/ui/confirm";
 
 interface WorkersSummary {
   total: number;
@@ -142,7 +143,13 @@ export function ConductorPanel({
   };
 
   const handleKillWorker = async (workerId: string) => {
-    if (!confirm("Kill this worker?")) return;
+    const ok = await confirmAction({
+      title: "Kill this worker?",
+      message: "Its session stops and its work in progress is lost.",
+      confirmLabel: "Kill worker",
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       await fetch(`/api/orchestrate/workers/${workerId}`, {
         method: "DELETE",

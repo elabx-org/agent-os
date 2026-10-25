@@ -204,6 +204,17 @@ html[data-fold="vertical"] [data-slot="sheet-content"] {
   left: var(--fold-end);
 }
 
+/* A dialog shown as a sheet: a left-aligned, larger title, clear of the
+   close button */
+[data-slot="sheet-content"] [data-slot="dialog-header"] {
+  text-align: left;
+  padding-right: 2.5rem;
+}
+[data-slot="sheet-content"] [data-slot="dialog-title"] {
+  font-size: 1.25rem;
+  line-height: 1.75rem;
+}
+
 /* Book pose (vertical fold, set by useFoldPosture): dialogs sit on the right
    page instead of across the fold */
 html[data-fold="vertical"] [data-slot="dialog-content"] {

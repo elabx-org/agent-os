@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { useMcpConfig, type McpScope } from "./hooks/useMcpConfig";
 import { McpServerEditor } from "./McpServerEditor";
 import type { McpServerConfig } from "./ClaudeConfigDialog.types";
+import { confirmAction } from "@/components/ui/confirm";
 
 interface McpServersTabProps {
   open: boolean;
@@ -123,11 +124,14 @@ export function McpServersTab({ open, projectPath }: McpServersTabProps) {
                 variant="ghost"
                 size="icon-sm"
                 className="text-muted-foreground hover:text-destructive h-6 w-6 shrink-0 pointer-fine:opacity-0 pointer-fine:group-hover:opacity-100"
-                onClick={(e) => {
+                onClick={async (e) => {
                   e.stopPropagation();
-                  if (confirm(`Delete MCP server "${server.name}"?`)) {
-                    mcp.deleteServer(server.name);
-                  }
+                  const ok = await confirmAction({
+                    title: `Delete MCP server “${server.name}”?`,
+                    confirmLabel: "Delete",
+                    destructive: true,
+                  });
+                  if (ok) mcp.deleteServer(server.name);
                 }}
               >
                 <Trash2 className="h-3 w-3" />

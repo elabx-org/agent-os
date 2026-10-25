@@ -5,6 +5,7 @@ import { Plus, Trash2, Pencil, Download, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { ExtensionItem, ConfigScope } from "./ClaudeConfigDialog.types";
+import { confirmAction } from "@/components/ui/confirm";
 
 interface ItemListProps {
   items: ExtensionItem[];
@@ -203,10 +204,13 @@ function ScopeSection({
                         variant="ghost"
                         size="icon-sm"
                         className="text-muted-foreground hover:text-destructive h-6 w-6 pointer-fine:opacity-0 pointer-fine:group-hover:opacity-100"
-                        onClick={() => {
-                          if (confirm(`Delete "${item.name}"?`)) {
-                            onDelete(item);
-                          }
+                        onClick={async () => {
+                          const ok = await confirmAction({
+                            title: `Delete “${item.name}”?`,
+                            confirmLabel: "Delete",
+                            destructive: true,
+                          });
+                          if (ok) onDelete(item);
                         }}
                         title="Delete"
                       >

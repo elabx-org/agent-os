@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { GitFile } from "@/lib/git-status";
 import type { MultiRepoGitFile } from "@/lib/multi-repo-git";
+import { confirmAction } from "@/components/ui/confirm";
 
 type AnyGitFile = GitFile | MultiRepoGitFile;
 
@@ -165,8 +166,16 @@ export function FileEditDialog({
     }
   };
 
-  const handleClose = () => {
-    if (hasChanges && !confirm("Discard unsaved changes?")) return;
+  const handleClose = async () => {
+    if (
+      hasChanges &&
+      !(await confirmAction({
+        title: "Discard unsaved changes?",
+        confirmLabel: "Discard",
+        destructive: true,
+      }))
+    )
+      return;
     onOpenChange(false);
   };
 

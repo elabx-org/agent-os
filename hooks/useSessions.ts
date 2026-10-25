@@ -1,5 +1,6 @@
 import { useCallback } from "react";
 import type { Session } from "@/lib/db";
+import { removeWithUndo } from "@/lib/undo";
 import {
   useSessionsQuery,
   useDeleteSession,
@@ -26,12 +27,18 @@ export function useSessions() {
     await refetch();
   }, [refetch]);
 
+  // At once, with a few seconds to undo
   const deleteSession = useCallback(
-    async (sessionId: string) => {
-      if (!confirm("Delete this session? This cannot be undone.")) return;
-      await deleteMutation.mutateAsync(sessionId);
+    (sessionId: string) => {
+      const name = sessions.find((s) => s.id === sessionId)?.name;
+      removeWithUndo({
+        kind: "sessions",
+        id: sessionId,
+        message: `Deleted “${name ?? "session"}”`,
+        commit: () => deleteMutation.mutateAsync(sessionId),
+      });
     },
-    [deleteMutation]
+    [deleteMutation, sessions]
   );
 
   const renameSession = useCallback(
