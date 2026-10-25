@@ -127,6 +127,10 @@ final class AppModel {
             (webView as? AgentWebView)?.keyboardBar.collapsed = message["hidden"] as? Bool ?? false
             return
         }
+        if message["type"] as? String == "haptic" {
+            Haptics.play(message["style"] as? String ?? "light")
+            return
+        }
         guard message["type"] as? String == "state" else { return }
         if let raw = message["viewMode"] as? String, let mode = PaneView(rawValue: raw) { view = mode }
         if let count = message["waiting"] as? Int { waiting = count }

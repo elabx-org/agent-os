@@ -1,4 +1,6 @@
+import { useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { usePendingRemoval } from "@/stores/pendingRemoval";
 import type { Session, Group } from "@/lib/db";
 import type { AgentType } from "@/lib/providers";
 import { sessionKeys } from "./keys";
@@ -15,11 +17,21 @@ async function fetchSessions(): Promise<SessionsResponse> {
 }
 
 export function useSessionsQuery() {
+  // Leave out what's deleted but can still be undone
+  const removed = usePendingRemoval();
+  const select = useCallback(
+    (data: SessionsResponse): SessionsResponse => ({
+      sessions: data.sessions.filter((s) => !removed.sessions[s.id]),
+      groups: data.groups.filter((g) => !removed.groups[g.path]),
+    }),
+    [removed]
+  );
   return useQuery({
     queryKey: sessionKeys.list(),
     queryFn: fetchSessions,
     staleTime: 5000,
     refetchInterval: 10000,
+    select,
   });
 }
 
@@ -30,6 +42,7 @@ export function useDeleteSession() {
     mutationFn: async (sessionId: string) => {
       const res = await fetch(`/api/sessions/${sessionId}`, {
         method: "DELETE",
+        keepalive: true,
       });
       if (!res.ok) throw new Error("Failed to delete session");
       return res.json();
