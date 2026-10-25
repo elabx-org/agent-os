@@ -19,6 +19,14 @@ function describe(target: EventTarget | null): string {
   if (el.closest(".xterm")) bits.push("in-xterm");
   const label = el.closest("[aria-label]")?.getAttribute("aria-label");
   if (label) bits.push(`[${label}]`);
+  // Which control: a button's own caption, never input text
+  const control = el.closest("button, [role]");
+  if (control && !label) {
+    const role = control.getAttribute("role");
+    if (role) bits.push(`role=${role}`);
+    const caption = control.textContent?.trim().slice(0, 20);
+    if (caption) bits.push(`"${caption}"`);
+  }
   return bits.join(" ");
 }
 
@@ -41,7 +49,21 @@ export function startClientLog(): () => void {
     }).catch(() => {});
   };
 
-  const onTouch = (e: TouchEvent) => add(`touchstart ${describe(e.target)}`);
+  const onTouch = (e: TouchEvent) => {
+    const t = e.touches[0];
+    add(
+      `touchstart ${describe(e.target)} at ${Math.round(t?.clientX ?? -1)},${Math.round(t?.clientY ?? -1)}`
+    );
+  };
+  // A tap that ends without a click is the bug this exists to catch
+  const onTouchEnd = (e: TouchEvent) =>
+    add(
+      `touchend ${describe(e.target)}${e.defaultPrevented ? " prevented" : ""}`
+    );
+  const onTouchCancel = (e: TouchEvent) =>
+    add(`touchcancel ${describe(e.target)}`);
+  const onClick = (e: MouseEvent) =>
+    add(`click${e.isTrusted ? "" : " (synthetic)"} ${describe(e.target)}`);
   const onFocusIn = (e: FocusEvent) => add(`focusin ${describe(e.target)}`);
   const onFocusOut = (e: FocusEvent) => add(`focusout ${describe(e.target)}`);
   const onNative = (e: Event) => {
@@ -52,6 +74,9 @@ export function startClientLog(): () => void {
 
   add("start");
   document.addEventListener("touchstart", onTouch, true);
+  document.addEventListener("touchend", onTouchEnd);
+  document.addEventListener("touchcancel", onTouchCancel, true);
+  document.addEventListener("click", onClick, true);
   document.addEventListener("focusin", onFocusIn);
   document.addEventListener("focusout", onFocusOut);
   window.addEventListener(NATIVE_EVENT, onNative);
@@ -62,6 +87,9 @@ export function startClientLog(): () => void {
     flush();
     clearInterval(timer);
     document.removeEventListener("touchstart", onTouch, true);
+    document.removeEventListener("touchend", onTouchEnd);
+    document.removeEventListener("touchcancel", onTouchCancel, true);
+    document.removeEventListener("click", onClick, true);
     document.removeEventListener("focusin", onFocusIn);
     document.removeEventListener("focusout", onFocusOut);
     window.removeEventListener(NATIVE_EVENT, onNative);
