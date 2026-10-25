@@ -338,6 +338,23 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
       return () => clearTimeout(timer);
     }, [composerOn, connectionState]);
 
+    // On iOS that focused inputmode="none" textarea swallows taps elsewhere on
+    // the page: they end without a click. A touch outside the terminal lets go
+    // of its focus first, as a tap would with the keyboard up.
+    useEffect(() => {
+      if (!composerOn) return;
+      const onTouch = (e: TouchEvent) => {
+        const active = document.activeElement;
+        if (!(active instanceof HTMLTextAreaElement)) return;
+        if (active.getAttribute("inputmode") !== "none") return;
+        if (!terminalRef.current?.contains(active)) return;
+        if (containerRef.current?.contains(e.target as Node)) return;
+        active.blur();
+      };
+      document.addEventListener("touchstart", onTouch, true);
+      return () => document.removeEventListener("touchstart", onTouch, true);
+    }, [composerOn]);
+
     // Claude Code treats input arriving with a newline as a paste, so Enter
     // goes separately after the text has been taken
     // What the composer sent while Claude was busy: Claude queues it
