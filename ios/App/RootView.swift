@@ -5,6 +5,7 @@ import SwiftUI
 /// under the status glyphs; elsewhere it is the usual top bar.
 struct RootView: View {
     @Bindable var model: AppModel
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         NavigationStack {
@@ -24,6 +25,14 @@ struct RootView: View {
         }
         .sheet(isPresented: $model.showingServer) {
             ServerSheet(model: model)
+        }
+        .overlay {
+            if model.lock.locked || model.lock.covered {
+                LockCover(lock: model.lock)
+            }
+        }
+        .onChange(of: scenePhase, initial: true) { _, phase in
+            model.lock.phaseChanged(to: phase)
         }
     }
 }

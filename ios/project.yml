@@ -48,12 +48,21 @@ targets:
         NSAppTransportSecurity:
           NSAllowsArbitraryLoadsInWebContent: true
         NSMicrophoneUsageDescription: Dictate prompts to your coding sessions.
+        NSFaceIDUsageDescription: Unlock Agent-OS with Face ID.
         NSCameraUsageDescription: Attach photos to your coding sessions.
         NSPhotoLibraryUsageDescription: Attach images to your coding sessions.
         # agentos://session/<id> opens a session (ntfy notifications link here)
         CFBundleURLTypes:
           - CFBundleURLName: org.elabx.agentos
             CFBundleURLSchemes: [agentos]
+        # "Open in Agent-OS" from the share sheet and Files: the file is
+        # attached to the focused session (useSharedFiles in the web app)
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: File
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Alternate
+            LSItemContentTypes: [public.image, public.text, public.data, com.adobe.pdf]
+        LSSupportsOpeningDocumentsInPlace: false
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: org.elabx.agentos
