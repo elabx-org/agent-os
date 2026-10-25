@@ -1,4 +1,5 @@
 import { useCallback } from "react";
+import { removeWithUndo } from "@/lib/undo";
 import {
   useProjectsQuery,
   useToggleProject,
@@ -19,17 +20,18 @@ export function useProjects() {
     [toggleMutation]
   );
 
+  // At once, with a few seconds to undo; its sessions go to Uncategorized
   const deleteProject = useCallback(
-    async (projectId: string) => {
-      if (
-        !confirm(
-          "Delete this project? Sessions will be moved to Uncategorized."
-        )
-      )
-        return;
-      await deleteMutation.mutateAsync(projectId);
+    (projectId: string) => {
+      const name = projects.find((p) => p.id === projectId)?.name;
+      removeWithUndo({
+        kind: "projects",
+        id: projectId,
+        message: `Deleted “${name ?? "project"}”`,
+        commit: () => deleteMutation.mutateAsync(projectId),
+      });
     },
-    [deleteMutation]
+    [deleteMutation, projects]
   );
 
   const renameProject = useCallback(

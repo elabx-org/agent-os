@@ -1,4 +1,5 @@
 import { useCallback } from "react";
+import { removeWithUndo } from "@/lib/undo";
 import { useToggleGroup, useCreateGroup, useDeleteGroup } from "@/data/groups";
 
 export function useGroups() {
@@ -20,12 +21,15 @@ export function useGroups() {
     [createMutation]
   );
 
+  // At once, with a few seconds to undo; its sessions go to the parent
   const deleteGroup = useCallback(
-    async (path: string) => {
-      if (!confirm("Delete this group? Sessions will be moved to parent."))
-        return;
-      await deleteMutation.mutateAsync(path);
-    },
+    (path: string) =>
+      removeWithUndo({
+        kind: "groups",
+        id: path,
+        message: "Deleted group",
+        commit: () => deleteMutation.mutateAsync(path),
+      }),
     [deleteMutation]
   );
 

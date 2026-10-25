@@ -48,6 +48,7 @@ import {
 import type { GitStatus, GitFile } from "@/lib/git-status";
 import type { MultiRepoGitFile } from "@/lib/multi-repo-git";
 import type { ProjectRepository } from "@/lib/db";
+import { confirmAction } from "@/components/ui/confirm";
 
 interface GitPanelProps {
   workingDirectory: string;
@@ -276,9 +277,13 @@ function GitPanelContent({
   };
 
   const handleDiscard = async (file: GitFile | MultiRepoGitFile) => {
-    const action =
-      file.status === "untracked" ? "delete" : "discard changes to";
-    if (!window.confirm(`Are you sure you want to ${action} "${file.path}"? This cannot be undone.`)) return;
+    const ok = await confirmAction({
+      title: file.status === "untracked" ? "Delete this file?" : "Discard changes?",
+      message: `${file.path} — this can't be undone.`,
+      confirmLabel: file.status === "untracked" ? "Delete" : "Discard",
+      destructive: true,
+    });
+    if (!ok) return;
     const repoPath =
       "repoPath" in file && file.repoPath ? file.repoPath : primaryRepoPath;
     try {
