@@ -418,6 +418,28 @@ function HomeContent() {
       window.removeEventListener("agentos-session-restarted", onRestarted);
   }, [attachToSession, isMobile]);
 
+  // A background agent (components/BackgroundAgents) opens in the terminal
+  useEffect(() => {
+    const onAttach = (e: Event) => {
+      const { id } = (e as CustomEvent<{ id: string }>).detail;
+      if (!/^\w[\w-]*$/.test(id)) return;
+      const terminalInfo = getTerminalWithFallback();
+      if (!terminalInfo) return;
+      const { terminal, paneId } = terminalInfo;
+      // Out of any tmux session first, as attaching a session does
+      if (getActiveTab(paneId)?.attachedTmux) terminal.sendInput("\x02d");
+      setTimeout(() => {
+        terminal.sendInput("\x03");
+        setTimeout(() => terminal.sendCommand(`claude attach ${id}`), 50);
+      }, 100);
+      terminal.focus();
+      if (isMobile) setSidebarOpen(false);
+    };
+    window.addEventListener("agentos-attach-background", onAttach);
+    return () =>
+      window.removeEventListener("agentos-attach-background", onAttach);
+  }, [getTerminalWithFallback, getActiveTab, isMobile]);
+
   // Session selection handler
   const handleSelectSession = useCallback(
     (sessionId: string) => {
