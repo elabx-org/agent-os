@@ -7,7 +7,13 @@ import {
   useForkSession,
   useSummarizeSession,
   useMoveSessionToProject,
+  usePinSession,
+  useReorderPinnedSessions,
 } from "@/data/sessions";
+import { removeWithUndo } from "@/lib/undo";
+import type { Session, Group } from "@/lib/db";
+import type { ProjectWithRepositories } from "@/lib/projects";
+import { projectKeys } from "@/data/projects/keys";
 import {
   useToggleProject,
   useDeleteProject,
@@ -37,6 +43,8 @@ export function useSessionListMutations({
   const forkSessionMutation = useForkSession();
   const summarizeSessionMutation = useSummarizeSession();
   const moveSessionToProjectMutation = useMoveSessionToProject();
+  const pinSessionMutation = usePinSession();
+  const reorderPinnedMutation = useReorderPinnedSessions();
 
   // Project mutations
   const toggleProjectMutation = useToggleProject();
@@ -60,12 +68,45 @@ export function useSessionListMutations({
     : null;
 
   // Session handlers
-  const handleDeleteSession = useCallback(
-    async (sessionId: string) => {
-      if (!confirm("Delete this session? This cannot be undone.")) return;
-      await deleteSessionMutation.mutateAsync(sessionId);
+  // Names for the undo toast, from what the lists already hold
+  const nameOf = useCallback(
+    (kind: "session" | "project" | "group", id: string) => {
+      if (kind === "project")
+        return queryClient
+          .getQueryData<ProjectWithRepositories[]>(projectKeys.list())
+          ?.find((p) => p.id === id)?.name;
+      const data = queryClient.getQueryData<{
+        sessions: Session[];
+        groups: Group[];
+      }>(sessionKeys.list());
+      return kind === "session"
+        ? data?.sessions.find((s) => s.id === id)?.name
+        : data?.groups.find((g) => g.path === id)?.name;
     },
-    [deleteSessionMutation]
+    [queryClient]
+  );
+
+  // Deletes go at once with a few seconds to undo, instead of a confirm
+  const handleDeleteSession = useCallback(
+    (sessionId: string) =>
+      removeWithUndo({
+        kind: "sessions",
+        id: sessionId,
+        message: `Deleted “${nameOf("session", sessionId) ?? "session"}”`,
+        commit: () => deleteSessionMutation.mutateAsync(sessionId),
+      }),
+    [deleteSessionMutation, nameOf]
+  );
+
+  const handleTogglePinSession = useCallback(
+    (sessionId: string, pinned: boolean) =>
+      pinSessionMutation.mutate({ sessionId, pinned }),
+    [pinSessionMutation]
+  );
+
+  const handleReorderPinnedSessions = useCallback(
+    (ids: string[]) => reorderPinnedMutation.mutate(ids),
+    [reorderPinnedMutation]
   );
 
   const handleRenameSession = useCallback(
@@ -106,17 +147,16 @@ export function useSessionListMutations({
     [toggleProjectMutation]
   );
 
+  // Its sessions move to Uncategorized when the delete goes through
   const handleDeleteProject = useCallback(
-    async (projectId: string) => {
-      if (
-        !confirm(
-          "Delete this project? Sessions will be moved to Uncategorized."
-        )
-      )
-        return;
-      await deleteProjectMutation.mutateAsync(projectId);
-    },
-    [deleteProjectMutation]
+    (projectId: string) =>
+      removeWithUndo({
+        kind: "projects",
+        id: projectId,
+        message: `Deleted “${nameOf("project", projectId) ?? "project"}”`,
+        commit: () => deleteProjectMutation.mutateAsync(projectId),
+      }),
+    [deleteProjectMutation, nameOf]
   );
 
   const handleRenameProject = useCallback(
@@ -147,12 +187,14 @@ export function useSessionListMutations({
   );
 
   const handleDeleteGroup = useCallback(
-    async (path: string) => {
-      if (!confirm("Delete this group? Sessions will be moved to parent."))
-        return;
-      await deleteGroupMutation.mutateAsync(path);
-    },
-    [deleteGroupMutation]
+    (path: string) =>
+      removeWithUndo({
+        kind: "groups",
+        id: path,
+        message: `Deleted “${nameOf("group", path) ?? "group"}”`,
+        commit: () => deleteGroupMutation.mutateAsync(path),
+      }),
+    [deleteGroupMutation, nameOf]
   );
 
   // Dev server handlers
@@ -259,6 +301,8 @@ export function useSessionListMutations({
     handleDeleteProject,
     handleRenameProject,
     handleReorderProjects,
+    handleTogglePinSession,
+    handleReorderPinnedSessions,
 
     // Group handlers
     handleToggleGroup,

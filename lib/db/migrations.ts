@@ -273,6 +273,14 @@ const migrations: Migration[] = [
       `);
     },
   },
+  {
+    id: 18,
+    name: "add_pinned_order_to_sessions",
+    up: (db) => {
+      // Null: not pinned. Pinned sessions lead their project in this order
+      db.exec(`ALTER TABLE sessions ADD COLUMN pinned_order INTEGER`);
+    },
+  },
 ];
 
 export function runMigrations(db: Database.Database): void {

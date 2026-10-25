@@ -26,7 +26,11 @@ export const queries = {
     getStmt(db, `SELECT * FROM sessions WHERE id = ?`),
 
   getAllSessions: (db: Database.Database) =>
-    getStmt(db, `SELECT * FROM sessions ORDER BY updated_at DESC`),
+    getStmt(
+      db,
+      `SELECT * FROM sessions
+       ORDER BY pinned_order IS NULL, pinned_order ASC, updated_at DESC`
+    ),
 
   updateSessionStatus: (db: Database.Database) =>
     getStmt(
@@ -48,6 +52,22 @@ export const queries = {
 
   deleteSession: (db: Database.Database) =>
     getStmt(db, `DELETE FROM sessions WHERE id = ?`),
+
+  // Pins don't count as activity: updated_at stays as it was
+  pinSessionLast: (db: Database.Database) =>
+    getStmt(
+      db,
+      `UPDATE sessions SET pinned_order = (
+         SELECT COALESCE(MAX(pinned_order), 0) + 1 FROM sessions
+         WHERE project_id IS ? AND pinned_order IS NOT NULL AND id != ?
+       ) WHERE id = ?`
+    ),
+
+  unpinSession: (db: Database.Database) =>
+    getStmt(db, `UPDATE sessions SET pinned_order = NULL WHERE id = ?`),
+
+  setSessionPinOrder: (db: Database.Database) =>
+    getStmt(db, `UPDATE sessions SET pinned_order = ? WHERE id = ?`),
 
   // Forks point at the session they came from; they outlive it
   detachForks: (db: Database.Database) =>

@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { flushSync } from "react-dom";
 import { Check, ChevronLeft, ChevronRight } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -24,6 +25,15 @@ export interface SheetAction {
   checked?: boolean;
   /** Opens a second page of actions, with a way back */
   submenu?: { title: string; groups: SheetAction[][] };
+  /** Asks for a line of text (a rename) on a page of the sheet */
+  prompt?: SheetPrompt;
+}
+
+export interface SheetPrompt {
+  title: string;
+  value: string;
+  submitLabel?: string;
+  onSubmit: (value: string) => void;
 }
 
 interface ActionSheetProps {
@@ -51,6 +61,9 @@ export function ActionSheet({
   groups,
 }: ActionSheetProps) {
   const [page, setPage] = React.useState<SheetAction["submenu"]>();
+  const [prompt, setPrompt] = React.useState<SheetPrompt>();
+  const [text, setText] = React.useState("");
+  const inputRef = React.useRef<HTMLInputElement>(null);
   const pending = React.useRef<(() => void) | null>(null);
   const fallback = React.useRef<ReturnType<typeof setTimeout>>(undefined);
 
@@ -68,15 +81,37 @@ export function ActionSheet({
       setPage(action.submenu);
       return;
     }
+    if (action.prompt) {
+      // Focus while the tap is still going, or iOS won't raise the keyboard
+      flushSync(() => {
+        setPrompt(action.prompt);
+        setText(action.prompt!.value);
+      });
+      inputRef.current?.focus();
+      inputRef.current?.select();
+      return;
+    }
     haptic(action.destructive ? "warning" : "selection");
     pending.current = action.onSelect ?? null;
     fallback.current = setTimeout(runPending, CLOSE_FALLBACK_MS);
     onOpenChange(false);
   };
 
+  const submit = () => {
+    const value = text.trim();
+    if (!prompt || !value) return;
+    haptic("success");
+    const { onSubmit } = prompt;
+    pending.current = value === prompt.value ? null : () => onSubmit(value);
+    fallback.current = setTimeout(runPending, CLOSE_FALLBACK_MS);
+    inputRef.current?.blur();
+    onOpenChange(false);
+  };
+
   React.useEffect(() => {
     if (!open) return;
     setPage(undefined);
+    setPrompt(undefined);
   }, [open]);
 
   React.useEffect(() => () => clearTimeout(fallback.current), []);
@@ -93,10 +128,12 @@ export function ActionSheet({
     >
       <SheetContent>
         <SheetHeader className="flex-row items-center gap-1">
-          {page && (
+          {(page || prompt) && (
             <button
               type="button"
-              onClick={() => setPage(undefined)}
+              onClick={() =>
+                prompt ? setPrompt(undefined) : setPage(undefined)
+              }
               aria-label="Back"
               className="text-primary active:bg-accent -ml-2 flex h-9 w-9 shrink-0 items-center justify-center rounded-full"
             >
@@ -104,8 +141,10 @@ export function ActionSheet({
             </button>
           )}
           <div className="min-w-0">
-            <SheetTitle className="truncate">{page?.title ?? title}</SheetTitle>
-            {description && !page ? (
+            <SheetTitle className="truncate">
+              {prompt?.title ?? page?.title ?? title}
+            </SheetTitle>
+            {description && !page && !prompt ? (
               <SheetDescription className="truncate">
                 {description}
               </SheetDescription>
@@ -114,7 +153,33 @@ export function ActionSheet({
             )}
           </div>
         </SheetHeader>
-        <SheetBody className="space-y-3 pb-1">
+        {/* Rendered all along so it can take focus during the tap */}
+        <form
+          className={cn("space-y-3 px-4 pb-1", !prompt && "hidden")}
+          onSubmit={(e) => {
+            e.preventDefault();
+            submit();
+          }}
+        >
+          <input
+            ref={inputRef}
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            enterKeyHint="done"
+            autoCapitalize="off"
+            autoCorrect="off"
+            spellCheck={false}
+            className="bg-secondary/70 focus:ring-primary h-12 w-full rounded-2xl px-4 text-base outline-none focus:ring-2"
+          />
+          <button
+            type="submit"
+            disabled={!text.trim()}
+            className="bg-primary text-primary-foreground h-12 w-full rounded-2xl text-[15px] font-semibold active:opacity-80 disabled:opacity-40"
+          >
+            {prompt?.submitLabel ?? "Save"}
+          </button>
+        </form>
+        <SheetBody className={cn("space-y-3 pb-1", prompt && "hidden")}>
           {shown
             .filter((group) => group.length > 0)
             .map((group, i) => (
