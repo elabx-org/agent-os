@@ -38,6 +38,7 @@ export async function POST() {
     const dbSessions = queries.getAllSessions(db).all() as Session[];
     for (const session of dbSessions) {
       try {
+        queries.detachForks(db).run(session.id);
         queries.deleteSession(db).run(session.id);
       } catch {
         // Continue on error
