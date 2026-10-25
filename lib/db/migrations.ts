@@ -281,6 +281,14 @@ const migrations: Migration[] = [
       db.exec(`ALTER TABLE sessions ADD COLUMN pinned_order INTEGER`);
     },
   },
+  {
+    id: 19,
+    name: "add_instructions_to_projects",
+    up: (db) => {
+      // Standing rules every Claude session in the project starts with
+      db.exec(`ALTER TABLE projects ADD COLUMN instructions TEXT`);
+    },
+  },
 ];
 
 export function runMigrations(db: Database.Database): void {

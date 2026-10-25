@@ -49,6 +49,9 @@ export interface Project {
   agent_type: AgentType;
   default_model: string;
   initial_prompt: string | null;
+  instructions: string | null;
+  /** Instructions sessions have suggested, waiting for the user (list API) */
+  suggestions?: number;
   expanded: boolean;
   sort_order: number;
   is_uncategorized: boolean;
