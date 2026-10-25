@@ -18,7 +18,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { renderMarkdown } from "@/components/ChatMessage";
+import { Markdown } from "@/components/Markdown";
 import { InboxItem } from "@/components/Inbox";
 import { mobileNavStore } from "@/stores/mobileNav";
 import { isTextKey, onNativeEvent } from "@/lib/native-bridge";
@@ -382,12 +382,7 @@ export function ChatView({ session, active, onOpenTerminal }: ChatViewProps) {
                 {row.text}
               </div>
             ) : row.kind === "assistant" ? (
-              <div
-                key={row.id}
-                className="text-sm leading-relaxed break-words whitespace-pre-wrap"
-              >
-                {renderMarkdown(row.text)}
-              </div>
+              <Markdown key={row.id} text={row.text} className="break-words" />
             ) : (
               <ToolRun key={row.id} tools={row.tools} results={results} />
             )
