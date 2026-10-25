@@ -190,6 +190,11 @@ html[data-native] .native-top-inset {
 html[data-native] .terminal-container .xterm {
   padding-left: 10px;
 }
+/* xterm's scroll layer covers that padding in black; let the terminal's own
+   colour (painted on .xterm) show instead */
+.terminal-container .xterm .xterm-viewport {
+  background-color: transparent;
+}
 html[data-native] [data-slot="dialog-content"] {
   left: calc((100vw - env(safe-area-inset-right)) / 2);
   max-width: min(32rem, calc(100vw - env(safe-area-inset-right) - 2rem));
@@ -237,9 +242,21 @@ html[data-fold="vertical"] [data-slot="dialog-content"] {
   height: 100%;
 }
 
-/* Horizontally scrolling keybar rows: fade the right edge as a scroll hint */
-.keybar-row {
-  /* End padding keeps the last key clear of the fade when the row fits */
+/* Keys share the row's width equally: they shrink so a row fits the closed
+   screen (no key hidden past the edge), down to 28px, and grow within reason
+   on wider ones. TerminalToolbar moves keys to the second row to match. */
+.keybar-row > button {
+  flex: 1 1 0;
+  min-width: 28px;
+  max-width: 72px;
+  padding-left: 0.25rem;
+  padding-right: 0.25rem;
+  overflow: hidden;
+}
+
+/* A keybar row too long for the screen scrolls: fade the right edge as a
+   hint, with end padding so the last key clears the fade */
+.keybar-row.keybar-scrolls {
   padding-right: 24px;
   mask-image: linear-gradient(to right, black calc(100% - 24px), transparent);
 }
