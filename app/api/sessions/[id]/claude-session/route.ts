@@ -11,7 +11,10 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const tmuxSession = `claude-${id}`;
+  const row = db
+    .prepare("SELECT tmux_name FROM sessions WHERE id = ?")
+    .get(id) as { tmux_name?: string } | undefined;
+  const tmuxSession = row?.tmux_name || `claude-${id}`;
 
   try {
     // Check tmux environment for CLAUDE_SESSION_ID
