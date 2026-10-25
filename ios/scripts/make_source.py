@@ -10,7 +10,8 @@ import json
 import os
 import sys
 
-REPO = "elabx-org/agent-os"
+# The repo building it (a build-only copy publishes its own releases)
+REPO = os.environ.get("GITHUB_REPOSITORY", "elabx-org/agent-os")
 
 ipa, tag, version, build, out = sys.argv[1:6]
 download = f"https://github.com/{REPO}/releases/download/{tag}/AgentOS.ipa"

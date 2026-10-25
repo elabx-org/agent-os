@@ -37,11 +37,17 @@ jobs:
           xcodegen generate
 
       # Feather only offers an update when the version string changes, so the
-      # patch number is the CI run number: 0.1.0 in project.yml ships as 0.1.<run>.
+      # patch number is the build number: 0.1.0 in project.yml ships as
+      # 0.1.<build>. The build is the CI run number plus the repo variable
+      # BUILD_OFFSET, so a build-only copy of this repo carries on the count.
       - name: Set version
+        env:
+          BUILD_OFFSET: ${{ vars.BUILD_OFFSET }}
         run: |
+          BUILD=$(( ${{ github.run_number }} + ${BUILD_OFFSET:-0} ))
           BASE=$(sed -n 's/^ *MARKETING_VERSION: *"\{0,1\}\([^"]*\)"\{0,1\}$/\1/p' project.yml | head -1)
-          echo "APP_VERSION=${BASE%.*}.${{ github.run_number }}" >> "$GITHUB_ENV"
+          echo "BUILD=$BUILD" >> "$GITHUB_ENV"
+          echo "APP_VERSION=${BASE%.*}.$BUILD" >> "$GITHUB_ENV"
 
       - name: Build (unsigned)
         run: |
@@ -55,7 +61,7 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
-            CURRENT_PROJECT_VERSION=${{ github.run_number }} \
+            CURRENT_PROJECT_VERSION=$BUILD \
             MARKETING_VERSION="$APP_VERSION" \
             build 2>&1 | tee xcodebuild.log || {
             # Compile errors as annotations, readable from the checks API without the raw log.
@@ -76,19 +82,19 @@ jobs:
           path: ios/AgentOS.ipa
           retention-days: 14
 
-      # Pushes to main become a GitHub release carrying the IPA. The Feather
-      # source lists the newest one: elabx-org/feather-source (source.json).
+      # Builds of main (pushed or run by hand) become a GitHub release carrying
+      # the IPA. The Feather source lists the newest: elabx-org/feather-source.
       - name: Prepare release
         id: release
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         run: |
-          TAG="ios-build-${{ github.run_number }}"
-          python3 scripts/make_source.py AgentOS.ipa "$TAG" "$APP_VERSION" "${{ github.run_number }}" source.json
+          TAG="ios-build-$BUILD"
+          python3 scripts/make_source.py AgentOS.ipa "$TAG" "$APP_VERSION" "$BUILD" source.json
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "name=Agent-OS iOS $APP_VERSION (build ${{ github.run_number }})" >> "$GITHUB_OUTPUT"
+          echo "name=Agent-OS iOS $APP_VERSION (build $BUILD)" >> "$GITHUB_OUTPUT"
 
       - name: Publish release
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.release.outputs.tag }}
