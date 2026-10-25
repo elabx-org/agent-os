@@ -289,6 +289,14 @@ const migrations: Migration[] = [
       db.exec(`ALTER TABLE projects ADD COLUMN instructions TEXT`);
     },
   },
+  {
+    id: 20,
+    name: "add_hooks_to_projects",
+    up: (db) => {
+      // JSON list of Claude Code hooks every session in the project gets
+      db.exec(`ALTER TABLE projects ADD COLUMN hooks TEXT`);
+    },
+  },
 ];
 
 export function runMigrations(db: Database.Database): void {

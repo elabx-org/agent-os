@@ -4,7 +4,12 @@ import {
   updateProject,
   deleteProject,
   toggleProjectExpanded,
+  getProject,
 } from "@/lib/projects";
+import {
+  parseProjectHooks,
+  syncInstructionsFile,
+} from "@/lib/project-context";
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -44,7 +49,18 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       expanded,
       gitSyncInterval,
       instructions,
+      hooks,
     } = body;
+
+    if (hooks !== undefined) {
+      const list = parseProjectHooks(hooks);
+      const { getDb } = await import("@/lib/db");
+      getDb()
+        .prepare(
+          "UPDATE projects SET hooks = ?, updated_at = datetime('now') WHERE id = ? AND is_uncategorized = 0"
+        )
+        .run(list.length ? JSON.stringify(list) : null, id);
+    }
 
     if (instructions !== undefined) {
       const { getDb } = await import("@/lib/db");
@@ -58,6 +74,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
             : null,
           id
         );
+      syncInstructionsFile(getProject(id));
     }
 
     // Handle expanded toggle separately

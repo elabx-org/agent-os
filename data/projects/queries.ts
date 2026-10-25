@@ -163,6 +163,7 @@ export function useUpdateProject() {
       defaultModel,
       initialPrompt,
       instructions,
+      hooks,
     }: {
       projectId: string;
       name?: string;
@@ -171,6 +172,7 @@ export function useUpdateProject() {
       defaultModel?: string;
       initialPrompt?: string | null;
       instructions?: string | null;
+      hooks?: { event: string; matcher?: string; command: string }[];
     }) => {
       const res = await fetch(`/api/projects/${projectId}`, {
         method: "PATCH",
@@ -182,6 +184,7 @@ export function useUpdateProject() {
           defaultModel,
           initialPrompt,
           instructions,
+          hooks,
         }),
       });
       if (!res.ok) throw new Error("Failed to update project");

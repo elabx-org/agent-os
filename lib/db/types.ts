@@ -50,6 +50,8 @@ export interface Project {
   default_model: string;
   initial_prompt: string | null;
   instructions: string | null;
+  /** JSON list of Claude Code hooks (lib/project-context.ts ProjectHook) */
+  hooks: string | null;
   /** Instructions sessions have suggested, waiting for the user (list API) */
   suggestions?: number;
   expanded: boolean;

@@ -53,6 +53,7 @@ export interface BuildFlagsOptions {
   initialPrompt?: string; // Initial prompt to send to agent
   worktreeName?: string; // If set, use provider's native worktree flag with this name
   systemPromptFile?: string; // Appended to the system prompt (the project note)
+  settingsFile?: string; // Extra settings (the project's hooks)
 }
 
 // Common spinner characters used across CLIs
@@ -104,6 +105,9 @@ export const claudeProvider: AgentProvider = {
     // Read once at start; a path Agent-OS wrote, so quoting is enough
     if (options.systemPromptFile) {
       flags.push(`--append-system-prompt-file '${options.systemPromptFile}'`);
+    }
+    if (options.settingsFile) {
+      flags.push(`--settings '${options.settingsFile}'`);
     }
 
     // Initial prompt (positional argument for Claude)

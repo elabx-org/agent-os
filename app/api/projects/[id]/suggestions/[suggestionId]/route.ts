@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { getProject } from "@/lib/projects";
-import { listSuggestions, takeSuggestion } from "@/lib/project-context";
+import {
+  listSuggestions,
+  syncInstructionsFile,
+  takeSuggestion,
+} from "@/lib/project-context";
 
 // POST /api/projects/[id]/suggestions/[suggestionId] - { action: "accept" }
 // adds the suggested line to the project's instructions; "dismiss" drops it
@@ -40,6 +44,7 @@ export async function POST(
         "UPDATE projects SET instructions = ?, updated_at = datetime('now') WHERE id = ?"
       )
       .run(instructions, id);
+    syncInstructionsFile(getProject(id));
   }
   return NextResponse.json({ instructions, suggestions: listSuggestions(id) });
 }

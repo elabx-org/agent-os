@@ -5,6 +5,9 @@ import path from "path";
 import type { Project, Session } from "./db";
 import { getProject, getProjectSessions } from "./projects";
 import { readClaudeSessionMeta } from "./claude-transcript";
+import { parseProjectHooks } from "./project-hooks";
+
+export { parseProjectHooks } from "./project-hooks";
 
 /*
  * Sessions in the same project know about each other: a Claude session in a
@@ -21,6 +24,16 @@ function contextDir(): string {
   const home =
     process.env.AGENT_OS_HOME || path.join(os.homedir(), ".agent-os");
   return path.join(home, "project-context");
+}
+
+/** The project's instructions as last saved, for the hook that passes on changes */
+function instructionsFile(projectId: string): string {
+  return path.join(contextDir(), "instructions", `${projectId}.md`);
+}
+
+/** The instructions a session has already been given */
+function seenFile(sessionId: string): string {
+  return path.join(contextDir(), "seen", `${sessionId}.md`);
 }
 
 function suggestionsDir(projectId: string): string {
@@ -109,23 +122,111 @@ When the user settles something every session in this project should follow (a d
   return sections.join("\n\n") + "\n";
 }
 
-/** Writes the session's project note and returns its path, or null when it has none */
+/** Keep the file the instructions hook reads in step with the database */
+export function syncInstructionsFile(project: Project | undefined): void {
+  if (!project) return;
+  const file = instructionsFile(project.id);
+  const text = project.instructions?.trim();
+  if (!text) {
+    fs.rmSync(file, { force: true });
+    return;
+  }
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, text + "\n", { mode: 0o600 });
+}
+
+/*
+ * Claude Code runs this before each message the user sends. When the
+ * project's instructions changed since the session last saw them, its output
+ * goes to Claude with the message; otherwise it prints nothing.
+ */
+const INSTRUCTIONS_HOOK = `#!/bin/bash
+# Agent-OS: pass changed project instructions to a running session
+dir="$(dirname "$0")"
+cur="$dir/instructions/$1.md"
+seen="$dir/seen/$2.md"
+cat > /dev/null
+if [ -f "$cur" ]; then
+  cmp -s "$cur" "$seen" 2>/dev/null && exit 0
+  mkdir -p "$dir/seen" && cp "$cur" "$seen"
+  printf 'The user updated the project instructions. They now read:\\n\\n'
+  cat "$cur"
+elif [ -f "$seen" ]; then
+  rm -f "$seen"
+  echo "The user removed the project instructions."
+fi
+`;
+
+/** Claude Code settings for a session in the project: its hooks */
+function sessionSettings(project: Project, session: Session) {
+  const hooks: Record<
+    string,
+    { matcher?: string; hooks: { type: "command"; command: string }[] }[]
+  > = {
+    UserPromptSubmit: [
+      {
+        hooks: [
+          {
+            type: "command",
+            command: `bash '${path.join(contextDir(), "instructions-hook.sh")}' '${project.id}' '${session.id}'`,
+          },
+        ],
+      },
+    ],
+  };
+  for (const hook of parseProjectHooks(project.hooks)) {
+    (hooks[hook.event] ??= []).push({
+      ...(hook.matcher ? { matcher: hook.matcher } : {}),
+      hooks: [{ type: "command", command: hook.command }],
+    });
+  }
+  return { hooks };
+}
+
+/**
+ * Writes what a Claude session in a project starts with: its project note
+ * (null when it has none) and its settings (the project's hooks)
+ */
 export async function writeProjectContext(
   session: Session
-): Promise<string | null> {
+): Promise<{ file: string | null; settings: string | null }> {
   const file = path.join(contextDir(), `${session.id}.md`);
+  const settingsFile = path.join(contextDir(), `${session.id}.settings.json`);
   const project =
     session.agent_type === "claude" && session.project_id
       ? getProject(session.project_id)
       : undefined;
-  const note = project ? await buildProjectNote(project, session) : null;
-  if (!note) {
+  if (!project || project.is_uncategorized) {
     fs.rmSync(file, { force: true });
-    return null;
+    fs.rmSync(settingsFile, { force: true });
+    return { file: null, settings: null };
   }
-  fs.mkdirSync(suggestionsDir(project!.id), { recursive: true });
-  fs.writeFileSync(file, note, { mode: 0o600 });
-  return file;
+
+  fs.mkdirSync(suggestionsDir(project.id), { recursive: true });
+  fs.mkdirSync(path.dirname(seenFile(session.id)), { recursive: true });
+
+  // The note carries the instructions as they are now: the hook only
+  // speaks up when they change after this
+  syncInstructionsFile(project);
+  const current = instructionsFile(project.id);
+  if (fs.existsSync(current)) fs.copyFileSync(current, seenFile(session.id));
+  else fs.rmSync(seenFile(session.id), { force: true });
+
+  fs.writeFileSync(
+    path.join(contextDir(), "instructions-hook.sh"),
+    INSTRUCTIONS_HOOK,
+    { mode: 0o700 }
+  );
+  fs.writeFileSync(
+    settingsFile,
+    JSON.stringify(sessionSettings(project, session), null, 2),
+    { mode: 0o600 }
+  );
+
+  const note = await buildProjectNote(project, session);
+  if (note) fs.writeFileSync(file, note, { mode: 0o600 });
+  else fs.rmSync(file, { force: true });
+  return { file: note ? file : null, settings: settingsFile };
 }
 
 export interface Suggestion {
