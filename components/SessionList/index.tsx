@@ -244,6 +244,7 @@ export function SessionList({
               }}
               onDeleteProject={mutations.handleDeleteProject}
               onRenameProject={mutations.handleRenameProject}
+              onReorderProjects={mutations.handleReorderProjects}
               onNewSession={onNewSessionInProject}
               onOpenTerminal={onOpenTerminal}
               onSelectSession={onSelect}

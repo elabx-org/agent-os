@@ -12,6 +12,7 @@ import {
   useToggleProject,
   useDeleteProject,
   useRenameProject,
+  useReorderProjects,
 } from "@/data/projects";
 import { useToggleGroup, useCreateGroup, useDeleteGroup } from "@/data/groups";
 import {
@@ -41,6 +42,7 @@ export function useSessionListMutations({
   const toggleProjectMutation = useToggleProject();
   const deleteProjectMutation = useDeleteProject();
   const renameProjectMutation = useRenameProject();
+  const reorderProjectsMutation = useReorderProjects();
 
   // Group mutations
   const toggleGroupMutation = useToggleGroup();
@@ -122,6 +124,11 @@ export function useSessionListMutations({
       await renameProjectMutation.mutateAsync({ projectId, newName });
     },
     [renameProjectMutation]
+  );
+
+  const handleReorderProjects = useCallback(
+    (ids: string[]) => reorderProjectsMutation.mutate(ids),
+    [reorderProjectsMutation]
   );
 
   // Group handlers
@@ -251,6 +258,7 @@ export function useSessionListMutations({
     handleToggleProject,
     handleDeleteProject,
     handleRenameProject,
+    handleReorderProjects,
 
     // Group handlers
     handleToggleGroup,

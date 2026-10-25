@@ -27,6 +27,7 @@ interface ProjectsSectionProps {
   onEditProject?: (projectId: string) => void;
   onDeleteProject?: (projectId: string) => void;
   onRenameProject?: (projectId: string, newName: string) => void;
+  onReorderProjects?: (ids: string[]) => void;
   onNewSession?: (projectId: string) => void;
   onOpenTerminal?: (projectId: string) => void;
   onSelectSession: (sessionId: string) => void;
@@ -58,6 +59,7 @@ export function ProjectsSection({
   onEditProject,
   onDeleteProject,
   onRenameProject,
+  onReorderProjects,
   onNewSession,
   onOpenTerminal,
   onSelectSession,
@@ -148,6 +150,20 @@ export function ProjectsSection({
     return devServers.filter((ds) => ds.project_id === projectId);
   };
 
+  // Uncategorized always sorts last, so only the others move
+  const ordered = projects.filter((p) => !p.is_uncategorized).map((p) => p.id);
+  const mover = (projectId: string, by: -1 | 1) => {
+    const from = ordered.indexOf(projectId);
+    const to = from + by;
+    if (!onReorderProjects || from < 0 || to < 0 || to >= ordered.length)
+      return undefined;
+    return () => {
+      const ids = [...ordered];
+      [ids[from], ids[to]] = [ids[to], ids[from]];
+      onReorderProjects(ids);
+    };
+  };
+
   return (
     <div className="space-y-1">
       {projects.map((project) => {
@@ -191,6 +207,8 @@ export function ProjectsSection({
                   ? (newName) => onRenameProject(project.id, newName)
                   : undefined
               }
+              onMoveUp={mover(project.id, -1)}
+              onMoveDown={mover(project.id, 1)}
             />
 
             {/* Project contents when expanded */}

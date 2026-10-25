@@ -264,6 +264,15 @@ export function toggleProjectExpanded(id: string, expanded: boolean): void {
 }
 
 /**
+ * Put projects in the given order (Uncategorized always sorts last)
+ */
+export function reorderProjects(ids: string[]): void {
+  db.transaction(() => {
+    ids.forEach((id, i) => queries.updateProjectOrder(db).run(i + 1, id));
+  })();
+}
+
+/**
  * Delete a project (moves sessions to Uncategorized)
  */
 export function deleteProject(id: string): boolean {

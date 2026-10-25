@@ -3,6 +3,7 @@ export {
   useProjectsQuery,
   useCreateProject,
   useToggleProject,
+  useReorderProjects,
   useDeleteProject,
   useRenameProject,
   useUpdateProject,
