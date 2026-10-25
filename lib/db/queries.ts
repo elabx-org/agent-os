@@ -49,6 +49,13 @@ export const queries = {
   deleteSession: (db: Database.Database) =>
     getStmt(db, `DELETE FROM sessions WHERE id = ?`),
 
+  // Forks point at the session they came from; they outlive it
+  detachForks: (db: Database.Database) =>
+    getStmt(
+      db,
+      `UPDATE sessions SET parent_session_id = NULL WHERE parent_session_id = ?`
+    ),
+
   updateSessionWorktree: (db: Database.Database) =>
     getStmt(
       db,

@@ -168,6 +168,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       } catch (error) {
         console.error(`Failed to kill worker ${worker.id}:`, error);
       }
+      queries.detachForks(db).run(worker.id);
       queries.deleteSession(db).run(worker.id);
     }
 
@@ -177,6 +178,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     }
 
     // Delete from database immediately for instant UI feedback
+    queries.detachForks(db).run(id);
     queries.deleteSession(db).run(id);
 
     // Clean up worktree in background (non-blocking)
