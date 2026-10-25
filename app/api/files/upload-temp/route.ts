@@ -45,7 +45,8 @@ export async function POST(request: Request) {
       const safeName =
         filename?.replace(/[^a-zA-Z0-9._-]/g, "_") || "screenshot";
       const uniqueName = `${Date.now()}-${safeName}`;
-      finalName = uniqueName.endsWith(`.${ext}`)
+      // A name with its own extension keeps it (notes.txt, not notes.txt.plain)
+      finalName = /\.[a-zA-Z0-9]{1,8}$/.test(safeName)
         ? uniqueName
         : `${uniqueName}.${ext}`;
     }

@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 import SwiftUI
+import UniformTypeIdentifiers
 import WebKit
 
 /// The web app's views that the system bar switches between
@@ -25,6 +26,8 @@ final class AppModel {
     /// Changed files in the focused session (the Changes badge)
     var changes = 0
     var showingServer = false
+    /// Face ID / Touch ID in front of the app (off unless turned on)
+    let lock = AppLock()
     /// The page's background colour, for the edges it doesn't cover
     var pageBackground: Color?
     var fold: Fold? {
@@ -34,6 +37,8 @@ final class AppModel {
     @ObservationIgnored weak var webView: WKWebView?
     /// A session to open once the page has loaded (a notification or link launched the app)
     @ObservationIgnored private var pendingSession: String?
+    /// A shared file to hand to the page once it has loaded
+    @ObservationIgnored private var pendingFile: [String: String]?
     /// The APNs device token, handed to the server from the page so it carries the login
     @ObservationIgnored private var pushToken: String?
 
@@ -71,8 +76,13 @@ final class AppModel {
         send(["type": "posture", "fold": fold?.json ?? NSNull()], keep: "fold")
     }
 
-    /// agentos://session/<id>, from an ntfy notification or anywhere else
+    /// agentos://session/<id>, from an ntfy notification or anywhere else,
+    /// or a file shared to the app
     func handle(url: URL) {
+        if url.isFileURL {
+            share(file: url)
+            return
+        }
         guard url.scheme == "agentos", url.host == "session",
               let id = url.pathComponents.dropFirst().first, !id.isEmpty else { return }
         openSession(id)
@@ -82,6 +92,30 @@ final class AppModel {
         pendingSession = id
         if webView?.isLoading == false { flushPending() }
     }
+
+    /// The page uploads it into the focused session, as with a picked image
+    func share(file url: URL) {
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer {
+            if scoped { url.stopAccessingSecurityScopedResource() }
+            // Copies land in the app's Inbox; they're uploaded now
+            if url.path.contains("/Inbox/") { try? FileManager.default.removeItem(at: url) }
+        }
+        guard let data = try? Data(contentsOf: url), data.count <= Self.maxShare else {
+            Haptics.play("error")
+            return
+        }
+        let type = UTType(filenameExtension: url.pathExtension)?.preferredMIMEType
+        pendingFile = [
+            "name": url.lastPathComponent,
+            "mimeType": type ?? "application/octet-stream",
+            "base64": data.base64EncodedString(),
+        ]
+        if webView?.isLoading == false { flushPending() }
+    }
+
+    /// Bigger files are better copied to the server another way
+    private static let maxShare = 25 * 1024 * 1024
 
     func setPushToken(_ token: Data) {
         pushToken = token.map { String(format: "%02x", $0) }.joined()
@@ -96,10 +130,15 @@ final class AppModel {
     }
 
     private func flushPending() {
-        guard let id = pendingSession else { return }
-        pendingSession = nil
-        // Kept on agentosNative too, for a page still starting up
-        send(["type": "open", "sessionId": id], keep: "open")
+        if let id = pendingSession {
+            pendingSession = nil
+            // Kept on agentosNative too, for a page still starting up
+            send(["type": "open", "sessionId": id], keep: "open")
+        }
+        if let file = pendingFile {
+            pendingFile = nil
+            send(["type": "file", "file": file], keep: "file")
+        }
     }
 
     private func registerPushToken() {

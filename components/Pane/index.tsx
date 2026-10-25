@@ -31,6 +31,7 @@ import { useSnapshot } from "valtio";
 import { fileOpenStore, fileOpenActions } from "@/stores/fileOpen";
 import { mobileNavStore, mobileNavActions } from "@/stores/mobileNav";
 import { isNative } from "@/lib/native-bridge";
+import { useSharedFiles } from "@/hooks/useSharedFiles";
 import { useGitStatus } from "@/data/git/queries";
 
 // Dynamic imports for client-only components with loading states
@@ -136,6 +137,8 @@ export const Pane = memo(function Pane({
     ? (terminalRefs.current.get(activeTab.id) ?? null)
     : null;
   const isFocused = focusedPaneId === paneId;
+  // Files shared to the iOS app attach to the focused session
+  useSharedFiles(terminalRef, isFocused);
   const session = activeTab
     ? sessions.find((s) => s.id === activeTab.sessionId)
     : null;

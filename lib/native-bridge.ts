@@ -32,7 +32,15 @@ export type NativeEvent =
   /** The fold while half open, in the page's CSS pixels */
   | { type: "posture"; fold: Fold | null }
   /** Open a session: a tapped notification or an agentos://session/<id> link */
-  | { type: "open"; sessionId: string };
+  | { type: "open"; sessionId: string }
+  /** A file shared to the app ("Open in Agent-OS"), for the focused session */
+  | { type: "file"; file: SharedFile };
+
+export interface SharedFile {
+  name: string;
+  mimeType: string;
+  base64: string;
+}
 
 export interface NativeState {
   type: "state";
@@ -53,6 +61,8 @@ declare global {
       fold?: Fold | null;
       /** A session to open, set when a link launched the app */
       open?: string;
+      /** A file shared to the app before the page was ready */
+      file?: SharedFile;
     };
     webkit?: {
       messageHandlers?: Record<string, { postMessage: (msg: unknown) => void }>;

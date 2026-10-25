@@ -32,6 +32,16 @@ struct ServerSheet: View {
                         address = AppModel.defaultServer.absoluteString
                     }
                 }
+                if model.lock.available {
+                    Section {
+                        Toggle("Require \(model.lock.method)", isOn: Binding(
+                            get: { model.lock.enabled },
+                            set: { on in Task { await model.lock.setEnabled(on) } }
+                        ))
+                    } footer: {
+                        Text("Asked when Agent-OS opens and after a minute away. The app switcher shows a blank page.")
+                    }
+                }
             }
             .navigationTitle("Server")
             .navigationBarTitleDisplayMode(.inline)
