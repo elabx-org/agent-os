@@ -5,20 +5,7 @@ import { getDb, queries, type Session } from "@/lib/db";
 import { deleteWorktree, isAgentOSWorktree } from "@/lib/worktrees";
 import { releasePort } from "@/lib/ports";
 import { killWorker } from "@/lib/orchestration";
-import { generateBranchName, getCurrentBranch, renameBranch } from "@/lib/git";
 import { runInBackground } from "@/lib/async-operations";
-
-const execAsync = promisify(exec);
-
-// Sanitize a name for use as tmux session name
-function sanitizeTmuxName(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9-]/g, "-") // Replace non-alphanumeric with dashes
-    .replace(/-+/g, "-") // Collapse multiple dashes
-    .replace(/^-|-$/g, "") // Remove leading/trailing dashes
-    .slice(0, 50); // Limit length
-}
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -61,50 +48,10 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     const updates: string[] = [];
     const values: unknown[] = [];
 
-    // Handle name change - also rename tmux session and git branch (for worktrees)
+    // A rename is only the label: the tmux session keeps its
+    // <agent>-<id> name, which status, alerts and the Inbox look for, and
+    // a worktree keeps its branch
     if (body.name !== undefined && body.name !== existing.name) {
-      const newTmuxName = sanitizeTmuxName(body.name);
-      const oldTmuxName = existing.tmux_name;
-
-      // Try to rename the tmux session
-      if (oldTmuxName && newTmuxName) {
-        try {
-          await execAsync(
-            `tmux rename-session -t "${oldTmuxName}" "${newTmuxName}"`
-          );
-          updates.push("tmux_name = ?");
-          values.push(newTmuxName);
-        } catch {
-          // tmux session might not exist or rename failed - that's ok, just update the name
-          // Still update tmux_name in DB so future attachments use the new name
-          updates.push("tmux_name = ?");
-          values.push(newTmuxName);
-        }
-      }
-
-      // If this is a worktree session, also rename the git branch
-      if (existing.worktree_path && isAgentOSWorktree(existing.worktree_path)) {
-        try {
-          const currentBranch = await getCurrentBranch(existing.worktree_path);
-          const newBranchName = generateBranchName(body.name);
-
-          if (currentBranch !== newBranchName) {
-            const result = await renameBranch(
-              existing.worktree_path,
-              currentBranch,
-              newBranchName
-            );
-            console.log(
-              `Renamed branch ${currentBranch} → ${newBranchName}`,
-              result.remoteRenamed ? "(also on remote)" : "(local only)"
-            );
-          }
-        } catch (error) {
-          console.error("Failed to rename git branch:", error);
-          // Continue with session rename even if branch rename fails
-        }
-      }
-
       updates.push("name = ?");
       values.push(body.name);
     }
