@@ -5,14 +5,22 @@ import * as SelectPrimitive from "@radix-ui/react-select";
 import { Check, ChevronDown, ChevronUp } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { haptic } from "@/lib/haptics";
+import { useViewport } from "@/hooks/useViewport";
+import {
+  Sheet,
+  SheetBody,
+  SheetContent as SheetPanel,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 
-const Select = SelectPrimitive.Root;
+const RadixSelectGroup = SelectPrimitive.Group;
 
-const SelectGroup = SelectPrimitive.Group;
+const RadixSelectValue = SelectPrimitive.Value;
 
-const SelectValue = SelectPrimitive.Value;
-
-const SelectTrigger = React.forwardRef<
+const RadixSelectTrigger = React.forwardRef<
   React.ElementRef<typeof SelectPrimitive.Trigger>,
   React.ComponentPropsWithoutRef<typeof SelectPrimitive.Trigger>
 >(({ className, children, ...props }, ref) => (
@@ -30,7 +38,7 @@ const SelectTrigger = React.forwardRef<
     </SelectPrimitive.Icon>
   </SelectPrimitive.Trigger>
 ));
-SelectTrigger.displayName = SelectPrimitive.Trigger.displayName;
+RadixSelectTrigger.displayName = SelectPrimitive.Trigger.displayName;
 
 const SelectScrollUpButton = React.forwardRef<
   React.ElementRef<typeof SelectPrimitive.ScrollUpButton>,
@@ -67,7 +75,7 @@ const SelectScrollDownButton = React.forwardRef<
 SelectScrollDownButton.displayName =
   SelectPrimitive.ScrollDownButton.displayName;
 
-const SelectContent = React.forwardRef<
+const RadixSelectContent = React.forwardRef<
   React.ElementRef<typeof SelectPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof SelectPrimitive.Content>
 >(({ className, children, position = "popper", ...props }, ref) => (
@@ -97,9 +105,9 @@ const SelectContent = React.forwardRef<
     </SelectPrimitive.Content>
   </SelectPrimitive.Portal>
 ));
-SelectContent.displayName = SelectPrimitive.Content.displayName;
+RadixSelectContent.displayName = SelectPrimitive.Content.displayName;
 
-const SelectLabel = React.forwardRef<
+const RadixSelectLabel = React.forwardRef<
   React.ElementRef<typeof SelectPrimitive.Label>,
   React.ComponentPropsWithoutRef<typeof SelectPrimitive.Label>
 >(({ className, ...props }, ref) => (
@@ -109,9 +117,9 @@ const SelectLabel = React.forwardRef<
     {...props}
   />
 ));
-SelectLabel.displayName = SelectPrimitive.Label.displayName;
+RadixSelectLabel.displayName = SelectPrimitive.Label.displayName;
 
-const SelectItem = React.forwardRef<
+const RadixSelectItem = React.forwardRef<
   React.ElementRef<typeof SelectPrimitive.Item>,
   React.ComponentPropsWithoutRef<typeof SelectPrimitive.Item>
 >(({ className, children, ...props }, ref) => (
@@ -131,9 +139,9 @@ const SelectItem = React.forwardRef<
     <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
   </SelectPrimitive.Item>
 ));
-SelectItem.displayName = SelectPrimitive.Item.displayName;
+RadixSelectItem.displayName = SelectPrimitive.Item.displayName;
 
-const SelectSeparator = React.forwardRef<
+const RadixSelectSeparator = React.forwardRef<
   React.ElementRef<typeof SelectPrimitive.Separator>,
   React.ComponentPropsWithoutRef<typeof SelectPrimitive.Separator>
 >(({ className, ...props }, ref) => (
@@ -143,7 +151,249 @@ const SelectSeparator = React.forwardRef<
     {...props}
   />
 ));
-SelectSeparator.displayName = SelectPrimitive.Separator.displayName;
+RadixSelectSeparator.displayName = SelectPrimitive.Separator.displayName;
+
+/*
+ * On touch a select opens a sheet of options with a tick on the chosen one;
+ * with a mouse it's the Radix dropdown. The touch version reads its options
+ * from the SelectItems written inside SelectContent.
+ */
+
+type RootProps = React.ComponentProps<typeof SelectPrimitive.Root>;
+
+interface TouchSelectState {
+  value: string | undefined;
+  choose: (value: string) => void;
+  open: boolean;
+  setOpen: (open: boolean) => void;
+  disabled?: boolean;
+  /** The chosen option's content, for SelectValue */
+  chosen: React.ReactNode;
+  /** What SelectContent's title says: the trigger's label, if any */
+  title?: string;
+}
+
+const TouchSelect = React.createContext<TouchSelectState | null>(null);
+
+interface FoundItem {
+  value: string;
+  children: React.ReactNode;
+}
+
+function findItems(node: React.ReactNode, found: FoundItem[] = []) {
+  React.Children.forEach(node, (child) => {
+    if (!React.isValidElement(child)) return;
+    const props = child.props as { value?: string; children?: React.ReactNode };
+    if (child.type === SelectItem && props.value !== undefined) {
+      found.push({ value: props.value, children: props.children });
+    } else if (props.children) {
+      findItems(props.children, found);
+    }
+  });
+  return found;
+}
+
+function Select({
+  children,
+  value: controlled,
+  defaultValue,
+  onValueChange,
+  disabled,
+  ...props
+}: RootProps) {
+  const { isTouch } = useViewport();
+  const [own, setOwn] = React.useState(defaultValue);
+  const [open, setOpen] = React.useState(false);
+  if (!isTouch) {
+    return (
+      <SelectPrimitive.Root
+        value={controlled}
+        defaultValue={defaultValue}
+        onValueChange={onValueChange}
+        disabled={disabled}
+        {...props}
+      >
+        {children}
+      </SelectPrimitive.Root>
+    );
+  }
+  const value = controlled ?? own;
+  const chosen = findItems(children).find((i) => i.value === value)?.children;
+  return (
+    <TouchSelect.Provider
+      value={{
+        value,
+        chosen,
+        open,
+        setOpen,
+        disabled,
+        choose: (next) => {
+          haptic("selection");
+          setOwn(next);
+          setOpen(false);
+          if (next !== value) onValueChange?.(next);
+        },
+      }}
+    >
+      {children}
+    </TouchSelect.Provider>
+  );
+}
+
+const SelectTrigger = React.forwardRef<
+  React.ElementRef<typeof SelectPrimitive.Trigger>,
+  React.ComponentPropsWithoutRef<typeof SelectPrimitive.Trigger>
+>(({ className, children, onClick, ...props }, ref) => {
+  const touch = React.useContext(TouchSelect);
+  if (!touch)
+    return (
+      <RadixSelectTrigger
+        ref={ref}
+        className={className}
+        onClick={onClick}
+        {...props}
+      >
+        {children}
+      </RadixSelectTrigger>
+    );
+  return (
+    <button
+      ref={ref}
+      type="button"
+      disabled={touch.disabled || props.disabled}
+      aria-haspopup="dialog"
+      aria-expanded={touch.open}
+      onClick={(e) => {
+        onClick?.(e);
+        touch.setOpen(true);
+      }}
+      className={cn(
+        "border-input flex h-11 w-full items-center justify-between gap-2 rounded-md border bg-transparent px-3 text-left text-sm shadow-sm disabled:cursor-not-allowed disabled:opacity-50 [&>span]:line-clamp-1",
+        className,
+        "h-11"
+      )}
+    >
+      {children}
+      <ChevronDown className="h-4 w-4 shrink-0 opacity-50" />
+    </button>
+  );
+});
+SelectTrigger.displayName = "SelectTrigger";
+
+function SelectValue({
+  placeholder,
+  ...props
+}: React.ComponentProps<typeof SelectPrimitive.Value>) {
+  const touch = React.useContext(TouchSelect);
+  if (!touch) return <RadixSelectValue placeholder={placeholder} {...props} />;
+  return (
+    <span
+      className={cn(
+        "min-w-0 truncate",
+        touch.chosen == null && "text-muted-foreground"
+      )}
+    >
+      {touch.chosen ?? placeholder}
+    </span>
+  );
+}
+
+const SelectContent = React.forwardRef<
+  React.ElementRef<typeof SelectPrimitive.Content>,
+  React.ComponentPropsWithoutRef<typeof SelectPrimitive.Content>
+>(({ children, ...props }, ref) => {
+  const touch = React.useContext(TouchSelect);
+  if (!touch)
+    return (
+      <RadixSelectContent ref={ref} {...props}>
+        {children}
+      </RadixSelectContent>
+    );
+  return (
+    <Sheet open={touch.open} onOpenChange={touch.setOpen}>
+      <SheetPanel>
+        <SheetHeader className="sr-only">
+          <SheetTitle>Choose</SheetTitle>
+          <SheetDescription>Choose an option</SheetDescription>
+        </SheetHeader>
+        <SheetBody className="pt-2 pb-1">
+          <ul className="bg-secondary/70 divide-border/60 divide-y overflow-hidden rounded-2xl">
+            {children}
+          </ul>
+        </SheetBody>
+      </SheetPanel>
+    </Sheet>
+  );
+});
+SelectContent.displayName = "SelectContent";
+
+const SelectItem = React.forwardRef<
+  React.ElementRef<typeof SelectPrimitive.Item>,
+  React.ComponentPropsWithoutRef<typeof SelectPrimitive.Item>
+>(({ className, children, value, disabled, ...props }, ref) => {
+  const touch = React.useContext(TouchSelect);
+  if (!touch)
+    return (
+      <RadixSelectItem
+        ref={ref}
+        className={className}
+        value={value}
+        disabled={disabled}
+        {...props}
+      >
+        {children}
+      </RadixSelectItem>
+    );
+  const checked = touch.value === value;
+  return (
+    <li>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => touch.choose(value)}
+        className="active:bg-accent flex min-h-[52px] w-full items-center gap-3 px-4 text-left text-[15px] disabled:opacity-40"
+      >
+        <span className="flex min-w-0 flex-1 flex-wrap items-center">
+          {children}
+        </span>
+        {checked && <Check className="text-primary h-5 w-5 shrink-0" />}
+      </button>
+    </li>
+  );
+});
+SelectItem.displayName = "SelectItem";
+
+function SelectGroup(
+  props: React.ComponentProps<typeof SelectPrimitive.Group>
+) {
+  const touch = React.useContext(TouchSelect);
+  if (!touch) return <RadixSelectGroup {...props} />;
+  return <>{props.children}</>;
+}
+
+const SelectLabel = React.forwardRef<
+  React.ElementRef<typeof SelectPrimitive.Label>,
+  React.ComponentPropsWithoutRef<typeof SelectPrimitive.Label>
+>((props, ref) => {
+  const touch = React.useContext(TouchSelect);
+  if (!touch) return <RadixSelectLabel ref={ref} {...props} />;
+  return (
+    <li className="text-muted-foreground px-4 pt-3 pb-1 text-xs font-semibold uppercase">
+      {props.children}
+    </li>
+  );
+});
+SelectLabel.displayName = "SelectLabel";
+
+const SelectSeparator = React.forwardRef<
+  React.ElementRef<typeof SelectPrimitive.Separator>,
+  React.ComponentPropsWithoutRef<typeof SelectPrimitive.Separator>
+>((props, ref) => {
+  const touch = React.useContext(TouchSelect);
+  if (!touch) return <RadixSelectSeparator ref={ref} {...props} />;
+  return null;
+});
+SelectSeparator.displayName = "SelectSeparator";
 
 export {
   Select,

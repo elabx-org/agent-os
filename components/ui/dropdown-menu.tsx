@@ -6,16 +6,37 @@ import { CheckIcon, ChevronRightIcon, CircleIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { withTouchSelect } from "./touch-select";
+import { useViewport } from "@/hooks/useViewport";
+import {
+  TouchMenu,
+  TouchMenuCheckboxItem,
+  TouchMenuContent,
+  TouchMenuItem,
+  TouchMenuLabel,
+  TouchMenuRadioGroup,
+  TouchMenuRadioItem,
+  TouchMenuSeparator,
+  TouchMenuSub,
+  TouchMenuSubContent,
+  TouchMenuSubTrigger,
+  TouchMenuTrigger,
+  useTouchMenu,
+} from "./touch-menu";
+
+// On touch every part below renders its bottom-sheet version (touch-menu.tsx)
 
 function DropdownMenu({
   ...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.Root>) {
+  const { isTouch } = useViewport();
+  if (isTouch) return <TouchMenu {...props} />;
   return <DropdownMenuPrimitive.Root data-slot="dropdown-menu" {...props} />;
 }
 
 function DropdownMenuPortal({
   ...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.Portal>) {
+  if (useTouchMenu()) return <>{props.children}</>;
   return (
     <DropdownMenuPrimitive.Portal data-slot="dropdown-menu-portal" {...props} />
   );
@@ -24,6 +45,7 @@ function DropdownMenuPortal({
 function DropdownMenuTrigger({
   ...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.Trigger>) {
+  if (useTouchMenu()) return <TouchMenuTrigger {...props} />;
   return (
     <DropdownMenuPrimitive.Trigger
       data-slot="dropdown-menu-trigger"
@@ -37,6 +59,8 @@ function DropdownMenuContent({
   sideOffset = 4,
   ...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.Content>) {
+  if (useTouchMenu())
+    return <TouchMenuContent>{props.children}</TouchMenuContent>;
   return (
     <DropdownMenuPrimitive.Portal>
       <DropdownMenuPrimitive.Content
@@ -55,6 +79,7 @@ function DropdownMenuContent({
 function DropdownMenuGroup({
   ...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.Group>) {
+  if (useTouchMenu()) return <>{props.children}</>;
   return (
     <DropdownMenuPrimitive.Group data-slot="dropdown-menu-group" {...props} />
   );
@@ -69,6 +94,19 @@ function DropdownMenuItem({
   inset?: boolean;
   variant?: "default" | "destructive";
 }) {
+  const touch = useTouchMenu();
+  if (touch)
+    return (
+      <TouchMenuItem
+        className={className}
+        variant={variant}
+        disabled={props.disabled}
+        onSelect={props.onSelect}
+        onClick={props.onClick}
+      >
+        {props.children}
+      </TouchMenuItem>
+    );
   return (
     <DropdownMenuPrimitive.Item
       data-slot="dropdown-menu-item"
@@ -89,6 +127,20 @@ function DropdownMenuCheckboxItem({
   checked,
   ...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.CheckboxItem>) {
+  const touch = useTouchMenu();
+  if (touch)
+    return (
+      <TouchMenuCheckboxItem
+        className={className}
+        checked={checked}
+        onCheckedChange={props.onCheckedChange}
+        disabled={props.disabled}
+        onSelect={props.onSelect}
+        onClick={props.onClick}
+      >
+        {children}
+      </TouchMenuCheckboxItem>
+    );
   return (
     <DropdownMenuPrimitive.CheckboxItem
       data-slot="dropdown-menu-checkbox-item"
@@ -112,6 +164,7 @@ function DropdownMenuCheckboxItem({
 function DropdownMenuRadioGroup({
   ...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.RadioGroup>) {
+  if (useTouchMenu()) return <TouchMenuRadioGroup {...props} />;
   return (
     <DropdownMenuPrimitive.RadioGroup
       data-slot="dropdown-menu-radio-group"
@@ -125,6 +178,19 @@ function DropdownMenuRadioItem({
   children,
   ...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.RadioItem>) {
+  const touch = useTouchMenu();
+  if (touch)
+    return (
+      <TouchMenuRadioItem
+        className={className}
+        value={props.value}
+        disabled={props.disabled}
+        onSelect={props.onSelect}
+        onClick={props.onClick}
+      >
+        {children}
+      </TouchMenuRadioItem>
+    );
   return (
     <DropdownMenuPrimitive.RadioItem
       data-slot="dropdown-menu-radio-item"
@@ -151,6 +217,7 @@ function DropdownMenuLabel({
 }: React.ComponentProps<typeof DropdownMenuPrimitive.Label> & {
   inset?: boolean;
 }) {
+  if (useTouchMenu()) return <TouchMenuLabel>{props.children}</TouchMenuLabel>;
   return (
     <DropdownMenuPrimitive.Label
       data-slot="dropdown-menu-label"
@@ -168,6 +235,7 @@ function DropdownMenuSeparator({
   className,
   ...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.Separator>) {
+  if (useTouchMenu()) return <TouchMenuSeparator />;
   return (
     <DropdownMenuPrimitive.Separator
       data-slot="dropdown-menu-separator"
@@ -181,6 +249,7 @@ function DropdownMenuShortcut({
   className,
   ...props
 }: React.ComponentProps<"span">) {
+  if (useTouchMenu()) return null;
   return (
     <span
       data-slot="dropdown-menu-shortcut"
@@ -196,6 +265,7 @@ function DropdownMenuShortcut({
 function DropdownMenuSub({
   ...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.Sub>) {
+  if (useTouchMenu()) return <TouchMenuSub>{props.children}</TouchMenuSub>;
   return <DropdownMenuPrimitive.Sub data-slot="dropdown-menu-sub" {...props} />;
 }
 
@@ -207,6 +277,12 @@ function DropdownMenuSubTrigger({
 }: React.ComponentProps<typeof DropdownMenuPrimitive.SubTrigger> & {
   inset?: boolean;
 }) {
+  if (useTouchMenu())
+    return (
+      <TouchMenuSubTrigger disabled={props.disabled}>
+        {children}
+      </TouchMenuSubTrigger>
+    );
   return (
     <DropdownMenuPrimitive.SubTrigger
       data-slot="dropdown-menu-sub-trigger"
@@ -227,6 +303,8 @@ function DropdownMenuSubContent({
   className,
   ...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.SubContent>) {
+  if (useTouchMenu())
+    return <TouchMenuSubContent>{props.children}</TouchMenuSubContent>;
   return (
     <DropdownMenuPrimitive.SubContent
       data-slot="dropdown-menu-sub-content"

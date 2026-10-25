@@ -6,10 +6,26 @@ import { Check, ChevronRight, Circle } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { withTouchSelect } from "./touch-select";
+import { useViewport } from "@/hooks/useViewport";
 
 const ContextMenu = ContextMenuPrimitive.Root;
 
-const ContextMenuTrigger = ContextMenuPrimitive.Trigger;
+// A touch hold is the row's own action sheet (or select mode in a
+// terminal), so Radix's small long-press menu stays out of the way
+const ContextMenuTrigger = React.forwardRef<
+  React.ElementRef<typeof ContextMenuPrimitive.Trigger>,
+  React.ComponentPropsWithoutRef<typeof ContextMenuPrimitive.Trigger>
+>(({ disabled, ...props }, ref) => {
+  const { isTouch } = useViewport();
+  return (
+    <ContextMenuPrimitive.Trigger
+      ref={ref}
+      disabled={disabled || isTouch}
+      {...props}
+    />
+  );
+});
+ContextMenuTrigger.displayName = ContextMenuPrimitive.Trigger.displayName;
 
 const ContextMenuGroup = ContextMenuPrimitive.Group;
 
