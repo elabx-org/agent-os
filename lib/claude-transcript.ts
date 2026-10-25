@@ -84,7 +84,7 @@ export async function readClaudeSessionMeta(
   }
   if (!/^\d+$/.test(pid)) return null;
 
-  let meta: { sessionId?: string; cwd?: string; name?: unknown };
+  let meta: SessionMeta;
   try {
     meta = JSON.parse(
       fs.readFileSync(path.join(claudeDir(), "sessions", `${pid}.json`), "utf8")
@@ -92,10 +92,45 @@ export async function readClaudeSessionMeta(
   } catch {
     return null;
   }
+  // Sent to the background ("parked"), the conversation goes on as a
+  // background job under a new id; the pane's process still names the old one
+  if (typeof meta.parkedJobId === "string") {
+    const job = findBackgroundJob(meta.parkedJobId);
+    if (job) meta = job;
+  }
   const { sessionId, cwd } = meta;
   if (!sessionId || !cwd || !/^[0-9a-f-]{36}$/.test(sessionId)) return null;
   const name = typeof meta.name === "string" ? meta.name : undefined;
   return { sessionId, cwd, name };
+}
+
+type SessionMeta = {
+  sessionId?: string;
+  cwd?: string;
+  name?: unknown;
+  parkedJobId?: unknown;
+  jobId?: unknown;
+};
+
+function findBackgroundJob(jobId: string): SessionMeta | null {
+  const dir = path.join(claudeDir(), "sessions");
+  let names: string[];
+  try {
+    names = fs.readdirSync(dir).filter((n) => n.endsWith(".json"));
+  } catch {
+    return null;
+  }
+  for (const name of names) {
+    try {
+      const meta: SessionMeta = JSON.parse(
+        fs.readFileSync(path.join(dir, name), "utf8")
+      );
+      if (meta.jobId === jobId) return meta;
+    } catch {
+      // A file being rewritten: skip it
+    }
+  }
+  return null;
 }
 
 export async function findTranscript(
@@ -144,7 +179,9 @@ export function readTranscript(
   sessionId: string,
   cwd: string,
   since?: number,
-  before?: number
+  before?: number,
+  /** A subagent's own file, where every line is a side chain */
+  subagent = false
 ): TranscriptChunk {
   const size = fs.statSync(file).size;
   const resume = since !== undefined && since >= 0 && since <= size;
@@ -169,7 +206,7 @@ export function readTranscript(
   for (const line of lines) {
     if (line) {
       try {
-        parsed.push({ at, items: toItems(JSON.parse(line), cwd) });
+        parsed.push({ at, items: toItems(JSON.parse(line), cwd, subagent) });
       } catch {
         // Skip malformed lines
       }
@@ -203,8 +240,8 @@ export function readTranscript(
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-function toItems(entry: any, cwd: string): ChatItem[] {
-  if (entry.isSidechain || entry.isMeta) return [];
+function toItems(entry: any, cwd: string, subagent = false): ChatItem[] {
+  if ((entry.isSidechain && !subagent) || entry.isMeta) return [];
   const msg = entry.message;
   if (!msg) return [];
   const ts: string = entry.timestamp ?? "";
