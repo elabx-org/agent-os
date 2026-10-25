@@ -26,6 +26,8 @@ export function SwipeSidebar({ isOpen, onClose, children }: SwipeSidebarProps) {
       if (!sidebarRef.current) return;
       const sidebar = sidebarRef.current;
       const touch = e.touches[0];
+      // A row's own swipe actions win over closing the sidebar
+      if ((e.target as Element | null)?.closest?.("[data-swipe-row]")) return;
 
       // Only start tracking if touch is within sidebar
       if (touch.clientX <= sidebar.offsetWidth) {

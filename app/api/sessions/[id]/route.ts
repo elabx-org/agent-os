@@ -138,6 +138,23 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       );
     }
 
+    // Pinned last in its project; a pinned session moved to another project
+    // goes to the end of that project's pins
+    const projectChanged =
+      body.projectId !== undefined && body.projectId !== existing.project_id;
+    if (
+      body.pinned === true ||
+      (projectChanged &&
+        existing.pinned_order !== null &&
+        body.pinned !== false)
+    ) {
+      const projectId =
+        body.projectId !== undefined ? body.projectId : existing.project_id;
+      queries.pinSessionLast(db).run(projectId, id, id);
+    } else if (body.pinned === false) {
+      queries.unpinSession(db).run(id);
+    }
+
     const session = queries.getSession(db).get(id) as Session;
     return NextResponse.json({ session });
   } catch (error) {

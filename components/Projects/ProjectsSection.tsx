@@ -1,11 +1,12 @@
 "use client";
 
-import { useMemo, useCallback } from "react";
+import { useMemo, useCallback, useState, type ReactNode } from "react";
 import { useSnapshot } from "valtio";
 import { ProjectCard } from "./ProjectCard";
 import { SessionCard } from "@/components/SessionCard";
 import { DevServerCard } from "@/components/DevServers/DevServerCard";
 import { selectionStore, selectionActions } from "@/stores/sessionSelection";
+import { SortableItem, SortableList } from "@/components/ui/sortable";
 import type { Session, Group, DevServer } from "@/lib/db";
 import type { ProjectWithDevServers } from "@/lib/projects";
 
@@ -38,6 +39,8 @@ interface ProjectsSectionProps {
   onDeleteSession?: (sessionId: string) => void;
   onRenameSession?: (sessionId: string, newName: string) => void;
   onCreatePR?: (sessionId: string) => void;
+  onTogglePinSession?: (sessionId: string, pinned: boolean) => void;
+  onReorderPinnedSessions?: (ids: string[]) => void;
   onStartDevServer?: (projectId: string) => void;
   onStopDevServer?: (serverId: string) => Promise<void>;
   onRestartDevServer?: (serverId: string) => Promise<void>;
@@ -70,6 +73,8 @@ export function ProjectsSection({
   onDeleteSession,
   onRenameSession,
   onCreatePR,
+  onTogglePinSession,
+  onReorderPinnedSessions,
   onStartDevServer,
   onStopDevServer,
   onRestartDevServer,
@@ -150,242 +155,297 @@ export function ProjectsSection({
     return devServers.filter((ds) => ds.project_id === projectId);
   };
 
+  // A touch hold let go without moving opens that row's actions
+  const [actionsFor, setActionsFor] = useState<{ id: string; n: number }>();
+  const requestActions = (id: string) =>
+    setActionsFor((prev) => ({ id, n: (prev?.n ?? 0) + 1 }));
+  const actionsRequest = (id: string) =>
+    actionsFor?.id === id ? actionsFor.n : undefined;
+
+  // Drag handle: what starts a drag in a sortable row
+  type Handle = Parameters<Parameters<typeof SortableItem>[0]["children"]>[0];
+  const handled = (handle: Handle | undefined, row: ReactNode) =>
+    handle ? (
+      <div ref={handle.ref} {...handle.props}>
+        {row}
+      </div>
+    ) : (
+      row
+    );
+
   // Uncategorized always sorts last, so only the others move
-  const ordered = projects.filter((p) => !p.is_uncategorized).map((p) => p.id);
-  const mover = (projectId: string, by: -1 | 1) => {
-    const from = ordered.indexOf(projectId);
-    const to = from + by;
-    if (!onReorderProjects || from < 0 || to < 0 || to >= ordered.length)
-      return undefined;
-    return () => {
-      const ids = [...ordered];
-      [ids[from], ids[to]] = [ids[to], ids[from]];
-      onReorderProjects(ids);
-    };
-  };
+  const movable = projects.filter((p) => !p.is_uncategorized);
+  const fixed = projects.filter((p) => p.is_uncategorized);
 
   return (
     <div className="space-y-1">
-      {projects.map((project) => {
-        const projectSessions = sessionsByProject[project.id] || [];
-        const runningServers = getProjectRunningServers(project.id);
-        const projectDevServers = getProjectDevServers(project.id);
-
-        // Uncategorized only holds sessions that have no project: show it
-        // when it holds something, or when it's the only project
-        if (
-          project.is_uncategorized &&
-          projects.length > 1 &&
-          projectSessions.length === 0 &&
-          projectDevServers.length === 0
-        )
-          return null;
-
-        return (
-          <div key={project.id} className="space-y-0.5">
-            {/* Project header */}
-            <ProjectCard
-              project={project}
-              sessionCount={projectSessions.length}
-              runningDevServers={runningServers}
-              onToggleExpanded={(expanded) =>
-                onToggleProject?.(project.id, expanded)
-              }
-              onEdit={
-                !project.is_uncategorized && onEditProject
-                  ? () => onEditProject(project.id)
-                  : undefined
-              }
-              onNewSession={
-                onNewSession ? () => onNewSession(project.id) : undefined
-              }
-              onOpenTerminal={
-                onOpenTerminal ? () => onOpenTerminal(project.id) : undefined
-              }
-              onStartDevServer={
-                !project.is_uncategorized && onStartDevServer
-                  ? () => onStartDevServer(project.id)
-                  : undefined
-              }
-              onDelete={
-                !project.is_uncategorized && onDeleteProject
-                  ? () => onDeleteProject(project.id)
-                  : undefined
-              }
-              onRename={
-                onRenameProject
-                  ? (newName) => onRenameProject(project.id, newName)
-                  : undefined
-              }
-              onMoveUp={mover(project.id, -1)}
-              onMoveDown={mover(project.id, 1)}
-            />
-
-            {/* Project contents when expanded */}
-            {project.expanded && (
-              <div className="border-border/30 ml-3 space-y-px border-l pl-1.5">
-                {/* Dev servers for this project */}
-                {projectDevServers.length > 0 && (
-                  <div className="space-y-px pb-0.5">
-                    {projectDevServers.map((server) => (
-                      <DevServerCard
-                        key={server.id}
-                        server={server}
-                        onStart={
-                          onRestartDevServer
-                            ? (id) => onRestartDevServer(id)
-                            : async () => {}
-                        }
-                        onStop={onStopDevServer || (async () => {})}
-                        onRestart={onRestartDevServer || (async () => {})}
-                        onRemove={onRemoveDevServer || (async () => {})}
-                        onViewLogs={
-                          onViewDevServerLogs
-                            ? (id) => onViewDevServerLogs(id)
-                            : () => {}
-                        }
-                      />
-                    ))}
-                  </div>
-                )}
-
-                {/* Project sessions */}
-                {projectSessions.length === 0 &&
-                projectDevServers.length === 0 ? (
-                  <p className="text-muted-foreground px-2 py-2 text-xs">
-                    No sessions yet
-                  </p>
-                ) : projectSessions.length === 0 ? null : (
-                  projectSessions.map((session) => {
-                    const workers = workersByConduct[session.id] || [];
-                    const hasWorkers = workers.length > 0;
-
-                    return (
-                      <div key={session.id} className="space-y-0.5">
-                        <div className="flex items-center gap-1">
-                          <div className="min-w-0 flex-1">
-                            <SessionCard
-                              session={session}
-                              isActive={session.id === activeSessionId}
-                              isSummarizing={
-                                summarizingSessionId === session.id
-                              }
-                              tmuxStatus={sessionStatuses?.[session.id]?.status}
-                              groups={groups}
-                              projects={projects}
-                              isSelected={selectedIds.has(session.id)}
-                              isInSelectMode={isInSelectMode}
-                              onToggleSelect={(shiftKey) =>
-                                handleToggleSelect(session.id, shiftKey)
-                              }
-                              onClick={() => onSelectSession(session.id)}
-                              onOpenInTab={
-                                onOpenSessionInTab
-                                  ? () => onOpenSessionInTab(session.id)
-                                  : undefined
-                              }
-                              onMoveToProject={
-                                onMoveSession
-                                  ? (projectId) =>
-                                      onMoveSession(session.id, projectId)
-                                  : undefined
-                              }
-                              onFork={
-                                onForkSession
-                                  ? () => onForkSession(session.id)
-                                  : undefined
-                              }
-                              onSummarize={
-                                onSummarize
-                                  ? () => onSummarize(session.id)
-                                  : undefined
-                              }
-                              onDelete={
-                                onDeleteSession
-                                  ? () => onDeleteSession(session.id)
-                                  : undefined
-                              }
-                              onRename={
-                                onRenameSession
-                                  ? (newName) =>
-                                      onRenameSession(session.id, newName)
-                                  : undefined
-                              }
-                              onCreatePR={
-                                onCreatePR
-                                  ? () => onCreatePR(session.id)
-                                  : undefined
-                              }
-                              onHoverStart={
-                                onHoverStart
-                                  ? (rect) => onHoverStart(session, rect)
-                                  : undefined
-                              }
-                              onHoverEnd={onHoverEnd}
-                            />
-                          </div>
-                          {/* Workers badge */}
-                          {hasWorkers && (
-                            <span className="bg-primary/20 text-primary flex-shrink-0 rounded-full px-1.5 py-0.5 text-xs">
-                              {workers.length}
-                            </span>
-                          )}
-                        </div>
-
-                        {/* Nested workers */}
-                        {hasWorkers && (
-                          <div className="border-border/30 ml-3 space-y-px border-l pl-1.5">
-                            {workers.map((worker) => (
-                              <SessionCard
-                                key={worker.id}
-                                session={worker}
-                                isActive={worker.id === activeSessionId}
-                                tmuxStatus={
-                                  sessionStatuses?.[worker.id]?.status
-                                }
-                                groups={groups}
-                                projects={projects}
-                                isSelected={selectedIds.has(worker.id)}
-                                isInSelectMode={isInSelectMode}
-                                onToggleSelect={(shiftKey) =>
-                                  handleToggleSelect(worker.id, shiftKey)
-                                }
-                                onClick={() => onSelectSession(worker.id)}
-                                onOpenInTab={
-                                  onOpenSessionInTab
-                                    ? () => onOpenSessionInTab(worker.id)
-                                    : undefined
-                                }
-                                onDelete={
-                                  onDeleteSession
-                                    ? () => onDeleteSession(worker.id)
-                                    : undefined
-                                }
-                                onRename={
-                                  onRenameSession
-                                    ? (newName) =>
-                                        onRenameSession(worker.id, newName)
-                                    : undefined
-                                }
-                                onHoverStart={
-                                  onHoverStart
-                                    ? (rect) => onHoverStart(worker, rect)
-                                    : undefined
-                                }
-                                onHoverEnd={onHoverEnd}
-                              />
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            )}
-          </div>
-        );
-      })}
+      <SortableList
+        ids={movable.map((p) => p.id)}
+        onReorder={(ids) => onReorderProjects?.(ids)}
+        onHoldRelease={requestActions}
+      >
+        {movable.map((project) => (
+          <SortableItem
+            key={project.id}
+            id={project.id}
+            disabled={!onReorderProjects}
+          >
+            {(handle) => renderProject(project, handle)}
+          </SortableItem>
+        ))}
+      </SortableList>
+      {fixed.map((project) => renderProject(project))}
     </div>
   );
+
+  function renderProject(project: ProjectWithDevServers, handle?: Handle) {
+    const projectSessions = sessionsByProject[project.id] || [];
+    const runningServers = getProjectRunningServers(project.id);
+    const projectDevServers = getProjectDevServers(project.id);
+
+    // Uncategorized only holds sessions that have no project: show it
+    // when it holds something, or when it's the only project
+    if (
+      project.is_uncategorized &&
+      projects.length > 1 &&
+      projectSessions.length === 0 &&
+      projectDevServers.length === 0
+    )
+      return null;
+
+    return (
+      <div key={project.id} className="space-y-0.5">
+        {/* Project header */}
+        {handled(
+          handle,
+          <ProjectCard
+            project={project}
+            sortable={!!handle}
+            actionsRequest={actionsRequest(project.id)}
+            sessionCount={projectSessions.length}
+            runningDevServers={runningServers}
+            onToggleExpanded={(expanded) =>
+              onToggleProject?.(project.id, expanded)
+            }
+            onEdit={
+              !project.is_uncategorized && onEditProject
+                ? () => onEditProject(project.id)
+                : undefined
+            }
+            onNewSession={
+              onNewSession ? () => onNewSession(project.id) : undefined
+            }
+            onOpenTerminal={
+              onOpenTerminal ? () => onOpenTerminal(project.id) : undefined
+            }
+            onStartDevServer={
+              !project.is_uncategorized && onStartDevServer
+                ? () => onStartDevServer(project.id)
+                : undefined
+            }
+            onDelete={
+              !project.is_uncategorized && onDeleteProject
+                ? () => onDeleteProject(project.id)
+                : undefined
+            }
+            onRename={
+              onRenameProject
+                ? (newName) => onRenameProject(project.id, newName)
+                : undefined
+            }
+          />
+        )}
+
+        {/* Project contents when expanded */}
+        {project.expanded && (
+          <div className="border-border/30 ml-3 space-y-px border-l pl-1.5">
+            {/* Dev servers for this project */}
+            {projectDevServers.length > 0 && (
+              <div className="space-y-px pb-0.5">
+                {projectDevServers.map((server) => (
+                  <DevServerCard
+                    key={server.id}
+                    server={server}
+                    onStart={
+                      onRestartDevServer
+                        ? (id) => onRestartDevServer(id)
+                        : async () => {}
+                    }
+                    onStop={onStopDevServer || (async () => {})}
+                    onRestart={onRestartDevServer || (async () => {})}
+                    onRemove={onRemoveDevServer || (async () => {})}
+                    onViewLogs={
+                      onViewDevServerLogs
+                        ? (id) => onViewDevServerLogs(id)
+                        : () => {}
+                    }
+                  />
+                ))}
+              </div>
+            )}
+
+            {/* Project sessions */}
+            {projectSessions.length === 0 && projectDevServers.length === 0 ? (
+              <p className="text-muted-foreground px-2 py-2 text-xs">
+                No sessions yet
+              </p>
+            ) : projectSessions.length === 0 ? null : (
+              renderSessions(projectSessions)
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  function renderSessions(projectSessions: Session[]) {
+    const pinned = projectSessions.filter((s) => s.pinned_order != null);
+    const rest = projectSessions.filter((s) => s.pinned_order == null);
+    return (
+      <>
+        {pinned.length > 0 && (
+          <SortableList
+            ids={pinned.map((s) => s.id)}
+            onReorder={(ids) => onReorderPinnedSessions?.(ids)}
+            onHoldRelease={requestActions}
+          >
+            {pinned.map((session) => (
+              <SortableItem
+                key={session.id}
+                id={session.id}
+                disabled={!onReorderPinnedSessions || isInSelectMode}
+              >
+                {(handle) => renderSession(session, handle)}
+              </SortableItem>
+            ))}
+          </SortableList>
+        )}
+        {rest.map((session) => renderSession(session))}
+      </>
+    );
+  }
+
+  function renderSession(session: Session, handle?: Handle) {
+    const workers = workersByConduct[session.id] || [];
+    const hasWorkers = workers.length > 0;
+
+    return (
+      <div key={session.id} className="space-y-0.5">
+        <div className="flex items-center gap-1">
+          <div className="min-w-0 flex-1">
+            {handled(
+              handle,
+              <SessionCard
+                session={session}
+                sortable={!!handle}
+                actionsRequest={actionsRequest(session.id)}
+                onTogglePin={
+                  onTogglePinSession
+                    ? () =>
+                        onTogglePinSession(
+                          session.id,
+                          session.pinned_order == null
+                        )
+                    : undefined
+                }
+                isActive={session.id === activeSessionId}
+                isSummarizing={summarizingSessionId === session.id}
+                tmuxStatus={sessionStatuses?.[session.id]?.status}
+                groups={groups}
+                projects={projects}
+                isSelected={selectedIds.has(session.id)}
+                isInSelectMode={isInSelectMode}
+                onToggleSelect={(shiftKey) =>
+                  handleToggleSelect(session.id, shiftKey)
+                }
+                onClick={() => onSelectSession(session.id)}
+                onOpenInTab={
+                  onOpenSessionInTab
+                    ? () => onOpenSessionInTab(session.id)
+                    : undefined
+                }
+                onMoveToProject={
+                  onMoveSession
+                    ? (projectId) => onMoveSession(session.id, projectId)
+                    : undefined
+                }
+                onFork={
+                  onForkSession ? () => onForkSession(session.id) : undefined
+                }
+                onSummarize={
+                  onSummarize ? () => onSummarize(session.id) : undefined
+                }
+                onDelete={
+                  onDeleteSession
+                    ? () => onDeleteSession(session.id)
+                    : undefined
+                }
+                onRename={
+                  onRenameSession
+                    ? (newName) => onRenameSession(session.id, newName)
+                    : undefined
+                }
+                onCreatePR={
+                  onCreatePR ? () => onCreatePR(session.id) : undefined
+                }
+                onHoverStart={
+                  onHoverStart
+                    ? (rect) => onHoverStart(session, rect)
+                    : undefined
+                }
+                onHoverEnd={onHoverEnd}
+              />
+            )}
+          </div>
+          {/* Workers badge */}
+          {hasWorkers && (
+            <span className="bg-primary/20 text-primary flex-shrink-0 rounded-full px-1.5 py-0.5 text-xs">
+              {workers.length}
+            </span>
+          )}
+        </div>
+
+        {/* Nested workers */}
+        {hasWorkers && (
+          <div className="border-border/30 ml-3 space-y-px border-l pl-1.5">
+            {workers.map((worker) => (
+              <SessionCard
+                key={worker.id}
+                session={worker}
+                isActive={worker.id === activeSessionId}
+                tmuxStatus={sessionStatuses?.[worker.id]?.status}
+                groups={groups}
+                projects={projects}
+                isSelected={selectedIds.has(worker.id)}
+                isInSelectMode={isInSelectMode}
+                onToggleSelect={(shiftKey) =>
+                  handleToggleSelect(worker.id, shiftKey)
+                }
+                onClick={() => onSelectSession(worker.id)}
+                onOpenInTab={
+                  onOpenSessionInTab
+                    ? () => onOpenSessionInTab(worker.id)
+                    : undefined
+                }
+                onDelete={
+                  onDeleteSession ? () => onDeleteSession(worker.id) : undefined
+                }
+                onRename={
+                  onRenameSession
+                    ? (newName) => onRenameSession(worker.id, newName)
+                    : undefined
+                }
+                onHoverStart={
+                  onHoverStart
+                    ? (rect) => onHoverStart(worker, rect)
+                    : undefined
+                }
+                onHoverEnd={onHoverEnd}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
 }

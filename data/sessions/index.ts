@@ -8,5 +8,7 @@ export {
   useSummarizeSession,
   useMoveSessionToGroup,
   useMoveSessionToProject,
+  usePinSession,
+  useReorderPinnedSessions,
 } from "./queries";
 export type { CreateSessionInput } from "./queries";

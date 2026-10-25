@@ -30,6 +30,8 @@ export interface Session {
   conductor_session_id: string | null;
   worker_task: string | null;
   worker_status: "pending" | "running" | "completed" | "failed" | null;
+  // Pinned sessions lead their project, in this order; null when not pinned
+  pinned_order: number | null;
 }
 
 export interface Group {

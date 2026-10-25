@@ -19,7 +19,13 @@ import {
   CheckSquare,
   ExternalLink,
   Hash,
+  Pin,
+  PinOff,
 } from "lucide-react";
+import { ActionSheet, type SheetAction } from "./ui/action-sheet";
+import { SwipeRow } from "./ui/swipe-row";
+import { useLongPress } from "@/hooks/useLongPress";
+import { useViewport } from "@/hooks/useViewport";
 import { toast } from "sonner";
 import { Button } from "./ui/button";
 import {
@@ -69,8 +75,13 @@ interface SessionCardProps {
   onDelete?: () => void;
   onRename?: (newName: string) => void;
   onCreatePR?: () => void;
+  onTogglePin?: () => void;
   onHoverStart?: (rect: DOMRect) => void;
   onHoverEnd?: () => void;
+  /** A drag-sortable row: holding it lifts the row instead */
+  sortable?: boolean;
+  /** Changes when the list asks for this row's actions (a hold without a move) */
+  actionsRequest?: number;
 }
 
 // Words carry the state as well as colour: blue working, amber needs you, grey idle
@@ -129,8 +140,11 @@ export function SessionCard({
   onDelete,
   onRename,
   onCreatePR,
+  onTogglePin,
   onHoverStart,
   onHoverEnd,
+  sortable,
+  actionsRequest,
 }: SessionCardProps) {
   const timeAgo = getTimeAgo(session.updated_at);
   const status = tmuxStatus || "dead";
@@ -207,7 +221,12 @@ export function SessionCard({
     setIsEditing(false);
   };
 
+  const pinned = session.pinned_order != null;
+  const { isTouch } = useViewport();
+  const [sheetOpen, setSheetOpen] = useState(false);
+
   const hasActions =
+    onTogglePin ||
     onMove ||
     onMoveToProject ||
     onFork ||
@@ -269,6 +288,143 @@ export function SessionCard({
     else toast.error(`Couldn't copy it. The ID is ${id}`);
   };
 
+  // On touch: hold the row (unless it's sortable) for its actions
+  useLongPress(
+    cardRef,
+    isTouch && hasActions && !sortable && !isInSelectMode
+      ? () => setSheetOpen(true)
+      : undefined
+  );
+  useEffect(() => {
+    if (actionsRequest) setSheetOpen(true);
+  }, [actionsRequest]);
+
+  // The same actions as the menus, as rows on a sheet
+  const sheetGroups: SheetAction[][] = [
+    [
+      ...(onOpenInTab
+        ? [
+            {
+              label: "Open in new tab",
+              icon: ExternalLink,
+              onSelect: onOpenInTab,
+            },
+          ]
+        : []),
+      ...(onRename
+        ? [
+            {
+              label: "Rename",
+              icon: Pencil,
+              prompt: {
+                title: "Rename session",
+                value: session.name,
+                onSubmit: onRename,
+              },
+            },
+          ]
+        : []),
+      ...(onTogglePin
+        ? [
+            {
+              label: pinned ? "Unpin" : "Pin to top",
+              icon: pinned ? PinOff : Pin,
+              onSelect: onTogglePin,
+            },
+          ]
+        : []),
+    ],
+    [
+      ...(onFork && session.agent_type === "claude"
+        ? [{ label: "Fork session", icon: Copy, onSelect: onFork }]
+        : []),
+      ...(session.claude_session_id
+        ? [
+            {
+              label: "Copy Claude session ID",
+              icon: Hash,
+              onSelect: copyClaudeSessionId,
+            },
+          ]
+        : []),
+      ...(onSummarize
+        ? [
+            {
+              label: isSummarizing ? "Summarizing..." : "Fresh start",
+              icon: Sparkles,
+              onSelect: onSummarize,
+              disabled: isSummarizing,
+            },
+          ]
+        : []),
+      ...(onCreatePR && session.branch_name
+        ? [
+            {
+              label: session.pr_url ? "Open PR" : "Create PR",
+              icon: GitPullRequest,
+              onSelect: () =>
+                session.pr_url
+                  ? window.open(session.pr_url, "_blank")
+                  : onCreatePR(),
+            },
+          ]
+        : []),
+    ],
+    [
+      ...(onMoveToProject && projects.length > 0
+        ? [
+            {
+              label: "Move to project",
+              icon: FolderInput,
+              submenu: {
+                title: "Move to project",
+                groups: [
+                  projects.map((project) => ({
+                    label: project.name,
+                    checked: project.id === session.project_id,
+                    onSelect: () => {
+                      if (project.id !== session.project_id)
+                        onMoveToProject(project.id);
+                    },
+                  })),
+                ],
+              },
+            },
+          ]
+        : []),
+      ...(onMove && groups.length > 0
+        ? [
+            {
+              label: "Move to group",
+              icon: FolderInput,
+              submenu: {
+                title: "Move to group",
+                groups: [
+                  groups.map((group) => ({
+                    label: group.name,
+                    checked: group.path === session.group_path,
+                    onSelect: () => {
+                      if (group.path !== session.group_path) onMove(group.path);
+                    },
+                  })),
+                ],
+              },
+            },
+          ]
+        : []),
+    ],
+    onDelete
+      ? [
+          {
+            label: "Delete session",
+            icon: Trash2,
+            destructive: true,
+            onSelect: onDelete,
+          },
+        ]
+      : [],
+  ];
+
   // Shared menu items renderer for both context menu and dropdown
   const renderMenuItems = (isContextMenu: boolean) => {
     const MenuItem = isContextMenu ? ContextMenuItem : DropdownMenuItem;
@@ -305,6 +461,16 @@ export function SessionCard({
           <MenuItem onSelect={() => setIsEditing(true)}>
             <Pencil className="mr-2 h-3 w-3" />
             Rename
+          </MenuItem>
+        )}
+        {onTogglePin && (
+          <MenuItem onSelect={() => onTogglePin()}>
+            {pinned ? (
+              <PinOff className="mr-2 h-3 w-3" />
+            ) : (
+              <Pin className="mr-2 h-3 w-3" />
+            )}
+            {pinned ? "Unpin" : "Pin to top"}
           </MenuItem>
         )}
         {onFork && session.agent_type === "claude" && (
@@ -411,7 +577,7 @@ export function SessionCard({
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       className={cn(
-        "group flex w-full cursor-pointer items-center gap-2 overflow-hidden rounded-md px-2 py-1.5 text-left transition-colors",
+        "group data-[held]:bg-accent flex w-full cursor-pointer items-center gap-2 overflow-hidden rounded-md px-2 py-1.5 text-left transition-[background-color,transform] select-none [-webkit-touch-callout:none] data-[held]:scale-[0.98]",
         "min-h-[48px] md:min-h-0", // Two-line row, 48px touch target
         isSelected
           ? "bg-primary/20"
@@ -483,6 +649,10 @@ export function SessionCard({
         </span>
       )}
 
+      {pinned && (
+        <Pin className="text-muted-foreground h-3 w-3 flex-shrink-0 -rotate-45" />
+      )}
+
       {/* Fork indicator */}
       {session.parent_session_id && (
         <GitFork className="text-muted-foreground h-3 w-3 flex-shrink-0" />
@@ -519,8 +689,22 @@ export function SessionCard({
         </a>
       )}
 
-      {/* Actions menu (button) */}
-      {hasActions && (
+      {/* Actions: a sheet on touch, a menu with a mouse */}
+      {hasActions && isTouch && (
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label="Session actions"
+          className="h-8 w-8 flex-shrink-0"
+          onClick={(e) => {
+            e.stopPropagation();
+            setSheetOpen(true);
+          }}
+        >
+          <MoreHorizontal className="h-4 w-4" />
+        </Button>
+      )}
+      {hasActions && !isTouch && (
         <DropdownMenu onOpenChange={handleMenuOpenChange}>
           <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
             <Button
@@ -538,6 +722,49 @@ export function SessionCard({
       )}
     </div>
   );
+
+  if (hasActions && isTouch) {
+    return (
+      <>
+        <SwipeRow
+          disabled={isEditing || isInSelectMode}
+          leading={
+            onTogglePin
+              ? {
+                  label: pinned ? "Unpin" : "Pin",
+                  icon: pinned ? PinOff : Pin,
+                  tone: "bg-amber-500",
+                  onAction: onTogglePin,
+                }
+              : undefined
+          }
+          trailing={
+            onDelete
+              ? {
+                  label: "Delete",
+                  icon: Trash2,
+                  tone: "bg-red-500",
+                  onAction: onDelete,
+                }
+              : undefined
+          }
+        >
+          {cardContent}
+        </SwipeRow>
+        <ActionSheet
+          open={sheetOpen}
+          onOpenChange={setSheetOpen}
+          title={session.name}
+          description={
+            session.branch_name
+              ? `${config.word} · ${session.branch_name}`
+              : `${config.word} · ${timeAgo}`
+          }
+          groups={sheetGroups}
+        />
+      </>
+    );
+  }
 
   // Wrap with context menu if actions are available
   if (hasActions) {

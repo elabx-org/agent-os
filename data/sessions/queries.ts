@@ -187,6 +187,111 @@ export function useMoveSessionToProject() {
   });
 }
 
+/** The server's order: pinned first in pin order, then most recent */
+function byPinThenRecent(a: Session, b: Session) {
+  const ap = a.pinned_order ?? Infinity;
+  const bp = b.pinned_order ?? Infinity;
+  if (ap !== bp) return ap - bp;
+  return b.updated_at.localeCompare(a.updated_at);
+}
+
+/** Changes sessions in the cached list at once, rolled back on failure */
+function useOptimisticSessions() {
+  const queryClient = useQueryClient();
+  return {
+    apply: async (change: (sessions: Session[]) => Session[]) => {
+      await queryClient.cancelQueries({ queryKey: sessionKeys.list() });
+      const previous = queryClient.getQueryData<SessionsResponse>(
+        sessionKeys.list()
+      );
+      queryClient.setQueryData<SessionsResponse>(
+        sessionKeys.list(),
+        (old) =>
+          old && {
+            ...old,
+            sessions: change(old.sessions).sort(byPinThenRecent),
+          }
+      );
+      return { previous };
+    },
+    rollback: (context?: { previous?: SessionsResponse }) => {
+      if (context?.previous) {
+        queryClient.setQueryData(sessionKeys.list(), context.previous);
+      }
+    },
+    refetch: () =>
+      queryClient.invalidateQueries({ queryKey: sessionKeys.list() }),
+  };
+}
+
+export function usePinSession() {
+  const optimistic = useOptimisticSessions();
+
+  return useMutation({
+    mutationFn: async ({
+      sessionId,
+      pinned,
+    }: {
+      sessionId: string;
+      pinned: boolean;
+    }) => {
+      const res = await fetch(`/api/sessions/${sessionId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pinned }),
+      });
+      if (!res.ok) throw new Error("Failed to pin session");
+      return res.json();
+    },
+    onMutate: ({ sessionId, pinned }) =>
+      optimistic.apply((sessions) => {
+        const session = sessions.find((s) => s.id === sessionId);
+        const last = Math.max(
+          0,
+          ...sessions
+            .filter(
+              (s) =>
+                s.project_id === session?.project_id && s.pinned_order != null
+            )
+            .map((s) => s.pinned_order as number)
+        );
+        return sessions.map((s) =>
+          s.id === sessionId
+            ? { ...s, pinned_order: pinned ? last + 1 : null }
+            : s
+        );
+      }),
+    onError: (_, __, context) => optimistic.rollback(context),
+    onSettled: () => optimistic.refetch(),
+  });
+}
+
+/** Saves the order of one project's pinned sessions */
+export function useReorderPinnedSessions() {
+  const optimistic = useOptimisticSessions();
+
+  return useMutation({
+    mutationFn: async (ids: string[]) => {
+      const res = await fetch("/api/sessions/pins", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids }),
+      });
+      if (!res.ok) throw new Error("Failed to order pinned sessions");
+      return res.json();
+    },
+    onMutate: (ids) =>
+      optimistic.apply((sessions) => {
+        const rank = new Map(ids.map((id, i) => [id, i + 1]));
+        return sessions.map((s) =>
+          rank.has(s.id) ? { ...s, pinned_order: rank.get(s.id)! } : s
+        );
+      }),
+    onError: (_, __, context) => optimistic.rollback(context),
+    onSettled: () => optimistic.refetch(),
+  });
+}
+
 export interface CreateSessionInput {
   name?: string;
   workingDirectory: string;

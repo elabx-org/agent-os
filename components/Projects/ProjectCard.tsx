@@ -3,8 +3,6 @@
 import { useState, useRef, useEffect } from "react";
 import { afterMenuCloses, cn } from "@/lib/utils";
 import {
-  ArrowDown,
-  ArrowUp,
   ChevronRight,
   ChevronDown,
   MoreHorizontal,
@@ -37,6 +35,10 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import type { Project, DevServer } from "@/lib/db";
+import { ActionSheet, type SheetAction } from "@/components/ui/action-sheet";
+import { SwipeRow } from "@/components/ui/swipe-row";
+import { useLongPress } from "@/hooks/useLongPress";
+import { useViewport } from "@/hooks/useViewport";
 
 interface ProjectCardProps {
   project: Project;
@@ -51,8 +53,10 @@ interface ProjectCardProps {
   onOpenInEditor?: () => void;
   onDelete?: () => void;
   onRename?: (newName: string) => void;
-  onMoveUp?: () => void;
-  onMoveDown?: () => void;
+  /** A drag-sortable row: holding it lifts the row instead */
+  sortable?: boolean;
+  /** Changes when the list asks for this row's actions (a hold without a move) */
+  actionsRequest?: number;
 }
 
 export function ProjectCard({
@@ -68,13 +72,16 @@ export function ProjectCard({
   onOpenInEditor,
   onDelete,
   onRename,
-  onMoveUp,
-  onMoveDown,
+  sortable,
+  actionsRequest,
 }: ProjectCardProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState(project.name);
   const inputRef = useRef<HTMLInputElement>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
   const justStartedEditingRef = useRef(false);
+  const { isTouch } = useViewport();
+  const [sheetOpen, setSheetOpen] = useState(false);
 
   const hasRunningServers = runningDevServers.length > 0;
   // Uncategorized can have New Session, Open Terminal, and Rename, but not Edit/Delete/DevServer
@@ -159,18 +166,6 @@ export function ProjectCard({
             Rename
           </MenuItem>
         )}
-        {onMoveUp && (
-          <MenuItem onSelect={() => onMoveUp()}>
-            <ArrowUp className="mr-2 h-3 w-3" />
-            Move up
-          </MenuItem>
-        )}
-        {onMoveDown && (
-          <MenuItem onSelect={() => onMoveDown()}>
-            <ArrowDown className="mr-2 h-3 w-3" />
-            Move down
-          </MenuItem>
-        )}
         {onOpenInEditor && (
           <MenuItem onSelect={() => onOpenInEditor()}>
             <FolderOpen className="mr-2 h-3 w-3" />
@@ -202,11 +197,78 @@ export function ProjectCard({
     );
   };
 
+  // On touch: hold the row (unless it's sortable) for its actions
+  useLongPress(
+    cardRef,
+    isTouch && hasActions && !sortable ? () => setSheetOpen(true) : undefined
+  );
+  useEffect(() => {
+    if (actionsRequest) setSheetOpen(true);
+  }, [actionsRequest]);
+
+  const sheetGroups: SheetAction[][] = [
+    [
+      ...(onNewSession
+        ? [{ label: "New session", icon: Plus, onSelect: onNewSession }]
+        : []),
+      ...(onOpenTerminal
+        ? [{ label: "Open terminal", icon: Terminal, onSelect: onOpenTerminal }]
+        : []),
+    ],
+    [
+      ...(onRename
+        ? [
+            {
+              label: "Rename",
+              icon: Pencil,
+              prompt: {
+                title: "Rename project",
+                value: project.name,
+                onSubmit: onRename,
+              },
+            },
+          ]
+        : []),
+      ...(onEdit
+        ? [{ label: "Project settings", icon: Settings, onSelect: onEdit }]
+        : []),
+      ...(onOpenInEditor
+        ? [
+            {
+              label: "Open in editor",
+              icon: FolderOpen,
+              onSelect: onOpenInEditor,
+            },
+          ]
+        : []),
+      ...(onStartDevServer
+        ? [
+            {
+              label: "Start dev server",
+              icon: Server,
+              onSelect: onStartDevServer,
+            },
+          ]
+        : []),
+    ],
+    onDelete
+      ? [
+          {
+            label: "Delete project",
+            icon: Trash2,
+            destructive: true,
+            onSelect: onDelete,
+          },
+        ]
+      : [],
+  ];
+
   const cardContent = (
     <div
+      ref={cardRef}
       onClick={handleClick}
       className={cn(
-        "group flex cursor-pointer items-center gap-1 rounded-md px-2 py-1.5",
+        "group data-[held]:bg-accent flex cursor-pointer items-center gap-1 rounded-md px-2 py-1.5 transition-[background-color,transform] select-none [-webkit-touch-callout:none] data-[held]:scale-[0.98]",
         "min-h-[36px] md:min-h-[28px]",
         "hover:bg-accent/50"
       )}
@@ -267,8 +329,22 @@ export function ProjectCard({
         {sessionCount}
       </span>
 
-      {/* Actions menu */}
-      {hasActions && (
+      {/* Actions: a sheet on touch, a menu with a mouse */}
+      {hasActions && isTouch && (
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label="Project actions"
+          className="h-8 w-8 flex-shrink-0"
+          onClick={(e) => {
+            e.stopPropagation();
+            setSheetOpen(true);
+          }}
+        >
+          <MoreHorizontal className="h-4 w-4" />
+        </Button>
+      )}
+      {hasActions && !isTouch && (
         <DropdownMenu>
           <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
             <Button
@@ -286,6 +362,35 @@ export function ProjectCard({
       )}
     </div>
   );
+
+  if (hasActions && isTouch) {
+    return (
+      <>
+        <SwipeRow
+          disabled={isEditing}
+          trailing={
+            onDelete
+              ? {
+                  label: "Delete",
+                  icon: Trash2,
+                  tone: "bg-red-500",
+                  onAction: onDelete,
+                }
+              : undefined
+          }
+        >
+          {cardContent}
+        </SwipeRow>
+        <ActionSheet
+          open={sheetOpen}
+          onOpenChange={setSheetOpen}
+          title={project.name}
+          description={`${sessionCount} session${sessionCount === 1 ? "" : "s"}`}
+          groups={sheetGroups}
+        />
+      </>
+    );
+  }
 
   // Wrap with context menu if actions are available
   if (hasActions) {
