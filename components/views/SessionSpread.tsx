@@ -16,11 +16,13 @@ import type { ProjectWithRepositories } from "@/lib/projects";
 import { cn } from "@/lib/utils";
 import { ActivityRail } from "@/components/Session/ActivityRail";
 import { ControlColumn } from "@/components/ControlColumn";
+import { usePanes } from "@/contexts/PaneContext";
 import { GitPanelSkeleton } from "@/components/Pane/PaneSkeletons";
 import { useIsNative } from "@/hooks/useIsNative";
 import { FOLD_CLEAR, useHinge } from "@/hooks/useHinge";
 import { postureStore } from "@/stores/posture";
-import { focusStore } from "@/stores/focus";
+import { focusStore, setFocus } from "@/stores/focus";
+import { PanelRight } from "lucide-react";
 import { mobileNavStore } from "@/stores/mobileNav";
 
 const GitPanel = dynamic(
@@ -52,6 +54,23 @@ export interface SpreadFold {
 }
 
 const SpreadContext = createContext<SpreadFold | null>(null);
+
+/**
+ * How the panes lay out on the open Duo's pages: two side by side, one each
+ * side of the fold ("fold", the left page's width and the gap), or only the
+ * focused one ("single", the home on the left page); null lays them out as
+ * the web does
+ */
+export type SpreadPanes =
+  | { mode: "fold"; left: string; gutter: number }
+  | { mode: "single" }
+  | null;
+
+const SpreadPanesContext = createContext<SpreadPanes>(null);
+
+export function useSpreadPanes(): SpreadPanes {
+  return useContext(SpreadPanesContext);
+}
 
 /**
  * The fold, while the pane spans both pages of the open Duo (Focus), so the
@@ -114,11 +133,16 @@ export function SessionSpread({
 
   const folder = session?.working_directory;
   const pageOpen = !!page;
+  // Two sessions open: one on each page, in place of the rail
+  const { paneCount } = usePanes();
+  const twoPages = !!pages && paneCount > 1 && !pageOpen;
+  const splitFold = twoPages && !homeOpen;
   const changesLeft =
     !!book &&
     focus &&
     !homeOpen &&
     !pageOpen &&
+    !twoPages &&
     viewMode === "terminal" &&
     !!folder;
   // On the pages the rail sits beside a conversation; Changes, Files and
@@ -127,6 +151,7 @@ export function SessionSpread({
     !!session &&
     !pageOpen &&
     !focus &&
+    !splitFold &&
     (pages
       ? !homeOpen && (viewMode === "terminal" || viewMode === "chat")
       : roomForRail && !native);
@@ -141,10 +166,11 @@ export function SessionSpread({
     !homeOpen &&
     !changesLeft &&
     !showRail &&
+    !splitFold &&
     (pageOpen || (!!book && viewMode !== "chat"));
   // Across the fold: content may cross it, controls move right of it
   const paneWide =
-    pages && !homeOpen && !changesLeft && !showRail && !paneRight;
+    pages && !homeOpen && !changesLeft && !showRail && !paneRight && !splitFold;
   const pageGap = pages && (homeOpen || changesLeft || paneRight);
   // Flat there's no gutter: the pages meet at the hinge
   const spreadStart = book ? book.start : hingeX;
@@ -169,6 +195,16 @@ export function SessionSpread({
     mobileNavStore.railActive = true;
   }, []);
 
+  const spreadPanes = useMemo<SpreadPanes>(
+    () =>
+      splitFold
+        ? { mode: "fold", left: leftPage, gutter }
+        : twoPages
+          ? { mode: "single" }
+          : null,
+    [splitFold, twoPages, leftPage, gutter]
+  );
+
   const repositories =
     (
       projects.find((p) => p.id === session?.project_id) as
@@ -182,8 +218,28 @@ export function SessionSpread({
       ? { width: leftPage }
       : undefined;
 
+  // In Focus, a way back to the rail where it would be
+  const railPill =
+    focus &&
+    !!session &&
+    !pageOpen &&
+    !homeOpen &&
+    !splitFold &&
+    (viewMode === "terminal" || viewMode === "chat") &&
+    (pages || (roomForRail && !native));
+
   return (
-    <div className="flex min-h-0 min-w-0 flex-1">
+    <div className="relative flex min-h-0 min-w-0 flex-1">
+      {railPill && (
+        <button
+          type="button"
+          onClick={() => setFocus(false)}
+          className="bg-secondary/90 text-muted-foreground hover:text-foreground kb-compact-hide absolute top-[60px] right-[124px] z-20 flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium shadow-md backdrop-blur [html[data-native]_&]:top-[calc(60px+env(safe-area-inset-top))] [html[data-native]_&]:right-[60px]"
+        >
+          <PanelRight aria-hidden="true" className="h-3.5 w-3.5" />
+          Live activity
+        </button>
+      )}
       {/* The home: a sidebar on the web, the left page on the open Duo */}
       <div
         className={cn(
@@ -244,7 +300,9 @@ export function SessionSpread({
           {/* Hidden rather than unmounted: the terminal refits when shown */}
           <div className={cn("h-full w-full", pageOpen && "hidden")}>
             <SpreadContext.Provider value={spreadFold}>
-              {children}
+              <SpreadPanesContext.Provider value={spreadPanes}>
+                {children}
+              </SpreadPanesContext.Provider>
             </SpreadContext.Provider>
           </div>
           {page}

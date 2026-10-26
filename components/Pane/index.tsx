@@ -32,6 +32,7 @@ import { fileOpenStore, fileOpenActions } from "@/stores/fileOpen";
 import { mobileNavStore, mobileNavActions } from "@/stores/mobileNav";
 import { focusStore } from "@/stores/focus";
 import { getSessionView, setSessionView } from "@/lib/session-views";
+import { takePaneLaunch } from "@/stores/beside";
 import { ActivityStrip } from "@/components/Session/ActivityStrip";
 import { isNative } from "@/lib/native-bridge";
 import { useSharedFiles } from "@/hooks/useSharedFiles";
@@ -89,6 +90,7 @@ export const Pane = memo(function Pane({
     canSplit,
     canClose,
     focusPane,
+    paneCount,
     splitHorizontal,
     splitVertical,
     close,
@@ -340,7 +342,11 @@ export const Pane = memo(function Pane({
           tab.attachedTmux
         : tab.attachedTmux;
 
-      if (tmuxName) {
+      // Opened beside: the session runs here instead of a shell
+      const launch = !tmuxName && takePaneLaunch(paneId);
+      if (launch) {
+        setTimeout(() => launch(handle), 100);
+      } else if (tmuxName) {
         // Existing session — re-attach
         setTimeout(() => handle.sendCommand(`${tmuxSetup}; tmux attach -t ${tmuxName}`), 100);
       } else {
@@ -411,7 +417,9 @@ export const Pane = memo(function Pane({
     <div
       className={cn(
         "flex h-full w-full flex-col overflow-hidden",
-        !isMobile && "rounded-lg shadow-lg shadow-black/10 dark:shadow-black/30"
+        !isMobile && "rounded-lg shadow-lg shadow-black/10 dark:shadow-black/30",
+        // Two or more on screen: the one you type into is marked
+        paneCount > 1 && isFocused && "ring-primary/60 ring-1 ring-inset"
       )}
       onClick={handleFocus}
     >

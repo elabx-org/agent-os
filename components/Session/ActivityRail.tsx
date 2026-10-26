@@ -1,7 +1,15 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { File, GitPullRequest, Loader2, Workflow } from "lucide-react";
+import {
+  Check,
+  ChevronDown,
+  EyeOff,
+  File,
+  GitPullRequest,
+  Loader2,
+  Workflow,
+} from "lucide-react";
 import type { Session } from "@/lib/db";
 import type { SubagentInfo } from "@/lib/claude-subagents";
 import type { WorkflowInfo } from "@/lib/claude-workflows";
@@ -23,6 +31,15 @@ import { KIND_STYLE, shortLabel, splitOptions } from "@/components/Inbox";
 import { mobileNavActions } from "@/stores/mobileNav";
 import { openSubagent } from "@/stores/agentOpen";
 import { runNav } from "@/lib/nav-actions";
+import { setFocus } from "@/stores/focus";
+import { BesideItems } from "@/components/BesideItems";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { WorkflowPhaseList, workflowPhases } from "@/components/WorkflowPhases";
 
 const MAX_FILES = 5;
@@ -87,9 +104,31 @@ export function ActivityRail({
   return (
     <div className={cn("min-h-0 overflow-y-auto", className)}>
       {!compact && (
-        <div className="text-muted-foreground px-5 pt-[18px] pb-1 text-[11.5px] font-semibold tracking-[.07em] uppercase">
-          Live activity
-        </div>
+        <DropdownMenu modal={false}>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              className="text-muted-foreground hover:text-foreground mx-3 mt-2.5 flex items-center gap-1 rounded-md px-2 py-1.5 text-[11.5px] font-semibold tracking-[.07em] uppercase"
+            >
+              Live activity
+              <ChevronDown aria-hidden="true" className="h-3.5 w-3.5" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="min-w-[260px]">
+            <DropdownMenuItem disabled>
+              <Check className="h-4 w-4" />
+              Live activity
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <BesideItems exclude={[session.id]} />
+            <DropdownMenuSeparator />
+            {/* The pane takes both pages (or the width): Focus */}
+            <DropdownMenuItem onSelect={() => setFocus(true)}>
+              <EyeOff className="h-4 w-4" />
+              Hide
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       )}
 
       <section className={block}>

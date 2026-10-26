@@ -55,6 +55,8 @@ export function createPaneData(): PaneData {
 }
 
 export const MAX_PANES = 4;
+/** The open iPhone Duo: one session per page */
+export const MAX_PANES_DUO = 2;
 
 // Generate unique pane ID
 export function generatePaneId(): string {
@@ -102,13 +104,13 @@ export function replacePane(
 export function splitPane(
   state: PaneState,
   paneId: string,
-  direction: "horizontal" | "vertical"
+  direction: "horizontal" | "vertical",
+  newPaneId: string = generatePaneId()
 ): PaneState | null {
   if (countPanes(state.layout) >= MAX_PANES) {
     return null; // Max panes reached
   }
 
-  const newPaneId = generatePaneId();
   const newSplit: PaneLayoutSplit = {
     type: "split",
     direction,
@@ -187,6 +189,20 @@ export function closePane(state: PaneState, paneId: string): PaneState | null {
     layout: newLayout,
     focusedPaneId: newFocusedId,
     panes: remainingPanes,
+  };
+}
+
+// Swap the two sides of a two-way split (the open Duo's pages)
+export function swapPanes(state: PaneState): PaneState | null {
+  const { layout } = state;
+  if (layout.type !== "split" || layout.children.length !== 2) return null;
+  return {
+    ...state,
+    layout: {
+      ...layout,
+      children: [...layout.children].reverse(),
+      sizes: [...layout.sizes].reverse(),
+    },
   };
 }
 

@@ -21,17 +21,27 @@ import {
   savePaneState,
   loadPaneState,
   MAX_PANES,
+  MAX_PANES_DUO,
+  swapPanes,
 } from "@/lib/panes";
+import { useIsNative } from "@/hooks/useIsNative";
 import { useViewport } from "@/hooks/useViewport";
 
 interface PaneContextValue {
   state: PaneState;
   focusedPaneId: string;
   canSplit: boolean;
+  /** A split one above the other; the open Duo only goes side by side */
+  canSplitDown: boolean;
   canClose: boolean;
+  paneCount: number;
+  maxPanes: number;
+  /** Swap a two-way split's sides */
+  swap: () => void;
   isMobile: boolean;
   focusPane: (paneId: string) => void;
-  splitHorizontal: (paneId: string) => void;
+  /** newPaneId names the new pane, to launch something in it */
+  splitHorizontal: (paneId: string, newPaneId?: string) => void;
   splitVertical: (paneId: string) => void;
   close: (paneId: string) => void;
   // Tab management
@@ -93,12 +103,15 @@ export function PaneProvider({ children }: { children: ReactNode }) {
   }, [state, hydrated]);
 
   const focusPane = useCallback((paneId: string) => {
-    setState((prev) => ({ ...prev, focusedPaneId: paneId }));
+    // A pane's own close button bubbles a focus after it's gone
+    setState((prev) =>
+      prev.panes[paneId] ? { ...prev, focusedPaneId: paneId } : prev
+    );
   }, []);
 
-  const splitHorizontal = useCallback((paneId: string) => {
+  const splitHorizontal = useCallback((paneId: string, newPaneId?: string) => {
     setState((prev) => {
-      const newState = splitPane(prev, paneId, "horizontal");
+      const newState = splitPane(prev, paneId, "horizontal", newPaneId);
       return newState || prev;
     });
   }, []);
@@ -108,6 +121,10 @@ export function PaneProvider({ children }: { children: ReactNode }) {
       const newState = splitPane(prev, paneId, "vertical");
       return newState || prev;
     });
+  }, []);
+
+  const swap = useCallback(() => {
+    setState((prev) => swapPanes(prev) || prev);
   }, []);
 
   const close = useCallback((paneId: string) => {
@@ -240,9 +257,14 @@ export function PaneProvider({ children }: { children: ReactNode }) {
     [state.panes]
   );
 
-  // On mobile: disable splits (single pane only)
-  const canSplit = !isMobile && countPanes(state.layout) < MAX_PANES;
-  const canClose = !isMobile && countPanes(state.layout) > 1;
+  // On mobile: disable splits (single pane only). The open Duo has a page
+  // for each of two, side by side only.
+  const native = useIsNative();
+  const maxPanes = native ? MAX_PANES_DUO : MAX_PANES;
+  const paneCount = countPanes(state.layout);
+  const canSplit = !isMobile && paneCount < maxPanes;
+  const canSplitDown = canSplit && !native;
+  const canClose = !isMobile && paneCount > 1;
 
   return (
     <PaneContext.Provider
@@ -250,7 +272,11 @@ export function PaneProvider({ children }: { children: ReactNode }) {
         state,
         focusedPaneId: state.focusedPaneId,
         canSplit,
+        canSplitDown,
         canClose,
+        paneCount,
+        maxPanes,
+        swap,
         isMobile,
         focusPane,
         splitHorizontal,
