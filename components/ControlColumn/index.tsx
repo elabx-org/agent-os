@@ -176,9 +176,10 @@ export function ControlColumn({
         shortcut: `${mod}I`,
         selected: inboxOpen,
         badge: focus ? 0 : needsYou,
+        // Waiting sessions and blocked background agents (useNeedsYou)
         ariaLabel: needsYou
-          ? `Inbox, ${needsYou} need${needsYou === 1 ? "s" : ""} you`
-          : "Inbox, nothing waiting",
+          ? `Needs you, ${needsYou} waiting`
+          : "Needs you, nothing waiting",
         onClick: () => runNav("inbox"),
       },
     ],
