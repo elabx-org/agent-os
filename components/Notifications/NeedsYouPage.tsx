@@ -34,6 +34,7 @@ import {
   AgentDetail,
 } from "@/components/BackgroundAgents/AgentDetail";
 import { PageHeader, type PageProps } from "@/components/WorkspacePage";
+import { FoldSplit } from "@/components/FoldSplit";
 import {
   useSpreadFold,
   type SpreadFold,
@@ -387,43 +388,15 @@ function NeedsYou({ view, onOpenSession, dialog, onClose }: NeedsYouProps) {
           onSettings={onSettings}
         />
       ) : (
-        <>
-          <PageHeader title={<Title />} actions={count} />
-          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-[calc(1rem+env(safe-area-inset-bottom))]">
-            {list.groups.length === 0 && <NothingNeedsYou quiet={quiet} />}
-            {list.groups.map((group) => (
-              <section key={group.key}>
-                <SectionHeader>{groupLabel(group)}</SectionHeader>
-                {group.sessions.length > 0 && (
-                  <ul className="mb-2 space-y-2.5">
-                    {group.sessions.map((session) => (
-                      <InboxItem
-                        key={session.id}
-                        session={session}
-                        title={displayTitle(session, list.titles).title}
-                        onOpen={() => onOpenSession(session)}
-                      />
-                    ))}
-                  </ul>
-                )}
-                {group.agents.map((agent) => (
-                  <BackgroundAgentRow key={agent.id} agent={agent} noId dense />
-                ))}
-              </section>
-            ))}
-            <History
-              list={list}
-              sessions={view.sessions}
-              onOpenSession={onOpenSession}
-              // A page on any width: the phone's sheet needs a list of
-              // agents to host it, which this may not have
-              onOpenAgent={(agent) =>
-                openPage({ kind: "agent", agentId: agent.id })
-              }
-            />
-            <SettingsLink onClick={onSettings} />
-          </div>
-        </>
+        <OneColumn
+          pageRef={ref}
+          list={list}
+          view={view}
+          count={count}
+          quiet={quiet}
+          onOpenSession={onOpenSession}
+          onSettings={onSettings}
+        />
       )}
     </div>
   );
@@ -441,6 +414,176 @@ function Title({ dialog }: { dialog?: boolean }) {
         "Needs you"
       )}
     </span>
+  );
+}
+
+/**
+ * Which item the detail shows: the picked one while it's still there, else
+ * the first that waits
+ */
+function usePicked(list: NeedsYouList, view: ViewProps) {
+  const [picked, setPicked] = useState<Picked | null>(null);
+  const isItem = (p: Picked) =>
+    p.kind === "session"
+      ? list.groups.some((g) => g.sessions.some((s) => s.id === p.id))
+      : // An agent may be picked from the history while it exists
+        list.agents.some((a) => a.id === p.id);
+  const first = list.groups[0];
+  const current: Picked | null =
+    picked && isItem(picked)
+      ? picked
+      : first?.sessions[0]
+        ? { kind: "session", id: first.sessions[0].id }
+        : first?.agents[0]
+          ? { kind: "agent", id: first.agents[0].id }
+          : null;
+
+  return {
+    isPicked: (kind: Picked["kind"], id: string) =>
+      current?.kind === kind && current.id === id,
+    pick: setPicked,
+    session:
+      current?.kind === "session"
+        ? view.sessions.find((s) => s.id === current.id)
+        : undefined,
+    agent:
+      current?.kind === "agent"
+        ? list.agents.find((a) => a.id === current.id)
+        : undefined,
+  };
+}
+
+type PickedItem = ReturnType<typeof usePicked>;
+
+/** The list as rows to pick from: the detail shows the picked one */
+function PickList({
+  list,
+  view,
+  picked,
+  quiet,
+  onOpenSession,
+  onSettings,
+  className,
+}: {
+  list: NeedsYouList;
+  view: ViewProps;
+  picked: PickedItem;
+  quiet: boolean;
+  onOpenSession: (session: Session) => void;
+  onSettings: () => void;
+  className?: string;
+}) {
+  return (
+    <nav
+      aria-label="Needs you"
+      className={cn(
+        "min-h-0 flex-1 overflow-y-auto overscroll-contain",
+        className
+      )}
+    >
+      {list.groups.length === 0 && <NothingNeedsYou quiet={quiet} />}
+      {list.groups.map((group) => (
+        <section key={group.key}>
+          <SectionHeader>{groupLabel(group)}</SectionHeader>
+          {group.sessions.map((s) => {
+            const { title, idLabel } = displayTitle(s, list.titles);
+            return (
+              <AgentRow
+                key={s.id}
+                kind="session"
+                state="needs"
+                title={title}
+                idLabel={idLabel}
+                detail={timeAgo(s.updated_at)}
+                selected={picked.isPicked("session", s.id)}
+                onClick={() => picked.pick({ kind: "session", id: s.id })}
+              />
+            );
+          })}
+          {group.agents.map((a) => (
+            <AgentRow
+              key={a.id}
+              kind="background"
+              state="needs"
+              title={a.name}
+              // 0 means the state file didn't say
+              detail={
+                a.startedAt
+                  ? `started ${timeAgo(a.startedAt, { dateAfterDays: Infinity })}`
+                  : undefined
+              }
+              dense
+              selected={picked.isPicked("agent", a.id)}
+              onClick={() => picked.pick({ kind: "agent", id: a.id })}
+            />
+          ))}
+        </section>
+      ))}
+      <History
+        list={list}
+        sessions={view.sessions}
+        onOpenSession={onOpenSession}
+        onOpenAgent={(a) => picked.pick({ kind: "agent", id: a.id })}
+      />
+      <SettingsLink onClick={onSettings} />
+    </nav>
+  );
+}
+
+/** The picked prompt, answerable in place, or the picked agent */
+function PickedDetail({
+  list,
+  picked,
+  dialog,
+  onOpenSession,
+}: {
+  list: NeedsYouList;
+  picked: PickedItem;
+  dialog?: boolean;
+  onOpenSession: (session: Session) => void;
+}) {
+  const { session, agent } = picked;
+  if (session)
+    return (
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+        <InboxItem
+          as="div"
+          session={session}
+          title={displayTitle(session, list.titles).title}
+          projectName={
+            list.groups.find((g) => g.sessions.includes(session))?.name
+          }
+          onOpen={() => onOpenSession(session)}
+        />
+      </div>
+    );
+  if (agent)
+    return (
+      <>
+        <header
+          className={cn(
+            "border-border flex min-h-[50px] shrink-0 flex-col justify-center border-b px-4 pt-2 pb-2",
+            // Clear of the dialog's close button
+            dialog && "pr-14"
+          )}
+        >
+          <h2 className="truncate text-[15px] font-semibold">{agent.name}</h2>
+          <p className="text-muted-foreground truncate font-mono text-[11px]">
+            <AgentCrumb agent={agent} />
+          </p>
+        </header>
+        <AgentDetail
+          key={agent.id}
+          agent={agent}
+          layout="page"
+          onClose={() => picked.pick(null)}
+        />
+      </>
+    );
+  return (
+    <div className="text-muted-foreground grid min-h-0 flex-1 place-items-center p-6 text-center text-sm">
+      Nothing needs you
+    </div>
   );
 }
 
@@ -466,33 +609,7 @@ function SplitLayout({
   onClose: () => void;
   onSettings: () => void;
 }) {
-  const [picked, setPicked] = useState<Picked | null>(null);
-  const isItem = (p: Picked) =>
-    p.kind === "session"
-      ? list.groups.some((g) => g.sessions.some((s) => s.id === p.id))
-      : // An agent may be picked from the history while it exists
-        list.agents.some((a) => a.id === p.id);
-  const first = list.groups[0];
-  // The picked one while it's still there, else the first
-  const current: Picked | null =
-    picked && isItem(picked)
-      ? picked
-      : first?.sessions[0]
-        ? { kind: "session", id: first.sessions[0].id }
-        : first?.agents[0]
-          ? { kind: "agent", id: first.agents[0].id }
-          : null;
-  const isPicked = (kind: Picked["kind"], id: string) =>
-    current?.kind === kind && current.id === id;
-
-  const session =
-    current?.kind === "session"
-      ? view.sessions.find((s) => s.id === current.id)
-      : undefined;
-  const agent =
-    current?.kind === "agent"
-      ? list.agents.find((a) => a.id === current.id)
-      : undefined;
+  const picked = usePicked(list, view);
 
   return (
     <div className="flex min-h-0 flex-1">
@@ -524,103 +641,119 @@ function SplitLayout({
             {list.count ? `${list.count} waiting on you` : "Nothing needs you"}
           </DialogDescription>
         )}
-        <nav
-          aria-label="Needs you"
-          className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pb-[calc(1rem+env(safe-area-inset-bottom))]"
-        >
-          {list.groups.length === 0 && <NothingNeedsYou quiet={quiet} />}
-          {list.groups.map((group) => (
-            <section key={group.key}>
-              <SectionHeader>{groupLabel(group)}</SectionHeader>
-              {group.sessions.map((s) => {
-                const { title, idLabel } = displayTitle(s, list.titles);
-                return (
-                  <AgentRow
-                    key={s.id}
-                    kind="session"
-                    state="needs"
-                    title={title}
-                    idLabel={idLabel}
-                    detail={timeAgo(s.updated_at)}
-                    selected={isPicked("session", s.id)}
-                    onClick={() => setPicked({ kind: "session", id: s.id })}
-                  />
-                );
-              })}
-              {group.agents.map((a) => (
-                <AgentRow
-                  key={a.id}
-                  kind="background"
-                  state="needs"
-                  title={a.name}
-                  // 0 means the state file didn't say
-                  detail={
-                    a.startedAt
-                      ? `started ${timeAgo(a.startedAt, { dateAfterDays: Infinity })}`
-                      : undefined
-                  }
-                  dense
-                  selected={isPicked("agent", a.id)}
-                  onClick={() => setPicked({ kind: "agent", id: a.id })}
-                />
-              ))}
-            </section>
-          ))}
-          <History
-            list={list}
-            sessions={view.sessions}
-            onOpenSession={onOpenSession}
-            onOpenAgent={(a) => setPicked({ kind: "agent", id: a.id })}
-          />
-          <SettingsLink onClick={onSettings} />
-        </nav>
+        <PickList
+          list={list}
+          view={view}
+          picked={picked}
+          quiet={quiet}
+          onOpenSession={onOpenSession}
+          onSettings={onSettings}
+          className="px-2 pb-[calc(1rem+env(safe-area-inset-bottom))]"
+        />
       </aside>
       {split.gutter > 0 && (
         <div aria-hidden="true" style={{ width: split.gutter }} />
       )}
       <main className="flex min-w-0 flex-1 flex-col">
-        {session ? (
-          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
-            <InboxItem
-              as="div"
-              session={session}
-              title={displayTitle(session, list.titles).title}
-              projectName={
-                list.groups.find((g) => g.sessions.includes(session))?.name
-              }
-              onOpen={() => onOpenSession(session)}
-            />
-          </div>
-        ) : agent ? (
-          <>
-            <header
-              className={cn(
-                "border-border flex min-h-[50px] shrink-0 flex-col justify-center border-b px-4 pt-2 pb-2",
-                // Clear of the dialog's close button
-                dialog && "pr-14"
-              )}
-            >
-              <h2 className="truncate text-[15px] font-semibold">
-                {agent.name}
-              </h2>
-              <p className="text-muted-foreground truncate font-mono text-[11px]">
-                <AgentCrumb agent={agent} />
-              </p>
-            </header>
-            <AgentDetail
-              key={agent.id}
-              agent={agent}
-              layout="page"
-              onClose={() => setPicked(null)}
-            />
-          </>
-        ) : (
-          <div className="text-muted-foreground grid min-h-0 flex-1 place-items-center p-6 text-center text-sm">
-            Nothing needs you
-          </div>
-        )}
+        <PickedDetail
+          list={list}
+          picked={picked}
+          dialog={dialog}
+          onOpenSession={onOpenSession}
+        />
       </main>
     </div>
+  );
+}
+
+/**
+ * One column, prompts answered in place. On a table it splits around the
+ * fold where it crosses the page: the list above, the picked prompt or agent
+ * on the base, where its buttons are in reach and clear of the fold.
+ */
+function OneColumn({
+  pageRef,
+  list,
+  view,
+  count,
+  quiet,
+  onOpenSession,
+  onSettings,
+}: {
+  pageRef: RefObject<HTMLElement | null>;
+  list: NeedsYouList;
+  view: ViewProps;
+  count: ReactNode;
+  quiet: boolean;
+  onOpenSession: (session: Session) => void;
+  onSettings: () => void;
+}) {
+  const picked = usePicked(list, view);
+
+  return (
+    <FoldSplit
+      el={pageRef}
+      className="flex-1"
+      top={
+        <>
+          <PageHeader title={<Title />} actions={count} />
+          <PickList
+            list={list}
+            view={view}
+            picked={picked}
+            quiet={quiet}
+            onOpenSession={onOpenSession}
+            onSettings={onSettings}
+            className="px-3 pb-2"
+          />
+        </>
+      }
+      base={
+        <div className="border-border flex min-h-0 flex-1 flex-col border-t">
+          <PickedDetail
+            list={list}
+            picked={picked}
+            onOpenSession={onOpenSession}
+          />
+        </div>
+      }
+    >
+      <PageHeader title={<Title />} actions={count} />
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+        {list.groups.length === 0 && <NothingNeedsYou quiet={quiet} />}
+        {list.groups.map((group) => (
+          <section key={group.key}>
+            <SectionHeader>{groupLabel(group)}</SectionHeader>
+            {group.sessions.length > 0 && (
+              <ul className="mb-2 space-y-2.5">
+                {group.sessions.map((session) => (
+                  <InboxItem
+                    key={session.id}
+                    session={session}
+                    title={displayTitle(session, list.titles).title}
+                    onOpen={() => onOpenSession(session)}
+                  />
+                ))}
+              </ul>
+            )}
+            {group.agents.map((agent) => (
+              <BackgroundAgentRow key={agent.id} agent={agent} noId dense />
+            ))}
+          </section>
+        ))}
+        <History
+          list={list}
+          sessions={view.sessions}
+          onOpenSession={onOpenSession}
+          // A page on any width: the phone's sheet needs a list of
+          // agents to host it, which this may not have
+          onOpenAgent={(agent) =>
+            openPage({ kind: "agent", agentId: agent.id })
+          }
+        />
+        <SettingsLink onClick={onSettings} />
+      </div>
+    </FoldSplit>
   );
 }
 
