@@ -19,6 +19,7 @@ import { setupTouchScroll } from "./touch-scroll";
 import { createWebSocketConnection } from "./websocket-connection";
 import { setupResizeHandlers } from "./resize-handlers";
 import { DENSITY_EVENT } from "@/lib/display-density";
+import { BACKGROUND_EVENT } from "@/lib/background";
 
 export type { TerminalScrollState } from "./useTerminalConnection.types";
 
@@ -348,6 +349,15 @@ export function useTerminalConnection({
     if (xtermRef.current) {
       updateTerminalTheme(xtermRef.current, theme);
     }
+  }, [theme]);
+
+  // ...and a new background chosen in Settings → Display
+  useEffect(() => {
+    const update = () => {
+      if (xtermRef.current) updateTerminalTheme(xtermRef.current, theme);
+    };
+    window.addEventListener(BACKGROUND_EVENT, update);
+    return () => window.removeEventListener(BACKGROUND_EVENT, update);
   }, [theme]);
 
   return {

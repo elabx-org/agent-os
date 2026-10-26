@@ -7,6 +7,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { ConfirmHost } from "@/components/ui/confirm";
 import { createQueryClient } from "@/lib/query-client";
 import { parseTheme, getAllThemes } from "@/lib/theme-config";
+import { applyBackground } from "@/lib/background";
 
 function ThemeClassHandler({ children }: { children: React.ReactNode }) {
   const { theme, systemTheme } = useTheme();
@@ -24,6 +25,8 @@ function ThemeClassHandler({ children }: { children: React.ReactNode }) {
     if (variant && variant !== "default" && variant !== "deep") {
       root.setAttribute("data-theme-variant", variant);
     }
+    // Light and dark keep separate backgrounds
+    applyBackground();
   }, [theme, systemTheme]);
 
   return <>{children}</>;
