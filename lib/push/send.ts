@@ -3,14 +3,21 @@ import { sendNtfy } from "./ntfy";
 import { sendApns } from "./apns";
 
 export interface PushMessage {
-  kind: "needsYou" | "finished" | "test";
+  kind: "needsYou" | "finished" | "agentNeedsYou" | "agentFinished" | "test";
   title: string;
   body: string;
   sessionId?: string;
+  /** A background agent's id (`claude agents`) */
+  agentId?: string;
   /** Opens the session in the iOS app */
   appUrl?: string;
   /** Opens the session in a browser */
   webUrl?: string;
+}
+
+/** Kinds that want an answer, so they ring louder */
+export function isUrgent(kind: PushMessage["kind"]): boolean {
+  return kind === "needsYou" || kind === "agentNeedsYou";
 }
 
 export interface SendReport {
@@ -26,6 +33,8 @@ export async function sendPush(message: PushMessage): Promise<SendReport> {
     if (config.publicUrl) {
       message.webUrl ??= `${config.publicUrl.replace(/\/+$/, "")}/?session=${message.sessionId}`;
     }
+  } else if (message.agentId && config.publicUrl) {
+    message.webUrl ??= config.publicUrl;
   }
   const report: SendReport = {};
 

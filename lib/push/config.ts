@@ -7,6 +7,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import { randomBytes } from "crypto";
+import type { SendReport } from "./send";
 
 export interface PushDevice {
   token: string;
@@ -16,7 +17,7 @@ export interface PushDevice {
 }
 
 export interface PushConfig {
-  events: { needsYou: boolean; finished: boolean };
+  events: { needsYou: boolean; finished: boolean; backgroundFinished: boolean };
   /** Where notification links open, e.g. https://agent.example.com */
   publicUrl: string;
   ntfy: { enabled: boolean; server: string; topic: string; token: string };
@@ -27,6 +28,8 @@ export interface PushConfig {
     bundleId: string;
   };
   devices: PushDevice[];
+  /** The last test send: when (ms since epoch) and what each channel did */
+  lastTest?: { at: number; report: SendReport };
 }
 
 export function agentOsHome(): string {
@@ -38,7 +41,7 @@ export const apnsKeyFile = () => path.join(agentOsHome(), "apns-key.p8");
 
 function defaults(): PushConfig {
   return {
-    events: { needsYou: true, finished: true },
+    events: { needsYou: true, finished: true, backgroundFinished: false },
     publicUrl: "",
     ntfy: {
       enabled: false,
