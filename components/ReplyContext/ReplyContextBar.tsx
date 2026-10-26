@@ -19,6 +19,7 @@ import {
   dismissCard,
   jumpTo,
   replyContextStore,
+  setTyping,
   useContextShownElsewhere,
 } from "./store";
 import { useTypingReply } from "./useTyping";
@@ -64,6 +65,13 @@ export function ReplyContextBar({
     !elsewhere &&
     !sheetOpen &&
     dismissed[sessionId] !== turn;
+
+  // Layouts around the pane make room for the context while this is on
+  useEffect(() => {
+    if (!sessionId || !typing) return;
+    setTyping(sessionId, true);
+    return () => setTyping(sessionId, false);
+  }, [sessionId, typing]);
 
   useEffect(() => setSheetOpen(false), [sessionId]);
   useEffect(() => {
