@@ -39,6 +39,7 @@ import {
   postToNative,
 } from "@/lib/native-bridge";
 import { useSessionDraft } from "@/hooks/useSessionDraft";
+import { CHAT_KEYS } from "@/components/Terminal/toolbar-config";
 import {
   ComposerChips,
   ComposerInput,
@@ -1136,7 +1137,11 @@ export function ChatView({
                   setComposerFocused(true);
                   // The app's keyboard bar shows no terminal keys in chat
                   if (isNative())
-                    postToNative({ type: "keys", context: "chat" });
+                    postToNative({
+                      type: "keys",
+                      context: "chat",
+                      ids: CHAT_KEYS,
+                    });
                 }}
                 onBlur={() => setComposerFocused(false)}
                 onKeyDown={(e) => {

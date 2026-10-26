@@ -32,6 +32,7 @@ import {
   SPECIAL_KEYS,
   contextRow,
   getButtonDef,
+  rowIdFor,
   useToolbarPreferences,
 } from "./toolbar-config";
 import { ToolbarSettings } from "./ToolbarSettings";
@@ -722,7 +723,7 @@ export function TerminalToolbar({
   // The context preset: one row chosen by what's running, never two
   const contextMode = preferences.mode === "context" || singleRow;
   const sourceRow1 = contextMode
-    ? contextRow(context, keyboardUp)
+    ? contextRow(context, keyboardUp, preferences)
     : preferences.row1;
   const sourceRow2 = contextMode ? NO_KEYS : preferences.row2;
 
@@ -993,6 +994,7 @@ export function TerminalToolbar({
         onClose={() => setShowSettings(false)}
         preferences={preferences}
         onUpdate={updatePreferences}
+        row={rowIdFor(context, keyboardUp)}
       />
 
       {/* Row 1 — always visible */}
