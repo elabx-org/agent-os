@@ -37,11 +37,15 @@ function simulatedFold(): Fold | null {
   };
 }
 
-/** The book pose for CSS: html[data-fold="vertical"] and --fold-start/--fold-end */
+/**
+ * The fold for CSS: html[data-fold="vertical"] (book) or "horizontal"
+ * (laptop, tabletop) with --fold-start/--fold-end, from the viewport's left
+ * or top
+ */
 function markFold(fold: Fold | null) {
   const root = document.documentElement;
-  if (fold?.axis === "vertical") {
-    root.dataset.fold = "vertical";
+  if (fold) {
+    root.dataset.fold = fold.axis;
     root.style.setProperty("--fold-start", `${fold.start}px`);
     root.style.setProperty("--fold-end", `${fold.end}px`);
   } else {
