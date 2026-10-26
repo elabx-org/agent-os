@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { AdaptiveKey as Key } from "@/lib/adaptive-keys";
 import { useKeyRepeat } from "@/hooks/useKeyRepeat";
 import { haptic } from "@/lib/haptics";
@@ -23,7 +24,9 @@ export function AdaptiveKey({
   k: Key;
   onKeyPress: (key: string) => void;
 }) {
-  const [flicking, setFlicking] = useState(false);
+  // The key's place while flicking, for the second key shown above it
+  // (over the composer, which sits above the key row)
+  const [flicking, setFlicking] = useState<DOMRect | null>(null);
   const startY = useRef<number | null>(null);
   const press = useCallback(() => onKeyPress(k.key), [onKeyPress, k.key]);
   const { startRepeat, stopRepeat } = useKeyRepeat(press);
@@ -67,8 +70,8 @@ export function AdaptiveKey({
       onPointerMove={(e) => {
         if (startY.current === null || !k.flick) return;
         const up = startY.current - e.clientY >= FLICK_PX;
-        if (up !== flicking) {
-          setFlicking(up);
+        if (up !== !!flicking) {
+          setFlicking(up ? e.currentTarget.getBoundingClientRect() : null);
           if (up) stop();
         }
       }}
@@ -81,12 +84,12 @@ export function AdaptiveKey({
           haptic("light");
           press();
         }
-        setFlicking(false);
+        setFlicking(null);
       }}
       onPointerCancel={() => {
         stop();
         startY.current = null;
-        setFlicking(false);
+        setFlicking(null);
       }}
       onClick={(e) => e.stopPropagation()}
       className={cn(
@@ -94,7 +97,7 @@ export function AdaptiveKey({
         k.danger
           ? "border border-red-500/40 bg-red-500/15 text-red-400"
           : "bg-secondary text-secondary-foreground",
-        flicking || "active:bg-primary active:text-primary-foreground",
+        !flicking && "active:bg-primary active:text-primary-foreground",
         k.caption && "adaptive-wide"
       )}
     >
@@ -112,14 +115,21 @@ export function AdaptiveKey({
           {k.flick.label}
         </span>
       )}
-      {flicking && k.flick && (
-        <span
-          aria-hidden="true"
-          className="bg-primary text-primary-foreground pointer-events-none absolute bottom-[calc(100%+6px)] left-1/2 -translate-x-1/2 rounded-lg px-2.5 py-1.5 text-sm font-medium whitespace-nowrap shadow-lg"
-        >
-          {k.flick.label}
-        </span>
-      )}
+      {flicking &&
+        k.flick &&
+        createPortal(
+          <span
+            aria-hidden="true"
+            className="bg-primary text-primary-foreground pointer-events-none fixed z-50 -translate-x-1/2 rounded-lg px-2.5 py-1.5 text-sm font-medium whitespace-nowrap shadow-lg"
+            style={{
+              left: flicking.left + flicking.width / 2,
+              bottom: innerHeight - flicking.top + 6,
+            }}
+          >
+            {k.flick.label}
+          </span>,
+          document.body
+        )}
     </button>
   );
 }

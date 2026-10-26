@@ -317,6 +317,8 @@ html[data-fold="vertical"] [data-spread="wide"] .fold-controls {
 .keybar-row.keybar-adaptive > button {
   max-width: none;
   min-width: 40px;
+  /* The flick's key shows above it */
+  overflow: visible;
 }
 .keybar-row.keybar-adaptive > button.adaptive-wide {
   flex-grow: 3;
