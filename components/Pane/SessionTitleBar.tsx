@@ -15,6 +15,8 @@ import {
   SplitSquareVertical,
   X,
   Settings,
+  Maximize2,
+  Minimize2,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -29,6 +31,7 @@ import type { PaneViewMode } from "@/stores/mobileNav";
 import { mobileNavStore } from "@/stores/mobileNav";
 import { duoPreviewStore } from "@/stores/duoPreview";
 import { runNav } from "@/lib/nav-actions";
+import { focusStore } from "@/stores/focus";
 import { displayTitle, useListTitles } from "@/hooks/useSessionTitles";
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
 import { useIsNative } from "@/hooks/useIsNative";
@@ -98,6 +101,7 @@ export function SessionTitleBar({
   const { statuses, railActive, railWidth } = useSnapshot(mobileNavStore);
   // The iOS app's closed-screen trial: a bigger title, as a page has
   const { on: duoPreview } = useSnapshot(duoPreviewStore);
+  const focus = useSnapshot(focusStore);
   const pageTitle = duoPreview && railActive && isMobile;
   const titles = useListTitles(session ? [session] : []);
   const { copy } = useCopyToClipboard();
@@ -171,6 +175,17 @@ export function SessionTitleBar({
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="min-w-[200px]">
+          {/* The app's column gets its own Focus item in the next iOS build;
+          until then this is the way in and out of Focus there */}
+          <DropdownMenuItem onSelect={() => runNav("focus")}>
+            {focus.on ? (
+              <Minimize2 className="h-4 w-4" />
+            ) : (
+              <Maximize2 className="h-4 w-4" />
+            )}
+            {focus.on ? "Leave Focus" : "Focus"}
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
           {workerCount > 0 && (
             <DropdownMenuItem
               onSelect={() =>
