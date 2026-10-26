@@ -169,7 +169,13 @@ export function DesktopView({
           </div>
 
           {/* Sidebar footer with theme toggle; usage moves here when the header is narrow */}
-          <div className="mt-auto space-y-1 px-3 py-1.5">
+          <div
+            className={cn(
+              "mt-auto space-y-1 px-3 py-1.5",
+              // The open Duo's screen corner is round: keep clear of its curve
+              native && "px-5 pt-2 pb-[max(1rem,env(safe-area-inset-bottom))]"
+            )}
+          >
             <div className={cn("space-y-1 xl:hidden", native && "hidden")}>
               <UsageMonitor />
               <MinimaxUsageMonitor />
