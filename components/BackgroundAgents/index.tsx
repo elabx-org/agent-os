@@ -1,7 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { FolderOpen, Loader2, Plus, RefreshCw } from "lucide-react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
+import {
+  Bot,
+  ChevronDown,
+  ChevronRight,
+  FolderOpen,
+  Loader2,
+  Plus,
+  RefreshCw,
+} from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { confirmAction } from "@/components/ui/confirm";
@@ -49,30 +57,289 @@ function home(dir: string): string {
   return dir.replace(/^\/config(?=\/|$)/, "~");
 }
 
+let shared: BackgroundAgent[] = [];
+const listeners = new Set<(agents: BackgroundAgent[]) => void>();
+let timer: ReturnType<typeof setInterval> | undefined;
+
+async function poll() {
+  try {
+    const res = await fetch("/api/background-agents");
+    const data = await res.json();
+    shared = data.agents ?? [];
+    listeners.forEach((listener) => listener(shared));
+  } catch {
+    // Keep the last list
+  }
+}
+
+/** One poll however many lists show the agents */
+function useBackgroundAgents() {
+  const [agents, setAgents] = useState(shared);
+  useEffect(() => {
+    listeners.add(setAgents);
+    if (listeners.size === 1) {
+      poll();
+      timer = setInterval(poll, POLL_MS);
+    } else {
+      setAgents(shared);
+    }
+    return () => {
+      listeners.delete(setAgents);
+      if (!listeners.size) clearInterval(timer);
+    };
+  }, []);
+  return agents;
+}
+
+/** Whether `dir` is `folder` or inside it, either written with ~ */
+function within(dir: string, folder: string): boolean {
+  const a = home(dir).replace(/\/+$/, "");
+  const b = home(folder).replace(/\/+$/, "");
+  return a === b || a.startsWith(b + "/");
+}
+
+/**
+ * The agents to list under each project: those running in its folder, each
+ * under the deepest project that holds it
+ */
+export function useBackgroundAgentsByProject(
+  projects: {
+    id: string;
+    working_directory: string;
+    is_uncategorized: boolean;
+  }[]
+): Record<string, BackgroundAgent[]> {
+  const agents = useBackgroundAgents();
+  const byProject: Record<string, BackgroundAgent[]> = {};
+  for (const agent of agents) {
+    let best: { id: string; working_directory: string } | undefined;
+    for (const project of projects) {
+      if (project.is_uncategorized) continue;
+      if (!within(agent.cwd, project.working_directory)) continue;
+      if (
+        !best ||
+        home(project.working_directory).length >
+          home(best.working_directory).length
+      )
+        best = project;
+    }
+    if (best) (byProject[best.id] ??= []).push(agent);
+  }
+  return byProject;
+}
+
+function startedAgo(ms: number): string {
+  const mins = Math.floor((Date.now() - ms) / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
+
+function AgentRow({
+  agent,
+  compact,
+  onOpen,
+}: {
+  agent: BackgroundAgent;
+  compact?: boolean;
+  onOpen: () => void;
+}) {
+  const look = stateLook(agent.state);
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className={cn(
+        "active:bg-accent flex w-full items-center gap-3 text-left",
+        compact
+          ? "min-h-[44px] rounded-lg px-2 py-1.5"
+          : "min-h-[56px] rounded-xl px-3 py-2.5"
+      )}
+    >
+      <span
+        aria-hidden="true"
+        className={cn("h-2 w-2 shrink-0 rounded-full", look.dot)}
+      />
+      <span className="min-w-0 flex-1">
+        <span
+          className={cn(
+            "block truncate",
+            compact ? "text-sm" : "text-sm font-semibold"
+          )}
+        >
+          {agent.name}
+        </span>
+        <span className="text-muted-foreground block truncate text-xs">
+          <span
+            className={cn(
+              agent.state === "working" && "text-blue-400",
+              agent.state === "blocked" && "text-amber-400"
+            )}
+          >
+            {look.word}
+          </span>
+          {compact
+            ? ` · started ${startedAgo(agent.startedAt)}`
+            : ` · ${home(agent.cwd)}`}
+        </span>
+      </span>
+      {!compact && (
+        <span className="text-muted-foreground shrink-0 font-mono text-[11px]">
+          {agent.id}
+        </span>
+      )}
+    </button>
+  );
+}
+
+/** What a folded group of agents is doing, e.g. "2 need you · 1 working" */
+function summary(agents: BackgroundAgent[]): ReactNode {
+  const counts = new Map<string, number>();
+  for (const agent of agents)
+    counts.set(agent.state, (counts.get(agent.state) ?? 0) + 1);
+  const order = ["blocked", "working"];
+  const states = [...counts.keys()].sort(
+    (a, b) => (order.indexOf(a) + 1 || 9) - (order.indexOf(b) + 1 || 9)
+  );
+  return states.map((state, i) => {
+    const n = counts.get(state)!;
+    const word =
+      state === "blocked"
+        ? `${n} need${n === 1 ? "s" : ""} you`
+        : `${n} ${stateLook(state).word.toLowerCase()}`;
+    return (
+      <span key={state}>
+        {i > 0 && " · "}
+        <span
+          className={cn(
+            state === "working" && "text-blue-400",
+            state === "blocked" && "text-amber-400"
+          )}
+        >
+          {word}
+        </span>
+      </span>
+    );
+  });
+}
+
+/** Up to this many waiting agents show outside the folded group */
+const LOOSE_WAITING = 2;
+
+/**
+ * A project's background agents, among its sessions: one shows as a row;
+ * more fold into one row that opens in place. Agents waiting for you stay
+ * out of the fold, unless there are so many that they'd bury the sessions.
+ */
+export function ProjectBackgroundAgents({
+  agents,
+}: {
+  agents: BackgroundAgent[];
+}) {
+  const [open, setOpen] = useState<BackgroundAgent | null>(null);
+  const [expanded, setExpanded] = useState(false);
+
+  const waiting = agents.filter((a) => a.state === "blocked");
+  const loose =
+    agents.length === 1
+      ? agents
+      : waiting.length <= LOOSE_WAITING
+        ? waiting
+        : [];
+  let folded = agents.filter((a) => !loose.includes(a));
+  if (folded.length === 1) {
+    loose.push(folded[0]);
+    folded = [];
+  }
+
+  const row = (agent: BackgroundAgent) => (
+    <AgentRow
+      key={agent.id}
+      agent={agent}
+      compact
+      onOpen={() => setOpen(agent)}
+    />
+  );
+  const tone = folded.some((a) => a.state === "blocked")
+    ? "bg-amber-400/15 text-amber-400"
+    : folded.some((a) => a.state === "working")
+      ? "bg-blue-400/15 text-blue-400"
+      : "bg-secondary text-muted-foreground";
+
+  return (
+    <div className="space-y-px">
+      {loose.map(row)}
+      {folded.length > 0 && (
+        <>
+          <button
+            type="button"
+            aria-expanded={expanded}
+            onClick={() => setExpanded(!expanded)}
+            className="active:bg-accent flex min-h-[44px] w-full items-center gap-3 rounded-lg px-2 py-1.5 text-left"
+          >
+            <span
+              aria-hidden="true"
+              className={cn(
+                "-mx-1 flex h-5 w-5 shrink-0 items-center justify-center rounded-md",
+                tone
+              )}
+            >
+              <Bot className="h-3 w-3" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-sm">
+                Background agents · {folded.length}
+              </span>
+              <span className="text-muted-foreground block truncate text-xs">
+                {summary(folded)}
+              </span>
+            </span>
+            {expanded ? (
+              <ChevronDown className="text-muted-foreground h-4 w-4 shrink-0" />
+            ) : (
+              <ChevronRight className="text-muted-foreground h-4 w-4 shrink-0" />
+            )}
+          </button>
+          {expanded && (
+            <div className="border-border/30 ml-3 space-y-px border-l pl-1.5">
+              {folded.map(row)}
+            </div>
+          )}
+        </>
+      )}
+      <AgentSheet agent={open} onClose={() => setOpen(null)} onChanged={poll} />
+    </div>
+  );
+}
+
+/** "New background agent" from a project: its folder filled in */
+export function NewBackgroundAgentSheet({
+  cwd,
+  onClose,
+}: {
+  cwd: string | null;
+  onClose: () => void;
+}) {
+  return (
+    <NewAgentSheet
+      open={cwd !== null}
+      initialCwd={cwd ?? undefined}
+      onClose={onClose}
+      onStarted={poll}
+    />
+  );
+}
+
 /**
  * Claude Code's background agents (`claude --bg`): listed beside the
  * sessions, each with its output, a way into it, and Stop.
  */
 export function BackgroundAgents() {
-  const [agents, setAgents] = useState<BackgroundAgent[]>([]);
+  const agents = useBackgroundAgents();
   const [open, setOpen] = useState<BackgroundAgent | null>(null);
   const [creating, setCreating] = useState(false);
-
-  const refresh = useCallback(async () => {
-    try {
-      const res = await fetch("/api/background-agents");
-      const data = await res.json();
-      setAgents(data.agents ?? []);
-    } catch {
-      // Keep the last list
-    }
-  }, []);
-
-  useEffect(() => {
-    refresh();
-    const timer = setInterval(refresh, POLL_MS);
-    return () => clearInterval(timer);
-  }, [refresh]);
 
   return (
     <section className="space-y-2">
@@ -96,55 +363,19 @@ export function BackgroundAgents() {
         </p>
       ) : (
         <ul className="-mx-2 space-y-0.5">
-          {agents.map((agent) => {
-            const look = stateLook(agent.state);
-            return (
-              <li key={agent.id}>
-                <button
-                  type="button"
-                  onClick={() => setOpen(agent)}
-                  className="active:bg-accent flex min-h-[56px] w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left"
-                >
-                  <span
-                    aria-hidden="true"
-                    className={cn("h-2 w-2 shrink-0 rounded-full", look.dot)}
-                  />
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-semibold">
-                      {agent.name}
-                    </span>
-                    <span className="text-muted-foreground block truncate text-xs">
-                      <span
-                        className={cn(
-                          agent.state === "working" && "text-blue-400",
-                          agent.state === "blocked" && "text-amber-400"
-                        )}
-                      >
-                        {look.word}
-                      </span>
-                      {" · "}
-                      {home(agent.cwd)}
-                    </span>
-                  </span>
-                  <span className="text-muted-foreground shrink-0 font-mono text-[11px]">
-                    {agent.id}
-                  </span>
-                </button>
-              </li>
-            );
-          })}
+          {agents.map((agent) => (
+            <li key={agent.id}>
+              <AgentRow agent={agent} onOpen={() => setOpen(agent)} />
+            </li>
+          ))}
         </ul>
       )}
 
-      <AgentSheet
-        agent={open}
-        onClose={() => setOpen(null)}
-        onChanged={refresh}
-      />
+      <AgentSheet agent={open} onClose={() => setOpen(null)} onChanged={poll} />
       <NewAgentSheet
         open={creating}
         onClose={() => setCreating(false)}
-        onStarted={refresh}
+        onStarted={poll}
       />
     </section>
   );
@@ -344,14 +575,19 @@ function Conversation({ items }: { items: ChatItem[] }) {
 
 function NewAgentSheet({
   open,
+  initialCwd,
   onClose,
   onStarted,
 }: {
   open: boolean;
+  initialCwd?: string;
   onClose: () => void;
   onStarted: () => void;
 }) {
-  const [cwd, setCwd] = useState("~/workspace");
+  const [cwd, setCwd] = useState(initialCwd ?? "~/workspace");
+  useEffect(() => {
+    if (open && initialCwd) setCwd(initialCwd);
+  }, [open, initialCwd]);
   const [prompt, setPrompt] = useState("");
   const [model, setModel] = useState("");
   const [picking, setPicking] = useState(false);

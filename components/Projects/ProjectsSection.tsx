@@ -5,6 +5,11 @@ import { useSnapshot } from "valtio";
 import { ProjectCard } from "./ProjectCard";
 import { SessionCard } from "@/components/SessionCard";
 import { DevServerCard } from "@/components/DevServers/DevServerCard";
+import {
+  NewBackgroundAgentSheet,
+  ProjectBackgroundAgents,
+  useBackgroundAgentsByProject,
+} from "@/components/BackgroundAgents";
 import { selectionStore, selectionActions } from "@/stores/sessionSelection";
 import { SortableItem, SortableList } from "@/components/ui/sortable";
 import type { Session, Group, DevServer } from "@/lib/db";
@@ -143,6 +148,10 @@ export function ProjectsSection({
     {} as Record<string, Session[]>
   );
 
+  const agentsByProject = useBackgroundAgentsByProject(projects);
+  // The folder a new background agent starts in, while its sheet is open
+  const [newAgentIn, setNewAgentIn] = useState<string | null>(null);
+
   // Get running dev servers for a project (for ProjectCard badge)
   const getProjectRunningServers = (projectId: string): DevServer[] => {
     return devServers.filter(
@@ -195,6 +204,10 @@ export function ProjectsSection({
         ))}
       </SortableList>
       {fixed.map((project) => renderProject(project))}
+      <NewBackgroundAgentSheet
+        cwd={newAgentIn}
+        onClose={() => setNewAgentIn(null)}
+      />
     </div>
   );
 
@@ -202,6 +215,7 @@ export function ProjectsSection({
     const projectSessions = sessionsByProject[project.id] || [];
     const runningServers = getProjectRunningServers(project.id);
     const projectDevServers = getProjectDevServers(project.id);
+    const projectAgents = agentsByProject[project.id] || [];
 
     // Uncategorized only holds sessions that have no project: show it
     // when it holds something, or when it's the only project
@@ -223,6 +237,18 @@ export function ProjectsSection({
             sortable={!!handle}
             actionsRequest={actionsRequest(project.id)}
             sessionCount={projectSessions.length}
+            backgroundAgents={{
+              count: projectAgents.length,
+              working: projectAgents.filter((a) => a.state === "working")
+                .length,
+              needsYou: projectAgents.filter((a) => a.state === "blocked")
+                .length,
+            }}
+            onNewBackgroundAgent={
+              project.is_uncategorized
+                ? undefined
+                : () => setNewAgentIn(project.working_directory)
+            }
             runningDevServers={runningServers}
             onToggleExpanded={(expanded) =>
               onToggleProject?.(project.id, expanded)
@@ -284,8 +310,15 @@ export function ProjectsSection({
               </div>
             )}
 
+            {/* Background agents working in this project's folder */}
+            {projectAgents.length > 0 && (
+              <ProjectBackgroundAgents agents={projectAgents} />
+            )}
+
             {/* Project sessions */}
-            {projectSessions.length === 0 && projectDevServers.length === 0 ? (
+            {projectSessions.length === 0 &&
+            projectDevServers.length === 0 &&
+            projectAgents.length === 0 ? (
               <p className="text-muted-foreground px-2 py-2 text-xs">
                 No sessions yet
               </p>

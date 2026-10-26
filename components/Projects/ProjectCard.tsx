@@ -13,6 +13,7 @@ import {
   Pencil,
   FolderOpen,
   Terminal,
+  Bot,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -53,6 +54,9 @@ interface ProjectCardProps {
   onOpenInEditor?: () => void;
   onDelete?: () => void;
   onRename?: (newName: string) => void;
+  /** Background agents working in the project's folder */
+  backgroundAgents?: { count: number; working: number; needsYou: number };
+  onNewBackgroundAgent?: () => void;
   /** A drag-sortable row: holding it lifts the row instead */
   sortable?: boolean;
   /** Changes when the list asks for this row's actions (a hold without a move) */
@@ -72,6 +76,8 @@ export function ProjectCard({
   onOpenInEditor,
   onDelete,
   onRename,
+  backgroundAgents,
+  onNewBackgroundAgent,
   sortable,
   actionsRequest,
 }: ProjectCardProps) {
@@ -154,6 +160,12 @@ export function ProjectCard({
             Open terminal
           </MenuItem>
         )}
+        {onNewBackgroundAgent && (
+          <MenuItem onSelect={() => onNewBackgroundAgent()}>
+            <Bot className="mr-2 h-3 w-3" />
+            New background agent
+          </MenuItem>
+        )}
         {onEdit && (
           <MenuItem onSelect={() => onEdit()}>
             <Settings className="mr-2 h-3 w-3" />
@@ -213,6 +225,15 @@ export function ProjectCard({
         : []),
       ...(onOpenTerminal
         ? [{ label: "Open terminal", icon: Terminal, onSelect: onOpenTerminal }]
+        : []),
+      ...(onNewBackgroundAgent
+        ? [
+            {
+              label: "New background agent",
+              icon: Bot,
+              onSelect: onNewBackgroundAgent,
+            },
+          ]
         : []),
     ],
     [
@@ -331,6 +352,25 @@ export function ProjectCard({
             </p>
           </TooltipContent>
         </Tooltip>
+      )}
+
+      {/* Background agents: amber when one is waiting for you */}
+      {!!backgroundAgents?.count && (
+        <span
+          role="img"
+          aria-label={`${backgroundAgents.count} background agent${backgroundAgents.count === 1 ? "" : "s"}${backgroundAgents.needsYou ? `, ${backgroundAgents.needsYou} need${backgroundAgents.needsYou === 1 ? "s" : ""} you` : ""}`}
+          className={cn(
+            "flex flex-shrink-0 items-center gap-1 rounded-full px-1.5 py-px text-[11px] font-semibold tabular-nums",
+            backgroundAgents.needsYou
+              ? "bg-amber-400/15 text-amber-400"
+              : backgroundAgents.working
+                ? "bg-blue-400/15 text-blue-400"
+                : "bg-secondary text-muted-foreground"
+          )}
+        >
+          <Bot className="h-3 w-3" />
+          {backgroundAgents.count}
+        </span>
       )}
 
       {/* Session count */}
