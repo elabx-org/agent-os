@@ -280,6 +280,10 @@ export const Pane = memo(function Pane({
   const tmuxSetup = [
     `tmux set-option -g mouse on`,
     `tmux set-option -sg escape-time 10`,
+    // The most recently active client sets the width, so a phone and a
+    // desktop on one session each get a window that wraps at their screen
+    `tmux set-option -g window-size latest`,
+    `tmux set-window-option -g aggressive-resize on`,
     // Scroll 5 lines per wheel event instead of 1 for smoother scrolling
     `tmux bind-key -T copy-mode WheelUpPane send-keys -X -N 5 scroll-up`,
     `tmux bind-key -T copy-mode WheelDownPane send-keys -X -N 5 scroll-down`,
@@ -287,7 +291,10 @@ export const Pane = memo(function Pane({
     `tmux bind-key -T copy-mode-vi WheelDownPane send-keys -X -N 5 scroll-down`,
     // Tmux menu
     `tmux bind-key m display-menu -T "Tmux" -x R -y P "Copy Mode" c copy-mode "Paste Buffer" p paste-buffer "" "" "" "Split Horizontal" h 'split-window -h' "Split Vertical" v 'split-window -v'`,
-  ].map(c => `${c} 2>/dev/null`).join("; ");
+  ].map(c => `${c} 2>/dev/null`).join("; ") +
+    // Wipe the echoed setup line (screen and scrollback) before attaching.
+    // Not tmux clear-history: that would drop the session's own history.
+    `; printf '\\033[H\\033[2J\\033[3J'`;
 
   // Create onConnected callback for a specific tab
   const getTerminalConnectedHandler = useCallback(
