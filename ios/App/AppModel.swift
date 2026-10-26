@@ -226,7 +226,9 @@ final class AppModel {
         if message["type"] as? String == "keys" {
             // The terminal or chat box took focus: the bar shows that context's keys
             if let context = message["context"] as? String {
-                (webView as? AgentWebView)?.keyboardBar.context = context
+                // The user's key order for it, when the page sends one
+                let ids = (message["ids"] as? [Any])?.compactMap { $0 as? String }
+                (webView as? AgentWebView)?.keyboardBar.setKeys(context: context, ids: ids)
             }
             return
         }
