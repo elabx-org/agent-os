@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo } from "react";
 import { useSnapshot } from "valtio";
-import { InboxDialog } from "@/components/Inbox";
 import { SessionList } from "@/components/SessionList";
 import { ProjectList } from "@/components/Projects";
 import { MissionControl } from "@/components/MissionControl";
@@ -13,7 +12,7 @@ import { PaneLayout } from "@/components/PaneLayout";
 import { QuickSwitcher } from "@/components/QuickSwitcher";
 import type { ViewProps } from "./types";
 import { fileOpenActions } from "@/stores/fileOpen";
-import { mobileNavActions, mobileNavStore } from "@/stores/mobileNav";
+import { mobileNavStore } from "@/stores/mobileNav";
 import { ControlColumn } from "@/components/ControlColumn";
 import { useSideRail } from "@/hooks/useSideRail";
 import { isNative } from "@/lib/native-bridge";
@@ -21,6 +20,7 @@ import { loadDuoPreview } from "@/stores/duoPreview";
 import { cn } from "@/lib/utils";
 import { WorkspacePage } from "@/components/WorkspacePage";
 import { workspacePageStore } from "@/stores/workspacePage";
+import { useNeedsYouPage } from "@/components/Notifications/NeedsYouPage";
 
 export function MobileView(props: ViewProps) {
   const {
@@ -65,17 +65,10 @@ export function MobileView(props: ViewProps) {
     };
   }, [railWidth]);
 
-  const waitingSessions = useMemo(
-    () =>
-      sessions.filter(
-        (s) =>
-          !s.conductor_session_id && sessionStatuses[s.id]?.status === "waiting"
-      ),
-    [sessions, sessionStatuses]
-  );
-
   const { page } = useSnapshot(workspacePageStore);
   const pageOpen = !!page;
+  // Needs you is a page here, over the home like the others
+  useNeedsYouPage(true);
 
   // A page covers the pane too
   useEffect(() => {
@@ -85,7 +78,7 @@ export function MobileView(props: ViewProps) {
     };
   }, [sidebarOpen, pageOpen]);
 
-  const { inboxOpen, request: viewRequest } = useSnapshot(mobileNavStore);
+  const { request: viewRequest } = useSnapshot(mobileNavStore);
   // Picking a view in the column or bar leaves the home for the session
   const hasSession = !!focusedActiveTab?.sessionId;
   useEffect(() => {
@@ -196,17 +189,6 @@ export function MobileView(props: ViewProps) {
       {showBar && <ControlColumn variant="bar" />}
 
       {/* Dialogs */}
-      <InboxDialog
-        open={inboxOpen}
-        onOpenChange={mobileNavActions.setInboxOpen}
-        waitingSessions={waitingSessions}
-        projectNames={projectNames}
-        onOpenSession={(session) => {
-          attachToSession(session);
-          mobileNavActions.requestViewMode("terminal");
-          setSidebarOpen(false);
-        }}
-      />
       <NewSurfaceHost
         projects={projects}
         onCreated={handleSessionCreated}

@@ -1,13 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { Inbox as InboxIcon, Loader2, SquareTerminal } from "lucide-react";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Loader2, SquareTerminal } from "lucide-react";
 import { KindBadge } from "@/components/rows/AgentRow";
 import { useAnswerPrompt, useSessionPrompt } from "@/data/prompts/queries";
 import { cn } from "@/lib/utils";
@@ -74,7 +68,7 @@ export function InboxItem({
   questionsOnly?: boolean;
   /** "card": the home's compact prompt with one row of answers */
   variant?: "full" | "card";
-  /** Display title for the card; defaults to the session name */
+  /** Display title; defaults to the session name */
   title?: ReactNode;
   /** "div" when it isn't inside a list */
   as?: "li" | "div";
@@ -175,7 +169,9 @@ export function InboxItem({
           className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-amber-400 ring-4 ring-amber-400/20"
         />
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold">{session.name}</p>
+          <p className="truncate text-sm font-semibold">
+            {title ?? session.name}
+          </p>
           <p className="text-muted-foreground truncate text-xs">
             {[projectName, prompt?.title ?? "Your turn"]
               .filter(Boolean)
@@ -244,61 +240,5 @@ export function InboxItem({
 
       {error && <p className="text-xs text-red-400">{error}</p>}
     </Root>
-  );
-}
-
-interface InboxDialogProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  waitingSessions: Session[];
-  projectNames: Record<string, string>;
-  onOpenSession: (session: Session) => void;
-}
-
-/** Everything waiting on you, answerable without opening the terminal */
-export function InboxDialog({
-  open,
-  onOpenChange,
-  waitingSessions,
-  projectNames,
-  onOpenSession,
-}: InboxDialogProps) {
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[min(85dvh,720px)] flex-col gap-3 overflow-hidden p-4 sm:max-w-md">
-        <div>
-          <DialogTitle className="text-base">Inbox</DialogTitle>
-          <DialogDescription className="text-xs">
-            {waitingSessions.length
-              ? `${waitingSessions.length} waiting on you`
-              : "Nothing is waiting on you"}
-          </DialogDescription>
-        </div>
-        {waitingSessions.length === 0 ? (
-          <div className="text-muted-foreground flex flex-col items-center gap-2 py-10 text-sm">
-            <InboxIcon className="h-6 w-6" />
-            All clear
-          </div>
-        ) : (
-          <ul className="-mx-1 min-h-0 flex-1 space-y-3 overflow-y-auto px-1 pb-1">
-            {waitingSessions.map((session) => (
-              <InboxItem
-                key={session.id}
-                session={session}
-                projectName={
-                  session.project_id
-                    ? projectNames[session.project_id]
-                    : undefined
-                }
-                onOpen={() => {
-                  onOpenChange(false);
-                  onOpenSession(session);
-                }}
-              />
-            ))}
-          </ul>
-        )}
-      </DialogContent>
-    </Dialog>
   );
 }
