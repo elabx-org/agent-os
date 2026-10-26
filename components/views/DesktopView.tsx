@@ -2,8 +2,10 @@
 
 import { useEffect, useMemo, useRef } from "react";
 import { SessionList } from "@/components/SessionList";
+import { ProjectList } from "@/components/Projects";
 import { MissionControl } from "@/components/MissionControl";
-import { NewSessionDialog } from "@/components/NewSessionDialog";
+import { NewSurfaceHost } from "@/components/New/NewSurface";
+import { ProjectSettingsHost } from "@/components/Projects/ProjectSettingsDialog";
 import { StartServerDialog } from "@/components/DevServers/StartServerDialog";
 import { PaneLayout } from "@/components/PaneLayout";
 import { QuickSwitcher } from "@/components/QuickSwitcher";
@@ -15,35 +17,47 @@ import { InboxDialog } from "@/components/Inbox";
 import { mobileNavActions, mobileNavStore } from "@/stores/mobileNav";
 import { focusStore } from "@/stores/focus";
 import { isNative } from "@/lib/native-bridge";
+import { useIsNative } from "@/hooks/useIsNative";
 import type { Session } from "@/lib/db";
 import { SessionSpread } from "./SessionSpread";
+import { WorkspacePage } from "@/components/WorkspacePage";
+import { workspacePageStore } from "@/stores/workspacePage";
 
-export function DesktopView({
-  sessions,
-  projects,
-  sessionStatuses,
-  sidebarOpen,
-  setSidebarOpen,
-  activeSession,
-  focusedActiveTab,
-  showNewSessionDialog,
-  setShowNewSessionDialog,
-  newSessionProjectId,
-  showQuickSwitcher,
-  setShowQuickSwitcher,
-  attachToSession,
-  openSessionInNewTab,
-  handleNewSessionInProject,
-  handleOpenTerminal,
-  handleSessionCreated,
-  handleCreateProject,
-  handleStartDevServer,
-  handleCreateDevServer,
-  startDevServerProject,
-  setStartDevServerProjectId,
-  renderPane,
-}: ViewProps) {
+export function DesktopView(props: ViewProps) {
+  const {
+    sessions,
+    projects,
+    sessionStatuses,
+    sidebarOpen,
+    setSidebarOpen,
+    activeSession,
+    focusedActiveTab,
+    showQuickSwitcher,
+    setShowQuickSwitcher,
+    attachToSession,
+    openSessionInNewTab,
+    handleNewSessionInProject,
+    handleOpenTerminal,
+    handleSessionCreated,
+    handleCreateProject,
+    handleStartDevServer,
+    handleCreateDevServer,
+    startDevServerProject,
+    setStartDevServerProjectId,
+    renderPane,
+  } = props;
   const { inboxOpen } = useSnapshot(mobileNavStore);
+  const { page } = useSnapshot(workspacePageStore);
+  const pageOpen = !!page;
+  const native = useIsNative();
+
+  // A page covers the pane, so the column selects no view
+  useEffect(() => {
+    mobileNavStore.homeOpen = pageOpen;
+    return () => {
+      mobileNavStore.homeOpen = false;
+    };
+  }, [pageOpen]);
 
   // Focus hides the home; back still brings it up, and it comes back with
   // Focus off if it was showing
@@ -101,22 +115,35 @@ export function DesktopView({
     if (isNative()) setSidebarOpen(false);
   };
 
-  const sessionList = (
-    <SessionList
-      activeSessionId={focusedActiveTab?.sessionId || undefined}
+  // The Projects tab: a project opens its page beside the home; the old
+  // tree stays one row away for managing sessions
+  const projectList = (
+    <ProjectList
+      sessions={sessions}
+      projects={projects}
       sessionStatuses={sessionStatuses}
-      onSelect={(id) => {
-        const session = sessions.find((s) => s.id === id);
-        if (session) openFromHome(session);
-      }}
-      onOpenInTab={(id) => {
-        const session = sessions.find((s) => s.id === id);
-        if (session) openSessionInNewTab(session);
-      }}
-      onNewSessionInProject={handleNewSessionInProject}
+      pills={!native}
+      onNewSession={handleNewSessionInProject}
       onOpenTerminal={handleOpenTerminal}
       onStartDevServer={handleStartDevServer}
-      onCreateDevServer={handleCreateDevServer}
+      allSessions={
+        <SessionList
+          activeSessionId={focusedActiveTab?.sessionId || undefined}
+          sessionStatuses={sessionStatuses}
+          onSelect={(id) => {
+            const session = sessions.find((s) => s.id === id);
+            if (session) openFromHome(session);
+          }}
+          onOpenInTab={(id) => {
+            const session = sessions.find((s) => s.id === id);
+            if (session) openSessionInNewTab(session);
+          }}
+          onNewSessionInProject={handleNewSessionInProject}
+          onOpenTerminal={handleOpenTerminal}
+          onStartDevServer={handleStartDevServer}
+          onCreateDevServer={handleCreateDevServer}
+        />
+      }
     />
   );
 
@@ -133,6 +160,11 @@ export function DesktopView({
         session={activeSession}
         projects={projects}
         homeOpen={sidebarOpen}
+        page={
+          pageOpen && (
+            <WorkspacePage view={props} onOpenSession={openFromHome} />
+          )
+        }
         home={
           <MissionControl
             sessions={sessions}
@@ -140,7 +172,7 @@ export function DesktopView({
             projectNames={projectNames}
             activeSessionId={focusedActiveTab?.sessionId || undefined}
             onOpenSession={openFromHome}
-            projectsView={sessionList}
+            projectsView={projectList}
           />
         }
       >
@@ -155,14 +187,12 @@ export function DesktopView({
         projectNames={projectNames}
         onOpenSession={attachToSession}
       />
-      <NewSessionDialog
-        open={showNewSessionDialog}
+      <NewSurfaceHost
         projects={projects}
-        selectedProjectId={newSessionProjectId ?? undefined}
-        onClose={() => setShowNewSessionDialog(false)}
         onCreated={handleSessionCreated}
         onCreateProject={handleCreateProject}
       />
+      <ProjectSettingsHost />
       <QuickSwitcher
         sessions={sessions}
         open={showQuickSwitcher}

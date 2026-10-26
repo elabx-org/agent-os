@@ -7,11 +7,11 @@ import { SessionCard } from "@/components/SessionCard";
 import { displayTitle, useListTitles } from "@/hooks/useSessionTitles";
 import { DevServerCard } from "@/components/DevServers/DevServerCard";
 import {
-  NewBackgroundAgentSheet,
   ProjectBackgroundAgents,
   useBackgroundAgentsByProject,
 } from "@/components/BackgroundAgents";
 import { selectionStore, selectionActions } from "@/stores/sessionSelection";
+import { openNew } from "@/stores/newSurface";
 import { SortableItem, SortableList } from "@/components/ui/sortable";
 import type { Session, Group, DevServer } from "@/lib/db";
 import type { ProjectWithDevServers } from "@/lib/projects";
@@ -152,8 +152,6 @@ export function ProjectsSection({
   );
 
   const agentsByProject = useBackgroundAgentsByProject(projects);
-  // The folder a new background agent starts in, while its sheet is open
-  const [newAgentIn, setNewAgentIn] = useState<string | null>(null);
 
   // Get running dev servers for a project (for ProjectCard badge)
   const getProjectRunningServers = (projectId: string): DevServer[] => {
@@ -207,10 +205,6 @@ export function ProjectsSection({
         ))}
       </SortableList>
       {fixed.map((project) => renderProject(project))}
-      <NewBackgroundAgentSheet
-        cwd={newAgentIn}
-        onClose={() => setNewAgentIn(null)}
-      />
     </div>
   );
 
@@ -250,7 +244,7 @@ export function ProjectsSection({
             onNewBackgroundAgent={
               project.is_uncategorized
                 ? undefined
-                : () => setNewAgentIn(project.working_directory)
+                : () => openNew({ projectId: project.id, runAs: "background" })
             }
             runningDevServers={runningServers}
             onToggleExpanded={(expanded) =>

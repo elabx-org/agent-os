@@ -27,6 +27,8 @@ interface UseNewSessionFormOptions {
     workingDirectory: string,
     agentType: AgentType
   ) => Promise<string | null>;
+  /** What a git folder starts with; the New form starts on its branch */
+  gitBranchMode?: BranchMode;
 }
 
 export function useNewSessionForm({
@@ -36,6 +38,7 @@ export function useNewSessionForm({
   onCreated,
   onClose,
   onCreateProject,
+  gitBranchMode = "branch",
 }: UseNewSessionFormOptions) {
   // React Query mutation
   const createSession = useCreateSession();
@@ -49,6 +52,8 @@ export function useNewSessionForm({
   const [continueSession, setContinueSession] = useState(false);
   const [useTmux, setUseTmux] = useState(true);
   const [initialPrompt, setInitialPrompt] = useState("");
+  // "" keeps the server's default
+  const [model, setModel] = useState("");
 
   // Branch/worktree state
   const [branchMode, setBranchMode] = useState<BranchMode>("none");
@@ -73,41 +78,44 @@ export function useNewSessionForm({
   const [recentDirs, setRecentDirs] = useState<string[]>([]);
 
   // Check if working directory is a git repo
-  const checkGitRepo = useCallback(async (path: string) => {
-    if (!path || path === "~") {
-      setGitInfo(null);
-      setBranchMode("none");
-      setFeatureName("");
-      return;
-    }
-
-    setCheckingGit(true);
-    try {
-      const res = await fetch("/api/git/check", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path }),
-      });
-      const data = await res.json();
-      setGitInfo(data);
-      if (data.defaultBranch) {
-        setBaseBranch(data.defaultBranch);
-      }
-      if (data.isGitRepo) {
-        setBranchMode("branch");
-        setFeatureName(generateFeatureName());
-      } else {
+  const checkGitRepo = useCallback(
+    async (path: string) => {
+      if (!path || path === "~") {
+        setGitInfo(null);
         setBranchMode("none");
         setFeatureName("");
+        return;
       }
-    } catch {
-      setGitInfo(null);
-      setBranchMode("none");
-      setFeatureName("");
-    } finally {
-      setCheckingGit(false);
-    }
-  }, []);
+
+      setCheckingGit(true);
+      try {
+        const res = await fetch("/api/git/check", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ path }),
+        });
+        const data = await res.json();
+        setGitInfo(data);
+        if (data.defaultBranch) {
+          setBaseBranch(data.defaultBranch);
+        }
+        if (data.isGitRepo) {
+          setBranchMode(gitBranchMode);
+          setFeatureName(generateFeatureName());
+        } else {
+          setBranchMode("none");
+          setFeatureName("");
+        }
+      } catch {
+        setGitInfo(null);
+        setBranchMode("none");
+        setFeatureName("");
+      } finally {
+        setCheckingGit(false);
+      }
+    },
+    [gitBranchMode]
+  );
 
   // Debounce git check
   useEffect(() => {
@@ -217,8 +225,8 @@ export function useNewSessionForm({
     localStorage.setItem(CONTINUE_SESSION_KEY, String(checked));
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (e?: React.FormEvent) => {
+    e?.preventDefault();
     createSession.reset(); // Clear any previous errors
 
     if (branchMode !== "none") {
@@ -256,6 +264,7 @@ export function useNewSessionForm({
         continueSession,
         useTmux,
         initialPrompt: initialPrompt.trim() || null,
+        model: model || undefined,
       },
       {
         onSuccess: (data) => {
@@ -311,6 +320,7 @@ export function useNewSessionForm({
     setBranchMode("none");
     setFeatureName("");
     setInitialPrompt("");
+    setModel("");
     setShowNewProject(false);
     setNewProjectName("");
     setCreationStep("creating");
@@ -335,6 +345,8 @@ export function useNewSessionForm({
     useTmux,
     initialPrompt,
     setInitialPrompt,
+    model,
+    setModel,
     // Branch/Worktree
     branchMode,
     setBranchMode,

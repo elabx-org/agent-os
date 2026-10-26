@@ -68,6 +68,8 @@ interface SessionSpreadProps {
   /** The home (Now); shown while homeOpen */
   home: ReactNode;
   homeOpen: boolean;
+  /** A workspace page standing in for the panes and the rail, or null */
+  page?: ReactNode;
   /** The panes */
   children: ReactNode;
 }
@@ -81,6 +83,9 @@ interface SessionSpreadProps {
  * the chat reads as a book, the terminal takes the right page with Changes on
  * the left, and anything else takes the right page.
  *
+ * A workspace page takes the pane's place (on the right page) and the panes
+ * wait under it, hidden.
+ *
  * Every slot keeps its place whether shown or not, so the panes never
  * remount (a terminal must not attach twice).
  */
@@ -89,6 +94,7 @@ export function SessionSpread({
   projects,
   home,
   homeOpen,
+  page,
   children,
 }: SessionSpreadProps) {
   const native = useIsNative();
@@ -107,12 +113,19 @@ export function SessionSpread({
   const gutter = book ? book.end - book.start : FOLD_CLEAR * 2;
 
   const folder = session?.working_directory;
+  const pageOpen = !!page;
   const changesLeft =
-    !!book && focus && !homeOpen && viewMode === "terminal" && !!folder;
+    !!book &&
+    focus &&
+    !homeOpen &&
+    !pageOpen &&
+    viewMode === "terminal" &&
+    !!folder;
   // On the pages the rail sits beside a conversation; Changes, Files and
   // Workers take both pages for their own list | detail split
   const showRail =
     !!session &&
+    !pageOpen &&
     !focus &&
     (pages
       ? !homeOpen && (viewMode === "terminal" || viewMode === "chat")
@@ -121,9 +134,14 @@ export function SessionSpread({
   // pages only come with no rail)
   const paneLeft = pages && showRail;
   // Half open nothing may sit in the bend: only the chat lays itself out as
-  // a book, anything else takes the right page
+  // a book, anything else takes the right page. A workspace page takes it
+  // flat too: its centred form would sit across the hinge.
   const paneRight =
-    !!book && !homeOpen && !changesLeft && !showRail && viewMode !== "chat";
+    pages &&
+    !homeOpen &&
+    !changesLeft &&
+    !showRail &&
+    (pageOpen || (!!book && viewMode !== "chat"));
   // Across the fold: content may cross it, controls move right of it
   const paneWide =
     pages && !homeOpen && !changesLeft && !showRail && !paneRight;
@@ -223,9 +241,13 @@ export function SessionSpread({
           className="mx-auto h-full w-full"
           style={focus && !native ? { maxWidth: FOCUS_MAX_WIDTH } : undefined}
         >
-          <SpreadContext.Provider value={spreadFold}>
-            {children}
-          </SpreadContext.Provider>
+          {/* Hidden rather than unmounted: the terminal refits when shown */}
+          <div className={cn("h-full w-full", pageOpen && "hidden")}>
+            <SpreadContext.Provider value={spreadFold}>
+              {children}
+            </SpreadContext.Provider>
+          </div>
+          {page}
         </div>
       </div>
 

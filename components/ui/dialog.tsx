@@ -194,6 +194,10 @@ function DialogDescription({
   );
 }
 
+/** Desktop dialogs are glass; a sheet on touch stays opaque */
+export const GLASS_DIALOG =
+  "bg-background/80 rounded-2xl shadow-[inset_0_1px_0_hsl(var(--foreground)/0.08),0_24px_60px_rgb(0_0_0/0.45)] backdrop-blur-xl backdrop-saturate-150";
+
 export {
   Dialog,
   DialogClose,

@@ -1,8 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { FolderOpen, Loader2, Plus, RefreshCw } from "lucide-react";
-import { toast } from "sonner";
+import {
+  useEffect,
+  useState,
+  useSyncExternalStore,
+  type KeyboardEvent,
+  type ReactNode,
+} from "react";
+import { Plus } from "lucide-react";
+import { proxy, useSnapshot } from "valtio";
 import { cn } from "@/lib/utils";
 import {
   STATE_TEXT_CLASS,
@@ -11,30 +17,29 @@ import {
   timeAgo,
 } from "@/lib/agent-state";
 import { AgentRow, FoldedRow } from "@/components/rows/AgentRow";
-import { confirmAction } from "@/components/ui/confirm";
-import { DirectoryPicker } from "@/components/DirectoryPicker";
 import {
   Sheet,
-  SheetBody,
   SheetContent,
   SheetDescription,
-  SheetFooter,
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { isNative } from "@/lib/native-bridge";
+import { closePage, openPage } from "@/stores/workspacePage";
+import { openNew } from "@/stores/newSurface";
 import type { BackgroundAgent } from "@/lib/claude-background";
-import type { ChatItem } from "@/lib/claude-transcript";
+import { AgentCrumb, AgentDetail } from "./AgentDetail";
 
 const POLL_MS = 5000;
 
-const MODELS = [
+export const MODELS = [
   { id: "", label: "Default" },
   { id: "sonnet", label: "Sonnet" },
   { id: "opus", label: "Opus" },
   { id: "haiku", label: "Haiku" },
 ];
 
-function stateWord(state: string): string {
+export function stateWord(state: string): string {
   const mapped = fromBackgroundState(state);
   // Keep states the shared model doesn't know by their own name
   return mapped === "idle" && state !== "idle"
@@ -42,15 +47,18 @@ function stateWord(state: string): string {
     : STATE_WORD[mapped];
 }
 
-function home(dir: string): string {
+export function home(dir: string): string {
   return dir.replace(/^\/config(?=\/|$)/, "~");
 }
 
 let shared: BackgroundAgent[] = [];
+/** Lists fetched so far, so an opened agent is known until the next one */
+let polls = 0;
 const listeners = new Set<(agents: BackgroundAgent[]) => void>();
 let timer: ReturnType<typeof setInterval> | undefined;
 
-async function poll() {
+/** Fetches the list now, e.g. right after starting one */
+export async function poll() {
   try {
     const res = await fetch("/api/background-agents");
     const data = await res.json();
@@ -58,6 +66,7 @@ async function poll() {
     shared = ((data.agents ?? []) as BackgroundAgent[]).filter(
       (a) => !a.agentOsSessionId
     );
+    polls++;
     listeners.forEach((listener) => listener(shared));
   } catch {
     // Keep the last list
@@ -81,6 +90,72 @@ export function useBackgroundAgents() {
     };
   }, []);
   return agents;
+}
+
+/** The agents opened, as they were, for before the list has them */
+const opened = new Map<string, { agent: BackgroundAgent; polls: number }>();
+
+/** One agent, kept up to date; undefined once it's gone */
+export function useBackgroundAgent(id: string): BackgroundAgent | undefined {
+  const agents = useBackgroundAgents();
+  const seen = opened.get(id);
+  return (
+    agents.find((a) => a.id === id) ??
+    (seen && seen.polls === polls ? seen.agent : undefined)
+  );
+}
+
+/** The agent in the phone's sheet */
+const agentSheetStore = proxy<{ agentId: string | null }>({ agentId: null });
+
+/**
+ * Opens a background agent: as a page on the Duo (the app) and wider screens,
+ * as the bottom sheet on a phone in a browser
+ */
+export function openBackgroundAgent(agent: BackgroundAgent) {
+  opened.set(agent.id, { agent, polls });
+  if (isNative() || window.innerWidth >= 768) {
+    openPage({ kind: "agent", agentId: agent.id });
+  } else {
+    agentSheetStore.agentId = agent.id;
+  }
+}
+
+/**
+ * Its Answer for now: the app runs `claude attach <id>` in the focused
+ * terminal, which a page would cover
+ */
+export function attachBackgroundAgent(id: string) {
+  closePage();
+  window.dispatchEvent(
+    new CustomEvent("agentos-attach-background", { detail: { id } })
+  );
+}
+
+// Every list of agents can host the sheet; the first one mounted does
+const hosts: symbol[] = [];
+const hostListeners = new Set<() => void>();
+function subscribeHosts(listener: () => void) {
+  hostListeners.add(listener);
+  return () => hostListeners.delete(listener);
+}
+
+function AgentSheetHost() {
+  const [me] = useState(() => Symbol());
+  const leads = useSyncExternalStore(
+    subscribeHosts,
+    () => hosts[0] === me,
+    () => false
+  );
+  useEffect(() => {
+    hosts.push(me);
+    hostListeners.forEach((listener) => listener());
+    return () => {
+      hosts.splice(hosts.indexOf(me), 1);
+      hostListeners.forEach((listener) => listener());
+    };
+  }, [me]);
+  return leads ? <AgentSheet /> : null;
 }
 
 /** Whether `dir` is `folder` or inside it, either written with ~ */
@@ -131,6 +206,8 @@ interface AgentItemProps {
   projectName?: string;
   noId?: boolean;
   dense?: boolean;
+  /** A button of its own at the end (the row then can't be a button) */
+  trailing?: ReactNode;
   className?: string;
 }
 
@@ -139,11 +216,21 @@ function AgentItem({
   projectName,
   noId,
   dense,
+  trailing,
   className,
-  onOpen,
-}: AgentItemProps & { onOpen: () => void }) {
+}: AgentItemProps) {
+  const open = () => openBackgroundAgent(agent);
   return (
     <AgentRow
+      {...(trailing && {
+        as: "div" as const,
+        role: "button",
+        tabIndex: 0,
+        onKeyDown: (e: KeyboardEvent) => {
+          if (e.target === e.currentTarget && e.key === "Enter") open();
+        },
+      })}
+      trailing={trailing}
       kind="background"
       state={fromBackgroundState(agent.state)}
       title={agent.name}
@@ -157,18 +244,17 @@ function AgentItem({
       }
       dense={dense}
       className={className}
-      onClick={onOpen}
+      onClick={open}
     />
   );
 }
 
-/** One background agent's row, with its own sheet for output and Stop */
+/** One background agent's row: it opens the agent's page or sheet */
 export function BackgroundAgentRow(props: AgentItemProps) {
-  const [open, setOpen] = useState<BackgroundAgent | null>(null);
   return (
     <>
-      <AgentItem {...props} onOpen={() => setOpen(props.agent)} />
-      <AgentSheet agent={open} onClose={() => setOpen(null)} onChanged={poll} />
+      <AgentItem {...props} />
+      <AgentSheetHost />
     </>
   );
 }
@@ -214,6 +300,7 @@ export function BackgroundAgentGroup({
   looseWaiting = LOOSE_WAITING,
   noId,
   dense,
+  className,
 }: {
   agents: BackgroundAgent[];
   projectName?: string;
@@ -221,8 +308,8 @@ export function BackgroundAgentGroup({
   looseWaiting?: number;
   noId?: boolean;
   dense?: boolean;
+  className?: string;
 }) {
-  const [open, setOpen] = useState<BackgroundAgent | null>(null);
   const [expanded, setExpanded] = useState(false);
 
   const waiting = agents.filter((a) => a.state === "blocked");
@@ -246,7 +333,6 @@ export function BackgroundAgentGroup({
       projectName={inFold ? undefined : projectName}
       noId={noId}
       dense={dense}
-      onOpen={() => setOpen(agent)}
     />
   );
   const oldest = Math.min(
@@ -254,7 +340,7 @@ export function BackgroundAgentGroup({
   );
 
   return (
-    <div className="space-y-px">
+    <div className={cn("space-y-px", className)}>
       {loose.map((agent) => row(agent))}
       {folded.length > 0 && (
         <FoldedRow
@@ -288,7 +374,7 @@ export function BackgroundAgentGroup({
           </div>
         </FoldedRow>
       )}
-      <AgentSheet agent={open} onClose={() => setOpen(null)} onChanged={poll} />
+      <AgentSheetHost />
     </div>
   );
 }
@@ -300,24 +386,6 @@ export function ProjectBackgroundAgents({
   agents: BackgroundAgent[];
 }) {
   return <BackgroundAgentGroup agents={agents} noId dense />;
-}
-
-/** "New background agent" from a project: its folder filled in */
-export function NewBackgroundAgentSheet({
-  cwd,
-  onClose,
-}: {
-  cwd: string | null;
-  onClose: () => void;
-}) {
-  return (
-    <NewAgentSheet
-      open={cwd !== null}
-      initialCwd={cwd ?? undefined}
-      onClose={onClose}
-      onStarted={poll}
-    />
-  );
 }
 
 /**
@@ -334,8 +402,6 @@ export function BackgroundAgents({
 } = {}) {
   const all = useBackgroundAgents();
   const agents = only ?? all;
-  const [open, setOpen] = useState<BackgroundAgent | null>(null);
-  const [creating, setCreating] = useState(false);
 
   return (
     <section className="space-y-2">
@@ -346,7 +412,7 @@ export function BackgroundAgents({
         </h2>
         <button
           type="button"
-          onClick={() => setCreating(true)}
+          onClick={() => openNew({ runAs: "background" })}
           className="text-primary active:bg-accent -mr-2 flex h-8 items-center gap-1 rounded-full px-2 text-xs font-medium"
         >
           <Plus className="h-3.5 w-3.5" />
@@ -362,349 +428,48 @@ export function BackgroundAgents({
         <ul className="-mx-2 space-y-0.5">
           {agents.map((agent) => (
             <li key={agent.id}>
-              <AgentItem
-                agent={agent}
-                projectName={home(agent.cwd)}
-                onOpen={() => setOpen(agent)}
-              />
+              <AgentItem agent={agent} projectName={home(agent.cwd)} />
             </li>
           ))}
         </ul>
       )}
 
-      <AgentSheet agent={open} onClose={() => setOpen(null)} onChanged={poll} />
-      <NewAgentSheet
-        open={creating}
-        onClose={() => setCreating(false)}
-        onStarted={poll}
-      />
+      <AgentSheetHost />
     </section>
   );
 }
 
-function AgentSheet({
-  agent,
-  onClose,
-  onChanged,
-}: {
-  agent: BackgroundAgent | null;
-  onClose: () => void;
-  onChanged: () => void;
-}) {
-  const [output, setOutput] = useState<{
-    items?: ChatItem[];
-    logs?: string;
-  } | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const id = agent?.id;
-
-  const loadLogs = useCallback(async () => {
-    if (!id) return;
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/background-agents/${id}`);
-      const data = await res.json();
-      setOutput(
-        data.items
-          ? { items: data.items }
-          : { logs: data.logs ?? data.error ?? "" }
-      );
-    } catch {
-      setOutput({ logs: "Couldn't load its output" });
-    } finally {
-      setLoading(false);
-    }
-  }, [id]);
-
-  useEffect(() => {
-    setOutput(null);
-    loadLogs();
-  }, [loadLogs]);
-
-  const end = async (remove: boolean) => {
-    if (!agent) return;
-    const ok = await confirmAction(
-      remove
-        ? {
-            title: `Remove ${agent.name}?`,
-            message:
-              "It is stopped and deleted, with its worktree if it has one. Its conversation can't be opened again.",
-            confirmLabel: "Remove",
-            destructive: true,
-          }
-        : {
-            title: `Stop ${agent.name}?`,
-            message:
-              "It stops working. Its conversation is kept, and Open brings it back.",
-            confirmLabel: "Stop",
-          }
-    );
-    if (!ok) return;
-    setBusy(true);
-    try {
-      const res = await fetch(
-        `/api/background-agents/${agent.id}${remove ? "?remove=1" : ""}`,
-        { method: "DELETE" }
-      );
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-      toast.success(remove ? "Removed" : "Stopped");
-      onChanged();
-      onClose();
-    } catch (error) {
-      toast.error(
-        error instanceof Error && error.message
-          ? error.message
-          : "That didn't work"
-      );
-    } finally {
-      setBusy(false);
-    }
+/** A phone's background agent: AgentDetail in the bottom sheet */
+function AgentSheet() {
+  const { agentId } = useSnapshot(agentSheetStore);
+  const agent = useBackgroundAgent(agentId ?? "");
+  // Kept through the closing slide
+  const [shown, setShown] = useState(agent);
+  if (agent && agent !== shown) setShown(agent);
+  const close = () => {
+    agentSheetStore.agentId = null;
   };
-
-  // The page runs `claude attach <id>` in the focused terminal
-  const attach = () => {
-    if (!agent) return;
-    window.dispatchEvent(
-      new CustomEvent("agentos-attach-background", {
-        detail: { id: agent.id },
-      })
-    );
-    onClose();
-  };
-
   return (
-    <Sheet open={!!agent} onOpenChange={(o) => !o && onClose()}>
+    <Sheet open={!!agent} onOpenChange={(o) => !o && close()}>
       <SheetContent>
-        <SheetHeader>
-          <SheetTitle className="truncate">{agent?.name}</SheetTitle>
-          <SheetDescription className="truncate">
-            {agent && `${stateWord(agent.state)} · ${home(agent.cwd)}`}
-          </SheetDescription>
-        </SheetHeader>
-        <SheetBody className="space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
-              Recent output
-            </span>
-            <button
-              type="button"
-              onClick={loadLogs}
-              aria-label="Refresh output"
-              className="text-muted-foreground active:bg-accent flex h-8 w-8 items-center justify-center rounded-full"
-            >
-              <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
-            </button>
-          </div>
-          {output?.items ? (
-            <Conversation items={output.items} />
-          ) : (
-            <pre className="bg-secondary/60 max-h-[45dvh] overflow-auto rounded-xl p-3 font-mono text-[11px] leading-relaxed whitespace-pre-wrap">
-              {output === null
-                ? "Loading…"
-                : output.logs?.trim() || "No output yet"}
-            </pre>
-          )}
-        </SheetBody>
-        <SheetFooter>
-          <button
-            type="button"
-            onClick={attach}
-            className="bg-primary text-primary-foreground h-12 rounded-2xl text-sm font-semibold active:opacity-80"
-          >
-            Open in terminal
-          </button>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => end(false)}
-              className="bg-secondary h-12 flex-1 rounded-2xl text-sm font-medium active:opacity-80 disabled:opacity-50"
-            >
-              Stop
-            </button>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => end(true)}
-              className="bg-secondary h-12 flex-1 rounded-2xl text-sm font-medium text-red-500 active:opacity-80 disabled:opacity-50"
-            >
-              Remove
-            </button>
-          </div>
-        </SheetFooter>
+        {shown && (
+          <>
+            <SheetHeader>
+              <SheetTitle className="truncate">{shown.name}</SheetTitle>
+              <SheetDescription className="truncate">
+                <AgentCrumb agent={shown} />
+              </SheetDescription>
+            </SheetHeader>
+            <AgentDetail
+              // Another agent starts fresh
+              key={shown.id}
+              agent={shown}
+              layout="sheet"
+              onClose={close}
+            />
+          </>
+        )}
       </SheetContent>
     </Sheet>
-  );
-}
-
-/** Its latest messages and tool calls, newest at the bottom */
-function Conversation({ items }: { items: ChatItem[] }) {
-  if (!items.length) {
-    return <p className="text-muted-foreground text-sm">No messages yet</p>;
-  }
-  return (
-    <div
-      ref={(el) => el?.scrollTo({ top: el.scrollHeight })}
-      className="bg-secondary/60 max-h-[45dvh] space-y-2 overflow-auto rounded-xl p-3 text-[13px] leading-relaxed"
-    >
-      {items.map((item) =>
-        item.kind === "tool" ? (
-          <p
-            key={item.id}
-            className="text-muted-foreground truncate font-mono text-[11px]"
-          >
-            {item.name} {item.summary}
-          </p>
-        ) : item.kind === "result" ? null : (
-          <p
-            key={item.id}
-            className={cn(
-              "break-words whitespace-pre-wrap",
-              item.kind === "user" && "text-primary",
-              item.kind === "summary" && "text-muted-foreground line-clamp-3"
-            )}
-          >
-            {item.text}
-          </p>
-        )
-      )}
-    </div>
-  );
-}
-
-function NewAgentSheet({
-  open,
-  initialCwd,
-  onClose,
-  onStarted,
-}: {
-  open: boolean;
-  initialCwd?: string;
-  onClose: () => void;
-  onStarted: () => void;
-}) {
-  const [cwd, setCwd] = useState(initialCwd ?? "~/workspace");
-  useEffect(() => {
-    if (open && initialCwd) setCwd(initialCwd);
-  }, [open, initialCwd]);
-  const [prompt, setPrompt] = useState("");
-  const [model, setModel] = useState("");
-  const [picking, setPicking] = useState(false);
-  const [starting, setStarting] = useState(false);
-
-  const start = async () => {
-    setStarting(true);
-    try {
-      const res = await fetch("/api/background-agents", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cwd, prompt, model: model || undefined }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-      toast.success("Started in the background");
-      setPrompt("");
-      onStarted();
-      onClose();
-    } catch (error) {
-      toast.error(
-        error instanceof Error && error.message
-          ? error.message
-          : "Couldn't start it"
-      );
-    } finally {
-      setStarting(false);
-    }
-  };
-
-  return (
-    <>
-      <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
-        <SheetContent>
-          <SheetHeader>
-            <SheetTitle>New background agent</SheetTitle>
-            <SheetDescription>
-              Claude works on the task without a terminal. Open it any time.
-            </SheetDescription>
-          </SheetHeader>
-          <SheetBody className="space-y-3">
-            <label className="block space-y-1.5">
-              <span className="text-sm font-medium">Folder</span>
-              <span className="flex gap-2">
-                <input
-                  value={cwd}
-                  onChange={(e) => setCwd(e.target.value)}
-                  autoCapitalize="off"
-                  autoCorrect="off"
-                  spellCheck={false}
-                  className="bg-secondary/70 focus:ring-primary h-11 min-w-0 flex-1 rounded-xl px-3 font-mono text-sm outline-none focus:ring-2"
-                />
-                <button
-                  type="button"
-                  onClick={() => setPicking(true)}
-                  aria-label="Choose a folder"
-                  className="bg-secondary/70 active:bg-accent flex h-11 w-11 shrink-0 items-center justify-center rounded-xl"
-                >
-                  <FolderOpen className="h-4 w-4" />
-                </button>
-              </span>
-            </label>
-            <label className="block space-y-1.5">
-              <span className="text-sm font-medium">Task</span>
-              <textarea
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                rows={4}
-                placeholder="What should it do?"
-                className="bg-secondary/70 focus:ring-primary w-full resize-none rounded-xl px-3 py-2.5 text-base outline-none focus:ring-2"
-              />
-            </label>
-            <div className="space-y-1.5">
-              <span className="text-sm font-medium">Model</span>
-              <div className="flex gap-2">
-                {MODELS.map((m) => (
-                  <button
-                    key={m.id}
-                    type="button"
-                    aria-pressed={model === m.id}
-                    onClick={() => setModel(m.id)}
-                    className={cn(
-                      "h-9 flex-1 rounded-full border text-xs font-medium",
-                      model === m.id
-                        ? "bg-accent text-foreground border-transparent"
-                        : "border-border text-muted-foreground"
-                    )}
-                  >
-                    {m.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </SheetBody>
-          <SheetFooter>
-            <button
-              type="button"
-              onClick={start}
-              disabled={!prompt.trim() || !cwd.trim() || starting}
-              className="bg-primary text-primary-foreground flex h-12 items-center justify-center gap-2 rounded-2xl text-sm font-semibold active:opacity-80 disabled:opacity-50"
-            >
-              {starting && <Loader2 className="h-4 w-4 animate-spin" />}
-              Start
-            </button>
-          </SheetFooter>
-        </SheetContent>
-      </Sheet>
-      <DirectoryPicker
-        open={picking}
-        onClose={() => setPicking(false)}
-        onSelect={(path) => {
-          setCwd(path);
-          setPicking(false);
-        }}
-        initialPath={cwd}
-      />
-    </>
   );
 }

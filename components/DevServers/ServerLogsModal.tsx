@@ -61,9 +61,23 @@ export function ServerLogsModal({
     return () => clearInterval(interval);
   }, [serverId]);
 
+  // Esc closes the logs only; role="dialog" keeps a page host from going back
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      e.preventDefault();
+      onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Server logs: ${serverName}`}
         className={cn(
           "flex h-[80vh] w-full max-w-3xl flex-col rounded-xl",
           "bg-background border-border border",

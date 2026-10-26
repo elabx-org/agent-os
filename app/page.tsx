@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useSnapshot } from "valtio";
 
 // Debug log buffer - persists even if console is closed
 const debugLogs: string[] = [];
@@ -44,6 +45,8 @@ import { DesktopView } from "@/components/views/DesktopView";
 import { MobileView } from "@/components/views/MobileView";
 import { getPendingPrompt, clearPendingPrompt } from "@/stores/initialPrompt";
 import { closeSettings } from "@/stores/settingsPage";
+import { closePage } from "@/stores/workspacePage";
+import { closeNew, newSurfaceStore, openNew } from "@/stores/newSurface";
 import { mobileNavStore } from "@/stores/mobileNav";
 import { focusStore, loadFocus } from "@/stores/focus";
 import { registerNavHandlers } from "@/lib/nav-actions";
@@ -53,9 +56,12 @@ import { SettingsPage } from "@/components/Settings/SettingsPage";
 function HomeContent() {
   // UI State
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [showNewSessionDialog, setShowNewSessionDialog] = useState(false);
-  const [newSessionProjectId, setNewSessionProjectId] = useState<string | null>(
-    null
+  // New is its own store, so a project's menu or the agents list can open it
+  const { open: showNewSessionDialog, projectId: newSessionProjectId } =
+    useSnapshot(newSurfaceStore);
+  const setShowNewSessionDialog = useCallback(
+    (show: boolean) => (show ? openNew() : closeNew()),
+    []
   );
   const [showNotificationSettings, setShowNotificationSettings] =
     useState(false);
@@ -271,8 +277,10 @@ function HomeContent() {
   // Attach session to terminal
   const attachToSession = useCallback(
     async (session: Session) => {
-      // Whatever opened it, the session shows rather than staying under Settings
+      // Whatever opened it, the session shows rather than staying under
+      // Settings or a workspace page
       closeSettings();
+      closePage();
       const terminalInfo = getTerminalWithFallback();
       if (!terminalInfo) {
         debugLog(
@@ -385,11 +393,15 @@ function HomeContent() {
   useEffect(
     () =>
       registerNavHandlers({
-        openSessions: () => setSidebarOpen((open) => !open),
+        // On a phone a page covers the home: leave it for the home
+        openSessions: () =>
+          isMobile && closePage()
+            ? setSidebarOpen(true)
+            : setSidebarOpen((open) => !open),
         openFind: () => setShowQuickSwitcher(true),
-        openNewSession: () => setShowNewSessionDialog(true),
+        openNewSession: () => openNew(),
       }),
-    []
+    [isMobile]
   );
 
   // Workers show inside their conductor's session; parked agents are
@@ -495,15 +507,13 @@ function HomeContent() {
 
   // New session in project handler
   const handleNewSessionInProject = useCallback((projectId: string) => {
-    setNewSessionProjectId(projectId);
-    setShowNewSessionDialog(true);
+    openNew({ projectId, runAs: "session" });
   }, []);
 
   // Session created handler (shared between desktop/mobile)
   const handleSessionCreated = useCallback(
     async (sessionId: string) => {
-      setShowNewSessionDialog(false);
-      setNewSessionProjectId(null);
+      closeNew();
       await fetchSessions();
 
       const res = await fetch(`/api/sessions/${sessionId}`);
