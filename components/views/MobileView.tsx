@@ -72,6 +72,13 @@ export function MobileView({
     [sessions, sessionStatuses]
   );
 
+  useEffect(() => {
+    mobileNavStore.homeOpen = sidebarOpen;
+    return () => {
+      mobileNavStore.homeOpen = false;
+    };
+  }, [sidebarOpen]);
+
   const { inboxOpen, request: viewRequest } = useSnapshot(mobileNavStore);
   // Picking a view in the column or bar leaves the home for the session
   const hasSession = !!focusedActiveTab?.sessionId;

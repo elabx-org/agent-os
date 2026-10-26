@@ -39,7 +39,8 @@ export function ActivityStrip({
 
   const counts = [
     files.count > 0 && plural(files.count, "file"),
-    agents.list.length > 0 && plural(agents.list.length, "agent"),
+    // Live ones only; the rail lists the finished too
+    agents.running > 0 && plural(agents.running, "agent"),
   ].filter(Boolean);
 
   return (

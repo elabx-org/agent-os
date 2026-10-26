@@ -106,8 +106,15 @@ export function ControlColumn({
   sideRailWidth,
   className,
 }: ControlColumnProps) {
-  const { viewMode, needsYou, changes, inboxOpen } =
-    useSnapshot(mobileNavStore);
+  const {
+    viewMode: paneView,
+    needsYou,
+    changes,
+    inboxOpen,
+    homeOpen,
+  } = useSnapshot(mobileNavStore);
+  // Over the home no session view is showing
+  const viewMode = homeOpen ? null : paneView;
   const { on: focus } = useSnapshot(focusStore);
   const { open: settingsOpen } = useSnapshot(settingsPageStore);
   const mod = useModKey();
@@ -127,7 +134,8 @@ export function ControlColumn({
     return () => vv.removeEventListener("resize", update);
   }, [sideRail]);
 
-  // Fixed layers such as the home stop short of the bar with this
+  // Fixed layers such as the home stop short of the bar with this; the
+  // pane above it needn't keep clear of the home indicator, the bar does
   const barShown = bar && !keyboardUp;
   useEffect(() => {
     if (!barShown) return;
@@ -136,8 +144,10 @@ export function ControlColumn({
       "--control-bar-h",
       `calc(${BAR_HEIGHT}px + env(safe-area-inset-bottom))`
     );
+    root.style.setProperty("--pane-inset-bottom", "0px");
     return () => {
       root.style.removeProperty("--control-bar-h");
+      root.style.removeProperty("--pane-inset-bottom");
     };
   }, [barShown]);
 

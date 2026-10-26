@@ -771,7 +771,7 @@ export function ChatView({
               leftAtBottom.current =
                 el.scrollHeight - el.scrollTop - el.clientHeight < 48;
             }}
-            className="bg-background min-h-0 shrink-0 overflow-y-auto px-3 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]"
+            className="bg-background min-h-0 shrink-0 overflow-y-auto px-3 pt-3 pb-[calc(0.75rem+var(--pane-inset-bottom,env(safe-area-inset-bottom)))]"
             style={{ width: pages.left }}
           >
             <div className="mx-auto flex min-h-full max-w-3xl flex-col justify-end gap-3">
@@ -912,7 +912,7 @@ export function ChatView({
         )}
         <div
           className={cn(
-            "border-border border-t px-2 py-1.5 pb-[calc(0.375rem+env(safe-area-inset-bottom))]",
+            "px-2.5 pt-1.5 pb-[calc(0.625rem+var(--pane-inset-bottom,env(safe-area-inset-bottom)))]",
             // As pages, it already sits on one side of the fold
             !paged && "fold-controls",
             deck && "flex flex-col"
@@ -921,7 +921,8 @@ export function ChatView({
         >
           <div
             className={cn(
-              "flex shrink-0 gap-1.5",
+              // Glass-like capsule, as the control column
+              "bg-background/70 border-border flex shrink-0 gap-1.5 rounded-[28px] border p-1.5 shadow-[inset_0_1px_0_hsl(var(--foreground)/0.08)] backdrop-blur-xl backdrop-saturate-150",
               deck ? "items-start" : "items-end"
             )}
           >
@@ -1096,7 +1097,7 @@ function SubagentPanel({
           atBottom.current =
             el.scrollHeight - el.scrollTop - el.clientHeight < 48;
         }}
-        className="min-h-0 flex-1 overflow-y-auto px-3 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]"
+        className="min-h-0 flex-1 overflow-y-auto px-3 py-3 pb-[calc(0.75rem+var(--pane-inset-bottom,env(safe-area-inset-bottom)))]"
       >
         <div className="mx-auto flex max-w-3xl flex-col gap-3">
           {state === "loading" && (

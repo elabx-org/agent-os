@@ -61,6 +61,8 @@ declare global {
       platform: string;
       version: string;
       fold?: Fold | null;
+      /** Running on an iPhone Duo (app builds that say; else guessed by size) */
+      duo?: boolean;
       /** A session to open, set when a link launched the app */
       open?: string;
       /** A file shared to the app before the page was ready */

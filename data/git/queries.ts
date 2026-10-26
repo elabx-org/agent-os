@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { gitKeys } from "./keys";
+import { useSharedPoll } from "@/hooks/useSharedPoll";
 
 // Re-export for convenience
 export { gitKeys };
@@ -39,12 +40,14 @@ export function useGitStatus(
   workingDir: string,
   options?: { enabled?: boolean }
 ) {
+  const enabled = !!workingDir && (options?.enabled ?? true);
+  // Every view of a folder (badge, rail, panel, drawer) on one 15s timer
+  useSharedPoll(gitKeys.status(workingDir), 15000, enabled);
   return useQuery({
     queryKey: gitKeys.status(workingDir),
     queryFn: () => fetchGitStatus(workingDir),
     staleTime: 10000, // Consider fresh for 10s
-    refetchInterval: 15000, // Poll every 15s (was 3s)
-    enabled: !!workingDir && (options?.enabled ?? true),
+    enabled,
   });
 }
 

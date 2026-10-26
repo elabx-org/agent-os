@@ -867,7 +867,7 @@ export function TerminalToolbar({
                 // Set apart at the end of the context row
                 contextMode ? "ml-auto" : "mx-1"
               )}
-              // The context row has no room for the gear: it lives here
+              // A shortcut to the gear at the context row's end
               extra={
                 contextMode
                   ? (close) => (
@@ -1003,23 +1003,27 @@ export function TerminalToolbar({
       >
         {renderRow(row1Ids)}
 
-        {/* Gear icon — always last, separated (in ^C's menu on the context row) */}
-        {!contextMode && (
-          <>
-            <div className="bg-border mx-1 h-6 w-px" />
-            <button
-              type="button"
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={(e) => {
-                e.stopPropagation();
-                setShowSettings(true);
-              }}
-              className="bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground flex h-[40px] min-w-[40px] flex-shrink-0 items-center justify-center rounded-xl px-3 text-[13px] font-medium"
-            >
-              <Settings className="h-4 w-4" />
-            </button>
-          </>
-        )}
+        {/* Gear icon — always last, separated; a quiet one after ^C on the
+            context row (held ^C offers it too) */}
+        {!contextMode && <div className="bg-border mx-1 h-6 w-px" />}
+        <button
+          type="button"
+          aria-label="Key settings"
+          title="Key settings"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={(e) => {
+            e.stopPropagation();
+            setShowSettings(true);
+          }}
+          className={cn(
+            "active:bg-primary active:text-primary-foreground flex h-[40px] flex-shrink-0 items-center justify-center rounded-xl text-[13px] font-medium",
+            contextMode
+              ? "text-muted-foreground min-w-[32px] px-1.5"
+              : "bg-secondary text-secondary-foreground min-w-[40px] px-3"
+          )}
+        >
+          <Settings className="h-4 w-4" />
+        </button>
       </div>
 
       {/* Row 2 — only when double layout with buttons */}

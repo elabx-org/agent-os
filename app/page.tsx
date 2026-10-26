@@ -48,7 +48,6 @@ import { mobileNavStore } from "@/stores/mobileNav";
 import { focusStore, loadFocus } from "@/stores/focus";
 import { registerNavHandlers } from "@/lib/nav-actions";
 import { isNative } from "@/lib/native-bridge";
-import { useBackgroundAgents } from "@/components/BackgroundAgents";
 import { SettingsPage } from "@/components/Settings/SettingsPage";
 
 function HomeContent() {
@@ -399,13 +398,11 @@ function HomeContent() {
     (s) =>
       !s.conductor_session_id && sessionStatuses[s.id]?.status === "waiting"
   ).length;
-  const backgroundAgents = useBackgroundAgents();
-  const blockedCount = backgroundAgents.filter(
-    (a) => a.state === "blocked"
-  ).length;
+  // Blocked background agents join the count once the Inbox can list them;
+  // polling them here would also keep the agents poll running for good
   useEffect(() => {
-    mobileNavStore.needsYou = waitingCount + blockedCount;
-  }, [waitingCount, blockedCount]);
+    mobileNavStore.needsYou = waitingCount;
+  }, [waitingCount]);
   useNativeBridge({ waitingCount });
 
   // Notification links open their session; on a phone, over the home. A

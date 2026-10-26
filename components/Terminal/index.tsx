@@ -28,7 +28,6 @@ import { SearchBar } from "./SearchBar";
 import { ScrollToBottomButton } from "./ScrollToBottomButton";
 import { TerminalToolbar } from "./TerminalToolbar";
 import type { KeysContext } from "./toolbar-config";
-import { useSessionsQuery } from "@/data/sessions/queries";
 import { KeybarToggleButton } from "./KeybarToggleButton";
 import { Composer } from "./Composer";
 import { useSessionDraft } from "@/hooks/useSessionDraft";
@@ -87,6 +86,8 @@ interface TerminalProps {
   showImageButton?: boolean;
   /** The session whose unsent composer text is synced (none: not kept) */
   draftId?: string | null;
+  /** What runs in that session, from the pane's session list */
+  agentType?: string;
 }
 
 export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
@@ -98,6 +99,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
       initialScrollState,
       showImageButton = true,
       draftId,
+      agentType: sessionAgentType,
     },
     ref
   ) {
@@ -314,11 +316,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
 
     // The key row follows what runs here: Claude Code or a shell (a tab
     // with no session, a shell session, the other agents' CLIs)
-    const { data: sessionsData } = useSessionsQuery();
-    const agentType = draftId
-      ? (sessionsData?.sessions.find((s) => s.id === draftId)?.agent_type ??
-        "claude")
-      : "shell";
+    const agentType = draftId ? (sessionAgentType ?? "claude") : "shell";
     const keysContext: KeysContext =
       agentType === "claude" ? "claude" : "shell";
     const keyboardUp = keyboard.height > 0 || nativeKeyboard;

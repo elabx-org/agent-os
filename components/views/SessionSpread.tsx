@@ -75,10 +75,11 @@ interface SessionSpreadProps {
 /**
  * The session and what sits around it. Web: home | pane | live activity |
  * control column. The open iPhone Duo lays it out as two pages: pane left and
- * rail right, or the home left (back) and the pane right. Focus drops the
- * home and rail; the pane then spans the fold (flat: only controls avoid it,
- * see .fold-controls), and half open the terminal takes the right page with
- * Changes on the left.
+ * rail right, or the home left (back) and the pane right. Focus (and the
+ * views other than terminal and chat) drop the home and rail; the pane then
+ * spans the fold flat (only controls avoid it, see .fold-controls). Half open
+ * the chat reads as a book, the terminal takes the right page with Changes on
+ * the left, and anything else takes the right page.
  *
  * Every slot keeps its place whether shown or not, so the panes never
  * remount (a terminal must not attach twice).
@@ -108,14 +109,25 @@ export function SessionSpread({
   const folder = session?.working_directory;
   const changesLeft =
     !!book && focus && !homeOpen && viewMode === "terminal" && !!folder;
+  // On the pages the rail sits beside a conversation; Changes, Files and
+  // Workers take both pages for their own list | detail split
   const showRail =
-    !!session && !focus && (pages ? !homeOpen : roomForRail && !native);
+    !!session &&
+    !focus &&
+    (pages
+      ? !homeOpen && (viewMode === "terminal" || viewMode === "chat")
+      : roomForRail && !native);
   // Pane on the left page, the rail on the right (the home and Changes left
   // pages only come with no rail)
   const paneLeft = pages && showRail;
+  // Half open nothing may sit in the bend: only the chat lays itself out as
+  // a book, anything else takes the right page
+  const paneRight =
+    !!book && !homeOpen && !changesLeft && !showRail && viewMode !== "chat";
   // Across the fold: content may cross it, controls move right of it
-  const paneWide = pages && !homeOpen && !changesLeft && !showRail;
-  const pageGap = pages && (homeOpen || changesLeft);
+  const paneWide =
+    pages && !homeOpen && !changesLeft && !showRail && !paneRight;
+  const pageGap = pages && (homeOpen || changesLeft || paneRight);
   // Flat there's no gutter: the pages meet at the hinge
   const spreadStart = book ? book.start : hingeX;
   const spreadEnd = book ? book.end : hingeX;
@@ -183,6 +195,14 @@ export function SessionSpread({
             repositories={repositories}
           />
         </div>
+      )}
+
+      {paneRight && (
+        <div
+          aria-hidden="true"
+          className="bg-background kb-compact-hide flex-shrink-0"
+          style={{ width: leftPage }}
+        />
       )}
 
       {/* Nothing in the fold */}

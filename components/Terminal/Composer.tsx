@@ -77,7 +77,8 @@ export function Composer({
   return (
     <div
       className={cn(
-        "border-border flex items-end gap-1.5 border-t px-2 py-1.5",
+        // Glass-like capsule, as the control column
+        "bg-background/70 border-border mx-2.5 my-1.5 flex items-end gap-1.5 rounded-[28px] border p-1.5 shadow-[inset_0_1px_0_hsl(var(--foreground)/0.08)] backdrop-blur-xl backdrop-saturate-150",
         stacked && "flex-wrap"
       )}
       onTouchEnd={(e) => e.stopPropagation()}

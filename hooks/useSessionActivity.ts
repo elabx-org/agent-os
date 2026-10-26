@@ -50,22 +50,37 @@ const TOOL_VERB: Record<string, string> = {
   Agent: "Starting an agent",
 };
 
-/** What the pane's last line says Claude is doing; null when it can't tell */
-export function parseLastLine(
-  line: string | undefined
-): { label: string; command?: string } | null {
-  if (!line) return null;
-  const tool = TOOL_LINE.exec(line);
-  if (tool) {
-    const command = tool[2]?.trim();
-    return {
-      label: TOOL_VERB[tool[1]] ?? tool[1],
-      command: command || undefined,
-    };
+type Doing = { label: string; command?: string };
+
+/**
+ * What the pane's recent lines say Claude is doing: the latest tool line
+ * ("● Bash(npm run build)") and the spinner verb, each when it can tell
+ */
+export function parseRecentLines(lines: readonly string[] | undefined): {
+  tool?: Doing;
+  spinner?: Doing;
+} {
+  const found: { tool?: Doing; spinner?: Doing } = {};
+  for (let i = (lines?.length ?? 0) - 1; i >= 0; i--) {
+    const line = lines![i];
+    if (!found.spinner) {
+      const spinner = SPINNER_LINE.exec(line);
+      if (spinner) found.spinner = { label: spinner[1] };
+    }
+    if (!found.tool) {
+      const tool = TOOL_LINE.exec(line);
+      // A one-word reply ("● Done") isn't a tool
+      if (tool && (tool[2] !== undefined || tool[1] in TOOL_VERB)) {
+        const command = tool[2]?.trim();
+        found.tool = {
+          label: TOOL_VERB[tool[1]] ?? tool[1],
+          command: command || undefined,
+        };
+      }
+    }
+    if (found.tool && found.spinner) break;
   }
-  const spinner = SPINNER_LINE.exec(line);
-  if (spinner) return { label: spinner[1] };
-  return null;
+  return found;
 }
 
 // Kept per session across mounts, so the strip and the rail agree on the
@@ -75,23 +90,36 @@ const tracked = new Map<
   {
     state: AgentState;
     since: number;
-    doing?: { label: string; command?: string; startedAt: number };
+    doing?: Doing & { startedAt: number; fromTool: boolean };
   }
 >();
 
-function track(sessionId: string, state: AgentState, line: string | undefined) {
+function track(
+  sessionId: string,
+  state: AgentState,
+  lines: readonly string[] | undefined
+) {
   let entry = tracked.get(sessionId);
   if (!entry || entry.state !== state) {
     entry = { state, since: Date.now() };
     tracked.set(sessionId, entry);
   }
-  const parsed = state === "work" ? parseLastLine(line) : null;
-  if (
-    parsed &&
-    (parsed.label !== entry.doing?.label ||
-      parsed.command !== entry.doing?.command)
-  ) {
-    entry.doing = { ...parsed, startedAt: Date.now() };
+  if (state !== "work") return entry;
+  const { tool, spinner } = parseRecentLines(lines);
+  const doing = entry.doing;
+  if (tool) {
+    // A new tool restarts the clock
+    if (tool.label !== doing?.label || tool.command !== doing?.command) {
+      entry.doing = { ...tool, startedAt: Date.now(), fromTool: true };
+    }
+  } else if (spinner && !doing?.fromTool) {
+    // The spinner only names the spell until a tool shows; its verb
+    // changing isn't a new step
+    entry.doing = {
+      ...spinner,
+      startedAt: doing?.startedAt ?? Date.now(),
+      fromTool: false,
+    };
   }
   return entry;
 }
@@ -132,7 +160,11 @@ export function useSessionActivity(
   const { data: servers } = useDevServersQuery();
   const { data: prData } = usePRStatus(on && rail ? dir : "");
 
-  const entry = track(id, state, status?.lastLine);
+  const entry = track(
+    id,
+    state,
+    status?.recentLines ?? (status?.lastLine ? [status.lastLine] : undefined)
+  );
   const { since, doing } = entry;
 
   const files = useMemo(() => {
@@ -168,7 +200,13 @@ export function useSessionActivity(
       startedAt: since,
     };
   } else if (state === "work") {
-    now = doing ?? { label: "Working", startedAt: since };
+    now = doing
+      ? {
+          label: doing.label,
+          command: doing.command,
+          startedAt: doing.startedAt,
+        }
+      : { label: "Working", startedAt: since };
   } else {
     now = { label: STATE_WORD[state] };
   }

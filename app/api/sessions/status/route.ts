@@ -19,6 +19,8 @@ interface SessionStatusResponse {
   sessionName: string;
   status: SessionStatus;
   lastLine?: string;
+  /** The last few non-empty lines, for what Claude is doing */
+  recentLines?: string[];
   claudeSessionId?: string | null;
   agentType?: AgentType;
 }
@@ -135,15 +137,21 @@ async function getClaudeSessionId(sessionName: string): Promise<string | null> {
   return null;
 }
 
-async function getLastLine(sessionName: string): Promise<string> {
+// The tool line sits above Claude's spinner, input box and footer
+const RECENT_LINES = 16;
+
+async function getRecentLines(sessionName: string): Promise<string[]> {
   try {
     const { stdout } = await execAsync(
       `tmux capture-pane -t "${sessionName}" -p -S -5 2>/dev/null || echo ""`
     );
-    const lines = stdout.trim().split("\n").filter(Boolean);
-    return lines.pop() || "";
+    return stdout
+      .split("\n")
+      .map((line) => line.trimEnd())
+      .filter((line) => line.trim())
+      .slice(-RECENT_LINES);
   } catch {
-    return "";
+    return [];
   }
 }
 
@@ -172,15 +180,22 @@ export async function GET() {
 
     // Process all sessions in parallel for speed
     const sessionPromises = managedSessions.map(async (sessionName) => {
-      const [status, claudeSessionId, lastLine] = await Promise.all([
+      const [status, claudeSessionId, recentLines] = await Promise.all([
         statusDetector.getStatus(sessionName),
         getClaudeSessionId(sessionName),
-        getLastLine(sessionName),
+        getRecentLines(sessionName),
       ]);
       const id = getSessionIdFromName(sessionName);
       const agentType = getAgentTypeFromSessionName(sessionName);
 
-      return { sessionName, id, status, claudeSessionId, lastLine, agentType };
+      return {
+        sessionName,
+        id,
+        status,
+        claudeSessionId,
+        recentLines,
+        agentType,
+      };
     });
 
     const results = await Promise.all(sessionPromises);
@@ -190,7 +205,7 @@ export async function GET() {
       id,
       status,
       claudeSessionId,
-      lastLine,
+      recentLines,
       agentType,
     } of results) {
       // Track status changes - update DB when session becomes active
@@ -205,7 +220,8 @@ export async function GET() {
       statusMap[id] = {
         sessionName,
         status,
-        lastLine,
+        lastLine: recentLines.at(-1)?.trim() ?? "",
+        recentLines,
         claudeSessionId,
         agentType,
       };

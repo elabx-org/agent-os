@@ -63,6 +63,10 @@ interface SessionTitleBarProps {
   onClose?: () => void;
 }
 
+// The buttons look 36px but take a 44pt touch
+const TOUCH_TARGET =
+  "relative pointer-coarse:after:absolute pointer-coarse:after:-inset-1 pointer-coarse:after:content-['']";
+
 /**
  * The session's header: back, its title and a crumb, and ⋯. Views switch
  * from the control column, so nothing here changes what the pane shows
@@ -128,7 +132,10 @@ export function SessionTitleBar({
         type="button"
         onClick={() => runNav("sessions")}
         aria-label="Sessions"
-        className="text-muted-foreground hover:bg-accent hover:text-foreground flex h-9 w-9 shrink-0 items-center justify-center rounded-md"
+        className={cn(
+          "text-muted-foreground hover:bg-accent hover:text-foreground flex h-9 w-9 shrink-0 items-center justify-center rounded-md",
+          TOUCH_TARGET
+        )}
       >
         <ChevronLeft className="h-5 w-5" />
       </button>
@@ -155,7 +162,10 @@ export function SessionTitleBar({
           <button
             type="button"
             aria-label="More"
-            className="text-muted-foreground hover:bg-accent hover:text-foreground data-[state=open]:bg-accent flex h-9 w-9 shrink-0 items-center justify-center rounded-md"
+            className={cn(
+              "text-muted-foreground hover:bg-accent hover:text-foreground data-[state=open]:bg-accent flex h-9 w-9 shrink-0 items-center justify-center rounded-md",
+              TOUCH_TARGET
+            )}
           >
             <MoreHorizontal className="h-5 w-5" />
           </button>
