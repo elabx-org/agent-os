@@ -119,3 +119,13 @@ export function timeAgo(
 
   return date.toLocaleDateString();
 }
+
+/** A state as a small dot's fill */
+export const STATE_DOT_CLASS: Record<AgentState, string> = {
+  needs: "bg-amber-400",
+  work: "bg-blue-500",
+  done: "bg-emerald-500",
+  error: "bg-red-500",
+  idle: "bg-muted-foreground/50",
+  stopped: "bg-muted-foreground/50",
+};

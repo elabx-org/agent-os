@@ -39,6 +39,7 @@ import { useDevServersManager } from "@/hooks/useDevServersManager";
 import { useSessionStatuses } from "@/hooks/useSessionStatuses";
 import type { Session } from "@/lib/db";
 import type { TerminalHandle } from "@/components/Terminal";
+import { generatePaneId, getAllPaneIds } from "@/lib/panes";
 import { getProvider } from "@/lib/providers";
 import { getProviderDefinition } from "@/lib/providers/registry";
 import { DesktopView } from "@/components/views/DesktopView";
@@ -46,8 +47,9 @@ import { MobileView } from "@/components/views/MobileView";
 import { getPendingPrompt, clearPendingPrompt } from "@/stores/initialPrompt";
 import { closeSettings } from "@/stores/settingsPage";
 import { closePage } from "@/stores/workspacePage";
+import { besideStore, setPaneLaunch } from "@/stores/beside";
 import { closeNew, newSurfaceStore, openNew } from "@/stores/newSurface";
-import { mobileNavStore } from "@/stores/mobileNav";
+import { mobileNavActions, mobileNavStore } from "@/stores/mobileNav";
 import { focusStore, loadFocus } from "@/stores/focus";
 import { registerNavHandlers } from "@/lib/nav-actions";
 import { isNative } from "@/lib/native-bridge";
@@ -70,7 +72,16 @@ function HomeContent() {
   const terminalRefs = useRef<Map<string, TerminalHandle>>(new Map());
 
   // Pane context
-  const { focusedPaneId, attachSession, getActiveTab, addTab } = usePanes();
+  const {
+    state: paneState,
+    focusedPaneId,
+    attachSession,
+    getActiveTab,
+    addTab,
+    focusPane,
+    splitHorizontal,
+    maxPanes,
+  } = usePanes();
   const focusedActiveTab = getActiveTab(focusedPaneId);
   const { isMobile, isHydrated } = useViewport();
 
@@ -274,25 +285,9 @@ function HomeContent() {
     [attachSession]
   );
 
-  // Attach session to terminal
-  const attachToSession = useCallback(
-    async (session: Session) => {
-      // Whatever opened it, the session shows rather than staying under
-      // Settings or a workspace page
-      closeSettings();
-      closePage();
-      const terminalInfo = getTerminalWithFallback();
-      if (!terminalInfo) {
-        debugLog(
-          `ERROR: No terminal available to attach session: ${session.name}`
-        );
-        alert(
-          `[AgentOS Debug] No terminal available!\n\nRun agentOSLogs() in console to see debug logs.`
-        );
-        return;
-      }
-
-      const { terminal, paneId } = terminalInfo;
+  // Leave whatever a pane's terminal runs and attach the session there
+  const switchTerminalTo = useCallback(
+    (terminal: TerminalHandle, paneId: string, session: Session) => {
       const activeTab = getActiveTab(paneId);
       const isInTmux = !!activeTab?.attachedTmux;
 
@@ -311,13 +306,95 @@ function HomeContent() {
         isInTmux ? 100 : 0
       );
     },
+    [getActiveTab, buildSessionCommand, runSessionInTerminal]
+  );
+
+  // Attach session to terminal
+  const attachToSession = useCallback(
+    async (session: Session) => {
+      // Whatever opened it, the session shows rather than staying under
+      // Settings or a workspace page
+      closeSettings();
+      closePage();
+      const terminalInfo = getTerminalWithFallback();
+      if (!terminalInfo) {
+        debugLog(
+          `ERROR: No terminal available to attach session: ${session.name}`
+        );
+        alert(
+          `[AgentOS Debug] No terminal available!\n\nRun agentOSLogs() in console to see debug logs.`
+        );
+        return;
+      }
+      switchTerminalTo(terminalInfo.terminal, terminalInfo.paneId, session);
+    },
+    [getTerminalWithFallback, switchTerminalTo]
+  );
+
+  // Open beside: a session in a pane next to the focused one (the other
+  // page on the open Duo). Splits while there's room, else takes the other
+  // pane over. Already on screen, it just takes focus.
+  const openSessionBeside = useCallback(
+    (session: Session) => {
+      // One screen, one session: it just opens
+      if (isMobile) {
+        attachToSession(session);
+        return;
+      }
+      closeSettings();
+      closePage();
+      const ids = getAllPaneIds(paneState.layout);
+      const showing = ids.find(
+        (id) => getActiveTab(id)?.sessionId === session.id
+      );
+      if (showing) {
+        focusPane(showing);
+        return;
+      }
+      if (ids.length < maxPanes) {
+        // The new pane runs the session in place of its own shell, once
+        // its terminal connects
+        const paneId = generatePaneId();
+        setPaneLaunch(paneId, (terminal) =>
+          buildSessionCommand(session).then((info) =>
+            runSessionInTerminal(terminal, paneId, session, info)
+          )
+        );
+        splitHorizontal(focusedPaneId, paneId);
+        return;
+      }
+      const target = ids.filter((id) => id !== focusedPaneId).at(-1);
+      const tab = target ? getActiveTab(target) : null;
+      const terminal = tab && terminalRefs.current.get(`${target}:${tab.id}`);
+      if (!target || !terminal) return;
+      focusPane(target);
+      switchTerminalTo(terminal, target, session);
+    },
     [
-      getTerminalWithFallback,
+      isMobile,
+      attachToSession,
+      paneState.layout,
       getActiveTab,
+      focusPane,
+      maxPanes,
+      splitHorizontal,
+      focusedPaneId,
       buildSessionCommand,
       runSessionInTerminal,
+      switchTerminalTo,
     ]
   );
+
+  const { request: besideRequest } = useSnapshot(besideStore);
+  useEffect(() => {
+    if (!besideRequest) return;
+    besideStore.request = null;
+    const session = sessions.find((s) => s.id === besideRequest.sessionId);
+    if (!session || Date.now() - besideRequest.ts > 10_000) return;
+    if (besideRequest.view)
+      mobileNavActions.requestViewMode(besideRequest.view, session.id);
+    openSessionBeside(session);
+  }, [besideRequest, sessions, openSessionBeside]);
 
   // Open session in new tab
   const openSessionInNewTab = useCallback(

@@ -19,6 +19,8 @@ import {
   Settings,
   Maximize2,
   Minimize2,
+  ArrowLeftRight,
+  Columns2,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -37,7 +39,10 @@ import { focusStore } from "@/stores/focus";
 import { displayTitle, useListTitles } from "@/hooks/useSessionTitles";
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
 import { useIsNative } from "@/hooks/useIsNative";
+import { usePanes } from "@/contexts/PaneContext";
+import { BesideItems } from "@/components/BesideItems";
 import {
+  STATE_DOT_CLASS,
   STATE_TEXT_CLASS,
   STATE_WORD,
   fromSessionStatus,
@@ -72,15 +77,6 @@ interface SessionTitleBarProps {
 // The buttons look 36px but take a 44pt touch
 const TOUCH_TARGET =
   "relative pointer-coarse:after:absolute pointer-coarse:after:-inset-1 pointer-coarse:after:content-['']";
-
-const STATE_DOT_CLASS: Record<AgentState, string> = {
-  needs: "bg-amber-400",
-  work: "bg-blue-500",
-  done: "bg-emerald-500",
-  error: "bg-red-500",
-  idle: "bg-muted-foreground/50",
-  stopped: "bg-muted-foreground/50",
-};
 
 // The box to type into that the pane shows now: a composer, else the
 // terminal's own textarea (a hidden tab's or view's has no box)
@@ -129,6 +125,7 @@ export function SessionTitleBar({
   // The iOS app's closed-screen trial: a bigger title, as a page has
   const { on: duoPreview } = useSnapshot(duoPreviewStore);
   const focus = useSnapshot(focusStore);
+  const { paneCount, canSplitDown, swap } = usePanes();
   const pageTitle = duoPreview && railActive && isMobile;
   const titles = useListTitles(session ? [session] : []);
   const { copy } = useCopyToClipboard();
@@ -265,6 +262,91 @@ export function SessionTitleBar({
           )}
         </div>
 
+        {session && (
+          <button
+            type="button"
+            onClick={() => runNav("focus")}
+            aria-label={focus.on ? "Leave Focus" : "Focus"}
+            aria-pressed={focus.on}
+            className={cn(
+              "hover:bg-accent hover:text-foreground flex h-9 w-9 shrink-0 items-center justify-center rounded-md",
+              focus.on ? "text-primary" : "text-muted-foreground",
+              TOUCH_TARGET
+            )}
+          >
+            {focus.on ? (
+              <Minimize2 className="h-[18px] w-[18px]" />
+            ) : (
+              <Maximize2 className="h-[18px] w-[18px]" />
+            )}
+          </button>
+        )}
+        {/* Two side by side on the open Duo: trade pages */}
+        {native && wide && paneCount === 2 && (
+          <button
+            type="button"
+            onClick={swap}
+            aria-label="Swap sides"
+            className={cn(
+              "text-muted-foreground hover:bg-accent hover:text-foreground flex h-9 w-9 shrink-0 items-center justify-center rounded-md",
+              TOUCH_TARGET
+            )}
+          >
+            <ArrowLeftRight className="h-[18px] w-[18px]" />
+          </button>
+        )}
+        {wide && (
+          <DropdownMenu modal={false}>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                aria-label="Split"
+                className={cn(
+                  "text-muted-foreground hover:bg-accent hover:text-foreground data-[state=open]:bg-accent flex h-9 w-9 shrink-0 items-center justify-center rounded-md",
+                  TOUCH_TARGET
+                )}
+              >
+                <Columns2 className="h-[18px] w-[18px]" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="min-w-[260px]">
+              <BesideItems exclude={session ? [session.id] : undefined} />
+              {!native && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    disabled={!canSplit}
+                    onSelect={onSplitHorizontal}
+                  >
+                    <SplitSquareHorizontal className="h-4 w-4" />
+                    Split right
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    disabled={!canSplitDown}
+                    onSelect={onSplitVertical}
+                  >
+                    <SplitSquareVertical className="h-4 w-4" />
+                    Split down
+                  </DropdownMenuItem>
+                </>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+        {wide && paneCount > 1 && (
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close this side"
+            className={cn(
+              "text-muted-foreground hover:bg-accent hover:text-foreground flex h-9 w-9 shrink-0 items-center justify-center rounded-md",
+              TOUCH_TARGET
+            )}
+          >
+            <X className="h-[18px] w-[18px]" />
+          </button>
+        )}
+
         <DropdownMenu modal={false}>
           <DropdownMenuTrigger asChild>
             <button
@@ -279,17 +361,6 @@ export function SessionTitleBar({
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="min-w-[200px]">
-            {/* The app's column gets its own Focus item in the next iOS build;
-            until then this is the way in and out of Focus there */}
-            <DropdownMenuItem onSelect={() => runNav("focus")}>
-              {focus.on ? (
-                <Minimize2 className="h-4 w-4" />
-              ) : (
-                <Maximize2 className="h-4 w-4" />
-              )}
-              {focus.on ? "Leave Focus" : "Focus"}
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
             {workerCount > 0 && (
               <DropdownMenuItem
                 onSelect={() =>
@@ -344,20 +415,6 @@ export function SessionTitleBar({
                 <DropdownMenuItem onSelect={onTabAdd}>
                   <Plus className="h-4 w-4" />
                   New tab
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  disabled={!canSplit}
-                  onSelect={onSplitHorizontal}
-                >
-                  <SplitSquareHorizontal className="h-4 w-4" />
-                  Split horizontal
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  disabled={!canSplit}
-                  onSelect={onSplitVertical}
-                >
-                  <SplitSquareVertical className="h-4 w-4" />
-                  Split vertical
                 </DropdownMenuItem>
                 <DropdownMenuItem disabled={!canClose} onSelect={onClose}>
                   <X className="h-4 w-4" />

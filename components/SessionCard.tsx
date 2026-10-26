@@ -17,6 +17,7 @@ import {
   Sparkles,
   Square,
   CheckSquare,
+  Columns2,
   ExternalLink,
   Hash,
   Pin,
@@ -27,6 +28,7 @@ import { ActionSheet, type SheetAction } from "./ui/action-sheet";
 import { SwipeRow } from "./ui/swipe-row";
 import { useLongPress } from "@/hooks/useLongPress";
 import { useViewport } from "@/hooks/useViewport";
+import { openBeside } from "@/stores/beside";
 import { toast } from "sonner";
 import { restartSession } from "@/lib/restart-session";
 import { Button } from "./ui/button";
@@ -239,7 +241,9 @@ export function SessionCard({
   };
 
   const pinned = session.pinned_order != null;
-  const { isTouch } = useViewport();
+  const { isTouch, isMobile } = useViewport();
+  // Room for two sessions side by side (the open Duo, the web)
+  const onOpenBeside = isMobile ? undefined : () => openBeside(session.id);
   const [sheetOpen, setSheetOpen] = useState(false);
 
   const hasActions =
@@ -250,7 +254,8 @@ export function SessionCard({
     onDelete ||
     onRename ||
     onCreatePR ||
-    onOpenInTab;
+    onOpenInTab ||
+    onOpenBeside;
 
   // Handle card click - coordinates selection with navigation
   const handleCardClick = (e: React.MouseEvent) => {
@@ -313,6 +318,15 @@ export function SessionCard({
   // The same actions as the menus, as rows on a sheet
   const sheetGroups: SheetAction[][] = [
     [
+      ...(onOpenBeside
+        ? [
+            {
+              label: "Open beside",
+              icon: Columns2,
+              onSelect: onOpenBeside,
+            },
+          ]
+        : []),
       ...(onOpenInTab
         ? [
             {
@@ -470,6 +484,12 @@ export function SessionCard({
             </div>
             <MenuSeparator />
           </>
+        )}
+        {onOpenBeside && (
+          <MenuItem onSelect={onOpenBeside}>
+            <Columns2 className="mr-2 h-3 w-3" />
+            Open beside
+          </MenuItem>
         )}
         {onOpenInTab && (
           <MenuItem onSelect={() => onOpenInTab()}>
