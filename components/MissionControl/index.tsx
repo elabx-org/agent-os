@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ChevronLeft, Plus, Settings, Zap } from "lucide-react";
+import { ChevronLeft, Plus, Settings } from "lucide-react";
+import { AppLogo } from "@/components/SessionList/SessionListHeader";
 import { InboxItem } from "@/components/Inbox";
-import { UsageMonitor } from "@/components/UsageMonitor";
+import { UsagePill } from "@/components/UsagePill";
 import {
   BackgroundAgentGroup,
   BackgroundAgentRow,
@@ -83,7 +84,7 @@ export function MissionControl({
 
   return (
     <div className="bg-background flex h-full flex-col">
-      <div className="flex items-center gap-2 px-4 pt-3 pb-1">
+      <div className="@container/top flex items-center gap-2 px-4 pt-3 pb-1">
         {onClose && (
           <button
             type="button"
@@ -94,9 +95,9 @@ export function MissionControl({
             <ChevronLeft className="h-5 w-5" />
           </button>
         )}
-        <Zap className="h-4 w-4 shrink-0" aria-hidden="true" />
-        <h1 className="min-w-0 flex-1 truncate font-semibold">Agent-OS</h1>
-        <UsageMonitor variant="inline" />
+        <AppLogo className="h-5 w-5 shrink-0" />
+        <h1 className="min-w-0 flex-1 truncate font-semibold">AgentOS</h1>
+        <UsagePill />
         {onNewSession && !native && (
           <button
             type="button"

@@ -10,106 +10,69 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  Plus,
-  FolderPlus,
-  FolderOpen,
-  MoreHorizontal,
-  Trash2,
-  SlidersHorizontal,
-} from "lucide-react";
+import { Plus, FolderPlus, FolderOpen } from "lucide-react";
 
 interface SessionListHeaderProps {
+  projectCount: number;
   onNewProject: () => void;
   onOpenProject: () => void;
-  onKillAll: () => void;
-  onClaudeConfig: () => void;
 }
 
-/** The logo and app name, as the Projects list shows them */
-export function AppTitle() {
+/** The app's logo: a robot head */
+export function AppLogo({ className }: { className?: string }) {
   return (
-    <div className="flex items-center gap-2">
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        viewBox="0 0 24 24"
-        className="h-5 w-5"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        fill="none"
-      >
-        <path d="M12 8V4H8" />
-        <rect width="16" height="12" x="4" y="8" rx="2" />
-        <path d="M2 14h2" />
-        <path d="M20 14h2" />
-        <path d="M15 13v2" />
-        <path d="M9 13v2" />
-      </svg>
-      <h2 className="font-semibold">AgentOS</h2>
-    </div>
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      className={className}
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      fill="none"
+      aria-hidden="true"
+    >
+      <path d="M12 8V4H8" />
+      <rect width="16" height="12" x="4" y="8" rx="2" />
+      <path d="M2 14h2" />
+      <path d="M20 14h2" />
+      <path d="M15 13v2" />
+      <path d="M9 13v2" />
+    </svg>
   );
 }
 
+/** "PROJECTS · 11" over the list, with + for a new or existing project */
 export function SessionListHeader({
+  projectCount,
   onNewProject,
   onOpenProject,
-  onKillAll,
-  onClaudeConfig,
 }: SessionListHeaderProps) {
   return (
-    <div className="flex items-center justify-between px-3 py-2">
-      <AppTitle />
-      <div className="flex gap-1">
-        <DropdownMenu>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon-sm">
-                  <Plus className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-            </TooltipTrigger>
-            <TooltipContent>New project</TooltipContent>
-          </Tooltip>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={onNewProject}>
-              <FolderPlus className="mr-2 h-3 w-3" />
-              New Project
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={onOpenProject}>
-              <FolderOpen className="mr-2 h-3 w-3" />
-              Open Project
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-        <DropdownMenu>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon-sm">
-                  <MoreHorizontal className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-            </TooltipTrigger>
-            <TooltipContent>More options</TooltipContent>
-          </Tooltip>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={onClaudeConfig}>
-              <SlidersHorizontal className="mr-2 h-3 w-3" />
-              Claude Config
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={onKillAll}
-              className="text-red-500 focus:text-red-500"
-            >
-              <Trash2 className="mr-2 h-3 w-3" />
-              Kill all sessions
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
+    <div className="text-muted-foreground flex items-center gap-2 pt-1 pr-2 pl-4 text-[11.5px] font-semibold tracking-[.07em] uppercase">
+      <span className="min-w-0 flex-1 truncate">Projects · {projectCount}</span>
+      <DropdownMenu>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon-sm" aria-label="Add project">
+                <Plus className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+          </TooltipTrigger>
+          <TooltipContent>Add project</TooltipContent>
+        </Tooltip>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem onClick={onNewProject}>
+            <FolderPlus className="mr-2 h-3 w-3" />
+            New Project
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={onOpenProject}>
+            <FolderOpen className="mr-2 h-3 w-3" />
+            Open Project
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   );
 }

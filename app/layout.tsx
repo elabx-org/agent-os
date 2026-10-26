@@ -3,6 +3,7 @@ import { IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
 import { Toaster } from "sonner";
 import { Providers } from "@/components/Providers";
 import { DENSITY_BOOT_SCRIPT } from "@/lib/display-density";
+import { BACKGROUND_BOOT_SCRIPT } from "@/lib/background";
 import "./globals.css";
 
 // IBM Plex: the Duo redesign's type (variable names kept for globals.css)
@@ -91,6 +92,8 @@ export default function RootLayout({
             `,
           }}
         />
+        {/* This device's own background, if any, over the theme's */}
+        <script dangerouslySetInnerHTML={{ __html: BACKGROUND_BOOT_SCRIPT }} />
       </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} font-sans antialiased`}

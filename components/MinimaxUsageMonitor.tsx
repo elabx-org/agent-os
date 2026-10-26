@@ -68,16 +68,21 @@ function MiniBar({
   );
 }
 
-export function MinimaxUsageMonitor() {
-  const [dialogOpen, setDialogOpen] = useState(false);
-
-  const { data, isError, isLoading } = useQuery<CodingPlanData>({
+/** MiniMax coding-plan prompts, shared by the monitor and the home's pill */
+export function useMinimaxUsage() {
+  return useQuery<CodingPlanData>({
     queryKey: ["minimax-usage"],
     queryFn: fetchUsage,
     refetchInterval: 60_000,
     retry: 1,
     staleTime: 30_000,
   });
+}
+
+export function MinimaxUsageMonitor() {
+  const [dialogOpen, setDialogOpen] = useState(false);
+
+  const { data, isError, isLoading } = useMinimaxUsage();
 
   // Don't render if no data, loading, or error
   if (isLoading || isError || !data || !data.data) return null;
