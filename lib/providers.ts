@@ -53,7 +53,7 @@ export interface BuildFlagsOptions {
   initialPrompt?: string; // Initial prompt to send to agent
   worktreeName?: string; // If set, use provider's native worktree flag with this name
   systemPromptFile?: string; // Appended to the system prompt (the project note)
-  settingsFile?: string; // Extra settings (the project's hooks)
+  settingsFile?: string; // Extra settings (project hooks, state capture)
 }
 
 // Common spinner characters used across CLIs

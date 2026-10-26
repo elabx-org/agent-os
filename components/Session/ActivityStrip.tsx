@@ -1,10 +1,12 @@
 "use client";
 
 import { useState } from "react";
+import { useSnapshot } from "valtio";
 import { ChevronRight, Loader2 } from "lucide-react";
 import type { Session } from "@/lib/db";
 import { cn } from "@/lib/utils";
 import { useElapsed, useSessionActivity } from "@/hooks/useSessionActivity";
+import { mobileNavStore } from "@/stores/mobileNav";
 import {
   Sheet,
   SheetBody,
@@ -31,6 +33,8 @@ export function ActivityStrip({
   className?: string;
 }) {
   const [open, setOpen] = useState(false);
+  // Hidden while typing, as the slim header (the iOS app reports its keyboard)
+  const { nativeKeyboard } = useSnapshot(mobileNavStore);
   const { state, now, files, agents, workflows } = useSessionActivity(session, {
     active,
   });
@@ -49,6 +53,7 @@ export function ActivityStrip({
       className={cn(
         // The header's side insets, so the two line up
         "kb-compact-hide bg-background shrink-0 pt-1 pr-[calc(0.5rem+var(--safe-right,env(safe-area-inset-right)))] pl-[calc(0.5rem+env(safe-area-inset-left))]",
+        nativeKeyboard && "hidden",
         className
       )}
     >

@@ -18,7 +18,7 @@ C_PURPLE2=$'\\033[38;5;177m'
 C_PINK=$'\\033[38;5;213m'
 C_MUTED=$'\\033[38;5;245m'
 
-# Configure tmux for scrolling and status bar
+# Configure tmux for scrolling
 tmux set-option -g mouse on 2>/dev/null
 tmux set-option -sg escape-time 10 2>/dev/null
 tmux set-option -g history-limit 50000 2>/dev/null
@@ -27,12 +27,9 @@ tmux bind-key -T copy-mode WheelUpPane send-keys -X -N 5 scroll-up 2>/dev/null
 tmux bind-key -T copy-mode WheelDownPane send-keys -X -N 5 scroll-down 2>/dev/null
 tmux bind-key -T copy-mode-vi WheelUpPane send-keys -X -N 5 scroll-up 2>/dev/null
 tmux bind-key -T copy-mode-vi WheelDownPane send-keys -X -N 5 scroll-down 2>/dev/null
-tmux set-option status-style 'bg=#1e1e2e,fg=#cdd6f4' 2>/dev/null
-tmux set-option status-left '#[fg=#cba6f7,bold] AgentOS #[fg=#6c7086]| ' 2>/dev/null
-tmux set-option status-left-length 20 2>/dev/null
-tmux set-option status-right '#[fg=#6c7086]| #[fg=#89b4fa]#S #[fg=#6c7086]| #[fg=#a6adc8]%H:%M ' 2>/dev/null
-tmux set-option status-right-length 40 2>/dev/null
-tmux set-option status-position bottom 2>/dev/null
+# No status line: Agent-OS's header already names the session, and on a phone
+# the keyboard leaves few enough rows
+tmux set-option status off 2>/dev/null
 tmux bind-key m display-menu -T "Tmux" -x R -y P "Copy Mode" c copy-mode "Paste Buffer" p paste-buffer "" "" "" "Split Horizontal" h "split-window -h" "Split Vertical" v "split-window -v" "" "" "" "Kill Pane" x "confirm-before kill-pane" 2>/dev/null
 
 # Clear and show banner

@@ -42,9 +42,27 @@ export function setupResizeHandlers(config: ResizeHandlersConfig): () => void {
     return !!el && el.offsetParent !== null && el.clientWidth > 0;
   };
 
+  // While the on-screen keyboard is up the terminal keeps its rows and slides
+  // instead (see Terminal): a refit would make tmux redraw everything
+  const keepsRows = () =>
+    !!containerRef.current?.hasAttribute("data-keep-rows");
+
+  // Whether this terminal has been fitted while visible (one mounted hidden
+  // is still at xterm's default 80x24)
+  let fitted = false;
+
   const fitIfVisible = (restoreScroll: () => void) => {
     if (!isVisible()) return;
-    fitAddon.fit();
+    if (fitted && keepsRows()) {
+      // Rows stay, but columns follow the width (a view switched to with the
+      // keyboard up, a rotation)
+      const proposed = fitAddon.proposeDimensions();
+      if (!proposed || !proposed.cols || proposed.cols === term.cols) return;
+      term.resize(proposed.cols, term.rows);
+    } else {
+      fitAddon.fit();
+      fitted = true;
+    }
     fixMobileScrollbarWidth();
     restoreScroll();
     sendResize(term.cols, term.rows);
