@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ChevronLeft, Plus, Settings, Zap } from "lucide-react";
+import { ChevronLeft, Plus, Settings } from "lucide-react";
+import { AppLogo } from "@/components/SessionList/SessionListHeader";
 import { InboxItem } from "@/components/Inbox";
 import { UsageMonitor } from "@/components/UsageMonitor";
 import {
@@ -94,8 +95,8 @@ export function MissionControl({
             <ChevronLeft className="h-5 w-5" />
           </button>
         )}
-        <Zap className="h-4 w-4 shrink-0" aria-hidden="true" />
-        <h1 className="min-w-0 flex-1 truncate font-semibold">Agent-OS</h1>
+        <AppLogo className="h-5 w-5 shrink-0" />
+        <h1 className="min-w-0 flex-1 truncate font-semibold">AgentOS</h1>
         <UsageMonitor variant="inline" />
         {onNewSession && !native && (
           <button
