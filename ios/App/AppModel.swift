@@ -76,11 +76,6 @@ final class AppModel {
         send(["type": "paste", "text": text])
     }
 
-    /// The keyboard bar's Add image: the page opens its picker
-    func image() {
-        send(["type": "image"])
-    }
-
     func keyboard(visible: Bool) {
         send(["type": "keyboard", "visible": visible])
     }
@@ -179,6 +174,13 @@ final class AppModel {
         if message["type"] as? String == "keybar" {
             // Half open like a laptop, the page's key rows sit right above the keyboard
             (webView as? AgentWebView)?.keyboardBar.collapsed = message["hidden"] as? Bool ?? false
+            return
+        }
+        if message["type"] as? String == "keys" {
+            // The terminal or chat box took focus: the bar shows that context's keys
+            if let context = message["context"] as? String {
+                (webView as? AgentWebView)?.keyboardBar.context = context
+            }
             return
         }
         if message["type"] as? String == "haptic" {

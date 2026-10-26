@@ -48,7 +48,6 @@ struct AgentWebContainer: UIViewRepresentable {
             view?.evaluateJavaScript("document.activeElement && document.activeElement.blur()")
             view?.endEditing(true)
         }
-        view.keyboardBar.onImage = { [weak model] in model?.image() }
         view.keyboardBar.onVisibilityChange = { [weak model] visible in model?.keyboard(visible: visible) }
 
         model.webView = view
