@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { queries, getDb, type Session } from "@/lib/db";
 import { findTranscript } from "@/lib/claude-transcript";
 import { listSubagents } from "@/lib/claude-subagents";
+import { listWorkflows } from "@/lib/claude-workflows";
 
 // GET /api/sessions/[id]/subagents - the subagents the session's Claude
-// conversation has started, with what each is doing
+// conversation has started, with what each is doing, and its workflows
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -12,10 +13,11 @@ export async function GET(
   const { id } = await params;
   const session = queries.getSession(getDb()).get(id) as Session | undefined;
   if (!session || session.agent_type !== "claude") {
-    return NextResponse.json({ subagents: [] });
+    return NextResponse.json({ subagents: [], workflows: [] });
   }
   const found = await findTranscript(session.tmux_name || `claude-${id}`);
   return NextResponse.json({
     subagents: found?.file ? listSubagents(found.file) : [],
+    workflows: found?.file ? listWorkflows(found.file) : [],
   });
 }

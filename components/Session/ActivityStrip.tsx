@@ -31,7 +31,7 @@ export function ActivityStrip({
   className?: string;
 }) {
   const [open, setOpen] = useState(false);
-  const { state, now, files, agents } = useSessionActivity(session, {
+  const { state, now, files, agents, workflows } = useSessionActivity(session, {
     active,
   });
   const elapsed = useElapsed(state === "work" ? now.startedAt : undefined);
@@ -41,6 +41,7 @@ export function ActivityStrip({
     files.count > 0 && plural(files.count, "file"),
     // Live ones only; the rail lists the finished too
     agents.running > 0 && plural(agents.running, "agent"),
+    workflows.running > 0 && plural(workflows.running, "workflow"),
   ].filter(Boolean);
 
   return (
