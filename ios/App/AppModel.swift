@@ -1,7 +1,9 @@
 import Foundation
 import Observation
 import SwiftUI
+import UIKit
 import UniformTypeIdentifiers
+import UserNotifications
 import WebKit
 
 /// The web app's views that the system bar switches between
@@ -21,15 +23,37 @@ final class AppModel {
     }
     /// The focused pane's view, reported by the page
     var view: PaneView = .terminal
-    /// Sessions waiting on an answer (the Inbox badge)
-    var waiting = 0
+    /// Sessions and background agents waiting on you (the Needs you badge),
+    /// also on the app icon
+    var waiting = 0 {
+        didSet {
+            guard waiting != oldValue else { return }
+            UNUserNotificationCenter.current().setBadgeCount(waiting) { _ in }
+        }
+    }
     /// Changed files in the focused session (the Changes badge)
     var changes = 0
     var showingServer = false
+    /// The web Settings page is showing (the gear fills)
+    var settingsOpen = false
+    /// The workspace page over the panes ("new", "project", "inbox"…), if any
+    var page: String?
+    var newOpen: Bool { page == "new" }
+    /// Focus mode: the page hides its strip and the column its badges
+    var focus = false
+    /// Focus is on and something needs you: the amber dot on Focus
+    var focusDot = false
     /// Face ID / Touch ID in front of the app (off unless turned on)
     let lock = AppLock()
     /// The page's background colour, for the edges it doesn't cover
     var pageBackground: Color?
+    /// The theme's accent, for the app's own confirm buttons and the Safari sheet
+    var accent: UIColor?
+    var accentColor: Color? { accent.map(Color.init(uiColor:)) }
+    /// The app theme's light or dark, which the column, sheets and keyboard follow
+    var scheme: ColorScheme? {
+        didSet { if scheme != oldValue { applyScheme() } }
+    }
     var fold: Fold? {
         didSet { if fold != oldValue { sendFold() } }
     }
@@ -37,6 +61,10 @@ final class AppModel {
     @ObservationIgnored weak var webView: WKWebView?
     /// A session to open once the page has loaded (a notification or link launched the app)
     @ObservationIgnored private var pendingSession: String?
+    /// A column action to run once the page is listening (a tapped agent notification)
+    @ObservationIgnored private var pendingNav: String?
+    /// The page has reported its state, so its nav listener is up
+    @ObservationIgnored private var pageReady = false
     /// A shared file to hand to the page once it has loaded
     @ObservationIgnored private var pendingFile: [String: String]?
     /// The APNs device token, handed to the server from the page so it carries the login
@@ -52,6 +80,18 @@ final class AppModel {
         send(["type": "nav", "action": action])
     }
 
+    /// New, or with New open, back to the session under it: picking the
+    /// view already showing leaves the page without changing the view
+    func toggleNew() {
+        guard newOpen else { return nav("new") }
+        switch view {
+        case .chat: nav("chat")
+        case .git: nav("git")
+        case .files: nav("files")
+        case .terminal, .workers: nav("terminal")
+        }
+    }
+
     /// Terminal input from the keyboard bar
     func key(_ sequence: String) {
         send(["type": "key", "key": sequence])
@@ -60,11 +100,6 @@ final class AppModel {
     /// Text from the system Paste button: the message box, or the terminal as a paste
     func paste(_ text: String) {
         send(["type": "paste", "text": text])
-    }
-
-    /// The keyboard bar's Add image: the page opens its picker
-    func image() {
-        send(["type": "image"])
     }
 
     func keyboard(visible: Bool) {
@@ -83,9 +118,30 @@ final class AppModel {
             share(file: url)
             return
         }
+        if url.scheme == "agentos", url.host == "inbox" {
+            openNav("inbox")
+            return
+        }
         guard url.scheme == "agentos", url.host == "session",
               let id = url.pathComponents.dropFirst().first, !id.isEmpty else { return }
         openSession(id)
+    }
+
+    /// A nav action that may arrive before the page has started (cold launch)
+    func openNav(_ action: String) {
+        pendingNav = action
+        if pageReady { flushNav() }
+    }
+
+    private func flushNav() {
+        guard let action = pendingNav else { return }
+        pendingNav = nil
+        nav(action)
+    }
+
+    /// A new document: its listeners aren't up until it reports its state
+    func pageStarted() {
+        pageReady = false
     }
 
     func openSession(_ id: String) {
@@ -124,6 +180,7 @@ final class AppModel {
 
     /// The page finished loading: deliver what waited for it
     func pageLoaded() {
+        applyScheme()
         sendFold()
         flushPending()
         registerPushToken()
@@ -166,24 +223,56 @@ final class AppModel {
             (webView as? AgentWebView)?.keyboardBar.collapsed = message["hidden"] as? Bool ?? false
             return
         }
+        if message["type"] as? String == "keys" {
+            // The terminal or chat box took focus: the bar shows that context's keys
+            if let context = message["context"] as? String {
+                (webView as? AgentWebView)?.keyboardBar.context = context
+            }
+            return
+        }
         if message["type"] as? String == "haptic" {
             Haptics.play(message["style"] as? String ?? "light")
             return
         }
+        if message["type"] as? String == "server" {
+            // Settings → Server: the app's own server and lock screen
+            showingServer = true
+            return
+        }
         guard message["type"] as? String == "state" else { return }
+        pageReady = true
+        flushNav()
         if let raw = message["viewMode"] as? String, let mode = PaneView(rawValue: raw) { view = mode }
         if let count = message["waiting"] as? Int { waiting = count }
         if let count = message["changes"] as? Int { changes = count }
+        settingsOpen = message["settings"] as? Bool ?? false
+        page = message["page"] as? String
+        focus = message["focus"] as? Bool ?? false
+        focusDot = message["focusDot"] as? Bool ?? false
         if let css = message["background"] as? String, let color = Self.color(css: css) {
-            pageBackground = color
+            pageBackground = Color(uiColor: color)
+        }
+        if let css = message["accent"] as? String, let color = Self.color(css: css) {
+            accent = color
+        }
+        switch message["scheme"] as? String {
+        case "light": scheme = .light
+        case "dark": scheme = .dark
+        default: break
         }
     }
 
+    /// UIKit's part (alerts, the keyboard and its bar) follows the window
+    private func applyScheme() {
+        let style: UIUserInterfaceStyle = scheme == .light ? .light : scheme == .dark ? .dark : .unspecified
+        webView?.window?.overrideUserInterfaceStyle = style
+    }
+
     /// "rgb(r, g, b)" or "rgba(r, g, b, a)" from getComputedStyle
-    private static func color(css: String) -> Color? {
+    private static func color(css: String) -> UIColor? {
         let parts = css.split(whereSeparator: { !"0123456789.".contains($0) }).compactMap { Double($0) }
         guard parts.count >= 3 else { return nil }
-        return Color(red: parts[0] / 255, green: parts[1] / 255, blue: parts[2] / 255)
+        return UIColor(red: parts[0] / 255, green: parts[1] / 255, blue: parts[2] / 255, alpha: 1)
     }
 
     /// `keep`: also store the event's value under that key on `window.agentosNative`

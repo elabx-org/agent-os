@@ -55,6 +55,7 @@ struct ServerSheet: View {
                         dismiss()
                     } label: { Label("Open", systemImage: "checkmark") }
                     .disabled(url == nil)
+                    .tint(model.accentColor)
                 }
             }
         }
