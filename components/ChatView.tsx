@@ -806,7 +806,8 @@ export function ChatView({
 
   const [sending, setSending] = useState(false);
   const send = useCallback(async () => {
-    const text = draft.trim();
+    // The draft, after any quoted passages
+    const text = composerRef.current.text.trim();
     if (!text) return;
     setSending(true);
     try {
