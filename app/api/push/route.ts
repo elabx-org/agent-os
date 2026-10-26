@@ -9,12 +9,22 @@ import {
 
 /** The settings as the page sees them: secrets only say whether they are set */
 function view(config: PushConfig) {
+  const { apns } = config;
+  const hasKey = hasApnsKey();
   return {
     events: config.events,
     publicUrl: config.publicUrl,
     ntfy: { ...config.ntfy, token: "", hasToken: !!config.ntfy.token },
-    apns: { ...config.apns, hasKey: hasApnsKey() },
+    apns: { ...apns, hasKey },
     devices: config.devices.length,
+    /** Apple push can actually deliver: on, keyed and a device to send to */
+    apnsReady:
+      apns.enabled &&
+      !!apns.teamId &&
+      !!apns.keyId &&
+      hasKey &&
+      config.devices.length > 0,
+    lastTest: config.lastTest ?? null,
   };
 }
 

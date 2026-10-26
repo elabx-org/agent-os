@@ -1,5 +1,5 @@
 import type { PushConfig } from "./config";
-import type { PushMessage } from "./send";
+import { isUrgent, type PushMessage } from "./send";
 
 /** Publishes to ntfy (https://docs.ntfy.sh/publish/) */
 export async function sendNtfy(
@@ -8,8 +8,8 @@ export async function sendNtfy(
 ): Promise<void> {
   const headers: Record<string, string> = {
     Title: encodeHeader(message.title),
-    Tags: message.kind === "needsYou" ? "warning" : "white_check_mark",
-    Priority: message.kind === "needsYou" ? "high" : "default",
+    Tags: isUrgent(message.kind) ? "warning" : "white_check_mark",
+    Priority: isUrgent(message.kind) ? "high" : "default",
   };
   if (message.appUrl) headers.Click = message.appUrl;
   if (message.webUrl) {
