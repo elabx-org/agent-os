@@ -47,7 +47,7 @@ export function shortLabel(option: PromptOption): string {
 }
 
 // "Bash command" reads as what Claude wants: "wants to run Bash"
-function askLabel(title: string): string {
+export function askLabel(title: string): string {
   const command = /^(\w+) command$/i.exec(title);
   return command ? `wants to run ${command[1]}` : title;
 }
@@ -66,8 +66,11 @@ export function InboxItem({
   onOpen: () => void;
   /** Render nothing unless Claude is asking a question (inline in Chat) */
   questionsOnly?: boolean;
-  /** "card": the home's compact prompt with one row of answers */
-  variant?: "full" | "card";
+  /**
+   * "card": the home's compact prompt with one row of answers. "page": the
+   * body alone, under a header of the page's own
+   */
+  variant?: "full" | "card" | "page";
   /** Display title; defaults to the session name */
   title?: ReactNode;
   /** "div" when it isn't inside a list */
@@ -161,32 +164,41 @@ export function InboxItem({
     );
   }
 
+  const page = variant === "page";
   return (
-    <Root className="space-y-3 rounded-2xl border border-amber-400/30 bg-amber-400/[0.06] p-3.5">
-      <div className="flex items-start gap-2.5">
-        <span
-          aria-hidden="true"
-          className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-amber-400 ring-4 ring-amber-400/20"
-        />
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold">
-            {title ?? session.name}
-          </p>
-          <p className="text-muted-foreground truncate text-xs">
-            {[projectName, prompt?.title ?? "Your turn"]
-              .filter(Boolean)
-              .join(" · ")}
-          </p>
+    <Root
+      className={cn(
+        "space-y-3",
+        !page &&
+          "rounded-2xl border border-amber-400/30 bg-amber-400/[0.06] p-3.5"
+      )}
+    >
+      {!page && (
+        <div className="flex items-start gap-2.5">
+          <span
+            aria-hidden="true"
+            className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-amber-400 ring-4 ring-amber-400/20"
+          />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-semibold">
+              {title ?? session.name}
+            </p>
+            <p className="text-muted-foreground truncate text-xs">
+              {[projectName, prompt ? askLabel(prompt.title) : "Your turn"]
+                .filter(Boolean)
+                .join(" · ")}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onOpen}
+            className="text-muted-foreground active:bg-accent hover:bg-accent flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium"
+          >
+            <SquareTerminal className="h-4 w-4" />
+            Open
+          </button>
         </div>
-        <button
-          type="button"
-          onClick={onOpen}
-          className="text-muted-foreground active:bg-accent hover:bg-accent flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium"
-        >
-          <SquareTerminal className="h-4 w-4" />
-          Open
-        </button>
-      </div>
+      )}
 
       {isLoading && (
         <div className="text-muted-foreground flex items-center gap-2 text-xs">
@@ -225,7 +237,8 @@ export function InboxItem({
                 onClick={() => answer(option)}
                 className={cn(
                   "flex min-h-[44px] touch-manipulation items-center gap-2 rounded-xl px-3.5 py-2 text-left text-sm font-medium disabled:opacity-60",
-                  KIND_STYLE[option.kind]
+                  KIND_STYLE[option.kind],
+                  page && option.kind === "deny" && "text-red-400"
                 )}
               >
                 {answering === option.index && (
@@ -236,6 +249,16 @@ export function InboxItem({
             ))}
           </div>
         </>
+      )}
+
+      {page && (
+        <button
+          type="button"
+          onClick={onOpen}
+          className="text-muted-foreground border-border active:bg-accent hover:bg-accent flex min-h-[44px] w-full items-center rounded-xl border border-dashed px-3.5 text-left text-sm"
+        >
+          Or tell Claude what to do instead…
+        </button>
       )}
 
       {error && <p className="text-xs text-red-400">{error}</p>}

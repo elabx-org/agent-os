@@ -10,6 +10,8 @@ export interface NotificationSettings {
     waiting: boolean;
     error: boolean;
     completed: boolean;
+    /** Not a session event: background agents' own "finished" */
+    backgroundFinished: boolean;
   };
 }
 
@@ -21,6 +23,7 @@ export const defaultSettings: NotificationSettings = {
     waiting: true,
     error: true,
     completed: false, // Off by default - can be noisy
+    backgroundFinished: false,
   },
 };
 
@@ -53,7 +56,8 @@ export function saveSettings(settings: NotificationSettings): void {
 export const SERVER_TO_LOCAL_EVENT = {
   needsYou: "waiting",
   finished: "completed",
-} as const satisfies Record<string, NotificationEvent>;
+  backgroundFinished: "backgroundFinished",
+} as const satisfies Record<string, keyof NotificationSettings["events"]>;
 
 /**
  * Local events brought in line with the server's push events, which win:
@@ -62,14 +66,17 @@ export const SERVER_TO_LOCAL_EVENT = {
  */
 export function eventsFromServer(
   local: NotificationSettings["events"],
-  server: { needsYou: boolean; finished: boolean }
+  server: { needsYou: boolean; finished: boolean; backgroundFinished: boolean }
 ): NotificationSettings["events"] | null {
   const next = {
     ...local,
     waiting: server.needsYou,
     completed: server.finished,
+    backgroundFinished: server.backgroundFinished,
   };
-  return next.waiting === local.waiting && next.completed === local.completed
+  return next.waiting === local.waiting &&
+    next.completed === local.completed &&
+    next.backgroundFinished === local.backgroundFinished
     ? null
     : next;
 }

@@ -17,7 +17,8 @@ import {
   DialogDescription,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { InboxItem } from "@/components/Inbox";
+import { askLabel, InboxItem } from "@/components/Inbox";
+import { useSessionPrompt } from "@/data/prompts/queries";
 import {
   AgentRow,
   SectionHeader,
@@ -543,6 +544,49 @@ function PickList({
   );
 }
 
+/** A picked session's prompt as a page: its header, then the answers */
+function PickedSession({
+  session,
+  title,
+  projectName,
+  dialog,
+  onOpen,
+}: {
+  session: Session;
+  title: string;
+  projectName?: string;
+  dialog?: boolean;
+  onOpen: () => void;
+}) {
+  const { data: prompt } = useSessionPrompt(session.id);
+  return (
+    <>
+      <header
+        className={cn(
+          "border-border flex min-h-[50px] shrink-0 flex-col justify-center border-b px-4 pt-2 pb-2",
+          // Clear of the dialog's close button
+          dialog && "pr-14"
+        )}
+      >
+        <h2 className="truncate text-[15px] font-semibold">{title}</h2>
+        <p className="text-muted-foreground truncate text-xs">
+          {[
+            projectName,
+            // The title may be the name already
+            session.name !== title && session.name,
+            prompt ? askLabel(prompt.title) : "Your turn",
+          ]
+            .filter(Boolean)
+            .join(" · ")}
+        </p>
+      </header>
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+        <InboxItem as="div" variant="page" session={session} onOpen={onOpen} />
+      </div>
+    </>
+  );
+}
+
 /** The picked prompt, answerable in place, or the picked agent */
 function PickedDetail({
   list,
@@ -558,23 +602,16 @@ function PickedDetail({
   const { session, agent } = picked;
   if (session)
     return (
-      <div
-        className={cn(
-          "min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]",
-          // Clear of the dialog's close button
-          dialog && "pt-12"
-        )}
-      >
-        <InboxItem
-          as="div"
-          session={session}
-          title={displayTitle(session, list.titles).title}
-          projectName={
-            list.groups.find((g) => g.sessions.includes(session))?.name
-          }
-          onOpen={() => onOpenSession(session)}
-        />
-      </div>
+      <PickedSession
+        key={session.id}
+        session={session}
+        title={displayTitle(session, list.titles).title}
+        projectName={
+          list.groups.find((g) => g.sessions.includes(session))?.name
+        }
+        dialog={dialog}
+        onOpen={() => onOpenSession(session)}
+      />
     );
   if (agent)
     return (
@@ -824,7 +861,8 @@ export function NeedsYouDialog({
 
 /**
  * Where it is a page: the column's Needs you (mobileNavStore.inboxOpen)
- * opens it, and inboxOpen then follows whether it shows, for the column
+ * opens it, and inboxOpen then follows whether it shows, for the column.
+ * Elsewhere an open one hands over to the dialog.
  */
 export function useNeedsYouPage(enabled: boolean) {
   const { inboxOpen } = useSnapshot(mobileNavStore);
@@ -838,5 +876,8 @@ export function useNeedsYouPage(enabled: boolean) {
 
   useEffect(() => {
     if (enabled) mobileNavStore.inboxOpen = kind === "inbox";
+    // Where it's a dialog (the web unfolded past the phone width), the page
+    // gives way to it: inboxOpen stays, so the dialog opens instead
+    else if (kind === "inbox") backPage();
   }, [enabled, kind]);
 }

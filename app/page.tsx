@@ -509,6 +509,9 @@ function HomeContent() {
         {
           title: entry.title,
           actionLabel: "Open agent",
+          // Its own switch: "A background agent finishes"
+          setting:
+            entry.kind === "agentNeedsYou" ? "waiting" : "backgroundFinished",
           onClick: () => {
             const agent = agents.find((a) => a.id === id);
             if (agent) openBackgroundAgent(agent);

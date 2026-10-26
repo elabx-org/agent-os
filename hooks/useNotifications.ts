@@ -29,6 +29,8 @@ export interface NotifyTarget {
   title?: string;
   actionLabel?: string;
   onClick?: () => void;
+  /** The switch that allows it, when not the event's own */
+  setting?: keyof NotificationSettings["events"];
 }
 
 interface UseNotificationsOptions {
@@ -95,7 +97,8 @@ export function useNotifications(options: UseNotificationsOptions = {}) {
       message?: string,
       target?: NotifyTarget
     ) => {
-      if (!settings.enabled || !settings.events[event]) return;
+      if (!settings.enabled || !settings.events[target?.setting ?? event])
+        return;
 
       const titles: Record<NotificationEvent, string> = {
         waiting: `${sessionName} needs input`,

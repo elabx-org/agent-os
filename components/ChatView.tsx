@@ -52,8 +52,8 @@ import {
   useClaudeLive,
 } from "@/components/Composer/ClaudeStateBar";
 import { useFoldDeck } from "@/hooks/useFoldDeck";
-import { useElapsed, useSessionActivity } from "@/hooks/useSessionActivity";
 import { DeckActions } from "@/components/DeckActions";
+import { DeckStateLine } from "@/components/DeckStateLine";
 import { useSubagents, useWorkflows } from "@/hooks/useSubagents";
 import {
   useSpreadFold,
@@ -611,6 +611,8 @@ interface ChatViewProps {
   /** The activity strip above shows the agents, so the pill row goes */
   hideAgentsBar?: boolean;
   onOpenTerminal: () => void;
+  /** Told when the fold deck starts or stops: its state line replaces the strip */
+  onDeck?: (on: boolean) => void;
 }
 
 /** Claude Code's session as a conversation, read from its transcript */
@@ -619,6 +621,7 @@ export function ChatView({
   active,
   hideAgentsBar,
   onOpenTerminal,
+  onDeck,
 }: ChatViewProps) {
   const { items, state, truncated, loadEarlier, loadingEarlier } =
     useTranscript(`/api/sessions/${session.id}`, active);
@@ -786,13 +789,20 @@ export function ChatView({
     [inputRef]
   );
   // Half open like a laptop or on a table: the conversation stays above the
-  // fold, and the composer and the controls sit on the deck below it. On a
-  // table (not typing) the live state joins the work above, and the base
-  // holds the actions or the answer first, the composer last.
+  // fold, and the composer and the controls sit on the deck below it. The
+  // live state joins the work above (the pane drops its strip for it); on a
+  // table (not typing) the base holds the actions or the answer first, the
+  // composer last.
   const rootRef = useRef<HTMLDivElement>(null);
   const [composerFocused, setComposerFocused] = useState(false);
   const deck = useFoldDeck(rootRef);
   const deckControls = deck && !composerFocused && !nativeKeyboard;
+  const onDeckFold = !!deck;
+  useEffect(() => {
+    if (!onDeck) return;
+    onDeck(onDeckFold);
+    return () => onDeck(false);
+  }, [onDeck, onDeckFold]);
 
   const [sending, setSending] = useState(false);
   const send = useCallback(async () => {
@@ -817,6 +827,8 @@ export function ChatView({
 
   // The answer Claude waits on: the screen's prompt with its options, or
   // what the hook recorded when the screen can't be read
+  // A finished turn or a typed-reply wait has nothing to answer here
+  const hasCard = !!prompt || (!!pending && !promptLoading);
   const needsYouCard = needsYou && (
     <>
       <ul>
@@ -932,7 +944,7 @@ export function ChatView({
             )}
           </div>
         )}
-        {deckControls && <DeckStateLine session={session} active={active} />}
+        {deck && <DeckStateLine session={session} active={active} />}
         <div
           ref={scrollRef}
           onScroll={(e) => {
@@ -1015,7 +1027,7 @@ export function ChatView({
           within the thumbs' reach. */}
           {deckControls && (
             <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-2 pt-1.5 pb-3">
-              {needsYou ? (
+              {needsYou && hasCard ? (
                 needsYouCard
               ) : (
                 <DeckActions
@@ -1134,57 +1146,6 @@ export function ChatView({
               : undefined
           }
         />
-      )}
-    </div>
-  );
-}
-
-/**
- * Tabletop: what the session is doing right now, big enough to read from
- * across the table. Mounted only there, so it polls only then.
- */
-function DeckStateLine({
-  session,
-  active,
-}: {
-  session: Session;
-  active: boolean;
-}) {
-  const { state, now } = useSessionActivity(session, { active });
-  const elapsed = useElapsed(state === "work" ? now.startedAt : undefined);
-  const needs = state === "needs";
-
-  return (
-    <div className="border-border flex h-12 shrink-0 items-center gap-2.5 overflow-hidden border-b px-4 whitespace-nowrap">
-      {needs ? (
-        <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-amber-400 shadow-[0_0_0_3px_rgba(242,176,30,.18)]" />
-      ) : state === "work" ? (
-        <Loader2 className="h-4 w-4 shrink-0 animate-spin text-blue-500" />
-      ) : (
-        <span
-          className={cn(
-            "h-2.5 w-2.5 shrink-0 rounded-full",
-            state === "done"
-              ? "bg-emerald-500"
-              : state === "error"
-                ? "bg-red-500"
-                : "bg-muted-foreground/50"
-          )}
-        />
-      )}
-      <span className="shrink-0 text-xl font-medium">{now.label}</span>
-      {now.command && (
-        <code
-          title={now.command}
-          className="text-muted-foreground min-w-0 truncate font-mono text-base"
-        >
-          {now.command}
-        </code>
-      )}
-      {elapsed && (
-        <span className="text-muted-foreground ml-auto shrink-0 text-sm tabular-nums">
-          {elapsed}
-        </span>
       )}
     </div>
   );

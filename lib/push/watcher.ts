@@ -239,8 +239,30 @@ function lastAgentReply(agent: BackgroundAgent): string | null {
   return null;
 }
 
+/** A failing CLI (not installed yet, too old) is told once, then retried less */
+let agentsError: string | null = null;
+let agentsSkip = 0;
+let agentsBackoff = 0;
+
 async function pollAgents(): Promise<void> {
-  const agents = await cachedBackgroundAgents();
+  if (agentsSkip > 0) {
+    agentsSkip--;
+    return;
+  }
+  let agents: BackgroundAgent[];
+  try {
+    agents = await cachedBackgroundAgents();
+  } catch (error) {
+    const text = error instanceof Error ? error.message : String(error);
+    if (text !== agentsError) console.error("[push] background agents:", text);
+    agentsError = text;
+    // Up to about 5 minutes between tries
+    agentsBackoff = Math.min(agentsBackoff * 2 || 1, 32);
+    agentsSkip = agentsBackoff;
+    return;
+  }
+  agentsError = null;
+  agentsBackoff = 0;
   const config = readPushConfig();
   const channels = config.ntfy.enabled || config.apns.enabled;
   const seen = new Set<string>();

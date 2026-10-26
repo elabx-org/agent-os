@@ -52,6 +52,8 @@ interface TerminalToolbarProps {
   context?: KeysContext;
   /** The on-screen keyboard is up (Claude Code's context row changes) */
   keyboardUp?: boolean;
+  /** The tabletop base: the one context row, whatever the saved layout */
+  singleRow?: boolean;
 }
 
 interface Snippet {
@@ -657,6 +659,7 @@ export function TerminalToolbar({
   keepRows = false,
   context = "claude",
   keyboardUp = false,
+  singleRow = false,
 }: TerminalToolbarProps) {
   const [showPasteModal, setShowPasteModal] = useState(false);
   const [showSnippetsModal, setShowSnippetsModal] = useState(false);
@@ -717,7 +720,7 @@ export function TerminalToolbar({
   );
 
   // The context preset: one row chosen by what's running, never two
-  const contextMode = preferences.mode === "context";
+  const contextMode = preferences.mode === "context" || singleRow;
   const sourceRow1 = contextMode
     ? contextRow(context, keyboardUp)
     : preferences.row1;

@@ -40,6 +40,10 @@ import {
 } from "./queued-messages";
 import type { ClaudeKey } from "@/components/Composer/ClaudeStateBar";
 import { DeckActions } from "@/components/DeckActions";
+import { DeckStateLine } from "@/components/DeckStateLine";
+import { InboxItem } from "@/components/Inbox";
+import { useSessionPrompt } from "@/data/prompts/queries";
+import type { Session } from "@/lib/db";
 import { useFoldDeck } from "@/hooks/useFoldDeck";
 import { COMPOSER_EVENT, getComposerEnabled } from "./typing-assist";
 import { useTerminalConnection, useTerminalSearch } from "./hooks";
@@ -92,6 +96,10 @@ interface TerminalProps {
   agentType?: string;
   /** Shown (its tab and the terminal view); a hidden one stops polling */
   active?: boolean;
+  /** That session, for the fold deck's state line and answer */
+  session?: Session;
+  /** Told when the fold deck starts or stops: its state line replaces the strip */
+  onDeck?: (on: boolean) => void;
 }
 
 export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
@@ -105,6 +113,8 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
       draftId,
       agentType: sessionAgentType,
       active = true,
+      session,
+      onDeck,
     },
     ref
   ) {
@@ -321,6 +331,19 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
     // Tabletop with the keyboard down: the base holds Stop / Changes /
     // Terminal, then the key row, then the composer nearest the thumbs
     const tabletopBase = !!deck && !nativeKeyboard && keyboard.height === 0;
+    const onDeckFold = !!deck && !!session;
+    useEffect(() => {
+      if (!onDeck) return;
+      onDeck(onDeckFold);
+      return () => onDeck(false);
+    }, [onDeck, onDeckFold]);
+    // Waiting on a question: the base holds its answer, as in Chat
+    const deckStatus = draftId ? statuses[draftId]?.status : undefined;
+    const { data: deckPrompt } = useSessionPrompt(draftId ?? "", {
+      enabled: tabletopBase && !!draftId && deckStatus === "waiting",
+    });
+    const deckAnswer =
+      tabletopBase && !!session && deckStatus === "waiting" && !!deckPrompt;
 
     // The key row follows what runs here: Claude Code or a shell (a tab
     // with no session, a shell session, the other agents' CLIs)
@@ -785,6 +808,11 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
           onClose={closeSearch}
         />
 
+        {/* On the fold deck the live state sits above the output */}
+        {deck && session && (
+          <DeckStateLine session={session} active={active} />
+        )}
+
         {/* Terminal container - NO padding! FitAddon reads offsetHeight which includes padding */}
         <ContextMenu>
           {/* On touch a long press opens select mode instead */}
@@ -978,15 +1006,27 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
                   }
             }
           >
-            {tabletopBase && draftId && (
-              <DeckActions
-                sessionId={draftId}
-                status={statuses[draftId]?.status}
-                view="terminal"
-                className="px-3 pt-2"
-              />
+            {deckAnswer ? (
+              <ul className="min-h-0 flex-1 overflow-y-auto px-3 pt-2 pb-3">
+                <InboxItem
+                  session={session}
+                  onOpen={scrollToBottom}
+                  questionsOnly
+                />
+              </ul>
+            ) : (
+              <>
+                {tabletopBase && draftId && (
+                  <DeckActions
+                    sessionId={draftId}
+                    status={deckStatus}
+                    view="terminal"
+                    className="px-3 pt-2"
+                  />
+                )}
+                {tabletopBase && <div className="min-h-0 flex-1" />}
+              </>
             )}
-            {tabletopBase && <div className="min-h-0 flex-1" />}
             {/* Ordered rather than moved, so the composer never remounts */}
             <div
               className="bg-background shrink-0"
@@ -1044,6 +1084,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
                 keepRows={laptopKeys}
                 context={keysContext}
                 keyboardUp={keyboardUp}
+                singleRow={tabletopBase}
               />
             </div>
           </div>
