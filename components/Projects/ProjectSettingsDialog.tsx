@@ -7,8 +7,14 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { useSnapshot } from "valtio";
 import { Button } from "@/components/ui/button";
+import { useProjectsQuery } from "@/data/projects";
 import type { ProjectWithRepositories } from "@/lib/projects";
+import {
+  closeProjectSettings,
+  projectSettingsStore,
+} from "@/stores/projectSettings";
 import {
   ProjectSettingsFolderPicker,
   ProjectSettingsForm,
@@ -75,5 +81,20 @@ export function ProjectSettingsDialog({
 
       <ProjectSettingsFolderPicker form={form} />
     </>
+  );
+}
+
+/** The dialog as stores/projectSettings.ts opens it */
+export function ProjectSettingsHost() {
+  const { projectId } = useSnapshot(projectSettingsStore);
+  const { data: projects } = useProjectsQuery();
+  const project = projects?.find((p) => p.id === projectId) ?? null;
+  return (
+    <ProjectSettingsDialog
+      project={project}
+      open={!!project}
+      onClose={closeProjectSettings}
+      onSave={closeProjectSettings}
+    />
   );
 }

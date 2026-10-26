@@ -5,6 +5,7 @@ import { SessionList } from "@/components/SessionList";
 import { ProjectList } from "@/components/Projects";
 import { MissionControl } from "@/components/MissionControl";
 import { NewSurfaceHost } from "@/components/New/NewSurface";
+import { ProjectSettingsHost } from "@/components/Projects/ProjectSettingsDialog";
 import { StartServerDialog } from "@/components/DevServers/StartServerDialog";
 import { PaneLayout } from "@/components/PaneLayout";
 import { QuickSwitcher } from "@/components/QuickSwitcher";
@@ -191,6 +192,7 @@ export function DesktopView(props: ViewProps) {
         onCreated={handleSessionCreated}
         onCreateProject={handleCreateProject}
       />
+      <ProjectSettingsHost />
       <QuickSwitcher
         sessions={sessions}
         open={showQuickSwitcher}

@@ -25,7 +25,8 @@ import { useGitStatus } from "@/data/git/queries";
 import { useListTitles } from "@/hooks/useSessionTitles";
 import { useViewport } from "@/hooks/useViewport";
 import { mobileNavActions } from "@/stores/mobileNav";
-import { backPage, openPage } from "@/stores/workspacePage";
+import { backPage } from "@/stores/workspacePage";
+import { openProjectSettings } from "@/stores/projectSettings";
 import { openNew } from "@/stores/newSurface";
 import type { ProjectWithDevServers } from "@/lib/projects";
 import {
@@ -137,7 +138,7 @@ function ProjectWorkspace({
     : () => openNew({ projectId: project.id, runAs: "background" });
   const settings = uncategorized
     ? undefined
-    : () => openPage({ kind: "projectSettings", projectId: project.id });
+    : () => openProjectSettings(project.id);
   const review = latest
     ? () => {
         onOpenSession(latest);

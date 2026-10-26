@@ -29,6 +29,7 @@ import type { Session } from "@/lib/db";
 import type { ProjectWithDevServers } from "@/lib/projects";
 import { cn } from "@/lib/utils";
 import { openNew } from "@/stores/newSurface";
+import { openProjectSettings } from "@/stores/projectSettings";
 import {
   closePage,
   openPage,
@@ -127,9 +128,7 @@ export function ProjectList({
         ? () => openNew({ projectId: project.id, runAs: "background" })
         : undefined,
       onOpenTerminal: () => onOpenTerminal(project.id),
-      onEdit: own
-        ? () => openPage({ kind: "projectSettings", projectId: project.id })
-        : undefined,
+      onEdit: own ? () => openProjectSettings(project.id) : undefined,
       onStartDevServer: own ? () => onStartDevServer(project.id) : undefined,
       onDelete: own
         ? () => {
