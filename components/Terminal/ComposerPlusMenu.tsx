@@ -22,7 +22,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { haptic } from "@/lib/haptics";
-import { uploadFileToTemp } from "@/lib/file-upload";
+import { uploadFilesToTemp } from "@/lib/file-upload";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { SnippetsModal } from "./TerminalToolbar";
 
@@ -137,13 +137,13 @@ export function ComposerPlusMenu({
     all[next]?.focus();
   };
 
-  const pickFile = useCallback(async (file: File) => {
+  // Several files at once: uploaded together, their paths in one go
+  const pickFiles = useCallback(async (files: File[]) => {
+    if (!files.length) return;
     setUploading(true);
     try {
-      const path = await uploadFileToTemp(file);
-      if (path) onInsertRef.current(path);
-    } catch (err) {
-      console.error("Failed to upload file:", err);
+      const paths = await uploadFilesToTemp(files);
+      if (paths.length) onInsertRef.current(paths.join(" "));
     } finally {
       setUploading(false);
     }
@@ -257,11 +257,12 @@ export function ComposerPlusMenu({
       <input
         ref={fileRef}
         type="file"
+        multiple
         className="hidden"
         onChange={(e) => {
-          const file = e.target.files?.[0];
+          const files = Array.from(e.target.files ?? []);
           e.target.value = "";
-          if (file) pickFile(file);
+          pickFiles(files);
         }}
       />
       <SnippetsModal

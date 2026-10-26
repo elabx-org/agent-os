@@ -1,9 +1,10 @@
 /**
  * The composer's text model. The synced draft always holds the full text that
- * will be sent; the box shows it with long pastes and uploaded images folded
- * into "[Pasted text #n +N lines]" and "[Image #n]" pills, as Claude Code's
- * own input does. Folding is display only: expand() turns a pill back into
- * its text, so what's sent never changes.
+ * will be sent; the box shows it with long pastes folded into
+ * "[Pasted text #n +N lines]" pills, as Claude Code's own input does, and
+ * attached images as a pill with a thumbnail, a short name and the size.
+ * Folding is display only: expand() turns a pill back into its text, so
+ * what's sent never changes.
  */
 
 export interface Paste {
@@ -30,17 +31,61 @@ export const lineCount = (text: string) => text.split("\n").length;
 export const pasteToken = (n: number, text: string) =>
   `[Pasted text #${n} +${lineCount(text)} lines]`;
 
-export const imageToken = (n: number) => `[Image #${n}]`;
-
-// Uploads from the photo picker, the + menu and pasted images all land here
-// (app/api/files/upload-temp), so any device folds them the same way
+// Uploads from the photo picker, the + menu and pasted images land in
+// agent-os-screenshots (app/api/files/upload-temp); the picker's own files
+// anywhere. Any absolute path to a picture folds, so every device does it
+// the same way
 const IMAGE_PATH =
-  /(?<=^|\s)\/\S*\/agent-os-screenshots\/\S+\.(?:png|jpe?g|gif|webp|heic|heif)(?=\s|$)/gi;
+  /(?<=^|\s)(?:~|\/)\S*\.(?:png|jpe?g|gif|webp|heic|heif|bmp)(?=\s|$)/gi;
+
+/** The image paths in a draft, once each, in order */
+export function imagePaths(draft: string): string[] {
+  return [...new Set([...draft.matchAll(IMAGE_PATH)].map((m) => m[0]))];
+}
+
+/** "IMG_7654" from ".../1730000000000-IMG_7654.jpeg" */
+export function imageName(path: string): string {
+  const base = path.slice(path.lastIndexOf("/") + 1);
+  const name = base
+    .replace(/^\d{10,}-/, "")
+    .replace(/\.[^.]+$/, "")
+    .replace(/\s+/g, "_")
+    // A hyphen could break the pill over two lines
+    .replace(/-/g, "\u2011");
+  return name.length > 18 ? `${name.slice(0, 17)}…` : name;
+}
+
+export function formatSize(bytes: number): string {
+  if (bytes >= 900 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${bytes} B`;
+}
+
+/**
+ * Room for the thumbnail: figure spaces, which are about a digit wide and
+ * never break, so the pill stays on one line with its picture
+ */
+export const THUMB_ROOM = "\u2007\u2007\u2007\u00a0";
+const NBSP = "\u00a0";
+
+/**
+ * An image pill's shown text: the thumbnail's room, "IMG_7654 · 1.2 MB" and
+ * an ×, all unbreakable. Its last character is the ×.
+ */
+export const imageToken = (name: string, size?: number) =>
+  THUMB_ROOM +
+  name +
+  (size === undefined
+    ? ""
+    : `${NBSP}·${NBSP}${formatSize(size).replace(" ", NBSP)}`) +
+  `${NBSP}${NBSP}×`;
 
 /** The draft as shown, with its pills and where they sit */
 export function collapse(
   draft: string,
-  pastes: Paste[]
+  pastes: Paste[],
+  /** An image's size in bytes, once known */
+  sizes?: (path: string) => number | undefined
 ): { display: string; chips: Chip[] } {
   const found: Omit<Chip, "start" | "end">[] = [];
   const at: { from: number; to: number }[] = [];
@@ -61,6 +106,7 @@ export function collapse(
     });
   }
   const images: string[] = [];
+  const tokens = new Map<string, string>();
   for (const m of draft.matchAll(IMAGE_PATH)) {
     const from = m.index ?? 0;
     const to = from + m[0].length;
@@ -68,7 +114,13 @@ export function collapse(
     if (!images.includes(m[0])) images.push(m[0]);
     at.push({ from, to });
     const n = images.indexOf(m[0]) + 1;
-    found.push({ kind: "image", n, text: m[0], token: imageToken(n) });
+    let token = imageToken(imageName(m[0]), sizes?.(m[0]));
+    // Two pictures named alike still need pills of their own
+    const owner = tokens.get(token);
+    if (owner !== undefined && owner !== m[0])
+      token = imageToken(`${imageName(m[0])}${NBSP}#${n}`, sizes?.(m[0]));
+    tokens.set(token, m[0]);
+    found.push({ kind: "image", n, text: m[0], token });
   }
 
   const order = at.map((r, i) => ({ ...r, chip: found[i] }));

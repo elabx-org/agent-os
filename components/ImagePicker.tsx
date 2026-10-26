@@ -15,7 +15,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { FileNode } from "@/lib/file-utils";
-import { uploadFileToTemp } from "@/lib/file-upload";
+import { uploadFilesToTemp } from "@/lib/file-upload";
 import { useFileDrop } from "@/hooks/useFileDrop";
 
 const IMAGE_EXTENSIONS = [
@@ -31,6 +31,7 @@ const IMAGE_EXTENSIONS = [
 
 interface ImagePickerProps {
   initialPath?: string;
+  /** The picked image's path; several uploaded at once come space-separated */
   onSelect: (path: string) => void;
   onClose: () => void;
 }
@@ -44,25 +45,25 @@ export function ImagePicker({
   const [files, setFiles] = useState<FileNode[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [uploading, setUploading] = useState(false);
+  // How many images are on their way up
+  const [uploading, setUploading] = useState(0);
   const dropZoneRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Handle dropped/pasted image file
-  const handleImageFile = useCallback(
-    async (file: File) => {
-      if (!file.type.startsWith("image/")) return;
+  // Picked, dropped or pasted images: uploaded together, then handed over
+  // in one go so each lands as its own pill. One that fails is reported and
+  // the others still go
+  const handleImageFiles = useCallback(
+    async (files: File[]) => {
+      const images = files.filter((f) => f.type.startsWith("image/"));
+      if (!images.length) return;
 
-      setUploading(true);
+      setUploading(images.length);
       try {
-        const path = await uploadFileToTemp(file);
-        if (path) {
-          onSelect(path);
-        }
-      } catch (err) {
-        console.error("Failed to upload image:", err);
+        const paths = await uploadFilesToTemp(images);
+        if (paths.length) onSelect(paths.join(" "));
       } finally {
-        setUploading(false);
+        setUploading(0);
       }
     },
     [onSelect]
@@ -71,12 +72,8 @@ export function ImagePicker({
   // Drag and drop using shared hook
   const { isDragging, dragHandlers } = useFileDrop(
     dropZoneRef,
-    (file) => {
-      if (file.type.startsWith("image/")) {
-        handleImageFile(file);
-      }
-    },
-    { disabled: uploading }
+    (_file, files) => handleImageFiles(files),
+    { disabled: uploading > 0 }
   );
 
   // Clipboard paste handler
@@ -85,21 +82,19 @@ export function ImagePicker({
       const items = e.clipboardData?.items;
       if (!items) return;
 
-      for (const item of items) {
-        if (item.type.startsWith("image/")) {
-          const file = item.getAsFile();
-          if (file) {
-            e.preventDefault();
-            handleImageFile(file);
-            break;
-          }
-        }
+      const files = Array.from(items)
+        .filter((item) => item.type.startsWith("image/"))
+        .map((item) => item.getAsFile())
+        .filter((f): f is File => f !== null);
+      if (files.length) {
+        e.preventDefault();
+        handleImageFiles(files);
       }
     };
 
     document.addEventListener("paste", handlePaste);
     return () => document.removeEventListener("paste", handlePaste);
-  }, [handleImageFile]);
+  }, [handleImageFiles]);
 
   // Load directory contents
   const loadDirectory = useCallback(async (path: string) => {
@@ -234,11 +229,12 @@ export function ImagePicker({
         ref={fileInputRef}
         type="file"
         accept="image/*"
+        multiple
         className="hidden"
         onChange={(e) => {
-          const file = e.target.files?.[0];
-          if (file) handleImageFile(file);
+          const files = Array.from(e.target.files ?? []);
           e.target.value = "";
+          handleImageFiles(files);
         }}
       />
 
@@ -249,19 +245,21 @@ export function ImagePicker({
         className={cn(
           "border-border mx-3 mt-3 flex flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed p-4 transition-colors",
           isDragging && "border-primary bg-primary/10",
-          uploading && "opacity-50"
+          uploading > 0 && "opacity-50"
         )}
       >
-        {uploading ? (
-          <div className="flex items-center gap-2">
+        {uploading > 0 ? (
+          <div role="status" className="flex items-center gap-2">
             <Loader2 className="h-5 w-5 animate-spin" />
-            <span className="text-sm">Uploading...</span>
+            <span className="text-sm">
+              {uploading > 1 ? `Uploading ${uploading} images…` : "Uploading…"}
+            </span>
           </div>
         ) : isDragging ? (
           <div className="flex items-center gap-2">
             <Upload className="text-primary h-5 w-5" />
             <span className="text-primary text-sm font-medium">
-              Drop image here
+              Drop images here
             </span>
           </div>
         ) : (
@@ -270,7 +268,7 @@ export function ImagePicker({
               variant="outline"
               size="sm"
               onClick={() => fileInputRef.current?.click()}
-              disabled={uploading}
+              disabled={uploading > 0}
             >
               <Upload className="mr-2 h-4 w-4" />
               Upload from device
