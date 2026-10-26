@@ -178,6 +178,8 @@ export const Pane = memo(function Pane({
     (viewMode === "chat" || viewMode === "terminal") &&
     !focusOn &&
     !railShown;
+  // The strip or the rail (beside the focused pane) lists its agents already
+  const agentsShown = showStrip || (railShown && isFocused);
 
   // Reset view mode and file editor when session changes
   useEffect(() => {
@@ -491,7 +493,7 @@ export const Pane = memo(function Pane({
             <ChatView
               session={session}
               active
-              hideAgentsBar={showStrip}
+              hideAgentsBar={agentsShown}
               onOpenTerminal={() => setViewMode("terminal")}
             />
           )}
@@ -600,7 +602,7 @@ export const Pane = memo(function Pane({
                     <ChatView
                       session={session}
                       active
-                      hideAgentsBar={showStrip}
+                      hideAgentsBar={agentsShown}
                       onOpenTerminal={() => setViewMode("terminal")}
                     />
                   )}

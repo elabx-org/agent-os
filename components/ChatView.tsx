@@ -44,6 +44,7 @@ import {
   useSpreadFold,
   type SpreadFold,
 } from "@/components/views/SessionSpread";
+import { FOLD_CLEAR } from "@/hooks/useHinge";
 import { AgentRow, KindBadge, StateWord } from "@/components/rows/AgentRow";
 import { fromSubagentStatus } from "@/lib/agent-state";
 import { agentOpenStore, consumeSubagent } from "@/stores/agentOpen";
@@ -199,7 +200,7 @@ const PAGE_MIN = 280;
 interface BookPages {
   /** The left page's width, from the element's left edge */
   left: number;
-  /** Empty between the pages (none while the Duo lies flat) */
+  /** Empty between the pages (only the hinge's clearance while flat) */
   gutter: number;
 }
 
@@ -217,9 +218,13 @@ function useBookPages(
     }
     const measure = () => {
       const rect = el.getBoundingClientRect();
-      const left = Math.round(fold.start - rect.left);
-      const gutter = Math.round(fold.end - fold.start);
-      const fits = left >= PAGE_MIN && rect.right - fold.end >= PAGE_MIN;
+      // Flat there's no gutter, but controls on either page (a tool row,
+      // the composer) still keep clear of the hinge
+      const clear = fold.end > fold.start ? 0 : FOLD_CLEAR;
+      const left = Math.round(fold.start - clear - rect.left);
+      const gutter = Math.round(fold.end - fold.start + clear * 2);
+      const fits =
+        left >= PAGE_MIN && rect.right - fold.end - clear >= PAGE_MIN;
       setPages((prev) =>
         !fits
           ? null

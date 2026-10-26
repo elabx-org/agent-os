@@ -103,7 +103,7 @@ export function Composer({
         data-composer=""
         enterKeyHint="send"
         rows={1}
-        placeholder="Message"
+        placeholder="Type into the terminal"
         autoCapitalize="sentences"
         className={cn(
           "bg-secondary text-foreground placeholder:text-muted-foreground min-h-[44px] flex-1 resize-none rounded-2xl px-3.5 py-2.5 text-base leading-6 focus:outline-none",
