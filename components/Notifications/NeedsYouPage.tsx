@@ -545,7 +545,13 @@ function PickedDetail({
   const { session, agent } = picked;
   if (session)
     return (
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+      <div
+        className={cn(
+          "min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]",
+          // Clear of the dialog's close button
+          dialog && "pt-12"
+        )}
+      >
         <InboxItem
           as="div"
           session={session}

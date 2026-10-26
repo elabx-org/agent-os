@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ChevronLeft, Plus, Settings } from "lucide-react";
 import { FoldSplit } from "@/components/FoldSplit";
 import { AppLogo } from "@/components/SessionList/SessionListHeader";
@@ -71,6 +71,7 @@ export function MissionControl({
 }: MissionControlProps) {
   const native = useIsNative();
   const [tab, setTab] = useState<Tab>("now");
+  const projectsRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     try {
@@ -146,7 +147,12 @@ export function MissionControl({
       </div>
 
       {tab === "projects" ? (
-        <div className="min-h-0 flex-1 overflow-hidden">{projectsView}</div>
+        // On a table the list stays above the fold, like Now's
+        <div ref={projectsRef} className="min-h-0 flex-1 overflow-hidden">
+          <FoldSplit el={projectsRef} top={projectsView} base={<TableBase />}>
+            {projectsView}
+          </FoldSplit>
+        </div>
       ) : (
         <Now
           sessions={sessions}
@@ -358,31 +364,36 @@ function Now({
         el={ref}
         className="flex-1"
         top={list(true)}
-        base={
-          // Pushed down to the thumbs, but scrolls from its top if it's taller
-          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-3 pt-2 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
-            <div className="mt-auto flex flex-col gap-3">
-              {firstCard("full") || (
-                <>
-                  <div className="@container/top flex justify-center">
-                    <UsagePill />
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => openNew()}
-                    className="bg-primary text-primary-foreground flex h-12 w-full shrink-0 items-center justify-center gap-2 rounded-xl text-sm font-semibold active:opacity-80"
-                  >
-                    <Plus className="h-4 w-4" />
-                    New session
-                  </button>
-                </>
-              )}
-            </div>
-          </div>
-        }
+        base={<TableBase>{firstCard("full")}</TableBase>}
       >
         {list(false)}
       </FoldSplit>
+    </div>
+  );
+}
+
+/** The home's base on a table: what it's given, else New and the usage */
+function TableBase({ children }: { children?: ReactNode }) {
+  return (
+    // Pushed down to the thumbs, but scrolls from its top if it's taller
+    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-3 pt-2 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
+      <div className="mt-auto flex flex-col gap-3">
+        {children || (
+          <>
+            <div className="@container/top flex justify-center">
+              <UsagePill />
+            </div>
+            <button
+              type="button"
+              onClick={() => openNew()}
+              className="bg-primary text-primary-foreground flex h-12 w-full shrink-0 items-center justify-center gap-2 rounded-xl text-sm font-semibold active:opacity-80"
+            >
+              <Plus className="h-4 w-4" />
+              New session
+            </button>
+          </>
+        )}
+      </div>
     </div>
   );
 }
