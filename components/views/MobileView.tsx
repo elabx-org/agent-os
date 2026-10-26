@@ -4,6 +4,7 @@ import { useEffect, useMemo } from "react";
 import { useSnapshot } from "valtio";
 import { InboxDialog } from "@/components/Inbox";
 import { SessionList } from "@/components/SessionList";
+import { ProjectList } from "@/components/Projects";
 import { MissionControl } from "@/components/MissionControl";
 import { NewSurfaceHost } from "@/components/New/NewSurface";
 import { StartServerDialog } from "@/components/DevServers/StartServerDialog";
@@ -99,24 +100,36 @@ export function MobileView(props: ViewProps) {
     [projects]
   );
 
-  const sessionList = (
-    <SessionList
-      activeSessionId={focusedActiveTab?.sessionId || undefined}
+  // The Projects tab: a project opens its page over the home; the old tree
+  // stays one row away for managing sessions
+  const projectList = (
+    <ProjectList
+      sessions={sessions}
+      projects={projects}
       sessionStatuses={sessionStatuses}
-      onSelect={(id) => {
-        const session = sessions.find((s) => s.id === id);
-        if (session) attachToSession(session);
-        setSidebarOpen(false);
-      }}
-      onOpenInTab={(id) => {
-        const session = sessions.find((s) => s.id === id);
-        if (session) openSessionInNewTab(session);
-        setSidebarOpen(false);
-      }}
-      onNewSessionInProject={handleNewSessionInProject}
+      onNewSession={handleNewSessionInProject}
       onOpenTerminal={handleOpenTerminal}
       onStartDevServer={handleStartDevServer}
-      onCreateDevServer={handleCreateDevServer}
+      allSessions={
+        <SessionList
+          activeSessionId={focusedActiveTab?.sessionId || undefined}
+          sessionStatuses={sessionStatuses}
+          onSelect={(id) => {
+            const session = sessions.find((s) => s.id === id);
+            if (session) attachToSession(session);
+            setSidebarOpen(false);
+          }}
+          onOpenInTab={(id) => {
+            const session = sessions.find((s) => s.id === id);
+            if (session) openSessionInNewTab(session);
+            setSidebarOpen(false);
+          }}
+          onNewSessionInProject={handleNewSessionInProject}
+          onOpenTerminal={handleOpenTerminal}
+          onStartDevServer={handleStartDevServer}
+          onCreateDevServer={handleCreateDevServer}
+        />
+      }
     />
   );
 
@@ -155,7 +168,7 @@ export function MobileView(props: ViewProps) {
             }}
             // New and the way back are in the column, the bar or the
             // iOS app's own bar
-            projectsView={sessionList}
+            projectsView={projectList}
           />
         </div>
       )}
