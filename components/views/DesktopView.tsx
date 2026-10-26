@@ -1,7 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { cloneElement, useEffect, useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { SessionList } from "@/components/SessionList";
 import { MissionControl } from "@/components/MissionControl";
 import { NewSessionDialog } from "@/components/NewSessionDialog";
@@ -154,13 +154,7 @@ export function DesktopView({
             activeSessionId={focusedActiveTab?.sessionId || undefined}
             onOpenSession={attachToSession}
             onNewSession={() => setShowNewSessionDialog(true)}
-            projectsView={cloneElement(sessionList, {
-              belowHeader: (
-                <div className="px-3 pb-2">
-                  <UsageMonitor />
-                </div>
-              ),
-            })}
+            projectsView={sessionList}
           />
         </div>
       </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { cloneElement, useEffect, useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { useSnapshot } from "valtio";
 import { InboxDialog } from "@/components/Inbox";
 import { SessionList } from "@/components/SessionList";
@@ -9,7 +9,6 @@ import { NewSessionDialog } from "@/components/NewSessionDialog";
 import { StartServerDialog } from "@/components/DevServers/StartServerDialog";
 import { PaneLayout } from "@/components/PaneLayout";
 import { QuickSwitcher } from "@/components/QuickSwitcher";
-import { UsageMonitor } from "@/components/UsageMonitor";
 import type { ViewProps } from "./types";
 import { fileOpenActions } from "@/stores/fileOpen";
 import { mobileNavActions, mobileNavStore } from "@/stores/mobileNav";
@@ -133,13 +132,7 @@ export function MobileView({
               setSidebarOpen(false);
             }}
             onNewSession={() => setShowNewSessionDialog(true)}
-            projectsView={cloneElement(sessionList, {
-              belowHeader: (
-                <div className="px-3 pb-2">
-                  <UsageMonitor />
-                </div>
-              ),
-            })}
+            projectsView={sessionList}
           />
         </div>
       )}

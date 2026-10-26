@@ -274,6 +274,8 @@ export function BackgroundAgentGroup({
           summary={
             <>
               {summary(folded)}
+              {/* As every row's subtitle: state · project · detail */}
+              {projectName && ` · ${projectName}`}
               {Number.isFinite(oldest) && ` · oldest ${age(oldest)}`}
             </>
           }

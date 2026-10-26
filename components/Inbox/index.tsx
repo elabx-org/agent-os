@@ -62,6 +62,12 @@ function shortLabel(option: PromptOption): string {
   return option.label;
 }
 
+// "Bash command" reads as what Claude wants: "wants to run Bash"
+function askLabel(title: string): string {
+  const command = /^(\w+) command$/i.exec(title);
+  return command ? `wants to run ${command[1]}` : title;
+}
+
 export function InboxItem({
   session,
   projectName,
@@ -130,7 +136,7 @@ export function InboxItem({
               {title ?? session.name}
             </span>
             <span className="text-muted-foreground block truncate text-[12.5px]">
-              {[projectName, prompt?.title ?? "Your turn"]
+              {[projectName, prompt ? askLabel(prompt.title) : "Your turn"]
                 .filter(Boolean)
                 .join(" · ")}
             </span>

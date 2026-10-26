@@ -227,6 +227,12 @@ export const Pane = memo(function Pane({
 
   useEffect(() => {
     if (!navRequest || !isFocused) return;
+    // Asked for a session that's still attaching: wait until it's this one's
+    if (navRequest.sessionId && navRequest.sessionId !== session?.id) {
+      if (Date.now() - navRequest.timestamp > 10_000)
+        mobileNavActions.clearRequest();
+      return;
+    }
     if (navRequest.mode === "git" && !isMobile && !isNative()) {
       // The wide layout shows changes in the git drawer beside the terminal;
       // the iOS app shows them as a view of the session, as on the phone
@@ -235,7 +241,13 @@ export const Pane = memo(function Pane({
       setViewMode(navRequest.mode);
     }
     mobileNavActions.clearRequest();
-  }, [navRequest, isFocused, isMobile, session?.working_directory]);
+  }, [
+    navRequest,
+    isFocused,
+    isMobile,
+    session?.id,
+    session?.working_directory,
+  ]);
 
   const handleFocus = useCallback(() => {
     focusPane(paneId);

@@ -238,7 +238,7 @@ function Now({
                 onClick={() => {
                   // The parent's chat opens the subagent's panel
                   onOpenSession(agent.parent);
-                  mobileNavActions.requestViewMode("chat");
+                  mobileNavActions.requestViewMode("chat", agent.sessionId);
                   openSubagent(agent.sessionId, agent.agentId);
                 }}
               />

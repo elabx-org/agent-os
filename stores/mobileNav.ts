@@ -10,8 +10,11 @@ export type PaneViewMode = "terminal" | "chat" | "files" | "git" | "workers";
 export const mobileNavStore = proxy<{
   /** View mode of the focused pane, mirrored for the rail's selected state */
   viewMode: PaneViewMode;
-  /** Pending view change from the rail, consumed by the focused pane */
-  request: { mode: PaneViewMode; timestamp: number } | null;
+  /**
+   * Pending view change from the rail, consumed by the focused pane. With a
+   * sessionId it waits until the pane has attached that session.
+   */
+  request: { mode: PaneViewMode; timestamp: number; sessionId?: string } | null;
   statuses: Record<string, SessionStatus>;
   /** The rail is showing, so the tab bar drops its own view switcher */
   railActive: boolean;
@@ -31,8 +34,8 @@ export const mobileNavStore = proxy<{
 });
 
 export const mobileNavActions = {
-  requestViewMode: (mode: PaneViewMode) => {
-    mobileNavStore.request = { mode, timestamp: Date.now() };
+  requestViewMode: (mode: PaneViewMode, sessionId?: string) => {
+    mobileNavStore.request = { mode, timestamp: Date.now(), sessionId };
   },
   clearRequest: () => {
     mobileNavStore.request = null;
