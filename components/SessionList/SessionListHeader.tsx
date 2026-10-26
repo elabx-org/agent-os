@@ -1,5 +1,3 @@
-import { createContext, useContext } from "react";
-import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
@@ -12,20 +10,12 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  Plus,
-  FolderPlus,
-  FolderOpen,
-  MoreHorizontal,
-  Trash2,
-  SlidersHorizontal,
-} from "lucide-react";
+import { Plus, FolderPlus, FolderOpen } from "lucide-react";
 
 interface SessionListHeaderProps {
+  projectCount: number;
   onNewProject: () => void;
   onOpenProject: () => void;
-  onKillAll: () => void;
-  onClaudeConfig: () => void;
 }
 
 /** The app's logo: a robot head */
@@ -52,28 +42,25 @@ export function AppLogo({ className }: { className?: string }) {
   );
 }
 
-/** Where the home wants the list's + and ⋯: beside its Now | Projects tabs */
-export const ListActionsSlot = createContext<HTMLElement | null>(null);
-
+/** "PROJECTS · 11" over the list, with + for a new or existing project */
 export function SessionListHeader({
+  projectCount,
   onNewProject,
   onOpenProject,
-  onKillAll,
-  onClaudeConfig,
 }: SessionListHeaderProps) {
-  const slot = useContext(ListActionsSlot);
-  const actions = (
-    <div className="flex gap-1">
+  return (
+    <div className="text-muted-foreground flex items-center gap-2 pt-1 pr-2 pl-4 text-[11.5px] font-semibold tracking-[.07em] uppercase">
+      <span className="min-w-0 flex-1 truncate">Projects · {projectCount}</span>
       <DropdownMenu>
         <Tooltip>
           <TooltipTrigger asChild>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon-sm">
+              <Button variant="ghost" size="icon-sm" aria-label="Add project">
                 <Plus className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
           </TooltipTrigger>
-          <TooltipContent>New project</TooltipContent>
+          <TooltipContent>Add project</TooltipContent>
         </Tooltip>
         <DropdownMenuContent align="end">
           <DropdownMenuItem onClick={onNewProject}>
@@ -86,33 +73,6 @@ export function SessionListHeader({
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-      <DropdownMenu>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon-sm">
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-          </TooltipTrigger>
-          <TooltipContent>More options</TooltipContent>
-        </Tooltip>
-        <DropdownMenuContent align="end">
-          <DropdownMenuItem onClick={onClaudeConfig}>
-            <SlidersHorizontal className="mr-2 h-3 w-3" />
-            Claude Config
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={onKillAll}
-            className="text-red-500 focus:text-red-500"
-          >
-            <Trash2 className="mr-2 h-3 w-3" />
-            Kill all sessions
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
     </div>
   );
-  if (slot) return createPortal(actions, slot);
-  return <div className="flex justify-end px-3 py-1">{actions}</div>;
 }

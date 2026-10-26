@@ -2,10 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { ChevronLeft, Plus, Settings } from "lucide-react";
-import {
-  AppLogo,
-  ListActionsSlot,
-} from "@/components/SessionList/SessionListHeader";
+import { AppLogo } from "@/components/SessionList/SessionListHeader";
 import { InboxItem } from "@/components/Inbox";
 import { UsageMonitor } from "@/components/UsageMonitor";
 import {
@@ -72,7 +69,6 @@ export function MissionControl({
 }: MissionControlProps) {
   const native = useIsNative();
   const [tab, setTab] = useState<Tab>("now");
-  const [actionsEl, setActionsEl] = useState<HTMLDivElement | null>(null);
 
   useEffect(() => {
     try {
@@ -122,10 +118,10 @@ export function MissionControl({
         </button>
       </div>
 
-      <div className="flex items-center gap-1 px-4 pt-1 pb-2">
+      <div className="px-4 pt-1 pb-2">
         <div
           role="tablist"
-          className="bg-secondary flex flex-1 rounded-lg p-0.5 text-sm font-medium"
+          className="bg-secondary flex rounded-lg p-0.5 text-sm font-medium"
         >
           {(["now", "projects"] as const).map((id) => (
             <button
@@ -145,16 +141,10 @@ export function MissionControl({
             </button>
           ))}
         </div>
-        {/* The Projects list puts its + and ⋯ here (ListActionsSlot) */}
-        {tab === "projects" && <div ref={setActionsEl} className="-mr-2" />}
       </div>
 
       {tab === "projects" ? (
-        <div className="min-h-0 flex-1 overflow-hidden">
-          <ListActionsSlot.Provider value={actionsEl}>
-            {projectsView}
-          </ListActionsSlot.Provider>
-        </div>
+        <div className="min-h-0 flex-1 overflow-hidden">{projectsView}</div>
       ) : (
         <Now
           sessions={sessions}

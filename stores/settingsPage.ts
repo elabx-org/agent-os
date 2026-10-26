@@ -5,6 +5,8 @@ export type SettingsSection =
   | "display"
   | "duo"
   | "usage"
+  | "claude"
+  | "sessions"
   | "server";
 
 /** Settings as its own layer over the app: the gear, ⌘, or the iOS app's nav */
