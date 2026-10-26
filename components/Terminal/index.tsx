@@ -894,6 +894,8 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
                   onChange={setComposerText}
                   onSend={sendFromComposer}
                   onTypeInTerminal={typeInTerminal}
+                  onPhoto={() => setShowImagePicker(true)}
+                  onSelectText={() => setSelectMode(true)}
                   extra={
                     !deck && (
                       <KeybarToggleButton

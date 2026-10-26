@@ -21,6 +21,7 @@ import {
   MousePointer2,
   Copy,
   Settings,
+  Upload,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
@@ -115,14 +116,17 @@ function saveSnippets(snippets: Snippet[]) {
 }
 
 // Snippets modal for saving/inserting common commands
-function SnippetsModal({
+export function SnippetsModal({
   open,
   onClose,
   onInsert,
+  onPickFile,
 }: {
   open: boolean;
   onClose: () => void;
   onInsert: (content: string) => void;
+  /** Adds an "Upload a file" row (the composer's "File or snippet") */
+  onPickFile?: () => void;
 }) {
   const [snippets, setSnippets] = useState<Snippet[]>(() =>
     getStoredSnippets()
@@ -216,6 +220,15 @@ function SnippetsModal({
 
         {/* Snippets list */}
         <div className="flex-1 overflow-y-auto">
+          {onPickFile && (
+            <button
+              onClick={onPickFile}
+              className="border-border active:bg-muted flex w-full items-center gap-3 border-b px-4 py-3 text-left"
+            >
+              <Upload className="text-muted-foreground h-4 w-4" />
+              <span className="text-sm font-medium">Upload a file</span>
+            </button>
+          )}
           {snippets.length === 0 ? (
             <div className="text-muted-foreground px-4 py-8 text-center text-sm">
               No snippets yet. Tap + to add one.
