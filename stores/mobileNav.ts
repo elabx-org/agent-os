@@ -25,6 +25,10 @@ export const mobileNavStore = proxy<{
   nativeKeyboard: boolean;
   /** Changed files in the focused session, for the iOS app's Changes badge */
   changes: number;
+  /** Waiting sessions (not workers) plus blocked background agents */
+  needsYou: number;
+  /** The live activity rail shows beside the pane, so the strip stays away */
+  railShown: boolean;
 }>({
   viewMode: "terminal",
   request: null,
@@ -34,6 +38,8 @@ export const mobileNavStore = proxy<{
   inboxOpen: false,
   nativeKeyboard: false,
   changes: 0,
+  needsYou: 0,
+  railShown: false,
 });
 
 export const mobileNavActions = {
