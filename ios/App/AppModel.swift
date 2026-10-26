@@ -107,6 +107,16 @@ final class AppModel {
         send(["type": "image"])
     }
 
+    /// The keyboard bar's Copy: the page selects text on the screen
+    func select() {
+        send(["type": "select"])
+    }
+
+    /// The keyboard bar's File: the page opens its snippets sheet
+    func snippets() {
+        send(["type": "snippets"])
+    }
+
     func keyboard(visible: Bool) {
         send(["type": "keyboard", "visible": visible])
     }
@@ -231,7 +241,9 @@ final class AppModel {
         if message["type"] as? String == "keys" {
             // The terminal or chat box took focus: the bar shows that context's keys
             if let context = message["context"] as? String {
-                (webView as? AgentWebView)?.keyboardBar.context = context
+                // The user's key order for it, when the page sends one
+                let ids = (message["ids"] as? [Any])?.compactMap { $0 as? String }
+                (webView as? AgentWebView)?.keyboardBar.setKeys(context: context, ids: ids)
             }
             return
         }

@@ -6,8 +6,9 @@ import type { TerminalHandle } from "@/components/Terminal";
 
 /**
  * Files shared to the iOS app ("Open in Agent-OS" from the share sheet or
- * Files) go to the focused session: uploaded like a picked image, with the
- * path typed into its prompt.
+ * Files) go to the focused session: uploaded like a picked image, its path
+ * in the composer (a pill for a picture) or typed into its prompt. Several
+ * shared in a row each get their own.
  */
 export function useSharedFiles(
   terminal: TerminalHandle | null,
@@ -33,7 +34,7 @@ export function useSharedFiles(
         toast.error(`Couldn't attach ${shared.name}`);
         return;
       }
-      handle.sendInput(`${path} `);
+      handle.attachPath(path);
       toast.success(`Attached ${shared.name}`);
     };
     // Shared before the page was ready

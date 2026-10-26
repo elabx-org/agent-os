@@ -22,7 +22,9 @@ import {
   Copy,
   Settings,
   Upload,
+  Ellipsis,
 } from "lucide-react";
+import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { useLongPress } from "@/hooks/useLongPress";
@@ -32,8 +34,13 @@ import {
   SPECIAL_KEYS,
   contextRow,
   getButtonDef,
+  keysSettingsStore,
+  pinnedRow,
+  rowIdFor,
+  splitOverflow,
   useToolbarPreferences,
 } from "./toolbar-config";
+import { FOLD_CLEAR } from "@/hooks/useHinge";
 import { ToolbarSettings } from "./ToolbarSettings";
 import { KeyLongPressMenu, type MenuKey } from "./KeyLongPressMenu";
 
@@ -54,6 +61,14 @@ interface TerminalToolbarProps {
   keyboardUp?: boolean;
   /** The tabletop base: the one context row, whatever the saved layout */
   singleRow?: boolean;
+  /** Across both pages of the open Duo (Two rows): the context row's keys
+      either side of the gutter, every one shown */
+  pages?: { left: number; gutter: number } | null;
+  /** One row at full size with ⋯ for the rest, fixed rows too (a page of
+      the open Duo, Split or Mirrored) */
+  overflow?: boolean;
+  /** Counts the app's File key presses; each opens the snippets sheet */
+  snippetsRequest?: number;
 }
 
 interface Snippet {
@@ -660,9 +675,15 @@ export function TerminalToolbar({
   context = "claude",
   keyboardUp = false,
   singleRow = false,
+  pages = null,
+  overflow = false,
+  snippetsRequest = 0,
 }: TerminalToolbarProps) {
   const [showPasteModal, setShowPasteModal] = useState(false);
   const [showSnippetsModal, setShowSnippetsModal] = useState(false);
+  useEffect(() => {
+    if (snippetsRequest) setShowSnippetsModal(true);
+  }, [snippetsRequest]);
   const [showSettings, setShowSettings] = useState(false);
   const [copyFeedback, setCopyFeedback] = useState(false);
   const { preferences, updatePreferences: persistPreferences } =
@@ -722,7 +743,7 @@ export function TerminalToolbar({
   // The context preset: one row chosen by what's running, never two
   const contextMode = preferences.mode === "context" || singleRow;
   const sourceRow1 = contextMode
-    ? contextRow(context, keyboardUp)
+    ? contextRow(context, keyboardUp, preferences)
     : preferences.row1;
   const sourceRow2 = contextMode ? NO_KEYS : preferences.row2;
 
@@ -767,6 +788,10 @@ export function TerminalToolbar({
   const [row1El, row1Ref] = useState<HTMLDivElement | null>(null);
   const [row2El, row2Ref] = useState<HTMLDivElement | null>(null);
   const rowWidth = useRowWidth(row1El);
+  // A page of the open Duo: Settings → Keys previews at this width
+  useEffect(() => {
+    if (overflow && rowWidth) keysSettingsStore.rowWidth = rowWidth;
+  }, [overflow, rowWidth]);
   const twoRows = twoRowLayout && resolvedRow2.length > 0 && !mergeRows;
   // What measuring found for these keys at this width: keys to move down
   // (dividers take room too) and which rows still scroll
@@ -776,6 +801,8 @@ export function TerminalToolbar({
     mergeRows,
     resolvedRow1.join(),
     resolvedRow2.join(),
+    pages?.left,
+    overflow,
   ].join("|");
   const [fitAt, setFitAt] = useState({
     key: "",
@@ -804,10 +831,63 @@ export function TerminalToolbar({
       row2Ids: [...resolvedRow1.slice(fits), ...resolvedRow2],
     };
   }, [mergeRows, twoRows, rowWidth, fit.trim, resolvedRow1, resolvedRow2]);
+
+  // The context row keeps its keys at full size: those past the row's width
+  // go into ⋯, in order, with a pinned ^C still last. Across both pages (Two
+  // rows) they split either side of the gutter instead, every one shown.
+  const pinCtrlC = preferences.pinCtrlC ?? true;
+  // Fixed rows on a page of the open Duo: one row too, never shrunk or
+  // scrolling (their keys in order, the second row's after the first's)
+  const fullRow = useMemo(
+    () =>
+      contextMode
+        ? resolvedRow1
+        : overflow && !twoRows
+          ? pinnedRow(row1Ids, pinCtrlC)
+          : null,
+    [contextMode, resolvedRow1, overflow, twoRows, row1Ids, pinCtrlC]
+  );
+  const contextKeys = useMemo(() => {
+    if (!fullRow || !rowWidth) return null;
+    const pinned = pinCtrlC && fullRow[fullRow.length - 1] === "ctrl-c";
+    const tail: ToolbarButtonId[] = pinned ? ["ctrl-c"] : [];
+    if (pages) {
+      const [fits] = splitOverflow(fullRow, pages.left, { pinCtrlC });
+      const left = fits.slice(0, fits.length - tail.length);
+      return {
+        head: left,
+        more: NO_KEYS,
+        tail: fullRow.slice(left.length),
+        gear: true,
+      };
+    }
+    const [shown, over] = splitOverflow(fullRow, rowWidth, { pinCtrlC });
+    let head = shown.slice(0, shown.length - tail.length);
+    let more = over;
+    // Measuring found the row still too long: one more key goes
+    if (fit.trim) {
+      const cut = Math.max(0, head.length - fit.trim);
+      more = [...head.slice(cut), ...more];
+      head = head.slice(0, cut);
+    }
+    // The quiet gear only when it fits too (held ^C and ⋯ offer it)
+    const gear =
+      !more.length &&
+      !splitOverflow(fullRow, rowWidth, { pinCtrlC, reserve: GEAR_PX })[1]
+        .length;
+    return { head, more, tail, gear };
+  }, [fullRow, rowWidth, pinCtrlC, pages, fit.trim]);
+
   useLayoutEffect(() => {
     if (!row1El || !rowWidth) return;
     const over = (el: HTMLDivElement | null) =>
       !!el && el.scrollWidth > el.clientWidth + 1;
+    if (contextKeys && !pages) {
+      if (!over(row1El) || fit.scrolls1) return;
+      if (contextKeys.head.length > 0) setFitAt({ ...fit, trim: fit.trim + 1 });
+      else setFitAt({ ...fit, scrolls1: true });
+      return;
+    }
     if (over(row1El) && !fit.scrolls1) {
       if (twoRows && row1Ids.length > 1)
         setFitAt({ ...fit, trim: fit.trim + 1 });
@@ -974,6 +1054,27 @@ export function TerminalToolbar({
     [renderButton, selectMode, onCopy, handleCopy, copyFeedback, contextMode]
   );
 
+  const gearButton = (
+    <button
+      type="button"
+      aria-label="Key settings"
+      title="Key settings"
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={(e) => {
+        e.stopPropagation();
+        setShowSettings(true);
+      }}
+      className={cn(
+        "active:bg-primary active:text-primary-foreground flex h-[40px] flex-shrink-0 items-center justify-center rounded-xl text-[13px] font-medium",
+        contextMode
+          ? "text-muted-foreground min-w-[32px] px-1.5"
+          : "bg-secondary text-secondary-foreground min-w-[40px] px-3"
+      )}
+    >
+      <Settings className="h-4 w-4" />
+    </button>
+  );
+
   if (!visible) return null;
 
   return (
@@ -993,6 +1094,7 @@ export function TerminalToolbar({
         onClose={() => setShowSettings(false)}
         preferences={preferences}
         onUpdate={updatePreferences}
+        row={rowIdFor(context, keyboardUp)}
       />
 
       {/* Row 1 — always visible */}
@@ -1000,33 +1102,54 @@ export function TerminalToolbar({
         ref={row1Ref}
         className={cn(
           "keybar-row bg-background/95 border-border scrollbar-none flex items-center gap-1 overflow-x-auto border-t px-2 py-1.5 backdrop-blur",
+          contextKeys && !pages && "keybar-full",
+          pages && contextKeys && "px-0",
           fit.scrolls1 && "keybar-scrolls"
         )}
         onTouchEnd={(e) => e.stopPropagation()}
       >
-        {renderRow(row1Ids)}
-
-        {/* Gear icon — always last, separated; a quiet one after ^C on the
-            context row (held ^C offers it too) */}
-        {!contextMode && <div className="bg-border mx-1 h-6 w-px" />}
-        <button
-          type="button"
-          aria-label="Key settings"
-          title="Key settings"
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={(e) => {
-            e.stopPropagation();
-            setShowSettings(true);
-          }}
-          className={cn(
-            "active:bg-primary active:text-primary-foreground flex h-[40px] flex-shrink-0 items-center justify-center rounded-xl text-[13px] font-medium",
-            contextMode
-              ? "text-muted-foreground min-w-[32px] px-1.5"
-              : "bg-secondary text-secondary-foreground min-w-[40px] px-3"
-          )}
-        >
-          <Settings className="h-4 w-4" />
-        </button>
+        {contextKeys && pages ? (
+          // Two rows: the keys that fit the left page there, the rest on
+          // the right one, nothing in the gutter
+          <>
+            <div
+              className="keybar-group flex shrink-0 items-center gap-1 pl-2"
+              style={{ width: pages.left }}
+            >
+              {renderRow(contextKeys.head)}
+            </div>
+            <div
+              aria-hidden="true"
+              className="shrink-0"
+              style={{ width: pages.gutter }}
+            />
+            <div className="keybar-group flex min-w-0 flex-1 items-center gap-1 pr-2">
+              {renderRow(contextKeys.tail)}
+              {gearButton}
+            </div>
+          </>
+        ) : contextKeys ? (
+          <>
+            {renderRow(contextKeys.head)}
+            {contextKeys.more.length > 0 && (
+              <MoreKey
+                keys={contextKeys.more}
+                renderKey={renderButton}
+                onSettings={() => setShowSettings(true)}
+              />
+            )}
+            {renderRow(contextKeys.tail)}
+            {contextKeys.gear && gearButton}
+          </>
+        ) : (
+          <>
+            {renderRow(row1Ids)}
+            {/* Gear icon — always last, separated; a quiet one after ^C on
+                the context row (held ^C offers it too) */}
+            {!contextMode && <div className="bg-border mx-1 h-6 w-px" />}
+            {gearButton}
+          </>
+        )}
       </div>
 
       {/* Row 2 — only when double layout with buttons */}
@@ -1050,6 +1173,156 @@ const KEY_CLASS =
   "flex h-[40px] min-w-[40px] flex-shrink-0 items-center justify-center rounded-xl px-3 text-[13px] font-medium";
 
 const NO_KEYS: ToolbarButtonId[] = [];
+
+// The quiet gear on the context row and the gap before it
+const GEAR_PX = 36;
+
+// Keys tapped again and again: ⋯ stays open for them
+const REPEAT_KEYS = new Set<string>([
+  "arrow-left",
+  "arrow-right",
+  "arrow-up",
+  "arrow-down",
+  "backspace",
+  "cursor",
+]);
+
+/** Where the page holding `x` starts: right of the open Duo's fold, or 0 */
+function pageStart(x: number): number {
+  const root = document.documentElement;
+  const style = getComputedStyle(root);
+  const fold =
+    root.dataset.hinge !== undefined
+      ? parseFloat(style.getPropertyValue("--hinge-x")) + FOLD_CLEAR
+      : root.dataset.fold === "vertical"
+        ? parseFloat(style.getPropertyValue("--fold-end"))
+        : NaN;
+  return Number.isFinite(fold) && x >= fold ? fold : 0;
+}
+
+/**
+ * ⋯: the context row's keys that don't fit, in order, in a panel above it
+ * that opens leftward from the key, so it stays on the key's own page.
+ * A key taps through and closes it (the arrows and the like keep it open
+ * for the next tap); the key settings come last.
+ */
+function MoreKey({
+  keys,
+  renderKey,
+  onSettings,
+}: {
+  keys: ToolbarButtonId[];
+  renderKey: (id: ToolbarButtonId) => React.ReactNode;
+  onSettings: () => void;
+}) {
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [anchor, setAnchor] = useState<DOMRect | null>(null);
+  const close = useCallback(() => setAnchor(null), []);
+
+  // A touch outside, Esc, a scroll or a resize puts it away
+  useEffect(() => {
+    if (!anchor) return;
+    const onDown = (e: PointerEvent) => {
+      const target = e.target as Node;
+      if (
+        !panelRef.current?.contains(target) &&
+        !buttonRef.current?.contains(target)
+      )
+        close();
+    };
+    // Before xterm or the composer sees it (focus stays there), so Esc
+    // closes the panel without also interrupting Claude
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      e.stopPropagation();
+      close();
+    };
+    document.addEventListener("pointerdown", onDown, true);
+    document.addEventListener("keydown", onKey, true);
+    window.addEventListener("resize", close);
+    window.addEventListener("scroll", close, true);
+    return () => {
+      document.removeEventListener("pointerdown", onDown, true);
+      document.removeEventListener("keydown", onKey, true);
+      window.removeEventListener("resize", close);
+      window.removeEventListener("scroll", close, true);
+    };
+  }, [anchor, close]);
+
+  return (
+    <>
+      <button
+        ref={buttonRef}
+        type="button"
+        aria-label="More keys"
+        aria-expanded={!!anchor}
+        title="More keys"
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={(e) => {
+          e.stopPropagation();
+          setAnchor((open) =>
+            open ? null : (buttonRef.current?.getBoundingClientRect() ?? null)
+          );
+        }}
+        className={cn(
+          KEY_CLASS,
+          anchor
+            ? "bg-primary text-primary-foreground"
+            : "bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground"
+        )}
+      >
+        <Ellipsis className="h-4 w-4" />
+      </button>
+      {anchor &&
+        createPortal(
+          <div
+            ref={panelRef}
+            role="menu"
+            aria-label="More keys"
+            className="bg-popover border-border fixed z-50 flex flex-wrap justify-end gap-1 rounded-xl border p-1.5 shadow-lg"
+            style={{
+              bottom: innerHeight - anchor.top + 6,
+              right: Math.max(4, innerWidth - anchor.right),
+              maxWidth: Math.min(
+                320,
+                anchor.right - pageStart(anchor.left) - 8
+              ),
+            }}
+            // Keys stop their clicks, so this hears them on the way down
+            onClickCapture={(e) => {
+              const id = (e.target as HTMLElement).closest<HTMLElement>(
+                "[data-more-key]"
+              )?.dataset.moreKey;
+              if (!id || !REPEAT_KEYS.has(id)) setTimeout(close);
+            }}
+            onTouchEnd={(e) => e.stopPropagation()}
+          >
+            {keys.map((id) => (
+              <div key={id} data-more-key={id} className="contents">
+                {renderKey(id)}
+              </div>
+            ))}
+            <button
+              type="button"
+              aria-label="Key settings"
+              title="Key settings"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={(e) => {
+                e.stopPropagation();
+                onSettings();
+              }}
+              className="text-muted-foreground active:bg-primary active:text-primary-foreground flex h-[40px] min-w-[40px] items-center justify-center rounded-xl"
+            >
+              <Settings className="h-4 w-4" />
+            </button>
+          </div>,
+          document.body
+        )}
+    </>
+  );
+}
 
 // Held ^C and / give the rarer keys
 const CTRL_C_MENU: MenuKey[] = [

@@ -20,8 +20,12 @@ export type NativeEvent =
   | { type: "key"; key: string }
   /** Text from the bar's system Paste button */
   | { type: "paste"; text: string }
-  /** The bar's Add image button */
+  /** The bar's Add image button (or its Photo key) */
   | { type: "image" }
+  /** The bar's Copy key: select text on the screen */
+  | { type: "select" }
+  /** The bar's File key: the snippets sheet */
+  | { type: "snippets" }
   | { type: "keyboard"; visible: boolean }
   /** The fold while half open, in the page's CSS pixels */
   | { type: "posture"; fold: Fold | null }
@@ -130,6 +134,9 @@ export type HapticStyle =
 export interface NativeKeys {
   type: "keys";
   context: "claude" | "claude-up" | "shell" | "chat";
+  /** The row's keys in order (ToolbarButtonId, ^C already pinned), as set
+      in Settings → Keys; older pages send none */
+  ids?: string[];
 }
 
 /** Settings → Server: the app's own server and sign-in screen */

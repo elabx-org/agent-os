@@ -39,6 +39,7 @@ import {
   postToNative,
 } from "@/lib/native-bridge";
 import { useSessionDraft } from "@/hooks/useSessionDraft";
+import { CHAT_KEYS } from "@/components/Terminal/toolbar-config";
 import {
   ComposerChips,
   ComposerInput,
@@ -58,9 +59,8 @@ import { DeckStateLine } from "@/components/DeckStateLine";
 import { useSubagents, useWorkflows } from "@/hooks/useSubagents";
 import {
   useSpreadFold,
-  type SpreadFold,
+  useSpreadPages,
 } from "@/components/views/SessionSpread";
-import { FOLD_CLEAR } from "@/hooks/useHinge";
 import { AgentRow, KindBadge, StateWord } from "@/components/rows/AgentRow";
 import { fromSubagentStatus } from "@/lib/agent-state";
 import { agentOpenStore, consumeSubagent } from "@/stores/agentOpen";
@@ -74,10 +74,12 @@ import {
   workflowAgentInfo,
 } from "@/components/WorkflowPhases";
 import {
+  AnswerChips,
   DeckContext,
   ReplyContextBar,
   useChatJump,
 } from "@/components/ReplyContext";
+import { useReplyContext } from "@/hooks/useReplyContext";
 
 const POLL_MS = 1500;
 /** Runs of tool calls longer than this collapse to their last few */
@@ -219,57 +221,6 @@ function useRows(items: ChatItem[]) {
     }
     return { rows, results };
   }, [items]);
-}
-
-/** Narrower pages than this and the chat stays one column */
-const PAGE_MIN = 280;
-
-interface BookPages {
-  /** The left page's width, from the element's left edge */
-  left: number;
-  /** Empty between the pages (only the hinge's clearance while flat) */
-  gutter: number;
-}
-
-/** How `ref`'s element splits into two pages at the fold; null if it doesn't */
-function useBookPages(
-  ref: RefObject<HTMLElement | null>,
-  fold: SpreadFold | null
-): BookPages | null {
-  const [pages, setPages] = useState<BookPages | null>(null);
-  useLayoutEffect(() => {
-    const el = ref.current;
-    if (!el || !fold) {
-      setPages(null);
-      return;
-    }
-    const measure = () => {
-      const rect = el.getBoundingClientRect();
-      // Flat there's no gutter, but controls on either page (a tool row,
-      // the composer) still keep clear of the hinge
-      const clear = fold.end > fold.start ? 0 : FOLD_CLEAR;
-      const left = Math.round(fold.start - clear - rect.left);
-      const gutter = Math.round(fold.end - fold.start + clear * 2);
-      const fits =
-        left >= PAGE_MIN && rect.right - fold.end - clear >= PAGE_MIN;
-      setPages((prev) =>
-        !fits
-          ? null
-          : prev?.left === left && prev.gutter === gutter
-            ? prev
-            : { left, gutter }
-      );
-    };
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    window.addEventListener("resize", measure);
-    return () => {
-      ro.disconnect();
-      window.removeEventListener("resize", measure);
-    };
-  }, [ref, fold]);
-  return pages;
 }
 
 /**
@@ -690,7 +641,7 @@ export function ChatView({
   // book, earlier rows on the left page and the latest with the composer on
   // the right. An open subagent takes the right page instead.
   const outerRef = useRef<HTMLDivElement>(null);
-  const pages = useBookPages(outerRef, useSpreadFold());
+  const pages = useSpreadPages(outerRef, useSpreadFold());
   const book = !!pages && !side && state === "ready";
   // Either way each column keeps to one side of the fold
   const paged = book || (!!pages && side);
@@ -876,6 +827,22 @@ export function ChatView({
   // what the hook recorded when the screen can't be read
   // A finished turn or a typed-reply wait has nothing to answer here
   const hasCard = !!prompt || (!!pending && !promptLoading);
+
+  // Across both pages: the composer on the left page and, while Claude
+  // asks, its answers on the right, instead of all of it squeezed right of
+  // the fold. In the book they run under both pages (the left page's rows
+  // end above them); not with a subagent on the right page
+  const controlPages = (book || !paged) && !deck ? pages : null;
+  const controlsRef = useRef<HTMLDivElement>(null);
+  const [controlsHeight, setControlsHeight] = useState(0);
+  useEffect(() => {
+    const el = controlsRef.current;
+    if (!el || !book) return;
+    const ro = new ResizeObserver(() => setControlsHeight(el.offsetHeight));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [book]);
+  const ask = useReplyContext(session.id, !!controlPages && active && needsYou);
   const needsYouCard = needsYou && (
     <>
       <ul>
@@ -922,8 +889,16 @@ export function ChatView({
               leftAtBottom.current =
                 el.scrollHeight - el.scrollTop - el.clientHeight < 48;
             }}
-            className="bg-background min-h-0 shrink-0 overflow-y-auto px-3 pt-3 pb-[calc(0.75rem+var(--pane-inset-bottom,env(safe-area-inset-bottom)))]"
-            style={{ width: pages.left }}
+            className={cn(
+              "bg-background min-h-0 shrink-0 overflow-y-auto px-3 pt-3",
+              !controlPages &&
+                "pb-[calc(0.75rem+var(--pane-inset-bottom,env(safe-area-inset-bottom)))]"
+            )}
+            // The composer runs under this page too
+            style={{
+              width: pages.left,
+              paddingBottom: controlPages ? controlsHeight + 12 : undefined,
+            }}
           >
             <div className="mx-auto flex min-h-full max-w-3xl flex-col justify-end gap-3">
               {earlier}
@@ -1068,13 +1043,23 @@ export function ChatView({
           />
         )}
         <div
+          ref={controlsRef}
           className={cn(
             "px-2.5 pt-1.5 pb-[calc(0.625rem+var(--pane-inset-bottom,env(safe-area-inset-bottom)))]",
             // As pages, it already sits on one side of the fold
-            !paged && "fold-controls",
-            deck && "flex flex-col"
+            !paged && !controlPages && "fold-controls",
+            deck && "flex flex-col",
+            controlPages && "flex items-end",
+            book && controlPages && "bg-background relative"
           )}
-          style={{ height: deck?.deck }}
+          style={{
+            height: deck?.deck,
+            // The book's right page holds it: reach back under the left page
+            marginLeft:
+              book && controlPages
+                ? -(controlPages.left + controlPages.gutter)
+                : undefined,
+          }}
         >
           {/* On the base, nearest the work above: the answer Claude is
           waiting for, or Stop / Changes / Terminal. The composer comes last,
@@ -1097,7 +1082,11 @@ export function ChatView({
               )}
             </div>
           )}
-          <div className="relative shrink-0">
+          <div
+            className="relative shrink-0"
+            // Less the container's padding, so it ends where the page does
+            style={controlPages ? { width: controlPages.left - 10 } : undefined}
+          >
             <ComposerPopover composer={composer} />
             <RewindSheet
               live={live}
@@ -1136,7 +1125,11 @@ export function ChatView({
                   setComposerFocused(true);
                   // The app's keyboard bar shows no terminal keys in chat
                   if (isNative())
-                    postToNative({ type: "keys", context: "chat" });
+                    postToNative({
+                      type: "keys",
+                      context: "chat",
+                      ids: CHAT_KEYS,
+                    });
                 }}
                 onBlur={() => setComposerFocused(false)}
                 onKeyDown={(e) => {
@@ -1178,6 +1171,29 @@ export function ChatView({
             </div>
             <ClaudeStateBar live={live} />
           </div>
+          {controlPages && (
+            <>
+              <div
+                aria-hidden="true"
+                className="shrink-0"
+                style={{ width: controlPages.gutter }}
+              />
+              <div className="flex min-w-0 flex-1 items-center gap-2 pb-1.5">
+                {!!ask?.options.length && (
+                  <>
+                    <span className="text-muted-foreground shrink-0 text-xs">
+                      Claude asks
+                    </span>
+                    <AnswerChips
+                      context={ask}
+                      sessionId={session.id}
+                      className="min-w-0"
+                    />
+                  </>
+                )}
+              </div>
+            </>
+          )}
         </div>
       </div>
       {side && pages && gutter}

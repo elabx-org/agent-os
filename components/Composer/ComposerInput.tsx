@@ -6,12 +6,17 @@ import {
   type KeyboardEvent,
   type TextareaHTMLAttributes,
 } from "react";
+import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { RAINBOW } from "@/lib/magic-words";
+import { ImageViewer } from "@/components/ImageViewer";
+import { ImagePill, ImagePillTarget } from "./ImagePill";
+import { imageName } from "./text";
 import type { ComposerEngine } from "./useComposer";
 
-// The textarea and the layer behind it must lay text out identically
-const TEXT = "px-3.5 py-2.5 text-base leading-6";
+// The textarea and the layers on it must lay text out identically; lines
+// grow with an image pill so its thumbnail fits
+const TEXT = "px-3.5 py-2.5 text-base";
 
 type NativeProps = Omit<
   TextareaHTMLAttributes<HTMLTextAreaElement>,
@@ -61,8 +66,14 @@ export function ComposerInput({
     picker,
     listboxId,
     selected,
+    chips,
   } = composer;
   const backdropRef = useRef<HTMLDivElement>(null);
+  const targetsRef = useRef<HTMLDivElement>(null);
+  const images = chips.some((c) => c.kind === "image");
+  const lines = images ? "leading-8" : "leading-6";
+  const viewing =
+    composer.previewChip?.kind === "image" ? composer.previewChip : null;
   // The "/" and "@" lists are driven from the box, which keeps focus: a
   // combobox, so screen readers hear them open and the option in play.
   // ComposerPopover shows history or a pill's preview over them.
@@ -81,11 +92,13 @@ export function ComposerInput({
   // Same scroll, and room for a scrollbar the textarea may show
   useLayoutEffect(() => {
     const el = textareaRef.current;
-    const back = backdropRef.current;
-    if (!el || !back) return;
+    if (!el) return;
     const bar = el.offsetWidth - el.clientWidth;
-    back.style.paddingRight = bar > 0 ? `calc(0.875rem + ${bar}px)` : "";
-    back.scrollTop = el.scrollTop;
+    for (const layer of [backdropRef.current, targetsRef.current]) {
+      if (!layer) continue;
+      layer.style.paddingRight = bar > 0 ? `calc(0.875rem + ${bar}px)` : "";
+      layer.scrollTop = el.scrollTop;
+    }
   });
 
   return (
@@ -105,6 +118,7 @@ export function ComposerInput({
           aria-hidden="true"
           className={cn(
             TEXT,
+            lines,
             "text-foreground pointer-events-none absolute inset-0 overflow-hidden break-words whitespace-pre-wrap",
             mode === "bash" && "font-mono"
           )}
@@ -123,6 +137,8 @@ export function ComposerInput({
               >
                 {s.text}
               </span>
+            ) : s.chip?.kind === "image" ? (
+              <ImagePill key={i} chip={s.chip} />
             ) : (
               // A pill, drawn without padding so the text stays in step
               <span
@@ -168,6 +184,8 @@ export function ComposerInput({
         onScroll={(e) => {
           if (backdropRef.current)
             backdropRef.current.scrollTop = e.currentTarget.scrollTop;
+          if (targetsRef.current)
+            targetsRef.current.scrollTop = e.currentTarget.scrollTop;
           onScroll?.(e);
         }}
         rows={1}
@@ -185,6 +203,7 @@ export function ComposerInput({
         autoCapitalize={mode === "bash" ? "off" : autoCapitalize}
         className={cn(
           TEXT,
+          lines,
           "placeholder:text-muted-foreground relative block min-h-[44px] w-full resize-none bg-transparent focus:outline-none",
           segments
             ? "text-transparent [caret-color:var(--color-foreground)] [-webkit-text-fill-color:transparent]"
@@ -193,6 +212,57 @@ export function ComposerInput({
           inputClassName
         )}
       />
+      {/* Over the box, the image pills again, there to be touched: the pill
+          opens the viewer, its × takes it out. Clear everywhere else, so
+          the box's caret and selection work around them */}
+      {segments && images && (
+        <div
+          ref={targetsRef}
+          className={cn(
+            TEXT,
+            lines,
+            "pointer-events-none absolute inset-0 overflow-hidden break-words whitespace-pre-wrap text-transparent",
+            mode === "bash" && "font-mono"
+          )}
+        >
+          {segments.map((s, i) =>
+            s.chip?.kind === "image" ? (
+              <ImagePillTarget
+                key={i}
+                chip={s.chip}
+                name={imageName(s.chip.text)}
+                onOpen={(chip) => {
+                  // Full screen: the keyboard goes down for it
+                  textareaRef.current?.blur();
+                  composer.openChip(chip);
+                }}
+                onRemove={composer.removeChip}
+              />
+            ) : (
+              <span key={i}>{s.text}</span>
+            )
+          )}
+        </div>
+      )}
+      {composer.uploading > 0 && (
+        <span
+          role="status"
+          className="bg-secondary text-muted-foreground absolute top-1.5 right-1.5 flex items-center gap-1 rounded-full px-2 py-1 text-[11px]"
+        >
+          <Loader2 className="h-3 w-3 animate-spin" />
+          {composer.uploading > 1
+            ? `Uploading ${composer.uploading} images`
+            : "Uploading image"}
+        </span>
+      )}
+      {viewing && (
+        <ImageViewer
+          path={viewing.text}
+          size={composer.imageSize(viewing.text)}
+          onRemove={() => composer.removeChip(viewing)}
+          onClose={composer.closePreview}
+        />
+      )}
     </div>
   );
 }

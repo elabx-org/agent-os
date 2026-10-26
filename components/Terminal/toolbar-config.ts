@@ -1,7 +1,15 @@
 // Button registry, preferences, and persistence for the customizable mobile toolbar
 
-import { useState, useCallback, useEffect } from "react";
-import { usePreference, useUpdatePreference } from "@/data/preferences";
+import { useCallback, useEffect, useMemo } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { proxy } from "valtio";
+import { toast } from "sonner";
+import {
+  preferencesKeys,
+  usePreference,
+  useUpdatePreference,
+} from "@/data/preferences";
+import { FOLD_CLEAR } from "@/hooks/useHinge";
 
 export type ToolbarButtonId =
   // tools
@@ -118,7 +126,20 @@ export interface ToolbarPreferences {
   row1: ToolbarButtonId[];
   row2: ToolbarButtonId[];
   hidden: ToolbarButtonId[];
+  /** Context rows reordered in Settings → Keys; a missing one is the default */
+  contextRows?: Partial<Record<KeysRowId, ToolbarButtonId[]>>;
+  /** ^C stays last on the context rows, after ⋯ (on unless turned off) */
+  pinCtrlC?: boolean;
+  /** How the open Duo lays out the composer and keys (Split unless set) */
+  duoLayout?: DuoLayout;
 }
+
+/** The context rows Settings → Keys edits: Claude, Claude while typing, Shell */
+export type KeysRowId = "claude" | "claudeUp" | "shell";
+
+/** Open Duo, a pane across both pages: composer left and keys right (split),
+    the other way round (mirrored), or both rows across both pages */
+export type DuoLayout = "split" | "mirrored" | "two-rows";
 
 const PREFERENCES_DB_KEY = "toolbar-preferences";
 
@@ -134,30 +155,120 @@ const DEFAULT_ROW1: ToolbarButtonId[] = [
 // Direction D's context rows: one row, chosen by what you're in
 export type KeysContext = "claude" | "shell";
 
+// Every row starts with the tools: Copy (select), Paste, Photo and File
+const TOOLS: ToolbarButtonId[] = ["select", "paste", "image", "snippets"];
+
 const CLAUDE_DOWN: ToolbarButtonId[] = [
+  ...TOOLS,
   "esc", "shift-tab", "tab",
   "arrow-left", "arrow-up", "arrow-down", "arrow-right",
   "cursor", "enter", "ctrl-c",
 ];
 const CLAUDE_UP: ToolbarButtonId[] = [
+  ...TOOLS,
   "esc", "shift-tab", "tab", "char-slash", "char-at",
   "arrow-left", "arrow-up", "arrow-down", "arrow-right",
-  "newline", "paste", "ctrl-c",
+  "newline", "ctrl-c",
 ];
 const SHELL: ToolbarButtonId[] = [
+  ...TOOLS,
   "tab", "ctrl-r",
   "arrow-left", "arrow-up", "arrow-down", "arrow-right",
   "char-slash", "cursor", "enter", "ctrl-c",
 ];
 
-/** The keys for a context row (with the on-screen keyboard up, Claude Code
-    swaps space and return for what typing a prompt needs) */
+export const DEFAULT_CONTEXT_ROWS: Record<KeysRowId, ToolbarButtonId[]> = {
+  claude: CLAUDE_DOWN,
+  claudeUp: CLAUDE_UP,
+  shell: SHELL,
+};
+
+/** Which saved row a context shows (with the on-screen keyboard up, Claude
+    Code swaps space and return for what typing a prompt needs) */
+export function rowIdFor(context: KeysContext, keyboardUp: boolean): KeysRowId {
+  if (context === "shell") return "shell";
+  return keyboardUp ? "claudeUp" : "claude";
+}
+
+/** ^C moved last when pinned; the same array when it already is, so rows
+    stay stable for memos */
+export function pinnedRow(
+  row: ToolbarButtonId[],
+  pinCtrlC: boolean
+): ToolbarButtonId[] {
+  const at = row.indexOf("ctrl-c");
+  if (!pinCtrlC || at < 0 || at === row.length - 1) return row;
+  return [...row.filter((id) => id !== "ctrl-c"), "ctrl-c"];
+}
+
+/** A context row as saved (or the default), ^C pinned last unless that's off */
+export function savedContextRow(
+  rowId: KeysRowId,
+  prefs?: ToolbarPreferences
+): ToolbarButtonId[] {
+  const row = prefs?.contextRows?.[rowId] ?? DEFAULT_CONTEXT_ROWS[rowId];
+  return pinnedRow(row, prefs?.pinCtrlC ?? true);
+}
+
+/** The keys for a context row, as the user ordered them in Settings → Keys */
 export function contextRow(
   context: KeysContext,
-  keyboardUp: boolean
+  keyboardUp: boolean,
+  prefs?: ToolbarPreferences
 ): ToolbarButtonId[] {
-  if (context === "shell") return SHELL;
-  return keyboardUp ? CLAUDE_UP : CLAUDE_DOWN;
+  return savedContextRow(rowIdFor(context, keyboardUp), prefs);
+}
+
+/** What the app's keyboard bar shows in the chat box (it has no row here) */
+export const CHAT_KEYS: ToolbarButtonId[] = ["paste", "newline"];
+
+// --- Overflow: keys past the row's width go into ⋯ ---
+
+/** Closed Duo: the outer display's width */
+export const CLOSED_ROW_PX = 466;
+/** Open Duo, split: one page less the hinge's clear band and the system
+    column (an estimate for Settings' divider; the row measures itself) */
+export const OPEN_DUO_ROW_PX = Math.floor(951 / 2) - FOLD_CLEAR - 36;
+
+const KEY_MIN_PX = 40;
+const KEY_GAP_PX = 4;
+const ROW_PADDING_PX = 16;
+/** The ⋯ key */
+export const MORE_KEY_PX = KEY_MIN_PX;
+
+/** A key at full size: 40px, wider for a label like ⇧Tab */
+export function keyWidthPx(id: ToolbarButtonId): number {
+  const def = getButtonDef(id);
+  if (!def || def.renderType === "custom") return KEY_MIN_PX;
+  return Math.max(KEY_MIN_PX, 20 + 8 * [...def.displayLabel].length);
+}
+
+/**
+ * Splits a row at a width into the keys shown and those that go into ⋯
+ * (in order). A pinned ^C stays shown, last, after ⋯; `reserve` is room
+ * taken by anything else on the row (a gear)
+ */
+export function splitOverflow(
+  row: ToolbarButtonId[],
+  width: number,
+  {
+    pinCtrlC = true,
+    reserve = 0,
+  }: { pinCtrlC?: boolean; reserve?: number } = {}
+): [ToolbarButtonId[], ToolbarButtonId[]] {
+  const pinned = pinCtrlC && row.includes("ctrl-c");
+  const keys = pinned ? row.filter((id) => id !== "ctrl-c") : row;
+  const tail: ToolbarButtonId[] = pinned ? ["ctrl-c"] : [];
+  const room = width - ROW_PADDING_PX - reserve;
+  const fits = (widths: number[]) =>
+    widths.reduce((sum, w) => sum + w + KEY_GAP_PX, -KEY_GAP_PX) <= room;
+  const widths = keys.map(keyWidthPx);
+  const tailWidths = tail.map(keyWidthPx);
+  if (fits([...widths, ...tailWidths])) return [[...keys, ...tail], []];
+  let n = keys.length;
+  while (n > 0 && !fits([...widths.slice(0, n), MORE_KEY_PX, ...tailWidths]))
+    n--;
+  return [[...keys.slice(0, n), ...tail], keys.slice(n)];
 }
 
 function contextPreferences(): ToolbarPreferences {
@@ -222,43 +333,105 @@ function migratePreferences(stored: ToolbarPreferences): ToolbarPreferences {
   prefs.row1 = filterValid(prefs.row1);
   prefs.row2 = filterValid(prefs.row2);
   prefs.hidden = filterValid(prefs.hidden);
+  if (prefs.contextRows) {
+    const rows: Partial<Record<KeysRowId, ToolbarButtonId[]>> = {};
+    for (const [rowId, ids] of Object.entries(prefs.contextRows))
+      if (rowId in DEFAULT_CONTEXT_ROWS && Array.isArray(ids))
+        rows[rowId as KeysRowId] = Array.from(new Set(filterValid(ids)));
+    prefs.contextRows = rows;
+  }
 
   return prefs;
 }
 
+// Another device may have changed the keys: look again when this one comes
+// back, at most once a second however many rows are mounted
+let lastRefresh = 0;
+
 /**
  * Hook to load and persist toolbar preferences via the database.
  * Returns DEFAULT_PREFERENCES instantly while the DB fetch is in-flight.
+ * Every caller reads the same query, so a change shows everywhere at once.
  */
 export function useToolbarPreferences() {
   const { data: dbPrefs, isLoading } = usePreference<ToolbarPreferences>(
     PREFERENCES_DB_KEY,
     DEFAULT_PREFERENCES
   );
-  const updateMutation = useUpdatePreference();
+  const queryClient = useQueryClient();
+  const { mutate } = useUpdatePreference();
 
-  // Local state for instant UI feedback — initialized from defaults,
-  // then synced once DB data arrives
-  const [preferences, setPreferences] = useState<ToolbarPreferences>(DEFAULT_PREFERENCES);
-  const [synced, setSynced] = useState(false);
-
-  useEffect(() => {
-    if (!isLoading && dbPrefs && !synced) {
-      setPreferences(migratePreferences(dbPrefs));
-      setSynced(true);
-    }
-  }, [dbPrefs, isLoading, synced]);
-
-  const updatePreferences = useCallback(
-    (next: ToolbarPreferences) => {
-      setPreferences(next);
-      updateMutation.mutate({ key: PREFERENCES_DB_KEY, value: next });
-    },
-    [updateMutation]
+  const preferences = useMemo(
+    () => (dbPrefs ? migratePreferences(dbPrefs) : DEFAULT_PREFERENCES),
+    [dbPrefs]
   );
 
-  return { preferences, updatePreferences, isLoading: isLoading && !synced };
+  useEffect(() => {
+    const refresh = () => {
+      if (document.visibilityState !== "visible") return;
+      // Never over a save still on its way
+      if (queryClient.isMutating() > 0) return;
+      if (Date.now() - lastRefresh < 1000) return;
+      lastRefresh = Date.now();
+      queryClient.invalidateQueries({
+        queryKey: preferencesKeys.detail(PREFERENCES_DB_KEY),
+      });
+    };
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [queryClient]);
+
+  /** Shown everywhere at once but not saved (a key mid-drag) */
+  const previewPreferences = useCallback(
+    (next: ToolbarPreferences) => {
+      queryClient.setQueryData(
+        preferencesKeys.detail(PREFERENCES_DB_KEY),
+        next
+      );
+    },
+    [queryClient]
+  );
+
+  // Shown at once, before the save's optimistic update a tick later, so a
+  // second quick change builds on the first. That update's own rollback
+  // would only restore this preview, so a failed save puts back what was
+  // there before and asks the server again
+  const updatePreferences = useCallback(
+    (next: ToolbarPreferences) => {
+      const key = preferencesKeys.detail(PREFERENCES_DB_KEY);
+      const previous = queryClient.getQueryData(key);
+      previewPreferences(next);
+      mutate(
+        { key: PREFERENCES_DB_KEY, value: next },
+        {
+          onError: () => {
+            queryClient.setQueryData(key, previous);
+            queryClient.invalidateQueries({ queryKey: key });
+            toast.error("Couldn't save that change");
+          },
+        }
+      );
+    },
+    [queryClient, previewPreferences, mutate]
+  );
+
+  return { preferences, updatePreferences, previewPreferences, isLoading };
 }
+
+/** The open Duo's layout for the composer and keys (Split by default) */
+export function useDuoLayout(): DuoLayout {
+  return useToolbarPreferences().preferences.duoLayout ?? "split";
+}
+
+/** Settings → Keys is open. On the open Duo it covers the right page, so a
+    split row shows its keys on the left page meanwhile, beside the list.
+    rowWidth: what that row last measured (0 until a Duo page shows one),
+    so Settings' preview and ⋯ divider cut where the row beside them does */
+export const keysSettingsStore = proxy({ open: false, rowWidth: 0 });
 
 // --- Presets ---
 

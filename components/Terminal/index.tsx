@@ -27,7 +27,13 @@ import { cn } from "@/lib/utils";
 import { SearchBar } from "./SearchBar";
 import { ScrollToBottomButton } from "./ScrollToBottomButton";
 import { TerminalToolbar } from "./TerminalToolbar";
-import type { KeysContext } from "./toolbar-config";
+import {
+  type KeysContext,
+  keysSettingsStore,
+  rowIdFor,
+  savedContextRow,
+  useToolbarPreferences,
+} from "./toolbar-config";
 import { KeybarToggleButton } from "./KeybarToggleButton";
 import { Composer } from "./Composer";
 import { useSessionDraft } from "@/hooks/useSessionDraft";
@@ -46,6 +52,10 @@ import { InboxItem } from "@/components/Inbox";
 import { useSessionPrompt } from "@/data/prompts/queries";
 import type { Session } from "@/lib/db";
 import { useFoldDeck } from "@/hooks/useFoldDeck";
+import {
+  useSpreadFold,
+  useSpreadPages,
+} from "@/components/views/SessionSpread";
 import { COMPOSER_EVENT, getComposerEnabled } from "./typing-assist";
 import { useTerminalConnection, useTerminalSearch } from "./hooks";
 import type { TerminalScrollState } from "./hooks";
@@ -62,7 +72,7 @@ import { mobileNavStore } from "@/stores/mobileNav";
 import { addQuote } from "@/stores/replyQuotes";
 import { KeyboardDebugOverlay, useKeyboardDebug } from "./KeyboardDebugOverlay";
 import { useFileDrop } from "@/hooks/useFileDrop";
-import { uploadFileToTemp } from "@/lib/file-upload";
+import { uploadFilesToTemp } from "@/lib/file-upload";
 import { ImagePicker } from "@/components/ImagePicker";
 import { joinWrappedUrls, linkify } from "./linkify";
 import {
@@ -80,6 +90,9 @@ export interface TerminalHandle {
   sendCommand: (command: string) => void;
   sendInput: (data: string) => void;
   sendPaste: (data: string) => void;
+  /** A file's path from elsewhere (the share sheet): into the composer as
+      its own pill, or typed with a space after */
+  attachPath: (path: string) => void;
   focus: () => void;
   getScrollState: () => TerminalScrollState | null;
   restoreScrollState: (state: TerminalScrollState) => void;
@@ -126,6 +139,8 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
     const { theme: currentTheme, resolvedTheme } = useTheme();
     const [showImagePicker, setShowImagePicker] = useState(false);
     const [selectMode, setSelectMode] = useState(false);
+    // The app's File key: counted so each press opens the sheet
+    const [snippetsRequest, setSnippetsRequest] = useState(0);
     const [isUploading, setIsUploading] = useState(false);
     const [copiedFlash, setCopiedFlash] = useState(false);
     const [toolbarVisible, setToolbarVisible] = useState(() => {
@@ -209,23 +224,18 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
       [sendInput, focus]
     );
 
-    // Handle file drop - upload and insert path into terminal
+    // Handle file drop - upload them all, paths into the composer or terminal
     const handleFileDrop = useCallback(
-      async (file: File) => {
+      async (_file: File, files: File[]) => {
         setIsUploading(true);
         try {
-          const path = await uploadFileToTemp(file);
-          if (path) {
-            sendInput(path);
-            focus();
-          }
-        } catch (err) {
-          console.error("Failed to upload file:", err);
+          const paths = await uploadFilesToTemp(files);
+          if (paths.length) handleImageSelect(paths.join(" "));
         } finally {
           setIsUploading(false);
         }
       },
-      [sendInput, focus]
+      [handleImageSelect]
     );
 
     // Drag and drop for file uploads
@@ -240,6 +250,10 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
       sendCommand,
       sendInput,
       sendPaste,
+      attachPath: (path: string) =>
+        composerOnRef.current
+          ? handleImageSelect(path)
+          : sendInput(`${path} `),
       focus,
       getScrollState,
       restoreScrollState,
@@ -413,14 +427,26 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
     // terminal takes focus and when the row changes while it has it
     const nativeKeys =
       keyboardUp && keysContext === "claude" ? "claude-up" : keysContext;
+    // ...in the order set in Settings → Keys. Only a row the user changed:
+    // the bar's own defaults keep the system Paste control. The bar only
+    // shows with the keyboard up, so "claude" (sent while it comes up)
+    // already gets the typing row
+    const { preferences: keyPrefs } = useToolbarPreferences();
+    const nativeRow = rowIdFor(keysContext, true);
+    const nativeIds =
+      keyPrefs.contextRows?.[nativeRow] || keyPrefs.pinCtrlC === false
+        ? savedContextRow(nativeRow, keyPrefs).join()
+        : "";
     useEffect(() => {
       const el = containerRef.current;
       if (!el || !isNative()) return;
-      const post = () => postToNative({ type: "keys", context: nativeKeys });
+      const ids = nativeIds ? nativeIds.split(",") : undefined;
+      const post = () =>
+        postToNative({ type: "keys", context: nativeKeys, ids });
       if (el.contains(document.activeElement)) post();
       el.addEventListener("focusin", post);
       return () => el.removeEventListener("focusin", post);
-    }, [nativeKeys]);
+    }, [nativeKeys, nativeIds]);
 
     const toggleToolbar = () => {
       const next = !toolbarVisible;
@@ -638,10 +664,16 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
           if (event.type === "key") keybarKeyPress(event.key);
           else if (event.type === "paste" && !insertInComposer(event.text))
             xtermRef.current?.paste(event.text);
-          else if (event.type === "image") {
-            // The picker is a sheet the keyboard would cover
+          else if (
+            event.type === "image" ||
+            event.type === "select" ||
+            event.type === "snippets"
+          ) {
+            // Sheets and selecting the keyboard would cover
             (document.activeElement as HTMLElement | null)?.blur();
-            setShowImagePicker(true);
+            if (event.type === "image") setShowImagePicker(true);
+            else if (event.type === "select") setSelectMode(true);
+            else setSnippetsRequest((n) => n + 1);
           }
         }),
       [keybarKeyPress, insertInComposer, xtermRef]
@@ -674,6 +706,32 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
       observer.observe(el);
       return () => observer.disconnect();
     }, [showKeybar]);
+
+    // This pane across both pages of the open Duo: the composer on one page
+    // and the keys on the other (Split, Mirrored), or each row split either
+    // side of the gutter (Two rows), as set in Settings → Keys. Two rows
+    // splits the context row only; a custom row takes the split instead.
+    const spreadFold = useSpreadFold();
+    const duoPages = useSpreadPages(
+      keybarRef,
+      showKeybar && !deck ? spreadFold : null
+    );
+    const savedLayout = !duoPages
+      ? null
+      : keyPrefs.duoLayout === "two-rows" && keyPrefs.mode !== "context"
+        ? "split"
+        : (keyPrefs.duoLayout ?? "split");
+    // Settings → Keys takes the right page: the keys move left meanwhile,
+    // so the row shows each change beside the list
+    const { open: keysOpen } = useSnapshot(keysSettingsStore);
+    const duoLayout =
+      keysOpen && savedLayout === "split" ? "mirrored" : savedLayout;
+    const sideBySide = duoLayout === "split" || duoLayout === "mirrored";
+    const leftSlot = duoPages
+      ? { width: duoPages.left, flexShrink: 0 }
+      : undefined;
+    const rightSlot = { flex: "1 1 0", minWidth: 0 };
+    const twoRowPages = duoLayout === "two-rows" ? duoPages : null;
 
     // Extract terminal text for select mode overlay
     // Select mode: capture full scrollback via tmux capture-pane
@@ -1049,7 +1107,10 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
           <div
             ref={keybarRef}
             className={cn(
-              "fold-controls bg-background shrink-0",
+              "bg-background shrink-0",
+              // Laid out on both pages here, or kept right of the fold
+              !duoLayout && "fold-controls",
+              sideBySide && "flex items-end",
               laptopKeys ? "contents" : deck && "flex flex-col"
             )}
             style={
@@ -1058,7 +1119,8 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
                 : {
                     height: deck?.deck,
                     order: keybarAtTop ? -1 : undefined,
-                    paddingLeft: "env(safe-area-inset-left)",
+                    // The pages are measured from this edge
+                    paddingLeft: duoLayout ? 0 : "env(safe-area-inset-left)",
                     paddingRight:
                       "var(--safe-right, env(safe-area-inset-right))",
                   }
@@ -1088,7 +1150,13 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
             {/* Ordered rather than moved, so the composer never remounts */}
             <div
               className="bg-background shrink-0"
-              style={{ order: laptopKeys ? 1 : tabletopBase ? 3 : undefined }}
+              style={
+                sideBySide
+                  ? duoLayout === "split"
+                    ? { order: 1, ...leftSlot }
+                    : { order: 3, ...rightSlot }
+                  : { order: laptopKeys ? 1 : tabletopBase ? 3 : undefined }
+              }
             >
               {composerOn && (
                 <Composer
@@ -1105,6 +1173,8 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
                   getQueued={getQueued}
                   onEditQueued={editQueued}
                   onCancelQueued={cancelQueued}
+                  stateAbove={sideBySide}
+                  pages={twoRowPages}
                   extra={
                     !deck && (
                       <KeybarToggleButton
@@ -1117,6 +1187,14 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
                 />
               )}
             </div>
+            {/* Nothing in the fold */}
+            {sideBySide && duoPages && (
+              <div
+                aria-hidden="true"
+                className="shrink-0"
+                style={{ order: 2, width: duoPages.gutter }}
+              />
+            )}
             <div
               className={cn(laptopKeys && "keybar-fill bg-background min-h-0")}
               style={
@@ -1124,7 +1202,15 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
                   ? { order: 3, height: deck.deck }
                   : tabletopBase
                     ? { order: 2 }
-                    : undefined
+                    : sideBySide
+                      ? {
+                          ...(duoLayout === "split"
+                            ? { order: 3, ...rightSlot }
+                            : { order: 1, ...leftSlot }),
+                          // Level with the middle of the box beside it
+                          paddingBottom: 9,
+                        }
+                      : undefined
               }
             >
               <TerminalToolbar
@@ -1134,6 +1220,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
                 onCopy={copySelection}
                 selectMode={selectMode}
                 onSelectModeChange={setSelectMode}
+                snippetsRequest={snippetsRequest}
                 // The deck has no keybar toggle, so its row always shows
                 visible={
                   (toolbarVisible || tabletopBase) &&
@@ -1143,6 +1230,8 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
                 context={keysContext}
                 keyboardUp={keyboardUp}
                 singleRow={tabletopBase}
+                pages={twoRowPages}
+                overflow={sideBySide}
               />
             </div>
           </div>

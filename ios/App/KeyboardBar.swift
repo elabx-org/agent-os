@@ -3,22 +3,40 @@ import UniformTypeIdentifiers
 
 /// The terminal keys Claude Code needs, on the keyboard itself, following
 /// what the page says you're in (its `keys` message): Claude Code with the
-/// keyboard up, a plain shell, or the chat box. ^C and / hold rarer keys
-/// behind a long press. Open flat on iPhone Duo the keys part around the
-/// hinge; a key to put the keyboard away sits at the edge.
+/// keyboard up, a plain shell, or the chat box, in the user's key order when
+/// the page sends one. ^C and / hold rarer keys behind a long press. Open
+/// flat on iPhone Duo the keys part around the hinge; a key to put the
+/// keyboard away sits at the edge.
 final class KeyboardBar: UIInputView {
     var onKey: ((String) -> Void)?
     /// Text from the system Paste button
     var onPaste: ((String) -> Void)?
     /// Add image: the page's picker (not in the chat box, which has none)
     var onImage: (() -> Void)?
+    /// Copy: the page's select mode, to pick text on the screen
+    var onSelect: (() -> Void)?
+    /// File: the page's snippets sheet
+    var onSnippets: (() -> Void)?
     var onDismiss: (() -> Void)?
     /// The bar is in a window exactly while the keyboard shows
     var onVisibilityChange: ((Bool) -> Void)?
 
     /// The page's key row context: "claude-up", "claude", "shell" or "chat"
-    var context = "claude-up" {
-        didSet { if context != oldValue { build() } }
+    private(set) var context = "claude-up"
+    /// The page's key order for that context (the user's Keys settings), if
+    /// it sent one; older pages don't, and the bar keeps its own sets
+    private(set) var ids: [String]?
+
+    /// The page's `keys` message; rebuilds once, only when something changed
+    func setKeys(context: String, ids: [String]?) {
+        guard context != self.context || ids != self.ids else { return }
+        self.context = context
+        self.ids = ids
+        // A new row gets its own chance to part around the hinge
+        splitOverflows = false
+        let wanted = wantedLayout
+        if wanted != layout { layout = wanted }
+        build()
     }
 
     private struct Key {
@@ -35,6 +53,12 @@ final class KeyboardBar: UIInputView {
     private enum Item {
         case key(Key)
         case paste
+        /// A key the page answers with a sheet or a mode
+        case tool(Tool)
+    }
+
+    private enum Tool {
+        case select, image, snippets
     }
 
     /// Groups left of the hinge, then right of it, when the bar is split
@@ -65,20 +89,99 @@ final class KeyboardBar: UIInputView {
         menu: [("^D", "\u{04}"), ("^Z", "\u{1a}"), ("^L", "\u{0c}")]
     )
 
+    private static let space = Key(title: "Space", sequence: " ")
+    private static let backspace = Key(
+        title: "", symbol: "delete.left", sequence: "\u{7f}", label: "Delete", repeats: true
+    )
+
+    /// A page key id (components/Terminal/toolbar-config.ts) as a bar item,
+    /// with the web row's group so runs of a kind sit together. Keys the bar
+    /// can't offer (mic) are nil and skipped.
+    private static func item(for id: String) -> (item: Item, group: String)? {
+        switch id {
+        // With Tab and ⇧Tab, as the bar's own sets have it
+        case "esc": return (.key(esc), "control")
+        case "enter": return (.key(enter), "editing")
+        case "newline": return (.key(newLine), "editing")
+        // The page's cursor key is space on a tap
+        case "cursor": return (.key(space), "editing")
+        case "backspace": return (.key(backspace), "editing")
+        case "paste": return (.paste, "tools")
+        case "select": return (.tool(.select), "tools")
+        case "image": return (.tool(.image), "tools")
+        case "snippets": return (.tool(.snippets), "tools")
+        case "ctrl-c": return (.key(ctrlC), "control")
+        case "ctrl-d": return (.key(Key(title: "^D", sequence: "\u{04}", label: "Control D")), "control")
+        case "ctrl-z": return (.key(Key(title: "^Z", sequence: "\u{1a}", label: "Control Z")), "control")
+        case "ctrl-l": return (.key(Key(title: "^L", sequence: "\u{0c}", label: "Control L")), "control")
+        case "ctrl-r": return (.key(ctrlR), "control")
+        case "tab": return (.key(tab), "control")
+        case "shift-tab": return (.key(shiftTab), "control")
+        case "arrow-left": return (arrows[0], "nav")
+        case "arrow-up": return (arrows[1], "nav")
+        case "arrow-down": return (arrows[2], "nav")
+        case "arrow-right": return (arrows[3], "nav")
+        case "char-slash": return (.key(slash), "shell")
+        case "char-at": return (.key(at), "shell")
+        case "char-tilde": return (.key(Key(title: "~", sequence: "~", label: "Tilde")), "shell")
+        case "char-pipe": return (.key(Key(title: "|", sequence: "|", label: "Pipe")), "shell")
+        case "char-gt": return (.key(Key(title: ">", sequence: ">", label: "Greater than")), "shell")
+        default: return nil
+        }
+    }
+
+    /// Consecutive keys of the same kind as one group
+    private static func groups(_ entries: [(item: Item, group: String)]) -> [[Item]] {
+        var result: [[Item]] = []
+        var last: String?
+        for entry in entries {
+            if entry.group == last, !result.isEmpty {
+                result[result.count - 1].append(entry.item)
+            } else {
+                result.append([entry.item])
+            }
+            last = entry.group
+        }
+        return result
+    }
+
+    /// The page's order, parted where a group ends nearest the middle (so the
+    /// arrows stay together) when split; nil when it leaves nothing to show
+    private static func set(ids: [String]) -> KeySet? {
+        let all = groups(ids.compactMap(item(for:)))
+        guard !all.isEmpty else { return nil }
+        guard all.count > 1 else {
+            let keys = all[0], half = (keys.count + 1) / 2
+            return KeySet(left: [Array(keys[..<half])], right: half < keys.count ? [Array(keys[half...])] : [])
+        }
+        let total = all.reduce(0) { $0 + $1.count }
+        var cut = 1, before = all[0].count
+        var best = abs(2 * before - total)
+        for index in 1..<all.count - 1 {
+            before += all[index].count
+            let off = abs(2 * before - total)
+            if off < best { best = off; cut = index + 1 }
+        }
+        return KeySet(left: Array(all[..<cut]), right: Array(all[cut...]))
+    }
+
+    /// Copy, Paste, Photo and File, first in every row
+    private static let tools: [Item] = [.tool(.select), .paste, .tool(.image), .tool(.snippets)]
+
     private static func set(for context: String) -> KeySet {
         switch context {
         case "shell":
             return KeySet(
-                left: [[.key(tab), .key(ctrlR)], arrows],
-                right: [[.key(slash)], [.key(enter), .paste], [.key(ctrlC)]]
+                left: [tools, [.key(tab), .key(ctrlR)]],
+                right: [arrows, [.key(slash), .key(enter)], [.key(ctrlC)]]
             )
         case "chat":
             return KeySet(left: [[.paste]], right: [[.key(newLine)]])
         default:
             // Claude Code with the keyboard up (and "claude", sent while it comes up)
             return KeySet(
-                left: [[.key(esc), .key(shiftTab), .key(tab)], [.key(slash), .key(at)]],
-                right: [arrows, [.key(newLine), .paste], [.key(ctrlC)]]
+                left: [tools, [.key(esc), .key(shiftTab), .key(tab)]],
+                right: [[.key(slash), .key(at)], arrows, [.key(newLine)], [.key(ctrlC)]]
             )
         }
     }
@@ -101,6 +204,9 @@ final class KeyboardBar: UIInputView {
     }
 
     private var layout = Layout.row(compact: false)
+    /// The user's row is too wide for a page either side of the hinge, so
+    /// it scrolls as one row instead of running into the hinge or off the edge
+    private var splitOverflows = false
     /// What build() added, so a rebuild leaves UIInputView's own views alone
     private var built: [UIView] = []
     /// Pins the split groups clear of the hinge (±20 pt)
@@ -138,11 +244,15 @@ final class KeyboardBar: UIInputView {
         return convert(CGPoint(x: window.bounds.midX, y: 0), from: window).x
     }
 
+    private var wantedLayout: Layout {
+        bounds.width >= 700 && hinge != nil && !splitOverflows ? .split : .row(compact: bounds.width < 600)
+    }
+
     override func layoutSubviews() {
         super.layoutSubviews()
         // Open flat the inner display is wide enough to part the keys; a
         // phone in landscape just gets a gap in the middle
-        let wanted: Layout = bounds.width >= 700 && hinge != nil ? .split : .row(compact: bounds.width < 600)
+        let wanted = wantedLayout
         if wanted != layout {
             layout = wanted
             build()
@@ -163,7 +273,7 @@ final class KeyboardBar: UIInputView {
         leftEnd = nil
         rightStart = nil
 
-        let keys = Self.set(for: context)
+        let keys = ids.flatMap { Self.set(ids: $0) } ?? Self.set(for: context)
         let compact = layout == .row(compact: true)
 
         let dismiss = UIButton(configuration: .plain())
@@ -181,9 +291,10 @@ final class KeyboardBar: UIInputView {
             dismiss.heightAnchor.constraint(equalToConstant: 44),
         ])
 
-        // Add image sits beside the hide-keyboard key, outside the key groups
+        // Add image sits beside the hide-keyboard key, outside the key groups,
+        // when the row has no Photo key of its own (the bar's own rows do)
         var trailing = dismiss.leadingAnchor
-        if context != "chat" {
+        if context != "chat", let ids, !ids.contains("image") {
             let image = UIButton(configuration: .plain())
             image.configuration?.image = UIImage(systemName: "photo.badge.plus")
             image.accessibilityLabel = "Add image"
@@ -203,6 +314,18 @@ final class KeyboardBar: UIInputView {
         if layout == .split {
             let left = stack(keys.left, compact: false)
             let right = stack(keys.right, compact: false)
+            // Rows are the user's now, so check each half fits its page
+            let middle = hinge ?? bounds.midX
+            let leftRoom = middle - 20 - 8
+            let rightRoom = bounds.width - 4 - dismissWidth - 8 - (middle + 20)
+            let size = UIView.layoutFittingCompressedSize
+            if left.systemLayoutSizeFitting(size).width > leftRoom
+                || right.systemLayoutSizeFitting(size).width > rightRoom {
+                splitOverflows = true
+                layout = wantedLayout
+                build()
+                return
+            }
             for view in [left, right] {
                 view.translatesAutoresizingMaskIntoConstraints = false
                 addSubview(view)
@@ -275,6 +398,8 @@ final class KeyboardBar: UIInputView {
             control.target = self
             control.widthAnchor.constraint(equalToConstant: compact ? 40 : 44).isActive = true
             return control
+        case .tool(let tool):
+            return toolButton(tool, compact: compact)
         }
     }
 
@@ -324,6 +449,31 @@ final class KeyboardBar: UIInputView {
         } else {
             button.addAction(UIAction { [weak self] _ in self?.press(key) }, for: .touchUpInside)
         }
+        return button
+    }
+
+    private func toolButton(_ tool: Tool, compact: Bool) -> UIButton {
+        let symbol: String, label: String
+        switch tool {
+        case .select: (symbol, label) = ("text.cursor", "Copy")
+        case .image: (symbol, label) = ("photo", "Photo")
+        case .snippets: (symbol, label) = ("doc.text", "File")
+        }
+        var config = UIButton.Configuration.gray()
+        config.cornerStyle = .medium
+        config.image = UIImage(systemName: symbol)
+        let button = UIButton(configuration: config)
+        button.accessibilityLabel = label
+        button.widthAnchor.constraint(equalToConstant: compact ? 40 : 44).isActive = true
+        button.addAction(UIAction { [weak self] _ in
+            guard let self else { return }
+            self.haptics.impactOccurred()
+            switch tool {
+            case .select: self.onSelect?()
+            case .image: self.onImage?()
+            case .snippets: self.onSnippets?()
+            }
+        }, for: .touchUpInside)
         return button
     }
 
