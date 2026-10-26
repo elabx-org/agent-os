@@ -17,6 +17,10 @@ export interface WorkflowAgent {
   label: string;
   phase: string | null;
   status: "running" | "done" | "stopped";
+  /** "Opus 5.5", from its conversation */
+  model: string | null;
+  /** Its context at the latest turn (input, cache and output) */
+  tokens: number | null;
 }
 
 export interface WorkflowInfo {
@@ -40,6 +44,71 @@ interface Script {
 
 /** Never changes once known; reading the transcript for it is costly */
 const scriptCache = new Map<string, Script>();
+interface AgentUsage {
+  /** Bytes read so far: only what's been added since is read next time */
+  offset: number;
+  model: string | null;
+  tokens: number | null;
+}
+
+/** By conversation file; a finished run's agents are read once */
+const usageCache = new Map<string, AgentUsage>();
+
+/** "claude-opus-5-5" as "Opus 5.5" */
+function modelName(id: string): string {
+  const m = /claude-([a-z]+)-(\d+)(?:-(\d+))?/.exec(id);
+  if (!m) return id;
+  const name = m[1][0].toUpperCase() + m[1].slice(1);
+  return m[3] && m[3].length < 3
+    ? `${name} ${m[2]}.${m[3]}`
+    : `${name} ${m[2]}`;
+}
+
+/** An agent's model and latest context, reading only the lines added since */
+function agentUsage(file: string): AgentUsage {
+  const prev = usageCache.get(file) ?? { offset: 0, model: null, tokens: null };
+  let size: number;
+  try {
+    size = fs.statSync(file).size;
+  } catch {
+    return prev;
+  }
+  if (size <= prev.offset) return prev;
+  const next = { ...prev };
+  const fd = fs.openSync(file, "r");
+  try {
+    const buf = Buffer.alloc(size - prev.offset);
+    fs.readSync(fd, buf, 0, buf.length, prev.offset);
+    const text = buf.toString("utf8");
+    // Only whole lines; a half-written one is read next time
+    const end = text.lastIndexOf("\n");
+    if (end < 0) return prev;
+    for (const line of text.slice(0, end).split("\n")) {
+      if (!line.includes('"usage"')) continue;
+      try {
+        const message = JSON.parse(line)?.message;
+        const usage = message?.usage;
+        if (
+          typeof message?.model === "string" &&
+          !message.model.startsWith("<")
+        )
+          next.model = modelName(message.model);
+        if (usage)
+          next.tokens =
+            (usage.input_tokens ?? 0) +
+            (usage.cache_creation_input_tokens ?? 0) +
+            (usage.cache_read_input_tokens ?? 0) +
+            (usage.output_tokens ?? 0);
+      } catch {}
+    }
+    next.offset = prev.offset + Buffer.byteLength(text.slice(0, end + 1));
+  } finally {
+    fs.closeSync(fd);
+  }
+  usageCache.set(file, next);
+  return next;
+}
+
 /** Finished runs never change: read once, by run directory */
 const finishedCache = new Map<string, WorkflowInfo>();
 /** When a run's script wasn't found, so the transcript is read once a minute */
@@ -86,6 +155,10 @@ function summaryPhases(summary: Record<string, unknown>): string[] {
   return progress
     .filter((p) => p.type === "workflow_phase" && typeof p.title === "string")
     .map((p) => p.title as string);
+}
+
+function pick({ model, tokens }: AgentUsage) {
+  return { model, tokens };
 }
 
 function readJournal(file: string) {
@@ -171,6 +244,7 @@ export function listWorkflows(transcriptFile: string): WorkflowInfo[] {
       agentId,
       label: s.label,
       phase: s.phase,
+      ...pick(agentUsage(path.join(dir, `agent-${agentId}.jsonl`))),
       status: finished.has(agentId)
         ? "done"
         : status === "running"

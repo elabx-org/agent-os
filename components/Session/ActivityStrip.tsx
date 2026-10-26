@@ -89,8 +89,11 @@ export function ActivityStrip({
           {now.command && (
             <>
               {needs ? " · " : " "}
-              <code className="text-muted-foreground font-mono text-[11.5px]">
-                {now.command}
+              <code
+                title={now.command}
+                className="text-muted-foreground font-mono text-[11.5px]"
+              >
+                {tail(now.command)}
               </code>
             </>
           )}
@@ -130,4 +133,11 @@ export function ActivityStrip({
       </Sheet>
     </div>
   );
+}
+
+/** A path's end, where its file name is: the start is cut off first anyway */
+function tail(command: string): string {
+  if (/\s/.test(command) || !command.includes("/")) return command;
+  const parts = command.split("/").filter(Boolean);
+  return parts.length > 2 ? `…/${parts.slice(-2).join("/")}` : command;
 }

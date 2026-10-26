@@ -23,11 +23,11 @@ import { KIND_STYLE, shortLabel, splitOptions } from "@/components/Inbox";
 import { mobileNavActions } from "@/stores/mobileNav";
 import { openSubagent } from "@/stores/agentOpen";
 import { runNav } from "@/lib/nav-actions";
+import { WorkflowPhaseList, workflowPhases } from "@/components/WorkflowPhases";
 
 const MAX_FILES = 5;
 const MAX_AGENTS = 5;
 const MAX_WORKFLOWS = 3;
-const MAX_WORKFLOW_AGENTS = 8;
 
 const PR_PILL: Record<string, string> = {
   open: "bg-blue-400/15 text-blue-600 dark:text-blue-400",
@@ -155,7 +155,15 @@ export function ActivityRail({
           </SectionHeader>
           <div className="min-w-0 space-y-px">
             {workflowRows.map((run) => (
-              <WorkflowRow key={run.runId} run={run} />
+              <WorkflowRow
+                key={run.runId}
+                run={run}
+                onOpenAgent={(agentId) => {
+                  // The chat opens the agent's conversation once it shows
+                  openSubagent(session.id, agentId);
+                  toChat();
+                }}
+              />
             ))}
           </div>
         </section>
@@ -257,12 +265,8 @@ function NowBlock({
           elapsed={elapsed}
         >
           {now.label}
-          {now.command && (
-            <code className="text-muted-foreground ml-1.5 font-mono text-[12.5px] font-normal">
-              {now.command}
-            </code>
-          )}
         </BigState>
+        {now.command && <NowCommand key={now.command} text={now.command} />}
         <IndeterminateBar />
       </div>
     );
@@ -272,6 +276,28 @@ function NowBlock({
     <div className="px-2 pb-1">
       <BigState mark={<StateDot state={state} />}>{now.label}</BigState>
     </div>
+  );
+}
+
+/**
+ * The command or path being worked on, under the label: wrapped to three
+ * lines, and all of it on tap
+ */
+function NowCommand({ text }: { text: string }) {
+  const [full, setFull] = useState(false);
+  return (
+    <button
+      type="button"
+      aria-expanded={full}
+      title={text}
+      onClick={() => setFull((f) => !f)}
+      className={cn(
+        "text-muted-foreground -mt-1 pl-[26px] text-left font-mono text-[12px] leading-snug break-all",
+        !full && "line-clamp-3"
+      )}
+    >
+      {text}
+    </button>
   );
 }
 
@@ -333,7 +359,7 @@ function PromptAnswer({
   if (prompt === null)
     return (
       <p className="text-muted-foreground text-[12.5px]">
-        Needs a typed reply.{" "}
+        Claude finished its turn.{" "}
         <button type="button" onClick={onMore} className="underline">
           Open the chat
         </button>
@@ -422,31 +448,31 @@ function SubagentRow({
  * A workflow run: its phase and agents at a glance, a bar of its phases, and
  * its agents on tap
  */
-function WorkflowRow({ run }: { run: WorkflowInfo }) {
-  const [open, setOpen] = useState(false);
+function WorkflowRow({
+  run,
+  onOpenAgent,
+}: {
+  run: WorkflowInfo;
+  onOpenAgent: (agentId: string) => void;
+}) {
+  const running = run.status === "running";
+  // A running workflow shows its phases; a finished one on tap
+  const [open, setOpen] = useState(running);
   const state = fromSubagentStatus(
     run.status === "failed" ? "stopped" : run.status
   );
-  const running = run.status === "running";
-  const phaseIndex = run.phase ? run.phases.indexOf(run.phase) : -1;
-  const done = run.agents.filter((a) => a.status === "done").length;
+  const phases = workflowPhases(run);
+  const phaseIndex = phases.findIndex((p) => p.name === run.phase);
   const parts = [
-    run.phase &&
-      (phaseIndex >= 0 && running
-        ? `${run.phase} (${phaseIndex + 1}/${run.phases.length})`
-        : running
-          ? run.phase
-          : null),
-    running
-      ? `${done}/${run.agents.length} agents`
-      : plural(run.agents.length, "agent"),
+    running && run.phase
+      ? phaseIndex >= 0
+        ? `${run.phase} (${phaseIndex + 1}/${phases.length})`
+        : run.phase
+      : null,
+    // Running, each phase shows its own count below
+    running ? null : plural(run.agents.length, "agent"),
     duration(run.startedAt, running ? new Date().toISOString() : run.updatedAt),
   ].filter(Boolean);
-  const agents = [...run.agents]
-    .sort(
-      (a, b) => Number(b.status === "running") - Number(a.status === "running")
-    )
-    .slice(0, MAX_WORKFLOW_AGENTS);
 
   return (
     <div>
@@ -466,45 +492,12 @@ function WorkflowRow({ run }: { run: WorkflowInfo }) {
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
       />
-      {running && run.phases.length > 1 && (
-        <div aria-hidden="true" className="flex gap-1 px-2 pb-1.5 pl-[50px]">
-          {run.phases.map((phase, i) => (
-            <span
-              key={phase}
-              title={phase}
-              className={cn(
-                "h-1 flex-1 rounded-full",
-                i < phaseIndex
-                  ? "bg-emerald-500"
-                  : i === phaseIndex
-                    ? "animate-pulse bg-blue-500"
-                    : "bg-secondary"
-              )}
-            />
-          ))}
-        </div>
-      )}
       {open && (
-        <ul className="space-y-0.5 pb-1.5 pl-[50px] text-[12px]">
-          {agents.map((agent) => (
-            <li key={agent.agentId} className="flex min-w-0 items-center gap-2">
-              <span className="min-w-0 flex-1 truncate font-mono">
-                {agent.label}
-              </span>
-              {agent.phase && (
-                <span className="text-muted-foreground shrink-0">
-                  {agent.phase}
-                </span>
-              )}
-              <StateWord state={fromSubagentStatus(agent.status)} />
-            </li>
-          ))}
-          {run.agents.length > agents.length && (
-            <li className="text-muted-foreground">
-              {run.agents.length - agents.length} more
-            </li>
-          )}
-        </ul>
+        <WorkflowPhaseList
+          run={run}
+          onOpenAgent={onOpenAgent}
+          className="pb-1.5 pl-[50px]"
+        />
       )}
     </div>
   );
