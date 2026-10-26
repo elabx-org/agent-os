@@ -320,6 +320,55 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
     const keysContext: KeysContext =
       agentType === "claude" ? "claude" : "shell";
     const keyboardUp = keyboard.height > 0 || nativeKeyboard;
+    // Slide, don't resize: with the keyboard up the terminal keeps its rows
+    // (no refit, so tmux doesn't redraw) and slides up so the line in use sits
+    // just above the composer. On the deck the keyboard covers the deck instead.
+    const keepRows = keyboardUp && !deck;
+    useEffect(() => {
+      const host = terminalRef.current;
+      const term = xtermRef.current;
+      const el = term?.element;
+      const screen = el?.querySelector<HTMLElement>(".xterm-screen");
+      if (!keepRows || !host || !term || !el || !screen) return;
+      let offset = 0;
+      let frame = 0;
+      const slide = () => {
+        frame = 0;
+        const buffer = term.buffer.active;
+        // The lowest line in use: the cursor's, or output below it
+        let last = buffer.cursorY;
+        for (let y = term.rows - 1; y > last; y--) {
+          const line = buffer.getLine(buffer.viewportY + y);
+          if (line?.translateToString(true).trim()) {
+            last = y;
+            break;
+          }
+        }
+        const rowHeight = screen.offsetHeight / term.rows;
+        const top = screen.getBoundingClientRect().top + offset;
+        const bottom = top + (last + 1) * rowHeight;
+        const next = Math.max(
+          0,
+          Math.ceil(bottom - host.getBoundingClientRect().bottom)
+        );
+        if (next === offset) return;
+        offset = next;
+        el.style.transform = next ? `translateY(${-next}px)` : "";
+      };
+      const schedule = () => {
+        if (!frame) frame = requestAnimationFrame(slide);
+      };
+      slide();
+      const rendered = term.onRender(schedule);
+      const observer = new ResizeObserver(schedule);
+      observer.observe(host);
+      return () => {
+        cancelAnimationFrame(frame);
+        rendered.dispose();
+        observer.disconnect();
+        el.style.transform = "";
+      };
+    }, [keepRows, connectionState, xtermRef]);
     // The app's keyboard bar shows the same row; told whenever this
     // terminal takes focus and when the row changes while it has it
     const nativeKeys =
@@ -702,6 +751,8 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
                 selectMode && "ring-primary ring-2 ring-inset",
                 isDragging && "ring-primary ring-2 ring-inset"
               )}
+              // Read by the resize handlers: no refit while sliding
+              data-keep-rows={keepRows || undefined}
               onClick={focus}
               onTouchStart={
                 selectMode
