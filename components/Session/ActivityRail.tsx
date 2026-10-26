@@ -23,6 +23,7 @@ import { KIND_STYLE, shortLabel, splitOptions } from "@/components/Inbox";
 import { mobileNavActions } from "@/stores/mobileNav";
 import { openSubagent } from "@/stores/agentOpen";
 import { runNav } from "@/lib/nav-actions";
+import { WorkflowPhaseList, workflowPhases } from "@/components/WorkflowPhases";
 
 const MAX_FILES = 5;
 const MAX_AGENTS = 5;
@@ -154,7 +155,15 @@ export function ActivityRail({
           </SectionHeader>
           <div className="min-w-0 space-y-px">
             {workflowRows.map((run) => (
-              <WorkflowRow key={run.runId} run={run} />
+              <WorkflowRow
+                key={run.runId}
+                run={run}
+                onOpenAgent={(agentId) => {
+                  // The chat opens the agent's conversation once it shows
+                  openSubagent(session.id, agentId);
+                  toChat();
+                }}
+              />
             ))}
           </div>
         </section>
@@ -439,7 +448,13 @@ function SubagentRow({
  * A workflow run: its phase and agents at a glance, a bar of its phases, and
  * its agents on tap
  */
-function WorkflowRow({ run }: { run: WorkflowInfo }) {
+function WorkflowRow({
+  run,
+  onOpenAgent,
+}: {
+  run: WorkflowInfo;
+  onOpenAgent: (agentId: string) => void;
+}) {
   const running = run.status === "running";
   // A running workflow shows its phases; a finished one on tap
   const [open, setOpen] = useState(running);
@@ -478,136 +493,14 @@ function WorkflowRow({ run }: { run: WorkflowInfo }) {
         onClick={() => setOpen((o) => !o)}
       />
       {open && (
-        <ol className="pb-1.5 pl-[50px] text-[12px]">
-          {phases.map((phase, i) => (
-            <WorkflowPhase
-              key={phase.name}
-              number={i + 1}
-              phase={phase}
-              current={running && i === phaseIndex}
-              reached={i <= phaseIndex || !running}
-            />
-          ))}
-        </ol>
+        <WorkflowPhaseList
+          run={run}
+          onOpenAgent={onOpenAgent}
+          className="pb-1.5 pl-[50px]"
+        />
       )}
     </div>
   );
-}
-
-interface PhaseGroup {
-  name: string;
-  agents: WorkflowInfo["agents"];
-}
-
-/** The declared phases in order, each with its agents; undeclared ones after */
-function workflowPhases(run: WorkflowInfo): PhaseGroup[] {
-  const groups = new Map<string, PhaseGroup>();
-  for (const name of run.phases) groups.set(name, { name, agents: [] });
-  for (const agent of run.agents) {
-    const name = agent.phase ?? "Other";
-    if (!groups.has(name)) groups.set(name, { name, agents: [] });
-    groups.get(name)!.agents.push(agent);
-  }
-  return [...groups.values()];
-}
-
-/** One phase: its number, name and agents done; its agents when open */
-function WorkflowPhase({
-  number,
-  phase,
-  current,
-  reached,
-}: {
-  number: number;
-  phase: PhaseGroup;
-  current: boolean;
-  reached: boolean;
-}) {
-  const [open, setOpen] = useState(current);
-  useEffect(() => {
-    if (current) setOpen(true);
-  }, [current]);
-  const done = phase.agents.filter((a) => a.status === "done").length;
-  const total = phase.agents.length;
-  const finished = total > 0 && done === total && !current;
-  return (
-    <li>
-      <button
-        type="button"
-        aria-expanded={total ? open : undefined}
-        disabled={!total}
-        onClick={() => setOpen((o) => !o)}
-        className={cn(
-          "hover:bg-accent/50 flex min-h-7 w-full min-w-0 items-center gap-2 rounded-md px-1.5 text-left disabled:hover:bg-transparent",
-          current && "text-foreground font-medium",
-          !reached && "text-muted-foreground/60"
-        )}
-      >
-        <span className="w-3 shrink-0 text-center tabular-nums">
-          {finished ? (
-            <span className={STATE_TEXT_CLASS.done}>✓</span>
-          ) : current ? (
-            <span className="text-blue-500">›</span>
-          ) : (
-            number
-          )}
-        </span>
-        <span className="min-w-0 flex-1 truncate">{phase.name}</span>
-        {total > 0 && (
-          <span className="text-muted-foreground shrink-0 tabular-nums">
-            {done}/{total}
-          </span>
-        )}
-      </button>
-      {open && total > 0 && (
-        <ul className="pb-1 pl-6">
-          {phase.agents.map((agent) => (
-            <li key={agent.agentId} className="flex min-w-0 gap-2 py-0.5">
-              <span
-                aria-label={agent.status}
-                className={cn(
-                  "w-3 shrink-0 text-center leading-5",
-                  agent.status === "done"
-                    ? STATE_TEXT_CLASS.done
-                    : agent.status === "running"
-                      ? "text-blue-500"
-                      : "text-muted-foreground"
-                )}
-              >
-                {agent.status === "done"
-                  ? "✓"
-                  : agent.status === "running"
-                    ? "●"
-                    : "○"}
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block font-mono leading-5 break-all">
-                  {agent.label}
-                </span>
-                {(agent.model || agent.tokens) && (
-                  <span className="text-muted-foreground block text-[11px] tabular-nums">
-                    {[
-                      agent.model,
-                      agent.tokens && `${tokens(agent.tokens)} tokens`,
-                    ]
-                      .filter(Boolean)
-                      .join(" · ")}
-                  </span>
-                )}
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
-    </li>
-  );
-}
-
-/** 134,975 as "135.0k" */
-function tokens(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
-  return String(n);
 }
 
 function plural(n: number, word: string) {

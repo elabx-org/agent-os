@@ -44,6 +44,8 @@ export type ChatItem =
       removed?: number;
       /** The edit's lines, prefixed "+", "-" or " " (capped) */
       patch?: string[];
+      /** A Workflow call's run, "wf_…" */
+      runId?: string;
     };
 
 export interface TranscriptChunk {
@@ -344,6 +346,8 @@ function toolResult(part: any, meta: any, uuid: string): ChatItem {
     }
     patch = lines.length ? lines.slice(0, MAX_PATCH_LINES) : undefined;
   }
+  // "Transcript dir: …/subagents/workflows/wf_…" in a Workflow call's result
+  const runId = /\/subagents\/workflows\/(wf_[\w-]+)/.exec(content)?.[1];
   return {
     kind: "result",
     id: `${uuid}-${part.tool_use_id}`,
@@ -353,6 +357,7 @@ function toolResult(part: any, meta: any, uuid: string): ChatItem {
     added,
     removed,
     patch,
+    runId,
   };
 }
 
@@ -376,6 +381,15 @@ function summarizeTool(name: string, input: any, cwd: string): string {
     case "Agent":
     case "Task":
       return String(input.description ?? "");
+    case "Workflow": {
+      // The script's meta name, or its file's ("<name>-wf_….js")
+      const script = String(input.script ?? "");
+      const named = /name:\s*['"]([^'"]+)['"]/.exec(script)?.[1];
+      const file = /([^/]+?)(?:-wf_[\w-]+)?\.js$/.exec(
+        String(input.scriptPath ?? "")
+      )?.[1];
+      return named ?? file ?? String(input.name ?? "");
+    }
     case "WebFetch":
       return String(input.url ?? "");
     case "WebSearch":

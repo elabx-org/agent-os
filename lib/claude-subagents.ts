@@ -57,11 +57,17 @@ export function subagentFile(
   agentId: string
 ): string | null {
   if (!AGENT_ID.test(agentId)) return null;
-  const file = path.join(
-    subagentsDir(transcriptFile),
-    `agent-${agentId}.jsonl`
-  );
-  return fs.existsSync(file) ? file : null;
+  const dir = subagentsDir(transcriptFile);
+  const file = path.join(dir, `agent-${agentId}.jsonl`);
+  if (fs.existsSync(file)) return file;
+  // A workflow's agents live in workflows/<runId>/
+  try {
+    for (const run of fs.readdirSync(path.join(dir, "workflows"))) {
+      const inRun = path.join(dir, "workflows", run, `agent-${agentId}.jsonl`);
+      if (fs.existsSync(inRun)) return inRun;
+    }
+  } catch {}
+  return null;
 }
 
 export function listSubagents(transcriptFile: string): SubagentInfo[] {
