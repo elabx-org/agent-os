@@ -9,6 +9,11 @@ import {
   type NativeNavAction,
 } from "@/lib/native-bridge";
 import { mobileNavActions, mobileNavStore } from "@/stores/mobileNav";
+import {
+  closeSettings,
+  openSettings,
+  settingsPageStore,
+} from "@/stores/settingsPage";
 import { startClientLog } from "@/lib/client-log";
 
 interface NativeBridgeOptions {
@@ -37,6 +42,8 @@ export function useNativeBridge({
 
     const nav = (action: NativeNavAction) => {
       const { viewMode } = mobileNavStore;
+      // Settings covers the app: anything else in the bar leaves it
+      if (action !== "settings") closeSettings();
       switch (action) {
         case "inbox":
           return mobileNavActions.setInboxOpen(true);
@@ -46,6 +53,8 @@ export function useNativeBridge({
           return handlers.current.openFind();
         case "new":
           return handlers.current.openNewSession();
+        case "settings":
+          return openSettings();
         // Like the rail: the current view again opens the session list
         case "chat":
         case "terminal":
@@ -87,6 +96,14 @@ export function useNativeBridge({
     };
   }, []);
 
+  // The same event opens Settings in a browser too (tests, ?fold=v trials)
+  useEffect(() => {
+    if (isNative()) return;
+    return onNativeEvent((event) => {
+      if (event.type === "nav" && event.action === "settings") openSettings();
+    });
+  }, []);
+
   useEffect(() => {
     if (!isNative()) return;
     const report = () =>
@@ -96,10 +113,12 @@ export function useNativeBridge({
         waiting: waitingCount,
         changes: mobileNavStore.changes,
         background: getComputedStyle(document.body).backgroundColor,
+        settings: settingsPageStore.open,
       });
     report();
     const stopView = subscribeKey(mobileNavStore, "viewMode", report);
     const stopChanges = subscribeKey(mobileNavStore, "changes", report);
+    const stopSettings = subscribeKey(settingsPageStore, "open", report);
     // A theme change repaints the page: tell the app the new background
     const themes = new MutationObserver(report);
     themes.observe(document.documentElement, {
@@ -109,6 +128,7 @@ export function useNativeBridge({
     return () => {
       stopView();
       stopChanges();
+      stopSettings();
       themes.disconnect();
     };
   }, [waitingCount]);
