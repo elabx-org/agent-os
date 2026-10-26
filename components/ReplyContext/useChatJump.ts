@@ -53,8 +53,10 @@ export function useChatJump(
     // this effect at once.
     setTimeout(() => {
       if (!el.isConnected) return;
+      // A long message ends with what it asks: show its end
+      const tall = el.offsetHeight > window.innerHeight * 0.5;
       el.scrollIntoView({
-        block: "center",
+        block: tall ? "end" : "center",
         behavior: still ? "auto" : "smooth",
       });
       highlight(el);

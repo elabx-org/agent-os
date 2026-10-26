@@ -12,10 +12,13 @@ import { Markdown } from "@/components/Markdown";
 import { ClaudeMark } from "@/components/UsagePill";
 import type { ReplyContext } from "@/lib/reply-context";
 import { AnswerChips } from "./AnswerChips";
-import { roomAbove } from "./layout";
+import { roomAbove, roomBelow } from "./layout";
 
 // Pulled down this far, the sheet goes
 const SWIPE_CLOSE_PX = 80;
+// With less room than this above the composer (a floating keyboard puts it
+// at the top), the sheet opens below it instead
+const MIN_ROOM_PX = 200;
 
 interface ReplySheetProps {
   context: ReplyContext;
@@ -44,6 +47,7 @@ export function ReplySheet({
   const rootRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [height, setHeight] = useState<number>();
+  const [below, setBelow] = useState(false);
   const [drag, setDrag] = useState(0);
   const dragFrom = useRef<number | null>(null);
 
@@ -52,7 +56,13 @@ export function ReplySheet({
   useLayoutEffect(() => {
     const box = rootRef.current?.offsetParent;
     if (!(box instanceof HTMLElement)) return;
-    const measure = () => setHeight(roomAbove(box, bounds?.current));
+    const measure = () => {
+      const above = roomAbove(box, bounds?.current);
+      const under = roomBelow(box, bounds?.current);
+      const flip = above < MIN_ROOM_PX && under > above;
+      setBelow(flip);
+      setHeight(flip ? under : above);
+    };
     measure();
     const vv = window.visualViewport;
     vv?.addEventListener("resize", measure);
@@ -94,7 +104,10 @@ export function ReplySheet({
       // Keeps the box focused, so the keyboard stays up
       onMouseDown={(e) => e.preventDefault()}
       className={cn(
-        "bg-background border-border animate-in fade-in motion-safe:slide-in-from-bottom-6 absolute -inset-x-2.5 bottom-full z-40 flex flex-col overflow-hidden rounded-t-2xl border-t shadow-[0_-12px_30px_rgb(0_0_0/0.25)] duration-200",
+        "bg-background border-border animate-in fade-in absolute -inset-x-2.5 z-40 flex flex-col overflow-hidden duration-200",
+        below
+          ? "motion-safe:slide-in-from-top-6 top-full rounded-b-2xl border-b shadow-[0_12px_30px_rgb(0_0_0/0.25)]"
+          : "motion-safe:slide-in-from-bottom-6 bottom-full rounded-t-2xl border-t shadow-[0_-12px_30px_rgb(0_0_0/0.25)]",
         height === undefined && "invisible"
       )}
       style={{

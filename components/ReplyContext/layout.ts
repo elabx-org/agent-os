@@ -33,3 +33,19 @@ export function roomAbove(
     top = Math.max(top, fold.end);
   return Math.max(0, Math.round(box.top - top));
 }
+
+/**
+ * Room between the bottom of `el` and the bottom of its view, above the
+ * visual viewport's bottom (a docked keyboard)
+ */
+export function roomBelow(
+  el: HTMLElement,
+  bounds?: HTMLElement | null
+): number {
+  const box = el.getBoundingClientRect();
+  const vv = window.visualViewport;
+  let bottom = vv ? vv.offsetTop + vv.height : window.innerHeight;
+  const host = bounds ?? clippingParent(el);
+  if (host) bottom = Math.min(bottom, host.getBoundingClientRect().bottom);
+  return Math.max(0, Math.round(bottom - box.bottom));
+}

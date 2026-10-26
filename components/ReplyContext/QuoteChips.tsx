@@ -3,9 +3,22 @@
 import { useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { stripMarkdown } from "@/lib/reply-context";
 import { removeQuote, useQuotes } from "@/stores/replyQuotes";
 
 const NOTE_SEEN_KEY = "agentos-quote-note-seen";
+
+/** A quote as it reads (it's sent as Markdown): a code block keeps its code */
+function chipText(text: string): string {
+  const plain = stripMarkdown(text).join(" ");
+  return (
+    plain ||
+    text
+      .replace(/^`{3,}.*$/gm, "")
+      .replace(/\s+/g, " ")
+      .trim()
+  );
+}
 
 function noteSeen(): boolean {
   try {
@@ -58,7 +71,7 @@ export function QuoteChips({
             ❝
           </span>
           <span className="min-w-0 flex-1 truncate">
-            {quote.text.replace(/\s+/g, " ")}
+            {chipText(quote.text)}
           </span>
           <button
             type="button"
