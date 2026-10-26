@@ -24,6 +24,12 @@ import { postureStore } from "@/stores/posture";
 import { focusStore, setFocus } from "@/stores/focus";
 import { PanelRight } from "lucide-react";
 import { mobileNavStore } from "@/stores/mobileNav";
+import { ContextPanel } from "@/components/ReplyContext/ContextPanel";
+import { useReplyContext } from "@/hooks/useReplyContext";
+import {
+  setContextShownElsewhere,
+  useReplying,
+} from "@/components/ReplyContext/store";
 
 const GitPanel = dynamic(
   () => import("@/components/GitPanel").then((mod) => mod.GitPanel),
@@ -107,6 +113,9 @@ interface SessionSpreadProps {
  * the chat reads as a book, the terminal takes the right page with Changes on
  * the left, and anything else takes the right page.
  *
+ * Typing a reply in the one session open, Claude's last turn takes the left
+ * page and holds still while the pane, with its composer, takes the right.
+ *
  * A workspace page takes the pane's place (on the right page, or both pages
  * for one with its own list | detail) and the panes wait under it, hidden.
  *
@@ -140,10 +149,17 @@ export function SessionSpread({
   const folder = session?.working_directory;
   const pageOpen = !!page;
   const pageWide = !!pages && pageOpen && !!pageSpread;
-  const homeOpen = homeWanted && !pageWide;
   // Two sessions open: one on each page, in place of the rail
   const { paneCount } = usePanes();
   const twoPages = !!pages && paneCount > 1 && !pageOpen;
+  // Replying to the one session open: its context on the left page, the
+  // pane on the right (two open keep their own cards above each composer)
+  // (only with something to show: a shell session has no Claude turn)
+  const typing = useReplying(session?.id);
+  const replyContext = useReplyContext(session?.id, !!pages && typing);
+  const replyLeft =
+    !!pages && !!session && !pageOpen && !twoPages && typing && !!replyContext;
+  const homeOpen = homeWanted && !pageWide && !replyLeft;
   const splitFold = twoPages && !homeOpen;
   const changesLeft =
     !!book &&
@@ -151,6 +167,7 @@ export function SessionSpread({
     !homeOpen &&
     !pageOpen &&
     !twoPages &&
+    !replyLeft &&
     viewMode === "terminal" &&
     !!folder;
   // On the pages the rail sits beside a conversation; Changes, Files and
@@ -160,6 +177,7 @@ export function SessionSpread({
     !pageOpen &&
     !focus &&
     !splitFold &&
+    !replyLeft &&
     (pages
       ? !homeOpen && (viewMode === "terminal" || viewMode === "chat")
       : roomForRail && !native);
@@ -175,7 +193,7 @@ export function SessionSpread({
     !changesLeft &&
     !showRail &&
     !splitFold &&
-    (pageOpen ? !pageWide : !!book && viewMode !== "chat");
+    (replyLeft || (pageOpen ? !pageWide : !!book && viewMode !== "chat"));
   // Across the fold: content may cross it, controls move right of it
   const paneWide =
     pages && !homeOpen && !changesLeft && !showRail && !paneRight && !splitFold;
@@ -190,6 +208,14 @@ export function SessionSpread({
         : null,
     [paneWide, spreadStart, spreadEnd]
   );
+
+  // The left page shows the context, so the card above the box steps aside
+  const replyId = replyLeft ? session?.id : undefined;
+  useEffect(() => {
+    if (!replyId) return;
+    setContextShownElsewhere(replyId, true);
+    return () => setContextShownElsewhere(replyId, false);
+  }, [replyId]);
 
   useEffect(() => {
     mobileNavStore.railShown = showRail;
@@ -233,6 +259,7 @@ export function SessionSpread({
     !pageOpen &&
     !homeOpen &&
     !splitFold &&
+    !replyLeft &&
     (viewMode === "terminal" || viewMode === "chat") &&
     (pages || (roomForRail && !native));
 
@@ -279,7 +306,19 @@ export function SessionSpread({
         </div>
       )}
 
-      {paneRight && (
+      {/* Replying: Claude's last turn on the left page, still while the
+          right one moves with the keyboard */}
+      {replyLeft && session && (
+        <ContextPanel
+          sessionId={session.id}
+          view={viewMode === "terminal" ? "terminal" : "chat"}
+          edges
+          className="flex-shrink-0"
+          style={{ width: leftPage }}
+        />
+      )}
+
+      {paneRight && !replyLeft && (
         <div
           aria-hidden="true"
           className="bg-background kb-compact-hide flex-shrink-0"
@@ -291,7 +330,11 @@ export function SessionSpread({
       {pageGap && (
         <div
           aria-hidden="true"
-          className="bg-background kb-compact-hide flex-shrink-0"
+          className={cn(
+            "bg-background flex-shrink-0",
+            // Its left page stays while typing, so the fold does too
+            !replyLeft && "kb-compact-hide"
+          )}
           style={{ width: gutter }}
         />
       )}

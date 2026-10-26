@@ -73,7 +73,11 @@ import {
   WorkflowPanel,
   workflowAgentInfo,
 } from "@/components/WorkflowPhases";
-import { ReplyContextBar, useChatJump } from "@/components/ReplyContext";
+import {
+  DeckContext,
+  ReplyContextBar,
+  useChatJump,
+} from "@/components/ReplyContext";
 
 const POLL_MS = 1500;
 /** Runs of tool calls longer than this collapse to their last few */
@@ -1204,6 +1208,13 @@ export function ChatView({
           }
         />
       )}
+      {/* On a table while typing: Claude's last turn over the chat above */}
+      <DeckContext
+        sessionId={session.id}
+        view="chat"
+        on={!!deck && active}
+        cover={scrollRef}
+      />
       {quoteMenu.menu}
     </div>
   );
