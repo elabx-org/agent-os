@@ -7,8 +7,6 @@ import { MissionControl } from "@/components/MissionControl";
 import { NewSessionDialog } from "@/components/NewSessionDialog";
 import { NotificationSettings } from "@/components/NotificationSettings";
 import { StartServerDialog } from "@/components/DevServers/StartServerDialog";
-import { ThemeToggle } from "@/components/ThemeToggle";
-import { TextSizeControl } from "@/components/TextSizeControl";
 import { Button } from "@/components/ui/button";
 import {
   PanelLeftClose,
@@ -18,6 +16,7 @@ import {
   Check,
   Command,
   Inbox,
+  Settings,
 } from "lucide-react";
 import { PaneLayout } from "@/components/PaneLayout";
 import {
@@ -35,6 +34,7 @@ import { InboxDialog } from "@/components/Inbox";
 import { mobileNavActions, mobileNavStore } from "@/stores/mobileNav";
 import { useIsNative } from "@/hooks/useIsNative";
 import { postureStore } from "@/stores/posture";
+import { openSettings } from "@/stores/settingsPage";
 
 export function DesktopView({
   sessions,
@@ -134,7 +134,7 @@ export function DesktopView({
               ? native
                 ? // Lying flat the fold doesn't matter: a sidebar, not a page
                   "border-border w-[min(20rem,40%)] border-r"
-                : "w-60"
+                : "w-[22rem]"
               : "w-0"
         )}
         style={
@@ -143,49 +143,25 @@ export function DesktopView({
             : undefined
         }
       >
-        <div className="flex h-full flex-col">
-          {/* Session list */}
-          <div className="min-h-0 flex-1 overflow-hidden">
-            {native ? (
-              // In the app, the left page of the open display: mission control
-              <MissionControl
-                sessions={sessions}
-                sessionStatuses={sessionStatuses}
-                projectNames={projectNames}
-                activeSessionId={focusedActiveTab?.sessionId || undefined}
-                onOpenSession={attachToSession}
-                onNewSession={() => setShowNewSessionDialog(true)}
-                projectsView={cloneElement(sessionList, {
-                  belowHeader: (
-                    <div className="px-3 pb-2">
-                      <UsageMonitor />
-                    </div>
-                  ),
-                })}
-              />
-            ) : (
-              sessionList
-            )}
-          </div>
-
-          {/* Sidebar footer with theme toggle; usage moves here when the header is narrow */}
-          <div
-            className={cn(
-              "mt-auto space-y-1 px-3 py-1.5",
-              // The open Duo's screen corner is round: keep clear of its curve
-              native && "px-5 pt-2 pb-[max(1rem,env(safe-area-inset-bottom))]"
-            )}
-          >
-            <div className={cn("space-y-1 xl:hidden", native && "hidden")}>
-              <UsageMonitor />
-              <MinimaxUsageMonitor />
-            </div>
-            <TextSizeControl />
-            <div className="flex items-center justify-between">
-              <span className="text-muted-foreground text-xs">Theme</span>
-              <ThemeToggle />
-            </div>
-          </div>
+        {/* The home, as on a phone. Its rows are inset px-4 already: px-1
+            more makes the 20px that, with the bottom inset, keeps the last
+            row clear of the open Duo's round screen corner */}
+        <div className="bg-background h-full px-1 pb-[max(1rem,env(safe-area-inset-bottom))]">
+          <MissionControl
+            sessions={sessions}
+            sessionStatuses={sessionStatuses}
+            projectNames={projectNames}
+            activeSessionId={focusedActiveTab?.sessionId || undefined}
+            onOpenSession={attachToSession}
+            onNewSession={() => setShowNewSessionDialog(true)}
+            projectsView={cloneElement(sessionList, {
+              belowHeader: (
+                <div className="px-3 pb-2">
+                  <UsageMonitor />
+                </div>
+              ),
+            })}
+          />
         </div>
       </div>
 
@@ -306,6 +282,22 @@ export function DesktopView({
               <TooltipContent>
                 <p>Quick switch</p>
                 <p className="text-muted-foreground text-xs">⌘K</p>
+              </TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={() => openSettings()}
+                  aria-label="Settings"
+                >
+                  <Settings className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Settings</p>
+                <p className="text-muted-foreground text-xs">⌘,</p>
               </TooltipContent>
             </Tooltip>
             <NotificationSettings
