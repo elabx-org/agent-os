@@ -1,8 +1,8 @@
 /**
  * The adaptive key row (narrow screens: the closed iPhone Duo, phones): one
  * row whose keys follow what the session is doing, each with a second key
- * a flick up away. Every other key is in its ⋯ (All keys); the tools are in
- * the composer's + menu.
+ * a flick up away. Every other key is in its ⋯ (All keys). Above the
+ * composer the row leads with the tools (Photo, Paste or Copy, File).
  *
  * Ids are the toolbar's (components/Terminal/toolbar-config.ts), plus
  * digit-N for a prompt's options, so the app's keyboard bar can show the
@@ -21,8 +21,6 @@ export interface AdaptiveKey {
   id: string;
   label: string;
   key: string;
-  /** A caption beside the label: the key fills the row's free room */
-  caption?: string;
   flick?: Flick;
   /** Held, it repeats */
   repeats?: boolean;
@@ -32,7 +30,7 @@ export interface AdaptiveKey {
 const ESC = "\x1b";
 
 const FLICKS: Record<string, Flick> = {
-  esc: { label: "Esc Esc", keys: [ESC, ESC] },
+  esc: { label: "^C", keys: ["\x03"] },
   tab: { label: "⇧Tab", keys: ["\x1b[Z"] },
   "shift-tab": { label: "Tab", keys: ["\t"] },
   enter: { label: "⇧↵", keys: ["\n"] },
@@ -67,49 +65,30 @@ function key(id: string, extra?: Partial<AdaptiveKey>): AdaptiveKey {
   return { id, ...KEYS[id], flick: FLICKS[id], ...extra };
 }
 
-/** Most options a prompt gets number keys for */
+/** Most options a prompt gets number keys for (five keys fit beside the
+    tools on the closed Duo: past three the row narrows its keys) */
 const MAX_DIGITS = 4;
 
 /** The row's key ids for a state; `options`: the prompt's, when it asks */
 export function adaptiveIds(state: AdaptiveState, options = 0): string[] {
   switch (state) {
-    case "working":
-      return ["esc", "ctrl-c"];
     case "asks": {
       const digits = Array.from(
         { length: Math.min(options, MAX_DIGITS) },
         (_, i) => `digit-${i + 1}`
       );
-      return ["arrow-up", "arrow-down", "enter", ...digits, "esc", "ctrl-c"];
+      return [...digits, "esc", "enter"];
     }
     case "shell":
-      return [
-        "tab",
-        "ctrl-r",
-        "arrow-up",
-        "arrow-down",
-        "arrow-left",
-        "arrow-right",
-        "ctrl-c",
-      ];
+      return ["tab", "arrow-up", "arrow-down", "enter", "ctrl-c"];
+    // Working keeps the idle row, so nothing moves when Claude starts. No ↵:
+    // Send with an empty box presses Enter
     default:
-      return [
-        "char-slash",
-        "shift-tab",
-        "arrow-up",
-        "arrow-down",
-        "enter",
-        "esc",
-        "ctrl-c",
-      ];
+      return ["char-slash", "shift-tab", "arrow-up", "arrow-down", "esc"];
   }
 }
 
-/** The row for a state: working leads with a wide Esc that interrupts */
+/** The row for a state */
 export function adaptiveRow(state: AdaptiveState, options = 0): AdaptiveKey[] {
-  return adaptiveIds(state, options).map((id) =>
-    state === "working" && id === "esc"
-      ? key(id, { caption: "Interrupt" })
-      : key(id)
-  );
+  return adaptiveIds(state, options).map((id) => key(id));
 }

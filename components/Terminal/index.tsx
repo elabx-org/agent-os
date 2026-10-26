@@ -22,11 +22,15 @@ import {
   MousePointer2,
   Eraser,
   TerminalSquare,
+  History,
+  Undo2,
+  KeyboardOff,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SearchBar } from "./SearchBar";
 import { ScrollToBottomButton } from "./ScrollToBottomButton";
-import { TerminalToolbar } from "./TerminalToolbar";
+import { TerminalToolbar, type RowAction } from "./TerminalToolbar";
+import type { ComposerTools } from "./ComposerPlusMenu";
 import {
   type KeysContext,
   keysSettingsStore,
@@ -476,14 +480,6 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
       setToolbarVisible(next);
       localStorage.setItem("terminalToolbarVisible", String(next));
     };
-
-    // On the deck the page's key rows replace the app's keyboard bar
-    const nativeBarHidden = !!deck && isNative();
-    useEffect(() => {
-      if (!nativeBarHidden) return;
-      postToNative({ type: "keybar", hidden: true });
-      return () => postToNative({ type: "keybar", hidden: false });
-    }, [nativeBarHidden]);
 
     const composerOn = showKeybar && composerEnabled;
     composerOnRef.current = composerOn;
@@ -949,6 +945,94 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
       setSelectMode(false);
     }, [draftId, selectedText]);
 
+    // A narrow screen in portrait (the closed Duo, phones): one key row
+    // above the composer, keyboard up or down, leading with the tools. The
+    // composer's + folds into the row's ⋯, and the app's keyboard bar hides.
+    const rowAbove =
+      composerOn &&
+      narrow &&
+      keyPrefs.adaptive !== false &&
+      toolbarVisible &&
+      !deck &&
+      !sideBySide;
+
+    // On the deck the page's key rows replace the app's keyboard bar; above
+    // the composer the row does
+    const nativeBarHidden = (!!deck || (rowAbove && active)) && isNative();
+    useEffect(() => {
+      if (!nativeBarHidden) return;
+      postToNative({ type: "keybar", hidden: true });
+      return () => postToNative({ type: "keybar", hidden: false });
+    }, [nativeBarHidden]);
+
+    // The clipboard key copies while text is selected: in the copy view,
+    // or dragged in the terminal. Kept from the last change, as the tap on
+    // the key can clear the selection before its click.
+    const [termSelected, setTermSelected] = useState(false);
+    useEffect(() => {
+      const term = xtermRef.current;
+      if (!term) return;
+      const changed = term.onSelectionChange(() =>
+        setTermSelected(term.hasSelection())
+      );
+      return () => changed.dispose();
+    }, [xtermRef, connectionState]);
+    const copyTextRef = useRef("");
+    if (selectedText) copyTextRef.current = selectedText;
+    if (!selectMode) copyTextRef.current = "";
+    const copyForRow = useCallback(() => {
+      const text = copyTextRef.current;
+      if (!text) return copySelection();
+      copyTextRef.current = "";
+      void writeClipboard(text);
+      window.getSelection()?.removeAllRanges();
+      return true;
+    }, [copySelection, writeClipboard]);
+    const composerToolsRef = useRef<ComposerTools | null>(null);
+    const rowTools = useMemo(
+      () =>
+        rowAbove
+          ? {
+              onPhoto: () => setShowImagePicker(true),
+              onFile: () => composerToolsRef.current?.file(),
+              canCopy: !!selectedText || termSelected,
+              onSelectText: () => setSelectMode(true),
+            }
+          : null,
+      [rowAbove, selectedText, termSelected]
+    );
+    // What the composer's + had, in the row's ⋯
+    const rowActions = useMemo<RowAction[]>(
+      () => [
+        {
+          icon: MousePointer2,
+          label: "Select text",
+          onSelect: () => setSelectMode(true),
+        },
+        ...(keysContext === "claude"
+          ? [
+              {
+                icon: History,
+                label: "Earlier prompts",
+                onSelect: () => composerToolsRef.current?.history?.(),
+              },
+              {
+                icon: Undo2,
+                label: "Rewind",
+                onSelect: () => composerToolsRef.current?.rewind?.(),
+              },
+            ]
+          : []),
+        {
+          icon: TerminalSquare,
+          label: "Type in terminal",
+          onSelect: typeInTerminal,
+        },
+        { icon: KeyboardOff, label: "Hide keys", onSelect: toggleToolbar },
+      ],
+      [keysContext, typeInTerminal, toggleToolbar]
+    );
+
     // Auto-copy: when user drags to select text (tmux handles the selection),
     // grab tmux buffer on mouseup and copy to system clipboard
     const dragStartRef = useRef<{ x: number; y: number } | null>(null);
@@ -1118,6 +1202,8 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
         {selectMode && (
           <div
             className="bg-background absolute inset-0 z-40 flex flex-col"
+            // The key row above the composer stays: its Paste turns into Copy
+            style={rowAbove ? { bottom: keybarHeight } : undefined}
             onTouchStart={(e) => e.stopPropagation()}
             onTouchEnd={(e) => e.stopPropagation()}
           >
@@ -1233,6 +1319,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
               // Laid out on both pages here, or kept right of the fold
               !duoLayout && "fold-controls",
               sideBySide && "flex items-end",
+              rowAbove && "flex flex-col",
               laptopKeys ? "contents" : deck && "flex flex-col"
             )}
             style={
@@ -1277,7 +1364,15 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
                   ? duoLayout === "split"
                     ? { order: 1, ...leftSlot }
                     : { order: 3, ...rightSlot }
-                  : { order: laptopKeys ? 1 : tabletopBase ? 3 : undefined }
+                  : {
+                      // Above the composer: the key row goes first
+                      order:
+                        laptopKeys || rowAbove
+                          ? 1
+                          : tabletopBase
+                            ? 3
+                            : undefined,
+                    }
               }
             >
               {composerOn && (
@@ -1300,8 +1395,10 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
                   onClearStray={clearStray}
                   stateAbove={sideBySide}
                   pages={twoRowPages}
+                  noPlus={rowAbove}
+                  toolsRef={composerToolsRef}
                   extra={
-                    !deck && (
+                    !deck && !rowAbove && (
                       <KeybarToggleButton
                         inline
                         isVisible={toolbarVisible}
@@ -1342,16 +1439,18 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
                 onKeyPress={keybarKeyPress}
                 onPaste={sendPaste}
                 onImagePicker={() => setShowImagePicker(true)}
-                onCopy={copySelection}
+                onCopy={rowAbove ? copyForRow : copySelection}
                 selectMode={selectMode}
                 onSelectModeChange={setSelectMode}
                 snippetsRequest={snippetsRequest}
                 adaptiveState={adaptiveState}
                 promptOptions={promptOptions}
+                tools={rowTools}
+                actions={rowAbove ? rowActions : undefined}
                 // The deck has no keybar toggle, so its row always shows
                 visible={
                   (toolbarVisible || tabletopBase) &&
-                  (!nativeKeyboard || laptopKeys)
+                  (!nativeKeyboard || laptopKeys || rowAbove)
                 }
                 keepRows={laptopKeys}
                 context={keysContext}
