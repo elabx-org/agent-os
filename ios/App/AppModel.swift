@@ -235,7 +235,11 @@ final class AppModel {
         guard let message = body as? [String: Any] else { return }
         if message["type"] as? String == "keybar" {
             // Half open like a laptop, the page's key rows sit right above the keyboard
-            (webView as? AgentWebView)?.keyboardBar.collapsed = message["hidden"] as? Bool ?? false
+            let hidden = message["hidden"] as? Bool ?? false
+            if let web = webView as? AgentWebView, web.keyboardBar.collapsed != hidden {
+                web.keyboardBar.collapsed = hidden
+                web.reloadKeyboardBar()
+            }
             return
         }
         if message["type"] as? String == "keys" {

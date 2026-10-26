@@ -25,6 +25,7 @@ import {
   History,
   Undo2,
   KeyboardOff,
+  ChevronDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SearchBar } from "./SearchBar";
@@ -1398,12 +1399,31 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
                   noPlus={rowAbove}
                   toolsRef={composerToolsRef}
                   extra={
-                    !deck && !rowAbove && (
-                      <KeybarToggleButton
-                        inline
-                        isVisible={toolbarVisible}
-                        onToggle={toggleToolbar}
-                      />
+                    rowAbove ? (
+                      // The app's bar, with its own, hides: the keyboard's
+                      // way down is beside Send while it's up
+                      keyboardUp && (
+                        <button
+                          type="button"
+                          aria-label="Hide keyboard"
+                          title="Hide keyboard"
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() =>
+                            (document.activeElement as HTMLElement | null)?.blur()
+                          }
+                          className="bg-secondary text-muted-foreground active:bg-muted flex h-[44px] w-[44px] flex-shrink-0 touch-manipulation items-center justify-center rounded-full"
+                        >
+                          <ChevronDown className="h-5 w-5" />
+                        </button>
+                      )
+                    ) : (
+                      !deck && (
+                        <KeybarToggleButton
+                          inline
+                          isVisible={toolbarVisible}
+                          onToggle={toggleToolbar}
+                        />
+                      )
                     )
                   }
                 />

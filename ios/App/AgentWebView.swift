@@ -258,6 +258,15 @@ private final class WeakMessageHandler: NSObject, WKScriptMessageHandler {
 final class AgentWebView: WKWebView {
     let keyboardBar = KeyboardBar()
 
+    /// The bar collapsed or came back: the keyboard only re-measures its
+    /// accessory when asked, so without this it keeps the old height, empty
+    func reloadKeyboardBar() {
+        scrollView.subviews.first {
+            let name = NSStringFromClass(type(of: $0))
+            return name.hasPrefix("WKContent") || name.hasPrefix("AgentOS_WKContent")
+        }?.reloadInputViews()
+    }
+
     override init(frame: CGRect, configuration: WKWebViewConfiguration) {
         super.init(frame: frame, configuration: configuration)
         installKeyboardBar()

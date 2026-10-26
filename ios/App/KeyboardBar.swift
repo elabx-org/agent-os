@@ -217,6 +217,7 @@ final class KeyboardBar: UIInputView {
     }
 
     /// No keys and no height: the page shows its own rows above the keyboard
+    /// (AgentWebView.reloadKeyboardBar makes the keyboard take the new height)
     var collapsed = false {
         didSet {
             guard collapsed != oldValue else { return }
