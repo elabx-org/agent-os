@@ -132,7 +132,11 @@ export function StartServerDialog({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      {/* A dialog to the workspace page too, so Esc doesn't leave it */}
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Start dev server"
         className={cn(
           "w-full max-w-md rounded-xl",
           "bg-background border-border border",
