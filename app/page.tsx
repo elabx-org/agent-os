@@ -43,6 +43,10 @@ import { DesktopView } from "@/components/views/DesktopView";
 import { MobileView } from "@/components/views/MobileView";
 import { getPendingPrompt, clearPendingPrompt } from "@/stores/initialPrompt";
 import { closeSettings, openSettings } from "@/stores/settingsPage";
+import { mobileNavStore } from "@/stores/mobileNav";
+import { loadFocus } from "@/stores/focus";
+import { registerNavHandlers } from "@/lib/nav-actions";
+import { useBackgroundAgents } from "@/components/BackgroundAgents";
 import { SettingsPage } from "@/components/Settings/SettingsPage";
 
 function HomeContent() {
@@ -376,15 +380,31 @@ function HomeContent() {
   });
 
   useFoldPosture();
-  useNativeBridge({
-    waitingCount: sessions.filter(
-      (s) =>
-        !s.conductor_session_id && sessionStatuses[s.id]?.status === "waiting"
-    ).length,
-    openSessions: () => setSidebarOpen((open) => !open),
-    openFind: () => setShowQuickSwitcher(true),
-    openNewSession: () => setShowNewSessionDialog(true),
-  });
+  useEffect(loadFocus, []);
+  useEffect(
+    () =>
+      registerNavHandlers({
+        openSessions: () => setSidebarOpen((open) => !open),
+        openFind: () => setShowQuickSwitcher(true),
+        openNewSession: () => setShowNewSessionDialog(true),
+      }),
+    []
+  );
+
+  // Workers show inside their conductor's session; parked agents are
+  // already left out of the background list
+  const waitingCount = sessions.filter(
+    (s) =>
+      !s.conductor_session_id && sessionStatuses[s.id]?.status === "waiting"
+  ).length;
+  const backgroundAgents = useBackgroundAgents();
+  const blockedCount = backgroundAgents.filter(
+    (a) => a.state === "blocked"
+  ).length;
+  useEffect(() => {
+    mobileNavStore.needsYou = waitingCount + blockedCount;
+  }, [waitingCount, blockedCount]);
+  useNativeBridge({ waitingCount });
 
   // Notification links open their session; on a phone, over the home. A
   // link can land before the start state below is chosen, so note it

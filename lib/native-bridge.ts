@@ -9,17 +9,9 @@
 
 import type { PaneViewMode } from "@/stores/mobileNav";
 import type { Fold } from "@/stores/posture";
+import type { NavAction } from "@/lib/nav-actions";
 
-export type NativeNavAction =
-  | "inbox"
-  | "chat"
-  | "terminal"
-  | "git"
-  | "files"
-  | "find"
-  | "new"
-  | "sessions"
-  | "settings";
+export type NativeNavAction = NavAction;
 
 export type NativeEvent =
   | { type: "nav"; action: NativeNavAction }
@@ -52,6 +44,13 @@ export interface NativeState {
   background?: string;
   /** The Settings page is showing (older app builds ignore it) */
   settings?: boolean;
+  /** Focus mode is on (stores/focus.ts) */
+  focus?: boolean;
+  /** Focus is on and something needs you: the amber dot on the toggle */
+  focusDot?: boolean;
+  /** The theme's accent (--primary) as rgb(), for the app's own controls */
+  accent?: string;
+  scheme?: "light" | "dark";
 }
 
 export const NATIVE_EVENT = "agentos-native";
@@ -75,6 +74,25 @@ declare global {
 
 export function isNative(): boolean {
   return typeof window !== "undefined" && !!window.agentosNative;
+}
+
+/**
+ * The theme's accent as rgb(): a probe styled with --primary, through a
+ * canvas when the browser reports a colour space (oklch) the app can't read
+ */
+export function themeAccent(): string | undefined {
+  const probe = document.createElement("span");
+  probe.style.cssText = "display:none;color:hsl(var(--primary))";
+  document.body.appendChild(probe);
+  const color = getComputedStyle(probe).color;
+  probe.remove();
+  if (!color || color.startsWith("rgb")) return color || undefined;
+  const ctx = document.createElement("canvas").getContext("2d");
+  if (!ctx) return undefined;
+  ctx.fillStyle = color;
+  ctx.fillRect(0, 0, 1, 1);
+  const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
+  return `rgb(${r}, ${g}, ${b})`;
 }
 
 /** Keys from the bar that are text (/, @, a new line) rather than terminal controls */
@@ -103,13 +121,19 @@ export type HapticStyle =
   | "warning"
   | "error";
 
+/** Which key rows the page would show, for the keyboard bar's own */
+export interface NativeKeys {
+  type: "keys";
+  context: "claude" | "claude-up" | "shell" | "chat";
+}
+
 /** Settings → Server: the app's own server and sign-in screen */
 export interface NativeServer {
   type: "server";
 }
 
 export function postToNative(
-  message: NativeState | NativeKeybar | NativeHaptic | NativeServer
+  message: NativeState | NativeKeybar | NativeHaptic | NativeServer | NativeKeys
 ): void {
   window.webkit?.messageHandlers?.agentos?.postMessage(message);
 }

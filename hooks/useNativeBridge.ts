@@ -1,70 +1,31 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { subscribeKey } from "valtio/utils";
 import {
   isNative,
   onNativeEvent,
   postToNative,
-  type NativeNavAction,
+  themeAccent,
 } from "@/lib/native-bridge";
-import { mobileNavActions, mobileNavStore } from "@/stores/mobileNav";
-import {
-  closeSettings,
-  openSettings,
-  settingsPageStore,
-} from "@/stores/settingsPage";
+import { runNav } from "@/lib/nav-actions";
+import { mobileNavStore } from "@/stores/mobileNav";
+import { settingsPageStore } from "@/stores/settingsPage";
+import { focusStore } from "@/stores/focus";
 import { startClientLog } from "@/lib/client-log";
 
 interface NativeBridgeOptions {
   waitingCount: number;
-  openSessions: () => void;
-  openFind: () => void;
-  openNewSession: () => void;
 }
 
 /**
  * Inside the iOS app: answers its navigation (the system bar holds what the
- * web NavRail shows in Safari) and reports what the bar needs to show.
+ * web column shows in Safari) and reports what the bar needs to show.
  */
-export function useNativeBridge({
-  waitingCount,
-  openSessions,
-  openFind,
-  openNewSession,
-}: NativeBridgeOptions) {
-  const handlers = useRef({ openSessions, openFind, openNewSession });
-  handlers.current = { openSessions, openFind, openNewSession };
-
+export function useNativeBridge({ waitingCount }: NativeBridgeOptions) {
   useEffect(() => {
     if (!isNative()) return;
     mobileNavStore.railActive = true;
-
-    const nav = (action: NativeNavAction) => {
-      const { viewMode } = mobileNavStore;
-      // Settings covers the app: anything else in the bar leaves it
-      if (action !== "settings") closeSettings();
-      switch (action) {
-        case "inbox":
-          return mobileNavActions.setInboxOpen(true);
-        case "sessions":
-          return handlers.current.openSessions();
-        case "find":
-          return handlers.current.openFind();
-        case "new":
-          return handlers.current.openNewSession();
-        case "settings":
-          return openSettings();
-        // Like the rail: the current view again opens the session list
-        case "chat":
-        case "terminal":
-          return viewMode === action
-            ? handlers.current.openSessions()
-            : mobileNavActions.requestViewMode(action);
-        default:
-          return mobileNavActions.requestViewMode(action);
-      }
-    };
 
     // iOS can put the keyboard away while the text box keeps focus; a tap on
     // an already-focused box then brings back neither keyboard nor caret
@@ -82,7 +43,7 @@ export function useNativeBridge({
     };
 
     const stop = onNativeEvent((event) => {
-      if (event.type === "nav") nav(event.action);
+      if (event.type === "nav") runNav(event.action);
       else if (event.type === "keyboard") {
         mobileNavStore.nativeKeyboard = event.visible;
         if (!event.visible) keyboardHidden();
@@ -96,11 +57,16 @@ export function useNativeBridge({
     };
   }, []);
 
-  // The same event opens Settings in a browser too (tests, ?fold=v trials)
+  // The same events open Settings and toggle Focus in a browser too (tests,
+  // ?fold=v trials)
   useEffect(() => {
     if (isNative()) return;
     return onNativeEvent((event) => {
-      if (event.type === "nav" && event.action === "settings") openSettings();
+      if (
+        event.type === "nav" &&
+        (event.action === "settings" || event.action === "focus")
+      )
+        runNav(event.action);
     });
   }, []);
 
@@ -114,21 +80,29 @@ export function useNativeBridge({
         changes: mobileNavStore.changes,
         background: getComputedStyle(document.body).backgroundColor,
         settings: settingsPageStore.open,
+        focus: focusStore.on,
+        focusDot: focusStore.on && mobileNavStore.needsYou > 0,
+        accent: themeAccent(),
+        scheme: document.documentElement.classList.contains("light")
+          ? "light"
+          : "dark",
       });
     report();
-    const stopView = subscribeKey(mobileNavStore, "viewMode", report);
-    const stopChanges = subscribeKey(mobileNavStore, "changes", report);
-    const stopSettings = subscribeKey(settingsPageStore, "open", report);
-    // A theme change repaints the page: tell the app the new background
+    const stops = [
+      subscribeKey(mobileNavStore, "viewMode", report),
+      subscribeKey(mobileNavStore, "changes", report),
+      subscribeKey(mobileNavStore, "needsYou", report),
+      subscribeKey(settingsPageStore, "open", report),
+      subscribeKey(focusStore, "on", report),
+    ];
+    // A theme change repaints the page: tell the app the new colours
     const themes = new MutationObserver(report);
     themes.observe(document.documentElement, {
       attributes: true,
-      attributeFilter: ["class", "data-theme", "style"],
+      attributeFilter: ["class", "data-theme", "data-theme-variant", "style"],
     });
     return () => {
-      stopView();
-      stopChanges();
-      stopSettings();
+      stops.forEach((stop) => stop());
       themes.disconnect();
     };
   }, [waitingCount]);
