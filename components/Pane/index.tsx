@@ -31,6 +31,7 @@ import { useSnapshot } from "valtio";
 import { fileOpenStore, fileOpenActions } from "@/stores/fileOpen";
 import { mobileNavStore, mobileNavActions } from "@/stores/mobileNav";
 import { focusStore } from "@/stores/focus";
+import { getSessionView, setSessionView } from "@/lib/session-views";
 import { ActivityStrip } from "@/components/Session/ActivityStrip";
 import { isNative } from "@/lib/native-bridge";
 import { useSharedFiles } from "@/hooks/useSharedFiles";
@@ -187,10 +188,19 @@ export const Pane = memo(function Pane({
     const previous = paneSessions.get(paneId);
     paneSessions.set(paneId, session?.id);
     if (previous === session?.id) return;
-    // Chat follows you to the next session; per-folder views don't
-    setViewMode((mode) => (mode === "chat" ? "chat" : "terminal"));
+    // Each session opens in the view you last used there (terminal at first)
+    setViewMode((session && getSessionView(session.id)) || "terminal");
     fileEditor.reset();
   }, [session?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Remember a change of view; a switch of session alone isn't one
+  const viewSessionId = useRef(session?.id);
+  viewSessionId.current = session?.id;
+  useEffect(() => {
+    const id = viewSessionId.current;
+    if (id && (viewMode === "terminal" || viewMode === "chat"))
+      setSessionView(id, viewMode);
+  }, [viewMode]);
 
   // Persist drawer states
   useEffect(() => {
