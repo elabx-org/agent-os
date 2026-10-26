@@ -1,13 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { Inbox as InboxIcon, Loader2, SquareTerminal } from "lucide-react";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Loader2, SquareTerminal } from "lucide-react";
 import { KindBadge } from "@/components/rows/AgentRow";
 import { useAnswerPrompt, useSessionPrompt } from "@/data/prompts/queries";
 import { cn } from "@/lib/utils";
@@ -53,7 +47,7 @@ export function shortLabel(option: PromptOption): string {
 }
 
 // "Bash command" reads as what Claude wants: "wants to run Bash"
-function askLabel(title: string): string {
+export function askLabel(title: string): string {
   const command = /^(\w+) command$/i.exec(title);
   return command ? `wants to run ${command[1]}` : title;
 }
@@ -72,9 +66,12 @@ export function InboxItem({
   onOpen: () => void;
   /** Render nothing unless Claude is asking a question (inline in Chat) */
   questionsOnly?: boolean;
-  /** "card": the home's compact prompt with one row of answers */
-  variant?: "full" | "card";
-  /** Display title for the card; defaults to the session name */
+  /**
+   * "card": the home's compact prompt with one row of answers. "page": the
+   * body alone, under a header of the page's own
+   */
+  variant?: "full" | "card" | "page";
+  /** Display title; defaults to the session name */
   title?: ReactNode;
   /** "div" when it isn't inside a list */
   as?: "li" | "div";
@@ -167,30 +164,41 @@ export function InboxItem({
     );
   }
 
+  const page = variant === "page";
   return (
-    <Root className="space-y-3 rounded-2xl border border-amber-400/30 bg-amber-400/[0.06] p-3.5">
-      <div className="flex items-start gap-2.5">
-        <span
-          aria-hidden="true"
-          className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-amber-400 ring-4 ring-amber-400/20"
-        />
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold">{session.name}</p>
-          <p className="text-muted-foreground truncate text-xs">
-            {[projectName, prompt?.title ?? "Your turn"]
-              .filter(Boolean)
-              .join(" · ")}
-          </p>
+    <Root
+      className={cn(
+        "space-y-3",
+        !page &&
+          "rounded-2xl border border-amber-400/30 bg-amber-400/[0.06] p-3.5"
+      )}
+    >
+      {!page && (
+        <div className="flex items-start gap-2.5">
+          <span
+            aria-hidden="true"
+            className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-amber-400 ring-4 ring-amber-400/20"
+          />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-semibold">
+              {title ?? session.name}
+            </p>
+            <p className="text-muted-foreground truncate text-xs">
+              {[projectName, prompt ? askLabel(prompt.title) : "Your turn"]
+                .filter(Boolean)
+                .join(" · ")}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onOpen}
+            className="text-muted-foreground active:bg-accent hover:bg-accent flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium"
+          >
+            <SquareTerminal className="h-4 w-4" />
+            Open
+          </button>
         </div>
-        <button
-          type="button"
-          onClick={onOpen}
-          className="text-muted-foreground active:bg-accent hover:bg-accent flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium"
-        >
-          <SquareTerminal className="h-4 w-4" />
-          Open
-        </button>
-      </div>
+      )}
 
       {isLoading && (
         <div className="text-muted-foreground flex items-center gap-2 text-xs">
@@ -229,7 +237,8 @@ export function InboxItem({
                 onClick={() => answer(option)}
                 className={cn(
                   "flex min-h-[44px] touch-manipulation items-center gap-2 rounded-xl px-3.5 py-2 text-left text-sm font-medium disabled:opacity-60",
-                  KIND_STYLE[option.kind]
+                  KIND_STYLE[option.kind],
+                  page && option.kind === "deny" && "text-red-400"
                 )}
               >
                 {answering === option.index && (
@@ -242,63 +251,17 @@ export function InboxItem({
         </>
       )}
 
+      {page && (
+        <button
+          type="button"
+          onClick={onOpen}
+          className="text-muted-foreground border-border active:bg-accent hover:bg-accent flex min-h-[44px] w-full items-center rounded-xl border border-dashed px-3.5 text-left text-sm"
+        >
+          Or tell Claude what to do instead…
+        </button>
+      )}
+
       {error && <p className="text-xs text-red-400">{error}</p>}
     </Root>
-  );
-}
-
-interface InboxDialogProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  waitingSessions: Session[];
-  projectNames: Record<string, string>;
-  onOpenSession: (session: Session) => void;
-}
-
-/** Everything waiting on you, answerable without opening the terminal */
-export function InboxDialog({
-  open,
-  onOpenChange,
-  waitingSessions,
-  projectNames,
-  onOpenSession,
-}: InboxDialogProps) {
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[min(85dvh,720px)] flex-col gap-3 overflow-hidden p-4 sm:max-w-md">
-        <div>
-          <DialogTitle className="text-base">Inbox</DialogTitle>
-          <DialogDescription className="text-xs">
-            {waitingSessions.length
-              ? `${waitingSessions.length} waiting on you`
-              : "Nothing is waiting on you"}
-          </DialogDescription>
-        </div>
-        {waitingSessions.length === 0 ? (
-          <div className="text-muted-foreground flex flex-col items-center gap-2 py-10 text-sm">
-            <InboxIcon className="h-6 w-6" />
-            All clear
-          </div>
-        ) : (
-          <ul className="-mx-1 min-h-0 flex-1 space-y-3 overflow-y-auto px-1 pb-1">
-            {waitingSessions.map((session) => (
-              <InboxItem
-                key={session.id}
-                session={session}
-                projectName={
-                  session.project_id
-                    ? projectNames[session.project_id]
-                    : undefined
-                }
-                onOpen={() => {
-                  onOpenChange(false);
-                  onOpenSession(session);
-                }}
-              />
-            ))}
-          </ul>
-        )}
-      </DialogContent>
-    </Dialog>
   );
 }

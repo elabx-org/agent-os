@@ -7,7 +7,7 @@ import fs from "fs";
 import http2 from "http2";
 import { createPrivateKey, sign } from "crypto";
 import { apnsKeyFile, type PushConfig, type PushDevice } from "./config";
-import type { PushMessage } from "./send";
+import { isUrgent, type PushMessage } from "./send";
 
 const HOSTS = {
   production: "https://api.push.apple.com",
@@ -97,8 +97,9 @@ export async function sendApns(
       alert: { title: message.title, body: message.body },
       sound: "default",
       "thread-id": message.sessionId ?? "agent-os",
-      "interruption-level":
-        message.kind === "needsYou" ? "time-sensitive" : "active",
+      "interruption-level": isUrgent(message.kind)
+        ? "time-sensitive"
+        : "active",
     },
     sessionId: message.sessionId,
   });

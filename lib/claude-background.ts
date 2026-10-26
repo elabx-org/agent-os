@@ -10,7 +10,9 @@ import os from "os";
 import path from "path";
 import { execFile } from "child_process";
 import { promisify } from "util";
-import { readTranscript, type ChatItem } from "@/lib/claude-transcript";
+// Relative imports: the push watcher loads this in server.ts too
+import { readTranscript, type ChatItem } from "./claude-transcript";
+import { getDb } from "./db";
 
 const execFileAsync = promisify(execFile);
 
@@ -113,6 +115,67 @@ export async function parkedJobPanes(): Promise<Map<string, string>> {
   return parked;
 }
 
+/** How long one `claude agents` answer serves every caller */
+const CACHE_MS = 4000;
+
+// On globalThis: the watcher (server.ts) and the API routes (Next's bundle)
+// load separate copies of this module but should share one call
+const cache = globalThis as unknown as {
+  __agentosBgAgents?: { promise: Promise<BackgroundAgent[]>; at: number };
+};
+
+/** The agents with parked ones marked as their Agent-OS session */
+async function listWithParked(): Promise<BackgroundAgent[]> {
+  const [agents, parked] = await Promise.all([
+    listBackgroundAgents(),
+    parkedJobPanes(),
+  ]);
+  const byTmux = new Map(
+    (
+      getDb()
+        .prepare(
+          "SELECT id, tmux_name FROM sessions WHERE tmux_name IS NOT NULL"
+        )
+        .all() as { id: string; tmux_name: string }[]
+    ).map((s) => [s.tmux_name, s.id])
+  );
+  for (const agent of agents) {
+    const pane = parked.get(agent.id);
+    const sessionId = pane ? byTmux.get(pane) : undefined;
+    if (sessionId) agent.agentOsSessionId = sessionId;
+  }
+  return agents;
+}
+
+/**
+ * The list, at most `maxAgeMs` old: one `claude agents` call serves every
+ * open page and the push watcher. A call still running is joined, not
+ * repeated; a failed one isn't kept.
+ */
+export async function cachedBackgroundAgents(
+  maxAgeMs = CACHE_MS
+): Promise<BackgroundAgent[]> {
+  const hit = cache.__agentosBgAgents;
+  if (!hit || (hit.at && Date.now() - hit.at > maxAgeMs)) {
+    const entry = { promise: listWithParked(), at: 0 };
+    cache.__agentosBgAgents = entry;
+    entry.promise.then(
+      () => (entry.at = Date.now()),
+      () => {
+        if (cache.__agentosBgAgents === entry) delete cache.__agentosBgAgents;
+      }
+    );
+  }
+  // Copies, so a caller can't change what the next one gets
+  const agents = await cache.__agentosBgAgents!.promise;
+  return agents.map((a) => ({ ...a }));
+}
+
+/** After starting or stopping one, the next list asks the CLI again */
+function forgetBackgroundAgents() {
+  delete cache.__agentosBgAgents;
+}
+
 /** Starts `claude --bg` in `cwd` with the prompt; returns what it printed */
 export async function startBackgroundAgent(opts: {
   cwd: string;
@@ -123,6 +186,7 @@ export async function startBackgroundAgent(opts: {
   if (opts.model) args.push("--model", opts.model);
   args.push("--", opts.prompt);
   const { stdout, stderr } = await claude(args, opts.cwd);
+  forgetBackgroundAgents();
   return (stdout + stderr).trim();
 }
 
@@ -170,6 +234,10 @@ export async function stopBackgroundAgent(
   id: string,
   remove: boolean
 ): Promise<string> {
-  const { stdout, stderr } = await claude([remove ? "rm" : "stop", id]);
-  return (stdout + stderr).trim();
+  try {
+    const { stdout, stderr } = await claude([remove ? "rm" : "stop", id]);
+    return (stdout + stderr).trim();
+  } finally {
+    forgetBackgroundAgents();
+  }
 }

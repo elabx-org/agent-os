@@ -20,7 +20,6 @@ import {
   Loader2,
   Pencil,
   Search,
-  Square,
   SquareTerminal,
   Wrench,
   type LucideIcon,
@@ -31,7 +30,7 @@ import { cn } from "@/lib/utils";
 import { Markdown } from "@/components/Markdown";
 import { InboxItem } from "@/components/Inbox";
 import { useSessionPrompt } from "@/data/prompts/queries";
-import { mobileNavStore } from "@/stores/mobileNav";
+import { mobileNavActions, mobileNavStore } from "@/stores/mobileNav";
 import {
   isNative,
   isTextKey,
@@ -53,6 +52,8 @@ import {
   useClaudeLive,
 } from "@/components/Composer/ClaudeStateBar";
 import { useFoldDeck } from "@/hooks/useFoldDeck";
+import { DeckActions } from "@/components/DeckActions";
+import { DeckStateLine } from "@/components/DeckStateLine";
 import { useSubagents, useWorkflows } from "@/hooks/useSubagents";
 import {
   useSpreadFold,
@@ -610,6 +611,8 @@ interface ChatViewProps {
   /** The activity strip above shows the agents, so the pill row goes */
   hideAgentsBar?: boolean;
   onOpenTerminal: () => void;
+  /** Told when the fold deck starts or stops: its state line replaces the strip */
+  onDeck?: (on: boolean) => void;
 }
 
 /** Claude Code's session as a conversation, read from its transcript */
@@ -618,6 +621,7 @@ export function ChatView({
   active,
   hideAgentsBar,
   onOpenTerminal,
+  onDeck,
 }: ChatViewProps) {
   const { items, state, truncated, loadEarlier, loadingEarlier } =
     useTranscript(`/api/sessions/${session.id}`, active);
@@ -785,21 +789,20 @@ export function ChatView({
     [inputRef]
   );
   // Half open like a laptop or on a table: the conversation stays above the
-  // fold, and the composer and the controls sit on the deck below it
+  // fold, and the composer and the controls sit on the deck below it. The
+  // live state joins the work above (the pane drops its strip for it); on a
+  // table (not typing) the base holds the actions or the answer first, the
+  // composer last.
   const rootRef = useRef<HTMLDivElement>(null);
   const [composerFocused, setComposerFocused] = useState(false);
   const deck = useFoldDeck(rootRef);
   const deckControls = deck && !composerFocused && !nativeKeyboard;
-
-  const [stopping, setStopping] = useState(false);
-  const stop = async () => {
-    setStopping(true);
-    try {
-      await fetch(`/api/sessions/${session.id}/interrupt`, { method: "POST" });
-    } finally {
-      setStopping(false);
-    }
-  };
+  const onDeckFold = !!deck;
+  useEffect(() => {
+    if (!onDeck) return;
+    onDeck(onDeckFold);
+    return () => onDeck(false);
+  }, [onDeck, onDeckFold]);
 
   const [sending, setSending] = useState(false);
   const send = useCallback(async () => {
@@ -824,6 +827,8 @@ export function ChatView({
 
   // The answer Claude waits on: the screen's prompt with its options, or
   // what the hook recorded when the screen can't be read
+  // A finished turn or a typed-reply wait has nothing to answer here
+  const hasCard = !!prompt || (!!pending && !promptLoading);
   const needsYouCard = needsYou && (
     <>
       <ul>
@@ -939,6 +944,7 @@ export function ChatView({
             )}
           </div>
         )}
+        {deck && <DeckStateLine session={session} active={active} />}
         <div
           ref={scrollRef}
           onScroll={(e) => {
@@ -989,7 +995,8 @@ export function ChatView({
                 onShowWorkflow={setOpenRun}
               />
             )}
-            {status === "running" && (
+            {/* The state line above says so on a table */}
+            {status === "running" && !deckControls && (
               <div className="text-muted-foreground flex items-center gap-2 text-xs">
                 <Loader2 className="text-primary h-3.5 w-3.5 animate-spin" />
                 Claude is working
@@ -1015,6 +1022,27 @@ export function ChatView({
           )}
           style={{ height: deck?.deck }}
         >
+          {/* On the base, nearest the work above: the answer Claude is
+          waiting for, or Stop / Changes / Terminal. The composer comes last,
+          within the thumbs' reach. */}
+          {deckControls && (
+            <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-2 pt-1.5 pb-3">
+              {needsYou && hasCard ? (
+                needsYouCard
+              ) : (
+                <DeckActions
+                  sessionId={session.id}
+                  status={status}
+                  view="chat"
+                  onView={(mode) =>
+                    mode === "terminal"
+                      ? onOpenTerminal()
+                      : mobileNavActions.requestViewMode(mode, session.id)
+                  }
+                />
+              )}
+            </div>
+          )}
           <div className="relative shrink-0">
             <ComposerPopover composer={composer} />
             <RewindSheet
@@ -1028,7 +1056,7 @@ export function ChatView({
               className={cn(
                 // Glass-like capsule, as the control column
                 "bg-background/70 border-border flex shrink-0 gap-1.5 rounded-[28px] border p-1.5 shadow-[inset_0_1px_0_hsl(var(--foreground)/0.08)] backdrop-blur-xl backdrop-saturate-150",
-                deck ? "items-start" : "items-end"
+                deck && !deckControls ? "items-start" : "items-end"
               )}
             >
               <button
@@ -1089,28 +1117,6 @@ export function ChatView({
             </div>
             <ClaudeStateBar live={live} />
           </div>
-          {/* On the deck, within the thumbs' reach: the answer Claude is
-          waiting for, or Stop while it works */}
-          {deckControls && (
-            <div className="flex min-h-0 flex-1 flex-col justify-end gap-3 overflow-y-auto px-2 pt-3">
-              {needsYouCard}
-              {status === "running" && (
-                <button
-                  type="button"
-                  onClick={stop}
-                  disabled={stopping}
-                  className="flex h-14 w-full shrink-0 items-center justify-center gap-2 rounded-2xl border border-red-500/40 bg-red-500/10 text-sm font-semibold text-red-400 active:opacity-70"
-                >
-                  {stopping ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Square className="h-4 w-4 fill-current" />
-                  )}
-                  Stop Claude
-                </button>
-              )}
-            </div>
-          )}
         </div>
       </div>
       {side && pages && gutter}

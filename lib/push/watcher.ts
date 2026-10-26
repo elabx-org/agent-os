@@ -1,9 +1,12 @@
 /**
  * Watches the agent sessions from the server, so phone notifications arrive
  * with no browser open: "needs you" when Claude stops at a permission
- * prompt, "finished" when it ends its turn after working.
+ * prompt, "finished" when it ends its turn after working. Background agents
+ * get the same two events. Every event lands in the history
+ * (lib/push/history.ts) whether or not a push goes out.
  */
 
+import path from "path";
 import { exec, execFile } from "child_process";
 import { promisify } from "util";
 import { statusDetector, type SessionStatus } from "../status-detector";
@@ -14,13 +17,21 @@ import {
 import { getDb, queries, type Project, type Session } from "../db";
 import { parsePermissionPrompt } from "../permission-prompt";
 import { findTranscript, readTranscript } from "../claude-transcript";
+import {
+  backgroundAgentConversation,
+  cachedBackgroundAgents,
+  type BackgroundAgent,
+} from "../claude-background";
 import { isWatching, readPushConfig } from "./config";
 import { sendPush, type PushMessage } from "./send";
+import { recordNotification, setDelivered } from "./history";
 
 const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
 
 const POLL_MS = 3000;
+/** `claude agents` is slow, so background agents get a loop of their own */
+const AGENT_POLL_MS = 10_000;
 /** Work shorter than this ending is not worth a "finished" */
 const MIN_WORK_MS = 20_000;
 
@@ -32,6 +43,9 @@ interface Track {
 }
 
 const tracks = new Map<string, Track>();
+
+/** A push, plus the project the history files it under */
+type Event = PushMessage & { projectName?: string };
 
 async function managedSessions(): Promise<string[]> {
   const pattern = getManagedSessionPattern();
@@ -88,17 +102,16 @@ async function message(
   tmuxName: string,
   id: string,
   kind: "needsYou" | "finished"
-): Promise<PushMessage | null> {
+): Promise<Event | null> {
   const db = getDb();
   const session = queries.getSession(db).get(id) as Session | undefined;
   if (!session || session.conductor_session_id) return null;
   const project = session.project_id
     ? (queries.getProject(db).get(session.project_id) as Project | undefined)
     : undefined;
-  const where =
-    project && !project.is_uncategorized
-      ? `${project.name} · ${session.name}`
-      : session.name;
+  const projectName =
+    project && !project.is_uncategorized ? project.name : undefined;
+  const where = projectName ? `${projectName} · ${session.name}` : session.name;
 
   if (kind === "needsYou") {
     const p = await prompt(tmuxName);
@@ -109,6 +122,7 @@ async function message(
     return {
       kind,
       sessionId: id,
+      projectName,
       title: `Needs you · ${where}`,
       body: clip(what || p.question || "Claude is asking a question", 240),
     };
@@ -117,6 +131,7 @@ async function message(
   return {
     kind,
     sessionId: id,
+    projectName,
     title: `Finished · ${where}`,
     body: reply ? clip(reply, 240) : "Claude is waiting for your reply",
   };
@@ -152,23 +167,18 @@ async function poll(): Promise<void> {
     track.stable = status;
     track.runningSince = status === "running" ? Date.now() : null;
 
-    if (!channels || status !== "waiting") continue;
-    const id = getSessionIdFromName(tmuxName);
-    if (isWatching(id)) continue;
-
+    if (status !== "waiting") continue;
     // A permission prompt can appear without a working spell before it
     const p = await prompt(tmuxName);
     const kind = p ? "needsYou" : "finished";
-    if (kind === "needsYou" && !config.events.needsYou) continue;
-    if (kind === "finished") {
-      if (!config.events.finished) continue;
-      if (before !== "running" || workedMs < MIN_WORK_MS) continue;
-    }
+    if (kind === "finished" && (before !== "running" || workedMs < MIN_WORK_MS))
+      continue;
+    const id = getSessionIdFromName(tmuxName);
     const msg = await message(tmuxName, id, kind);
     if (!msg) continue;
-    sendPush(msg).then((report) =>
-      console.log(`[push] ${msg.title}:`, JSON.stringify(report))
-    );
+
+    // The history keeps it even when nothing is sent
+    announce(msg, channels && config.events[kind] && !isWatching(id));
   }
 
   for (const name of tracks.keys()) {
@@ -176,17 +186,146 @@ async function poll(): Promise<void> {
   }
 }
 
-export function startPushWatcher(): void {
+/** Records the event, then sends it when `push` */
+function announce(msg: Event, push: boolean) {
+  const { kind, title, body, sessionId, agentId, projectName } = msg;
+  const entry = recordNotification({
+    kind,
+    title,
+    body,
+    sessionId,
+    agentId,
+    projectName,
+  });
+  if (!push) return;
+  sendPush(msg).then((report) => {
+    console.log(`[push] ${title}:`, JSON.stringify(report));
+    setDelivered(entry.id, report);
+  });
+}
+
+/** Background agents by id: the state last seen */
+const agentStates = new Map<string, string>();
+let agentsLearned = false;
+
+/** The deepest project folder holding the agent, else its folder's name */
+function agentProject(agent: BackgroundAgent): string {
+  const home = process.env.HOME || "";
+  const full = (dir: string) =>
+    dir.replace(/^~(?=\/|$)/, home).replace(/\/+$/, "");
+  const cwd = full(agent.cwd);
+  let best: Project | undefined;
+  for (const project of queries.getAllProjects(getDb()).all() as Project[]) {
+    if (project.is_uncategorized) continue;
+    const dir = full(project.working_directory);
+    if (cwd !== dir && !cwd.startsWith(dir + "/")) continue;
+    if (!best || dir.length > full(best.working_directory).length)
+      best = project;
+  }
+  return best?.name ?? path.basename(cwd);
+}
+
+function lastAgentReply(agent: BackgroundAgent): string | null {
+  try {
+    const items = backgroundAgentConversation(agent) ?? [];
+    for (let i = items.length - 1; i >= 0; i--) {
+      const item = items[i];
+      if (item.kind === "assistant" && item.text.trim()) return item.text;
+      if (item.kind === "user") return null;
+    }
+  } catch {
+    // No conversation to read
+  }
+  return null;
+}
+
+/** A failing CLI (not installed yet, too old) is told once, then retried less */
+let agentsError: string | null = null;
+let agentsSkip = 0;
+let agentsBackoff = 0;
+
+async function pollAgents(): Promise<void> {
+  if (agentsSkip > 0) {
+    agentsSkip--;
+    return;
+  }
+  let agents: BackgroundAgent[];
+  try {
+    agents = await cachedBackgroundAgents();
+  } catch (error) {
+    const text = error instanceof Error ? error.message : String(error);
+    if (text !== agentsError) console.error("[push] background agents:", text);
+    agentsError = text;
+    // Up to about 5 minutes between tries
+    agentsBackoff = Math.min(agentsBackoff * 2 || 1, 32);
+    agentsSkip = agentsBackoff;
+    return;
+  }
+  agentsError = null;
+  agentsBackoff = 0;
+  const config = readPushConfig();
+  const channels = config.ntfy.enabled || config.apns.enabled;
+  const seen = new Set<string>();
+
+  for (const agent of agents) {
+    // A parked session is still that session: its own track covers it
+    if (agent.agentOsSessionId) continue;
+    seen.add(agent.id);
+    // A state the CLI couldn't name isn't a change worth telling
+    if (!agent.state || agent.state === "unknown") continue;
+    const before = agentStates.get(agent.id);
+    agentStates.set(agent.id, agent.state);
+    // The first list after a restart only learns; a new agent counts from
+    // where it was first seen
+    if (!agentsLearned || before === agent.state) continue;
+
+    const projectName = agentProject(agent);
+    if (agent.state === "blocked") {
+      const msg: Event = {
+        kind: "agentNeedsYou",
+        agentId: agent.id,
+        projectName,
+        title: `Needs you · ${projectName}`,
+        body: clip(`${agent.name} is waiting for you`, 240),
+      };
+      announce(msg, channels && config.events.needsYou);
+    } else if (before === "working" && agent.state !== "working") {
+      const reply = lastAgentReply(agent);
+      const ended = agent.state === "done" ? "Finished" : clip(agent.state, 20);
+      const msg: Event = {
+        kind: "agentFinished",
+        agentId: agent.id,
+        projectName,
+        title: `${ended[0].toUpperCase()}${ended.slice(1)} · ${projectName}`,
+        body: clip(reply ? `${agent.name}: ${reply}` : agent.name, 240),
+      };
+      announce(msg, channels && config.events.backgroundFinished);
+    }
+  }
+  agentsLearned = true;
+
+  for (const id of agentStates.keys()) {
+    if (!seen.has(id)) agentStates.delete(id);
+  }
+}
+
+/** Runs `fn` every `ms`, skipping a beat while the last run is still going */
+function every(ms: number, fn: () => Promise<void>) {
   let busy = false;
   setInterval(async () => {
     if (busy) return;
     busy = true;
     try {
-      await poll();
+      await fn();
     } catch (error) {
       console.error("[push] watcher:", error);
     } finally {
       busy = false;
     }
-  }, POLL_MS).unref();
+  }, ms).unref();
+}
+
+export function startPushWatcher(): void {
+  every(POLL_MS, poll);
+  every(AGENT_POLL_MS, pollAgents);
 }

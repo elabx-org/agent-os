@@ -173,14 +173,17 @@ export const Pane = memo(function Pane({
   const { request: fileOpenRequest } = useSnapshot(fileOpenStore);
 
   // The activity strip says what the session is doing, unless the rail
-  // beside the pane already does or Focus hides both
+  // beside the pane already does, Focus hides both, or the view on the fold
+  // deck shows its own state line
   const { railShown } = useSnapshot(mobileNavStore);
   const { on: focusOn } = useSnapshot(focusStore);
+  const [deckShown, setDeckShown] = useState(false);
   const showStrip =
     !!session &&
     (viewMode === "chat" || viewMode === "terminal") &&
     !focusOn &&
-    !railShown;
+    !railShown &&
+    !deckShown;
   // The strip or the rail (beside the focused pane) lists its agents already
   const agentsShown = showStrip || (railShown && isFocused);
 
@@ -487,6 +490,12 @@ export const Pane = memo(function Pane({
                   agentType={
                     sessions.find((s) => s.id === tab.sessionId)?.agent_type
                   }
+                  session={sessions.find((s) => s.id === tab.sessionId)}
+                  onDeck={
+                    viewMode === "terminal" && isActive
+                      ? setDeckShown
+                      : undefined
+                  }
                   onConnected={getTerminalConnectedHandler(tab)}
                   onBeforeUnmount={(scrollState) => {
                     sessionRegistry.saveTerminalState(paneId, tab.id, {
@@ -517,6 +526,7 @@ export const Pane = memo(function Pane({
               active
               hideAgentsBar={agentsShown}
               onOpenTerminal={() => setViewMode("terminal")}
+              onDeck={setDeckShown}
             />
           )}
 
@@ -601,6 +611,14 @@ export const Pane = memo(function Pane({
                             sessions.find((s) => s.id === tab.sessionId)
                               ?.agent_type
                           }
+                          session={sessions.find(
+                            (s) => s.id === tab.sessionId
+                          )}
+                          onDeck={
+                            viewMode === "terminal" && isActive
+                              ? setDeckShown
+                              : undefined
+                          }
                           onConnected={getTerminalConnectedHandler(tab)}
                           onBeforeUnmount={(scrollState) => {
                             sessionRegistry.saveTerminalState(paneId, tab.id, {
@@ -631,6 +649,7 @@ export const Pane = memo(function Pane({
                       active
                       hideAgentsBar={agentsShown}
                       onOpenTerminal={() => setViewMode("terminal")}
+                      onDeck={setDeckShown}
                     />
                   )}
 

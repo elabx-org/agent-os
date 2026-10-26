@@ -73,6 +73,10 @@ export async function poll() {
   }
 }
 
+function pollOnShow() {
+  if (document.visibilityState === "visible") poll();
+}
+
 /** One poll however many lists show the agents */
 export function useBackgroundAgents() {
   const [agents, setAgents] = useState(shared);
@@ -80,13 +84,19 @@ export function useBackgroundAgents() {
     listeners.add(setAgents);
     if (listeners.size === 1) {
       poll();
-      timer = setInterval(poll, POLL_MS);
+      // Not while the tab is in the background: each poll may spawn the CLI
+      timer = setInterval(() => {
+        if (document.visibilityState === "visible") poll();
+      }, POLL_MS);
+      document.addEventListener("visibilitychange", pollOnShow);
     } else {
       setAgents(shared);
     }
     return () => {
       listeners.delete(setAgents);
-      if (!listeners.size) clearInterval(timer);
+      if (listeners.size) return;
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", pollOnShow);
     };
   }, []);
   return agents;
@@ -114,7 +124,8 @@ const agentSheetStore = proxy<{ agentId: string | null }>({ agentId: null });
  */
 export function openBackgroundAgent(agent: BackgroundAgent) {
   opened.set(agent.id, { agent, polls });
-  if (isNative() || window.innerWidth >= 768) {
+  // The phone's sheet needs a list of agents on screen to host it
+  if (isNative() || window.innerWidth >= 768 || !hosts.length) {
     openPage({ kind: "agent", agentId: agent.id });
   } else {
     agentSheetStore.agentId = agent.id;

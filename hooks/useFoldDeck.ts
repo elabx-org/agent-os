@@ -5,8 +5,8 @@ import { useSnapshot } from "valtio";
 import { postureStore } from "@/stores/posture";
 
 /** Each side of the fold must leave at least this much to be worth splitting */
-const MIN_SCREEN = 160;
-const MIN_DECK = 96;
+export const MIN_SCREEN = 160;
+export const MIN_DECK = 96;
 
 export interface FoldDeck {
   /** Gap to leave empty where the fold crosses the element */

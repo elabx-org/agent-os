@@ -26,6 +26,12 @@ if (typeof window !== "undefined") {
 import { PaneProvider, usePanes } from "@/contexts/PaneContext";
 import { Pane } from "@/components/Pane";
 import { useNotifications } from "@/hooks/useNotifications";
+import {
+  useAgentNotices,
+  useNeedsYou,
+  type NotificationEntry,
+} from "@/hooks/useNeedsYou";
+import { openBackgroundAgent } from "@/components/BackgroundAgents";
 import { useViewport } from "@/hooks/useViewport";
 import { useViewportHeight } from "@/hooks/useViewportHeight";
 import { useNativeBridge } from "@/hooks/useNativeBridge";
@@ -51,7 +57,7 @@ import { besideStore, setPaneLaunch } from "@/stores/beside";
 import { closeNew, newSurfaceStore, openNew } from "@/stores/newSurface";
 import { mobileNavActions, mobileNavStore } from "@/stores/mobileNav";
 import { focusStore, loadFocus } from "@/stores/focus";
-import { registerNavHandlers } from "@/lib/nav-actions";
+import { registerNavHandlers, runNav } from "@/lib/nav-actions";
 import { isNative } from "@/lib/native-bridge";
 import { SettingsPage } from "@/components/Settings/SettingsPage";
 
@@ -453,6 +459,7 @@ function HomeContent() {
   const {
     settings: notificationSettings,
     checkStateChanges,
+    notify,
     updateSettings,
     requestPermission,
     permissionGranted,
@@ -481,18 +488,41 @@ function HomeContent() {
     [isMobile]
   );
 
-  // Workers show inside their conductor's session; parked agents are
-  // already left out of the background list
-  const waitingCount = sessions.filter(
-    (s) =>
-      !s.conductor_session_id && sessionStatuses[s.id]?.status === "waiting"
-  ).length;
-  // Blocked background agents join the count once the Inbox can list them;
-  // polling them here would also keep the agents poll running for good
+  // One count for the column badge, the iOS app and the Now hero: waiting
+  // sessions plus blocked background agents
+  const needs = useNeedsYou(sessions, sessionStatuses);
   useEffect(() => {
-    mobileNavStore.needsYou = waitingCount;
-  }, [waitingCount]);
-  useNativeBridge({ waitingCount });
+    mobileNavStore.needsYou = needs.count;
+  }, [needs.count]);
+  useNativeBridge({ waitingCount: needs.count });
+
+  // Background agents only reach the browser through the server's history
+  const agents = needs.agents;
+  const noticeAgent = useCallback(
+    (entry: NotificationEntry) => {
+      const id = entry.agentId ?? entry.id;
+      notify(
+        entry.kind === "agentNeedsYou" ? "waiting" : "completed",
+        id,
+        entry.projectName ?? "Background agent",
+        entry.body,
+        {
+          title: entry.title,
+          actionLabel: "Open agent",
+          // Its own switch: "A background agent finishes"
+          setting:
+            entry.kind === "agentNeedsYou" ? "waiting" : "backgroundFinished",
+          onClick: () => {
+            const agent = agents.find((a) => a.id === id);
+            if (agent) openBackgroundAgent(agent);
+            else runNav("inbox");
+          },
+        }
+      );
+    },
+    [notify, agents]
+  );
+  useAgentNotices(needs.history, noticeAgent);
 
   // Notification links open their session; on a phone, over the home. A
   // link can land before the start state below is chosen, so note it

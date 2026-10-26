@@ -10,6 +10,8 @@ export interface NotificationSettings {
     waiting: boolean;
     error: boolean;
     completed: boolean;
+    /** Not a session event: background agents' own "finished" */
+    backgroundFinished: boolean;
   };
 }
 
@@ -21,6 +23,7 @@ export const defaultSettings: NotificationSettings = {
     waiting: true,
     error: true,
     completed: false, // Off by default - can be noisy
+    backgroundFinished: false,
   },
 };
 
@@ -31,7 +34,12 @@ export function loadSettings(): NotificationSettings {
   try {
     const stored = localStorage.getItem(SETTINGS_KEY);
     if (stored) {
-      return { ...defaultSettings, ...JSON.parse(stored) };
+      const parsed = JSON.parse(stored) as Partial<NotificationSettings>;
+      return {
+        ...defaultSettings,
+        ...parsed,
+        events: { ...defaultSettings.events, ...parsed.events },
+      };
     }
   } catch {
     // Ignore parse errors
@@ -42,6 +50,35 @@ export function loadSettings(): NotificationSettings {
 export function saveSettings(settings: NotificationSettings): void {
   if (typeof window === "undefined") return;
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+}
+
+/** The server's push events and the local events each one also sets */
+export const SERVER_TO_LOCAL_EVENT = {
+  needsYou: "waiting",
+  finished: "completed",
+  backgroundFinished: "backgroundFinished",
+} as const satisfies Record<string, keyof NotificationSettings["events"]>;
+
+/**
+ * Local events brought in line with the server's push events, which win:
+ * "Tell me when" is one choice for the phone and this device. Null when
+ * they already agree.
+ */
+export function eventsFromServer(
+  local: NotificationSettings["events"],
+  server: { needsYou: boolean; finished: boolean; backgroundFinished: boolean }
+): NotificationSettings["events"] | null {
+  const next = {
+    ...local,
+    waiting: server.needsYou,
+    completed: server.finished,
+    backgroundFinished: server.backgroundFinished,
+  };
+  return next.waiting === local.waiting &&
+    next.completed === local.completed &&
+    next.backgroundFinished === local.backgroundFinished
+    ? null
+    : next;
 }
 
 export async function requestNotificationPermission(): Promise<boolean> {

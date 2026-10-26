@@ -25,6 +25,14 @@ interface SessionState {
   status: SessionStatus;
 }
 
+export interface NotifyTarget {
+  title?: string;
+  actionLabel?: string;
+  onClick?: () => void;
+  /** The switch that allows it, when not the event's own */
+  setting?: keyof NotificationSettings["events"];
+}
+
 interface UseNotificationsOptions {
   onSessionClick?: (sessionId: string) => void;
 }
@@ -79,15 +87,18 @@ export function useNotifications(options: UseNotificationsOptions = {}) {
     []
   );
 
-  // Send notification for an event
+  // Send notification for an event. Background agents aren't sessions, so
+  // they bring their own title and click action
   const notify = useCallback(
     (
       event: NotificationEvent,
       sessionId: string,
       sessionName: string,
-      message?: string
+      message?: string,
+      target?: NotifyTarget
     ) => {
-      if (!settings.enabled || !settings.events[event]) return;
+      if (!settings.enabled || !settings.events[target?.setting ?? event])
+        return;
 
       const titles: Record<NotificationEvent, string> = {
         waiting: `${sessionName} needs input`,
@@ -95,8 +106,9 @@ export function useNotifications(options: UseNotificationsOptions = {}) {
         completed: `${sessionName} completed`,
       };
 
-      const title = titles[event];
+      const title = target?.title ?? titles[event];
       const body = message || getDefaultMessage(event);
+      const open = target?.onClick ?? (() => onSessionClick?.(sessionId));
 
       // In-app toast with click action
       const toastTypes: Record<
@@ -110,8 +122,8 @@ export function useNotifications(options: UseNotificationsOptions = {}) {
       toast[toastTypes[event]](title, {
         description: body,
         action: {
-          label: "Go to session",
-          onClick: () => onSessionClick?.(sessionId),
+          label: target?.actionLabel ?? "Go to session",
+          onClick: open,
         },
       });
 
@@ -119,8 +131,8 @@ export function useNotifications(options: UseNotificationsOptions = {}) {
       if (settings.browserNotifications && permissionGranted) {
         sendBrowserNotification(
           title,
-          { body, tag: `agentos-${event}-${sessionName}` },
-          () => onSessionClick?.(sessionId)
+          { body, tag: `agentos-${event}-${sessionId}` },
+          open
         );
       }
 
