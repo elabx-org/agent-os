@@ -4,6 +4,7 @@ import { useMemo, useCallback, useState, type ReactNode } from "react";
 import { useSnapshot } from "valtio";
 import { ProjectCard } from "./ProjectCard";
 import { SessionCard } from "@/components/SessionCard";
+import { displayTitle, useListTitles } from "@/hooks/useSessionTitles";
 import { DevServerCard } from "@/components/DevServers/DevServerCard";
 import {
   NewBackgroundAgentSheet,
@@ -88,6 +89,8 @@ export function ProjectsSection({
   onHoverStart,
   onHoverEnd,
 }: ProjectsSectionProps) {
+  // Titles from the transcripts, as the home shows them
+  const titles = useListTitles(sessions);
   const { selectedIds } = useSnapshot(selectionStore);
   const isInSelectMode = selectedIds.size > 0;
 
@@ -370,6 +373,7 @@ export function ProjectsSection({
               handle,
               <SessionCard
                 session={session}
+                {...displayTitle(session, titles)}
                 sortable={!!handle}
                 actionsRequest={actionsRequest(session.id)}
                 onTogglePin={
@@ -445,6 +449,7 @@ export function ProjectsSection({
               <SessionCard
                 key={worker.id}
                 session={worker}
+                {...displayTitle(worker, titles)}
                 isActive={worker.id === activeSessionId}
                 tmuxStatus={sessionStatuses?.[worker.id]?.status}
                 groups={groups}

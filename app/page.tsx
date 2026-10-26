@@ -42,6 +42,8 @@ import { getProviderDefinition } from "@/lib/providers/registry";
 import { DesktopView } from "@/components/views/DesktopView";
 import { MobileView } from "@/components/views/MobileView";
 import { getPendingPrompt, clearPendingPrompt } from "@/stores/initialPrompt";
+import { closeSettings, openSettings } from "@/stores/settingsPage";
+import { SettingsPage } from "@/components/Settings/SettingsPage";
 
 function HomeContent() {
   // UI State
@@ -264,6 +266,8 @@ function HomeContent() {
   // Attach session to terminal
   const attachToSession = useCallback(
     async (session: Session) => {
+      // Whatever opened it, the session shows rather than staying under Settings
+      closeSettings();
       const terminalInfo = getTerminalWithFallback();
       if (!terminalInfo) {
         debugLog(
@@ -349,9 +353,10 @@ function HomeContent() {
       const session = sessions.find((s) => s.id === sessionId);
       if (session) {
         attachToSession(session);
+        if (isMobile) setSidebarOpen(false);
       }
     },
-    [sessions, attachToSession]
+    [sessions, attachToSession, isMobile]
   );
 
   // Notifications
@@ -381,25 +386,34 @@ function HomeContent() {
     openNewSession: () => setShowNewSessionDialog(true),
   });
 
-  // Notification links open their session; on a phone, over the session list
+  // Notification links open their session; on a phone, over the home. A
+  // link can land before the start state below is chosen, so note it
+  const linkedSession = useRef(false);
   useSessionLinks(sessions, (session) => {
+    linkedSession.current = true;
     attachToSession(session);
     if (isMobile) setSidebarOpen(false);
   });
   usePresence(focusedActiveTab?.sessionId ?? undefined);
 
-  // Open beside the session on wide screens, closed on narrow ones; folding
-  // an iPhone Duo shut keeps the session rather than the list
+  // Open beside the session on wide screens. On narrow ones start on the
+  // home unless a session is up; folding an iPhone Duo shut keeps the session
   useEffect(() => {
-    if (isHydrated) setSidebarOpen(!isMobile);
+    if (!isHydrated) return;
+    const onSession = !!focusedActiveTab?.sessionId || linkedSession.current;
+    linkedSession.current = false;
+    setSidebarOpen(!isMobile || !onSession);
   }, [isMobile, isHydrated]);
 
-  // Keyboard shortcut: Cmd+K to open quick switcher
+  // Keyboard shortcuts: Cmd+K opens the quick switcher, Cmd+, Settings
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
         e.preventDefault();
         setShowQuickSwitcher(true);
+      } else if ((e.metaKey || e.ctrlKey) && e.key === ",") {
+        e.preventDefault();
+        openSettings();
       }
     };
     window.addEventListener("keydown", handleKeyDown);
@@ -491,8 +505,10 @@ function HomeContent() {
       if (!data.session) return;
 
       setTimeout(() => attachToSession(data.session), 100);
+      // On a phone the home would cover it
+      if (isMobile) setSidebarOpen(false);
     },
-    [fetchSessions, attachToSession]
+    [fetchSessions, attachToSession, isMobile]
   );
 
   // Project created handler (shared between desktop/mobile)
@@ -544,8 +560,9 @@ function HomeContent() {
       setTimeout(() => {
         attachToSession(data.session);
       }, 100);
+      if (isMobile) setSidebarOpen(false);
     },
-    [projects, fetchSessions, attachToSession]
+    [projects, fetchSessions, attachToSession, isMobile]
   );
 
   // Active session and dev server project
@@ -591,11 +608,21 @@ function HomeContent() {
     renderPane,
   };
 
-  if (isMobile) {
-    return <MobileView {...viewProps} />;
-  }
-
-  return <DesktopView {...viewProps} />;
+  return (
+    <>
+      {isMobile ? (
+        <MobileView {...viewProps} />
+      ) : (
+        <DesktopView {...viewProps} />
+      )}
+      <SettingsPage
+        settings={notificationSettings}
+        permissionGranted={permissionGranted}
+        onUpdateSettings={updateSettings}
+        onRequestPermission={requestPermission}
+      />
+    </>
+  );
 }
 
 export default function Home() {

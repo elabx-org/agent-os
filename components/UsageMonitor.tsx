@@ -138,16 +138,26 @@ function DetailBar({
   );
 }
 
-export function UsageMonitor() {
-  const [dialogOpen, setDialogOpen] = useState(false);
-
-  const { data, isError } = useQuery<UsageData>({
+/** Claude plan usage, shared by every monitor and the Settings summary */
+export function useClaudeUsage() {
+  return useQuery<UsageData>({
     queryKey: ["claude-usage"],
     queryFn: fetchUsage,
     refetchInterval: 60_000,
     retry: 1,
     staleTime: 30_000,
   });
+}
+
+export function UsageMonitor({
+  variant = "bars",
+}: {
+  /** "inline": the home's top bar, "5h 1% wk 12%" in mono */
+  variant?: "bars" | "inline";
+} = {}) {
+  const [dialogOpen, setDialogOpen] = useState(false);
+
+  const { data, isError } = useClaudeUsage();
 
   // Compute live countdowns for tooltip
   const tooltipText = useMemo(() => {
@@ -167,29 +177,51 @@ export function UsageMonitor() {
 
   return (
     <>
-      {/* Compact header bar */}
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            onClick={() => setDialogOpen(true)}
-            className="hover:bg-accent flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md px-2 py-1 transition-colors"
-          >
-            <MiniBar label="Session" pct={sessionPct} />
-            <div className="bg-border h-3 w-px" />
-            <MiniBar label="Weekly" pct={weeklyPct} />
-            <div className="bg-border h-3 w-px" />
-            <span className="text-muted-foreground text-[10px] font-medium">
-              {data.plan}
-            </span>
-          </button>
-        </TooltipTrigger>
-        <TooltipContent>
-          <p className="text-xs">{tooltipText}</p>
-          <p className="text-muted-foreground text-[10px]">
-            Click for details
-          </p>
-        </TooltipContent>
-      </Tooltip>
+      {variant === "inline" ? (
+        <button
+          type="button"
+          onClick={() => setDialogOpen(true)}
+          aria-label={tooltipText}
+          className="text-muted-foreground relative flex shrink-0 items-center gap-1.5 rounded-md px-1 py-1 font-mono text-[11.5px] whitespace-nowrap tabular-nums after:absolute after:inset-x-0 after:-inset-y-2.5 after:content-['']"
+        >
+          <span>
+            5h{" "}
+            <b className={`font-medium ${barTextColor(sessionPct)}`}>
+              {Math.round(sessionPct)}%
+            </b>
+          </span>
+          <span>
+            wk{" "}
+            <b className={`font-medium ${barTextColor(weeklyPct)}`}>
+              {Math.round(weeklyPct)}%
+            </b>
+          </span>
+        </button>
+      ) : (
+        /* Compact header bar */
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              onClick={() => setDialogOpen(true)}
+              className="hover:bg-accent flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md px-2 py-1 transition-colors"
+            >
+              <MiniBar label="Session" pct={sessionPct} />
+              <div className="bg-border h-3 w-px" />
+              <MiniBar label="Weekly" pct={weeklyPct} />
+              <div className="bg-border h-3 w-px" />
+              <span className="text-muted-foreground text-[10px] font-medium">
+                {data.plan}
+              </span>
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p className="text-xs">{tooltipText}</p>
+            <p className="text-muted-foreground text-[10px]">
+              Click for details
+            </p>
+          </TooltipContent>
+        </Tooltip>
+      )}
 
       {/* Detail dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>

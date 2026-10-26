@@ -8,15 +8,29 @@ import {
   FileText,
   Trash2,
   Copy,
-  Check,
-  Server,
-  Container,
-  X,
-  ExternalLink,
+  Globe,
+  MoreHorizontal,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { afterMenuCloses, cn } from "@/lib/utils";
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
-import type { DevServer, DevServerStatus } from "@/lib/db";
+import { useViewport } from "@/hooks/useViewport";
+import { Button } from "@/components/ui/button";
+import { confirmAction } from "@/components/ui/confirm";
+import { ActionSheet, type SheetAction } from "@/components/ui/action-sheet";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { AgentRow } from "@/components/rows/AgentRow";
+import {
+  fromDevServerStatus,
+  timeAgo,
+  type AgentState,
+} from "@/lib/agent-state";
+import type { DevServer } from "@/lib/db";
 
 interface DevServerCardProps {
   server: DevServer;
@@ -28,28 +42,113 @@ interface DevServerCardProps {
   onViewLogs: (id: string) => void;
 }
 
-const statusConfig: Record<
-  DevServerStatus,
-  { color: string; bgColor: string; label: string }
-> = {
-  running: {
-    color: "bg-green-500",
-    bgColor: "bg-green-500/10",
-    label: "Running",
-  },
-  stopped: {
-    color: "bg-zinc-500",
-    bgColor: "bg-zinc-500/10",
-    label: "Stopped",
-  },
-  starting: {
-    color: "bg-yellow-500",
-    bgColor: "bg-yellow-500/10",
-    label: "Starting",
-  },
-  failed: { color: "bg-red-500", bgColor: "bg-red-500/10", label: "Failed" },
-};
+function primaryPortOf(server: DevServer): number | undefined {
+  try {
+    return (JSON.parse(server.ports || "[]") as number[])[0];
+  } catch {
+    return undefined;
+  }
+}
 
+function urlOf(port: number) {
+  return `http://localhost:${port}`;
+}
+
+/** A stopped server reads "Stopped · <command>" rather than "Idle" */
+function rowState(server: DevServer): AgentState {
+  return server.status === "stopped"
+    ? "stopped"
+    : fromDevServerStatus(server.status);
+}
+
+// ":3099 · running 2h", or "npm run dev" when there's no port to show
+function rowDetail(server: DevServer, port: number | undefined) {
+  const portPart = port ? `:${port}` : null;
+  switch (server.status) {
+    case "running": {
+      // updated_at is when it last changed status, i.e. when it came up
+      const since = timeAgo(server.updated_at, { dateAfterDays: Infinity });
+      const uptime =
+        since === "just now" ? "just started" : since.replace(/ ago$/, "");
+      return [portPart, `running ${uptime}`].filter(Boolean).join(" · ");
+    }
+    case "starting":
+      return [portPart, "starting"].filter(Boolean).join(" · ");
+    default:
+      return server.command;
+  }
+}
+
+const typeLabel = (server: DevServer) =>
+  server.type === "docker" ? "Docker" : "Node";
+
+/** The 32px buttons keep their size and reach 44px under a finger */
+const TOUCH_HIT =
+  "relative pointer-coarse:after:absolute pointer-coarse:after:-inset-1.5 pointer-coarse:after:content-['']";
+
+function OpenButton({ port }: { port: number }) {
+  return (
+    <Button
+      asChild
+      variant="secondary"
+      size="sm"
+      className={cn("h-8", TOUCH_HIT)}
+    >
+      <a
+        href={urlOf(port)}
+        target="_blank"
+        rel="noopener noreferrer"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <Globe className="h-3.5 w-3.5" />
+        Open
+      </a>
+    </Button>
+  );
+}
+
+function StartButton({
+  onStart,
+  disabled,
+}: {
+  onStart: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <Button
+      variant="secondary"
+      size="sm"
+      className={cn("text-primary h-8", TOUCH_HIT)}
+      disabled={disabled}
+      onClick={(e) => {
+        e.stopPropagation();
+        onStart();
+      }}
+    >
+      <Play className="h-3.5 w-3.5" />
+      Start
+    </Button>
+  );
+}
+
+/** Open when it's up, Start when it's down; nothing while it's starting */
+function primaryAction(
+  server: DevServer,
+  port: number | undefined,
+  onStart: (() => void) | undefined,
+  disabled: boolean
+) {
+  if (server.status === "running")
+    return port ? <OpenButton port={port} /> : null;
+  if ((server.status === "stopped" || server.status === "failed") && onStart)
+    return <StartButton onStart={onStart} disabled={disabled} />;
+  return null;
+}
+
+/**
+ * A dev server on the shared row: Open or Start on the row, everything else
+ * (Stop, Restart, Logs, Copy URL, Remove) under ⋯, a sheet on touch.
+ */
 export function DevServerCard({
   server,
   projectName,
@@ -60,15 +159,13 @@ export function DevServerCard({
   onViewLogs,
 }: DevServerCardProps) {
   const [loading, setLoading] = useState(false);
-  const [confirmingStop, setConfirmingStop] = useState(false);
-  const { copied, copy } = useCopyToClipboard();
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const { isTouch } = useViewport();
+  const { copy } = useCopyToClipboard();
 
-  const status = statusConfig[server.status] || statusConfig.stopped;
-  const ports: number[] = JSON.parse(server.ports || "[]");
-  const primaryPort = ports[0];
+  const port = primaryPortOf(server);
   const isRunning = server.status === "running";
-  const isStopped = server.status === "stopped";
-  const isFailed = server.status === "failed";
+  const canRemove = server.status === "stopped" || server.status === "failed";
 
   const handleAction = async (action: () => Promise<void>) => {
     setLoading(true);
@@ -79,233 +176,193 @@ export function DevServerCard({
     }
   };
 
-  return (
-    <div
-      className={cn(
-        "border-border/50 rounded-md border px-2 py-1.5",
-        "bg-card/50 hover:bg-card/80 transition-colors"
-      )}
+  const stop = async () => {
+    const ok = await confirmAction({
+      title: `Stop ${server.name}?`,
+      confirmLabel: "Stop",
+      destructive: true,
+    });
+    if (ok) handleAction(() => onStop(server.id));
+  };
+  const restart = () => handleAction(() => onRestart(server.id));
+  const remove = () => handleAction(() => onRemove(server.id));
+  const logs = () => onViewLogs(server.id);
+  const copyUrl = () => port && copy(urlOf(port));
+
+  const sheetGroups: SheetAction[][] = [
+    isRunning
+      ? [
+          { label: "Restart", icon: RefreshCw, onSelect: restart },
+          ...(port
+            ? [{ label: "Copy URL", icon: Copy, onSelect: copyUrl }]
+            : []),
+        ]
+      : [],
+    [{ label: "Logs", icon: FileText, onSelect: logs }],
+    [
+      ...(isRunning
+        ? [{ label: "Stop", icon: Square, onSelect: stop, destructive: true }]
+        : []),
+      ...(canRemove
+        ? [
+            {
+              label: "Remove",
+              icon: Trash2,
+              onSelect: remove,
+              destructive: true,
+            },
+          ]
+        : []),
+    ],
+  ].map((group) => group.map((a) => ({ ...a, disabled: loading })));
+
+  const more = isTouch ? (
+    <Button
+      variant="ghost"
+      size="icon-sm"
+      className={TOUCH_HIT}
+      aria-label="Server actions"
+      disabled={loading}
+      onClick={(e) => {
+        e.stopPropagation();
+        setSheetOpen(true);
+      }}
     >
-      {/* Header row */}
-      <div className="flex items-center gap-2">
-        {/* Status dot */}
-        <div className={cn("h-2 w-2 rounded-full", status.color)} />
-
-        {/* Name */}
-        <span className="flex-1 truncate text-sm font-medium">
-          {server.name}
-        </span>
-
-        {/* Type badge */}
-        <span
-          className={cn(
-            "flex items-center gap-1 rounded px-1.5 py-0.5",
-            "text-muted-foreground text-[10px] font-medium",
-            "bg-muted/50"
-          )}
+      <MoreHorizontal className="h-4 w-4" />
+    </Button>
+  ) : (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label="Server actions"
+          disabled={loading}
         >
-          {server.type === "docker" ? (
-            <Container className="h-3 w-3" />
-          ) : (
-            <Server className="h-3 w-3" />
-          )}
-          {server.type === "docker" ? "Docker" : "Node"}
-        </span>
-      </div>
-
-      {/* Project name (if provided) */}
-      {projectName && (
-        <div className="text-muted-foreground mt-1 truncate text-xs">
-          {projectName}
-        </div>
-      )}
-
-      {/* Port badge */}
-      {primaryPort && (
-        <div className="mt-1 flex items-center gap-1">
-          {isRunning ? (
-            <a
-              href={`http://localhost:${primaryPort}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={cn(
-                "flex items-center gap-1 rounded px-2 py-1",
-                "font-mono text-xs transition-colors",
-                "bg-primary/10 text-primary hover:bg-primary/20"
-              )}
-            >
-              <ExternalLink className="h-3 w-3" />
-              localhost:{primaryPort}
-            </a>
-          ) : (
-            <span
-              className={cn(
-                "flex items-center gap-1 rounded px-2 py-1",
-                "font-mono text-xs",
-                "bg-muted/30 text-muted-foreground"
-              )}
-            >
-              localhost:{primaryPort}
-            </span>
-          )}
-          <button
-            onClick={() => primaryPort && copy(`localhost:${primaryPort}`)}
-            disabled={!isRunning}
-            className={cn(
-              "flex items-center justify-center rounded p-1",
-              "text-xs transition-colors",
-              isRunning
-                ? "text-muted-foreground hover:text-foreground hover:bg-muted"
-                : "text-muted-foreground/50 cursor-not-allowed"
-            )}
-            title="Copy URL"
-          >
-            {copied ? (
-              <Check className="h-3 w-3 text-green-500" />
-            ) : (
-              <Copy className="h-3 w-3" />
-            )}
-          </button>
-        </div>
-      )}
-
-      {/* Actions */}
-      <div className="mt-1.5 flex items-center gap-1">
+          <MoreHorizontal className="h-4 w-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
         {isRunning && (
-          <>
-            {confirmingStop ? (
-              <>
-                <ActionButton
-                  icon={Square}
-                  label="Confirm"
-                  onClick={() => {
-                    setConfirmingStop(false);
-                    handleAction(() => onStop(server.id));
-                  }}
-                  disabled={loading}
-                  variant="danger"
-                />
-                <ActionButton
-                  icon={X}
-                  label="Cancel"
-                  onClick={() => setConfirmingStop(false)}
-                  disabled={loading}
-                />
-              </>
-            ) : (
-              <>
-                <ActionButton
-                  icon={Square}
-                  label="Stop"
-                  onClick={() => setConfirmingStop(true)}
-                  disabled={loading}
-                  variant="danger"
-                />
-                <ActionButton
-                  icon={RefreshCw}
-                  label="Restart"
-                  onClick={() => handleAction(() => onRestart(server.id))}
-                  disabled={loading}
-                />
-                <ActionButton
-                  icon={FileText}
-                  label="Logs"
-                  onClick={() => onViewLogs(server.id)}
-                  disabled={loading}
-                />
-              </>
+          <DropdownMenuItem onSelect={restart}>
+            <RefreshCw className="mr-2 h-3 w-3" />
+            Restart
+          </DropdownMenuItem>
+        )}
+        {isRunning && !!port && (
+          <DropdownMenuItem onSelect={copyUrl}>
+            <Copy className="mr-2 h-3 w-3" />
+            Copy URL
+          </DropdownMenuItem>
+        )}
+        <DropdownMenuItem onSelect={logs}>
+          <FileText className="mr-2 h-3 w-3" />
+          Logs
+        </DropdownMenuItem>
+        {(isRunning || canRemove) && <DropdownMenuSeparator />}
+        {isRunning && (
+          <DropdownMenuItem
+            onSelect={() => afterMenuCloses(stop)}
+            className="text-red-500 focus:text-red-500"
+          >
+            <Square className="mr-2 h-3 w-3" />
+            Stop
+          </DropdownMenuItem>
+        )}
+        {canRemove && (
+          <DropdownMenuItem
+            onSelect={remove}
+            className="text-red-500 focus:text-red-500"
+          >
+            <Trash2 className="mr-2 h-3 w-3" />
+            Remove
+          </DropdownMenuItem>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+
+  return (
+    <>
+      <AgentRow
+        as="div"
+        kind="dev"
+        state={rowState(server)}
+        title={server.name}
+        project={projectName}
+        detail={`${rowDetail(server, port)} · ${typeLabel(server)}`}
+        dense
+        trailing={
+          <span className="flex items-center gap-1">
+            {primaryAction(
+              server,
+              port,
+              () => handleAction(() => onStart(server.id)),
+              loading
             )}
-          </>
-        )}
-
-        {isStopped && (
-          <>
-            <ActionButton
-              icon={Play}
-              label="Start"
-              onClick={() => handleAction(() => onStart(server.id))}
-              disabled={loading}
-              variant="primary"
-            />
-            <ActionButton
-              icon={Trash2}
-              label="Remove"
-              onClick={() => handleAction(() => onRemove(server.id))}
-              disabled={loading}
-              variant="danger"
-            />
-          </>
-        )}
-
-        {isFailed && (
-          <>
-            <ActionButton
-              icon={Play}
-              label="Start"
-              onClick={() => handleAction(() => onStart(server.id))}
-              disabled={loading}
-              variant="primary"
-            />
-            <ActionButton
-              icon={FileText}
-              label="Logs"
-              onClick={() => onViewLogs(server.id)}
-              disabled={loading}
-            />
-            <ActionButton
-              icon={Trash2}
-              label="Remove"
-              onClick={() => handleAction(() => onRemove(server.id))}
-              disabled={loading}
-              variant="danger"
-            />
-          </>
-        )}
-
-        {server.status === "starting" && (
-          <span className="text-muted-foreground flex items-center gap-1 text-xs">
-            <RefreshCw className="h-3 w-3 animate-spin" />
-            Starting...
+            {more}
           </span>
-        )}
-      </div>
-    </div>
+        }
+      />
+      {isTouch && (
+        <ActionSheet
+          open={sheetOpen}
+          onOpenChange={setSheetOpen}
+          title={server.name}
+          description={[typeLabel(server), port && `:${port}`]
+            .filter(Boolean)
+            .join(" · ")}
+          groups={sheetGroups}
+        />
+      )}
+    </>
   );
 }
 
-interface ActionButtonProps {
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-  onClick: () => void;
-  disabled?: boolean;
-  variant?: "default" | "primary" | "danger";
-}
+/**
+ * The home's dev-server row: just Open or Start; the full set of actions
+ * lives on DevServerCard in the project list.
+ */
+export function DevServerRow({
+  server,
+  projectName,
+  onStart,
+  dense,
+  selected,
+  className,
+}: {
+  server: DevServer;
+  projectName?: string;
+  onStart?: (id: string) => Promise<void>;
+  dense?: boolean;
+  selected?: boolean;
+  className?: string;
+}) {
+  const [loading, setLoading] = useState(false);
+  const port = primaryPortOf(server);
+  const start = onStart
+    ? async () => {
+        setLoading(true);
+        try {
+          await onStart(server.id);
+        } finally {
+          setLoading(false);
+        }
+      }
+    : undefined;
 
-function ActionButton({
-  icon: Icon,
-  label,
-  onClick,
-  disabled,
-  variant = "default",
-}: ActionButtonProps) {
   return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      title={label}
-      className={cn(
-        "flex h-7 items-center gap-1 rounded px-1.5",
-        "text-xs font-medium transition-colors",
-        "disabled:cursor-not-allowed disabled:opacity-50",
-        variant === "primary" &&
-          "bg-primary/10 text-primary hover:bg-primary/20",
-        variant === "danger" &&
-          "bg-red-500/10 text-red-500 hover:bg-red-500/20",
-        variant === "default" && "bg-muted/50 text-foreground hover:bg-muted"
-      )}
-    >
-      <Icon className="h-3.5 w-3.5" />
-      <span className="hidden sm:inline">{label}</span>
-    </button>
+    <AgentRow
+      as="div"
+      kind="dev"
+      state={rowState(server)}
+      title={server.name}
+      project={projectName}
+      detail={rowDetail(server, port)}
+      dense={dense}
+      selected={selected}
+      className={className}
+      trailing={primaryAction(server, port, start, loading)}
+    />
   );
 }

@@ -1,17 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import {
-  Bot,
-  ChevronDown,
-  ChevronRight,
-  FolderOpen,
-  Loader2,
-  Plus,
-  RefreshCw,
-} from "lucide-react";
+import { FolderOpen, Loader2, Plus, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import {
+  STATE_TEXT_CLASS,
+  STATE_WORD,
+  fromBackgroundState,
+  timeAgo,
+} from "@/lib/agent-state";
+import { AgentRow, FoldedRow } from "@/components/rows/AgentRow";
 import { confirmAction } from "@/components/ui/confirm";
 import { DirectoryPicker } from "@/components/DirectoryPicker";
 import {
@@ -35,22 +34,12 @@ const MODELS = [
   { id: "haiku", label: "Haiku" },
 ];
 
-// Blocked means it stopped to ask: the same amber as a waiting session
-function stateLook(state: string): { dot: string; word: string } {
-  switch (state) {
-    case "working":
-      return { dot: "bg-blue-400 ring-4 ring-blue-400/20", word: "Working" };
-    case "blocked":
-      return {
-        dot: "bg-amber-400 ring-4 ring-amber-400/20",
-        word: "Needs you",
-      };
-    default:
-      return {
-        dot: "bg-muted-foreground/60",
-        word: state.charAt(0).toUpperCase() + state.slice(1),
-      };
-  }
+function stateWord(state: string): string {
+  const mapped = fromBackgroundState(state);
+  // Keep states the shared model doesn't know by their own name
+  return mapped === "idle" && state !== "idle"
+    ? state.charAt(0).toUpperCase() + state.slice(1)
+    : STATE_WORD[mapped];
 }
 
 function home(dir: string): string {
@@ -76,7 +65,7 @@ async function poll() {
 }
 
 /** One poll however many lists show the agents */
-function useBackgroundAgents() {
+export function useBackgroundAgents() {
   const [agents, setAgents] = useState(shared);
   useEffect(() => {
     listeners.add(setAgents);
@@ -131,69 +120,56 @@ export function useBackgroundAgentsByProject(
   return byProject;
 }
 
-function startedAgo(ms: number): string {
-  const mins = Math.floor((Date.now() - ms) / 60000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return `${Math.floor(hours / 24)}d ago`;
+/** The age without "ago", for "oldest 92d" */
+function age(ms: number): string {
+  return timeAgo(ms, { dateAfterDays: Infinity }).replace(/ ago$/, "");
 }
 
-function AgentRow({
-  agent,
-  compact,
-  onOpen,
-}: {
+interface AgentItemProps {
   agent: BackgroundAgent;
-  compact?: boolean;
-  onOpen: () => void;
-}) {
-  const look = stateLook(agent.state);
+  /** Shown in the subtitle when the list isn't already one project's */
+  projectName?: string;
+  noId?: boolean;
+  dense?: boolean;
+  className?: string;
+}
+
+function AgentItem({
+  agent,
+  projectName,
+  noId,
+  dense,
+  className,
+  onOpen,
+}: AgentItemProps & { onOpen: () => void }) {
   return (
-    <button
-      type="button"
+    <AgentRow
+      kind="background"
+      state={fromBackgroundState(agent.state)}
+      title={agent.name}
+      idLabel={noId ? undefined : agent.id.slice(0, 8)}
+      project={projectName}
+      // 0 means the state file didn't say
+      detail={
+        agent.startedAt
+          ? `started ${timeAgo(agent.startedAt, { dateAfterDays: Infinity })}`
+          : undefined
+      }
+      dense={dense}
+      className={className}
       onClick={onOpen}
-      className={cn(
-        "active:bg-accent flex w-full items-center gap-3 text-left",
-        compact
-          ? "min-h-[44px] rounded-lg px-2 py-1.5"
-          : "min-h-[56px] rounded-xl px-3 py-2.5"
-      )}
-    >
-      <span
-        aria-hidden="true"
-        className={cn("h-2 w-2 shrink-0 rounded-full", look.dot)}
-      />
-      <span className="min-w-0 flex-1">
-        <span
-          className={cn(
-            "block truncate",
-            compact ? "text-sm" : "text-sm font-semibold"
-          )}
-        >
-          {agent.name}
-        </span>
-        <span className="text-muted-foreground block truncate text-xs">
-          <span
-            className={cn(
-              agent.state === "working" && "text-blue-400",
-              agent.state === "blocked" && "text-amber-400"
-            )}
-          >
-            {look.word}
-          </span>
-          {compact
-            ? ` · started ${startedAgo(agent.startedAt)}`
-            : ` · ${home(agent.cwd)}`}
-        </span>
-      </span>
-      {!compact && (
-        <span className="text-muted-foreground shrink-0 font-mono text-[11px]">
-          {agent.id}
-        </span>
-      )}
-    </button>
+    />
+  );
+}
+
+/** One background agent's row, with its own sheet for output and Stop */
+export function BackgroundAgentRow(props: AgentItemProps) {
+  const [open, setOpen] = useState<BackgroundAgent | null>(null);
+  return (
+    <>
+      <AgentItem {...props} onOpen={() => setOpen(props.agent)} />
+      <AgentSheet agent={open} onClose={() => setOpen(null)} onChanged={poll} />
+    </>
   );
 }
 
@@ -211,16 +187,11 @@ function summary(agents: BackgroundAgent[]): ReactNode {
     const word =
       state === "blocked"
         ? `${n} need${n === 1 ? "s" : ""} you`
-        : `${n} ${stateLook(state).word.toLowerCase()}`;
+        : `${n} ${stateWord(state).toLowerCase()}`;
     return (
       <span key={state}>
         {i > 0 && " · "}
-        <span
-          className={cn(
-            state === "working" && "text-blue-400",
-            state === "blocked" && "text-amber-400"
-          )}
-        >
+        <span className={STATE_TEXT_CLASS[fromBackgroundState(state)]}>
           {word}
         </span>
       </span>
@@ -232,14 +203,24 @@ function summary(agents: BackgroundAgent[]): ReactNode {
 const LOOSE_WAITING = 2;
 
 /**
- * A project's background agents, among its sessions: one shows as a row;
- * more fold into one row that opens in place. Agents waiting for you stay
- * out of the fold, unless there are so many that they'd bury the sessions.
+ * A group of background agents, among sessions: one shows as a row; more
+ * fold into one row that opens in place. Agents waiting for you stay out of
+ * the fold, unless there are so many that they'd bury the sessions. Pass
+ * projectName when the list isn't already that project's.
  */
-export function ProjectBackgroundAgents({
+export function BackgroundAgentGroup({
   agents,
+  projectName,
+  looseWaiting = LOOSE_WAITING,
+  noId,
+  dense,
 }: {
   agents: BackgroundAgent[];
+  projectName?: string;
+  /** How many waiting agents may stay out of the fold; 0 folds any two */
+  looseWaiting?: number;
+  noId?: boolean;
+  dense?: boolean;
 }) {
   const [open, setOpen] = useState<BackgroundAgent | null>(null);
   const [expanded, setExpanded] = useState(false);
@@ -248,7 +229,7 @@ export function ProjectBackgroundAgents({
   const loose =
     agents.length === 1
       ? agents
-      : waiting.length <= LOOSE_WAITING
+      : waiting.length <= looseWaiting
         ? waiting
         : [];
   let folded = agents.filter((a) => !loose.includes(a));
@@ -257,64 +238,68 @@ export function ProjectBackgroundAgents({
     folded = [];
   }
 
-  const row = (agent: BackgroundAgent) => (
-    <AgentRow
+  const row = (agent: BackgroundAgent, inFold?: boolean) => (
+    <AgentItem
       key={agent.id}
       agent={agent}
-      compact
+      // The group's title already names the project
+      projectName={inFold ? undefined : projectName}
+      noId={noId}
+      dense={dense}
       onOpen={() => setOpen(agent)}
     />
   );
-  const tone = folded.some((a) => a.state === "blocked")
-    ? "bg-amber-400/15 text-amber-400"
-    : folded.some((a) => a.state === "working")
-      ? "bg-blue-400/15 text-blue-400"
-      : "bg-secondary text-muted-foreground";
+  const oldest = Math.min(
+    ...folded.map((a) => a.startedAt).filter((ms) => ms > 0)
+  );
 
   return (
     <div className="space-y-px">
-      {loose.map(row)}
+      {loose.map((agent) => row(agent))}
       {folded.length > 0 && (
-        <>
-          <button
-            type="button"
-            aria-expanded={expanded}
-            onClick={() => setExpanded(!expanded)}
-            className="active:bg-accent flex min-h-[44px] w-full items-center gap-3 rounded-lg px-2 py-1.5 text-left"
-          >
-            <span
-              aria-hidden="true"
-              className={cn(
-                "-mx-1 flex h-5 w-5 shrink-0 items-center justify-center rounded-md",
-                tone
-              )}
-            >
-              <Bot className="h-3 w-3" />
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-sm">
-                Background agents · {folded.length}
-              </span>
-              <span className="text-muted-foreground block truncate text-xs">
-                {summary(folded)}
-              </span>
-            </span>
-            {expanded ? (
-              <ChevronDown className="text-muted-foreground h-4 w-4 shrink-0" />
-            ) : (
-              <ChevronRight className="text-muted-foreground h-4 w-4 shrink-0" />
-            )}
-          </button>
-          {expanded && (
-            <div className="border-border/30 ml-3 space-y-px border-l pl-1.5">
-              {folded.map(row)}
-            </div>
-          )}
-        </>
+        <FoldedRow
+          kind="background"
+          state={
+            folded.some((a) => a.state === "blocked")
+              ? "needs"
+              : folded.some((a) => a.state === "working")
+                ? "work"
+                : "idle"
+          }
+          title={
+            projectName
+              ? `${projectName} · ${folded.length} background agents`
+              : `Background agents · ${folded.length}`
+          }
+          summary={
+            <>
+              {summary(folded)}
+              {/* As every row's subtitle: state · project · detail */}
+              {projectName && ` · ${projectName}`}
+              {Number.isFinite(oldest) && ` · oldest ${age(oldest)}`}
+            </>
+          }
+          open={expanded}
+          onToggle={() => setExpanded(!expanded)}
+          dense={dense}
+        >
+          <div className="space-y-px">
+            {folded.map((agent) => row(agent, true))}
+          </div>
+        </FoldedRow>
       )}
       <AgentSheet agent={open} onClose={() => setOpen(null)} onChanged={poll} />
     </div>
   );
+}
+
+/** A project's background agents, in its own list of sessions */
+export function ProjectBackgroundAgents({
+  agents,
+}: {
+  agents: BackgroundAgent[];
+}) {
+  return <BackgroundAgentGroup agents={agents} noId dense />;
 }
 
 /** "New background agent" from a project: its folder filled in */
@@ -339,8 +324,16 @@ export function NewBackgroundAgentSheet({
  * Claude Code's background agents (`claude --bg`): listed beside the
  * sessions, each with its output, a way into it, and Stop.
  */
-export function BackgroundAgents() {
-  const agents = useBackgroundAgents();
+export function BackgroundAgents({
+  agents: only,
+  title = "Background agents",
+}: {
+  /** Just these, rather than every agent */
+  agents?: BackgroundAgent[];
+  title?: string;
+} = {}) {
+  const all = useBackgroundAgents();
+  const agents = only ?? all;
   const [open, setOpen] = useState<BackgroundAgent | null>(null);
   const [creating, setCreating] = useState(false);
 
@@ -348,7 +341,8 @@ export function BackgroundAgents() {
     <section className="space-y-2">
       <div className="flex items-center justify-between">
         <h2 className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
-          Background agents{agents.length ? ` · ${agents.length}` : ""}
+          {title}
+          {agents.length ? ` · ${agents.length}` : ""}
         </h2>
         <button
           type="button"
@@ -368,7 +362,11 @@ export function BackgroundAgents() {
         <ul className="-mx-2 space-y-0.5">
           {agents.map((agent) => (
             <li key={agent.id}>
-              <AgentRow agent={agent} onOpen={() => setOpen(agent)} />
+              <AgentItem
+                agent={agent}
+                projectName={home(agent.cwd)}
+                onOpen={() => setOpen(agent)}
+              />
             </li>
           ))}
         </ul>
@@ -482,7 +480,7 @@ function AgentSheet({
         <SheetHeader>
           <SheetTitle className="truncate">{agent?.name}</SheetTitle>
           <SheetDescription className="truncate">
-            {agent && `${stateLook(agent.state).word} · ${home(agent.cwd)}`}
+            {agent && `${stateWord(agent.state)} · ${home(agent.cwd)}`}
           </SheetDescription>
         </SheetHeader>
         <SheetBody className="space-y-2">

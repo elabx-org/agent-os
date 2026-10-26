@@ -25,8 +25,6 @@ import {
   type LucideIcon,
   ChevronRight,
   ChevronLeft,
-  Check,
-  CircleSlash,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Markdown } from "@/components/Markdown";
@@ -35,6 +33,10 @@ import { mobileNavStore } from "@/stores/mobileNav";
 import { isTextKey, onNativeEvent } from "@/lib/native-bridge";
 import { useSessionDraft } from "@/hooks/useSessionDraft";
 import { useFoldDeck } from "@/hooks/useFoldDeck";
+import { useSubagents } from "@/hooks/useSubagents";
+import { AgentRow, KindBadge, StateWord } from "@/components/rows/AgentRow";
+import { fromSubagentStatus } from "@/lib/agent-state";
+import { agentOpenStore, consumeSubagent } from "@/stores/agentOpen";
 import type { Session } from "@/lib/db";
 import type { ChatItem } from "@/lib/claude-transcript";
 import type { SubagentInfo } from "@/lib/claude-subagents";
@@ -162,35 +164,6 @@ function useTranscript(base: string, active: boolean) {
   return { items, state, truncated, loadEarlier, loadingEarlier };
 }
 
-const AGENTS_POLL_MS = 3000;
-
-/** The subagents the session has started, by the Agent call that started each */
-function useSubagents(sessionId: string, active: boolean) {
-  const [agents, setAgents] = useState<SubagentInfo[]>([]);
-  useEffect(() => {
-    setAgents([]);
-    if (!active) return;
-    let stopped = false;
-    let timer: ReturnType<typeof setTimeout>;
-    const poll = async () => {
-      try {
-        const res = await fetch(`/api/sessions/${sessionId}/subagents`);
-        const data = await res.json();
-        if (!stopped) setAgents(data.subagents ?? []);
-      } catch {
-        // Try again next tick
-      }
-      if (!stopped) timer = setTimeout(poll, AGENTS_POLL_MS);
-    };
-    poll();
-    return () => {
-      stopped = true;
-      clearTimeout(timer);
-    };
-  }, [sessionId, active]);
-  return agents;
-}
-
 function useRows(items: ChatItem[]) {
   return useMemo(() => {
     const results = new Map<string, ResultItem>();
@@ -307,54 +280,43 @@ function ToolRow({ tool, result }: { tool: ToolItem; result?: ResultItem }) {
   );
 }
 
-function AgentStatus({ agent }: { agent: SubagentInfo }) {
-  if (agent.status === "running")
-    return (
-      <Loader2 className="text-primary h-3.5 w-3.5 shrink-0 animate-spin" />
-    );
-  if (agent.status === "done")
-    return <Check className="h-3.5 w-3.5 shrink-0 text-emerald-400" />;
-  return <CircleSlash className="text-muted-foreground h-3.5 w-3.5 shrink-0" />;
-}
-
 /** A subagent the session started: what it's doing, and a way into it */
-function AgentRow({
+function SubagentRow({
   agent,
   onOpen,
 }: {
   agent: SubagentInfo;
   onOpen: (agentId: string) => void;
 }) {
-  const label =
-    agent.status === "running"
-      ? "Working"
-      : agent.status === "done"
-        ? "Done"
-        : "Stopped";
+  const state = fromSubagentStatus(agent.status);
   return (
-    <button
-      type="button"
-      onClick={() => onOpen(agent.agentId)}
-      className="bg-card border-border active:bg-accent hover:bg-accent/50 flex min-h-[52px] w-full items-center gap-2.5 rounded-xl border px-3 py-2 text-left"
-    >
-      <Bot className="text-muted-foreground h-4 w-4 shrink-0" />
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm">{agent.description}</span>
-        <span className="text-muted-foreground block truncate text-xs">
+    <AgentRow
+      kind="subagent"
+      state={state}
+      title={agent.description}
+      subtitle={
+        <>
+          <StateWord state={state} />
           {[
             agent.agentType,
-            label,
             agent.steps !== null
               ? `${agent.steps} ${agent.steps === 1 ? "step" : "steps"}`
               : null,
           ]
             .filter(Boolean)
-            .join(" · ")}
-        </span>
-      </span>
-      <AgentStatus agent={agent} />
-      <ChevronRight className="text-muted-foreground h-4 w-4 shrink-0" />
-    </button>
+            .map((part) => ` · ${part}`)
+            .join("")}
+        </>
+      }
+      trailing={
+        <ChevronRight
+          aria-hidden="true"
+          className="text-muted-foreground h-4 w-4"
+        />
+      }
+      onClick={() => onOpen(agent.agentId)}
+      className="bg-card ring-border ring-1 ring-inset"
+    />
   );
 }
 
@@ -385,7 +347,7 @@ function ToolRun({
       {tools.slice(hidden).map((tool) => {
         const agent = agents?.get(tool.id);
         return agent && onOpenAgent ? (
-          <AgentRow key={tool.id} agent={agent} onOpen={onOpenAgent} />
+          <SubagentRow key={tool.id} agent={agent} onOpen={onOpenAgent} />
         ) : (
           <ToolRow key={tool.id} tool={tool} result={results.get(tool.id)} />
         );
@@ -473,6 +435,13 @@ export function ChatView({ session, active, onOpenTerminal }: ChatViewProps) {
   const [openAgent, setOpenAgent] = useState<string | null>(null);
   const [agentList, setAgentList] = useState(false);
   useEffect(() => setOpenAgent(null), [session.id]);
+  // A subagent row elsewhere (the home) asked for this one's panel
+  const { subagent: openRequest } = useSnapshot(agentOpenStore);
+  useEffect(() => {
+    if (!active || openRequest?.sessionId !== session.id) return;
+    const agentId = consumeSubagent(session.id);
+    if (agentId) setOpenAgent(agentId);
+  }, [active, openRequest, session.id]);
   const opened = agents.find((a) => a.agentId === openAgent);
 
   // Follow new output while the reader is at the bottom
@@ -603,7 +572,7 @@ export function ChatView({ session, active, onOpenTerminal }: ChatViewProps) {
                   ...running,
                   ...agents.filter((a) => a.status !== "running").reverse(),
                 ].map((agent) => (
-                  <AgentRow
+                  <SubagentRow
                     key={agent.agentId}
                     agent={agent}
                     onOpen={(id) => {
@@ -846,17 +815,11 @@ function SubagentPanel({
             {agent.description}
           </div>
           <div className="text-muted-foreground truncate text-xs">
-            {[
-              agent.agentType || "Agent",
-              agent.status === "running"
-                ? "Working"
-                : agent.status === "done"
-                  ? "Done"
-                  : "Stopped",
-            ].join(" · ")}
+            <StateWord state={fromSubagentStatus(agent.status)} /> ·{" "}
+            {agent.agentType || "Agent"}
           </div>
         </div>
-        <AgentStatus agent={agent} />
+        <KindBadge kind="subagent" state={fromSubagentStatus(agent.status)} />
         <span className="w-2" />
       </header>
       <div

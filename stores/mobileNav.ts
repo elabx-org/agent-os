@@ -10,11 +10,16 @@ export type PaneViewMode = "terminal" | "chat" | "files" | "git" | "workers";
 export const mobileNavStore = proxy<{
   /** View mode of the focused pane, mirrored for the rail's selected state */
   viewMode: PaneViewMode;
-  /** Pending view change from the rail, consumed by the focused pane */
-  request: { mode: PaneViewMode; timestamp: number } | null;
+  /**
+   * Pending view change from the rail, consumed by the focused pane. With a
+   * sessionId it waits until the pane has attached that session.
+   */
+  request: { mode: PaneViewMode; timestamp: number; sessionId?: string } | null;
   statuses: Record<string, SessionStatus>;
   /** The rail is showing, so the tab bar drops its own view switcher */
   railActive: boolean;
+  /** The web rail's width, for layers that must stop short of it */
+  railWidth: number;
   inboxOpen: boolean;
   /** Inside the iOS app, which shows the keys on the keyboard itself */
   nativeKeyboard: boolean;
@@ -25,14 +30,15 @@ export const mobileNavStore = proxy<{
   request: null,
   statuses: {},
   railActive: false,
+  railWidth: 0,
   inboxOpen: false,
   nativeKeyboard: false,
   changes: 0,
 });
 
 export const mobileNavActions = {
-  requestViewMode: (mode: PaneViewMode) => {
-    mobileNavStore.request = { mode, timestamp: Date.now() };
+  requestViewMode: (mode: PaneViewMode, sessionId?: string) => {
+    mobileNavStore.request = { mode, timestamp: Date.now(), sessionId };
   },
   clearRequest: () => {
     mobileNavStore.request = null;

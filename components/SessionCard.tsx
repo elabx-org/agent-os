@@ -50,7 +50,12 @@ import {
   ContextMenuSubTrigger,
   ContextMenuTrigger,
 } from "./ui/context-menu";
-import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
+import { AgentRow } from "./rows/AgentRow";
+import {
+  fromSessionStatus,
+  STATE_WORD,
+  timeAgo as formatTimeAgo,
+} from "@/lib/agent-state";
 import type { Session, Group } from "@/lib/db";
 import type { ProjectWithDevServers } from "@/lib/projects";
 
@@ -58,6 +63,12 @@ type TmuxStatus = "idle" | "running" | "waiting" | "error" | "dead";
 
 interface SessionCardProps {
   session: Session;
+  /** Shown in place of session.name, e.g. the transcript's title */
+  title?: string;
+  /** Small dim text after the title, e.g. the auto name it replaced */
+  idLabel?: string;
+  /** For rows shown outside their project's list */
+  projectName?: string;
   isActive?: boolean;
   isSummarizing?: boolean;
   tmuxStatus?: TmuxStatus;
@@ -125,6 +136,9 @@ export const statusConfig: Record<
 
 export function SessionCard({
   session,
+  title,
+  idLabel,
+  projectName,
   isActive,
   isSummarizing,
   tmuxStatus,
@@ -148,14 +162,15 @@ export function SessionCard({
   sortable,
   actionsRequest,
 }: SessionCardProps) {
-  const timeAgo = getTimeAgo(session.updated_at);
+  const timeAgo = formatTimeAgo(session.updated_at);
   const status = tmuxStatus || "dead";
-  const config = statusConfig[status];
+  const state = fromSessionStatus(status);
+  const name = title ?? session.name;
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState(session.name);
   const [menuOpen, setMenuOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-  const cardRef = useRef<HTMLDivElement>(null);
+  const cardRef = useRef<HTMLElement>(null);
   const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const justStartedEditingRef = useRef(false);
 
@@ -259,12 +274,6 @@ export function SessionCard({
 
     // Normal click - navigate to session
     onClick?.();
-  };
-
-  // Handle checkbox click
-  const handleCheckboxClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    onToggleSelect?.(e.shiftKey);
   };
 
   // For `claude --resume <id>`, or finding the conversation's transcript
@@ -590,156 +599,136 @@ export function SessionCard({
   };
 
   const cardContent = (
-    <div
+    <AgentRow
       ref={cardRef}
+      as="div"
+      kind="session"
+      state={state}
+      // In select mode the badge becomes the checkbox; a click anywhere toggles
+      icon={
+        isInSelectMode && onToggleSelect
+          ? isSelected
+            ? CheckSquare
+            : Square
+          : undefined
+      }
+      title={
+        isEditing ? (
+          <input
+            ref={inputRef}
+            type="text"
+            value={editName}
+            onChange={(e) => setEditName(e.target.value)}
+            onBlur={handleRename}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") handleRename();
+              if (e.key === "Escape") {
+                setEditName(session.name);
+                setIsEditing(false);
+              }
+            }}
+            onClick={(e) => e.stopPropagation()}
+            className="border-primary w-full min-w-0 border-b bg-transparent outline-none"
+          />
+        ) : (
+          name
+        )
+      }
+      idLabel={isEditing ? undefined : idLabel}
+      project={projectName}
+      detail={timeAgo}
+      selected={isActive || isSelected}
+      dense
       onClick={handleCardClick}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       className={cn(
-        "group data-[held]:bg-accent flex w-full cursor-pointer items-center gap-2 overflow-hidden rounded-md px-2 py-1.5 text-left transition-[background-color,transform] select-none [-webkit-touch-callout:none] data-[held]:scale-[0.98]",
-        "min-h-[48px] md:min-h-0", // Two-line row, 48px touch target
-        isSelected
-          ? "bg-primary/20"
-          : isActive
-            ? "bg-primary/10"
-            : "hover:bg-accent/50",
-        status === "waiting" && !isActive && !isSelected && "bg-amber-400/5"
+        "group data-[held]:bg-accent cursor-pointer overflow-hidden transition-[background-color,transform] select-none [-webkit-touch-callout:none] data-[held]:scale-[0.98]",
+        isSelected && "bg-primary/20"
       )}
-    >
-      {/* Selection checkbox - visible when in select mode */}
-      {isInSelectMode && onToggleSelect && (
-        <button
-          onClick={handleCheckboxClick}
-          className="text-primary hover:text-primary/80 flex-shrink-0"
-        >
-          {isSelected ? (
-            <CheckSquare className="h-4 w-4" />
-          ) : (
-            <Square className="h-4 w-4" />
+      badges={
+        <>
+          {pinned && (
+            <Pin className="text-muted-foreground h-3 w-3 flex-shrink-0 -rotate-45" />
           )}
-        </button>
-      )}
 
-      {/* Status indicator - hidden when in select mode */}
-      {!isInSelectMode && (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <div className={cn("flex-shrink-0", config.color)}>
-              {config.icon}
-            </div>
-          </TooltipTrigger>
-          <TooltipContent side="right">
-            <span className="capitalize">{config.label}</span>
-          </TooltipContent>
-        </Tooltip>
-      )}
+          {/* Fork indicator */}
+          {session.parent_session_id && (
+            <GitFork className="text-muted-foreground h-3 w-3 flex-shrink-0" />
+          )}
 
-      {/* Session name */}
-      {isEditing ? (
-        <input
-          ref={inputRef}
-          type="text"
-          value={editName}
-          onChange={(e) => setEditName(e.target.value)}
-          onBlur={handleRename}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") handleRename();
-            if (e.key === "Escape") {
-              setEditName(session.name);
-              setIsEditing(false);
-            }
-          }}
-          onClick={(e) => e.stopPropagation()}
-          className="border-primary min-w-0 flex-1 border-b bg-transparent text-sm outline-none"
-        />
-      ) : (
-        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <span className="truncate text-sm">{session.name}</span>
-          <span className="text-muted-foreground truncate text-xs">
-            <span
+          {/* TODO: Show port indicator once auto dev server management is implemented.
+              Each worktree gets a unique port (3100, 3110, etc.) for running dev servers.
+              See lib/ports.ts and ideas.md for the planned feature. */}
+
+          {/* PR status badge */}
+          {session.pr_status && (
+            <a
+              href={session.pr_url || "#"}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
               className={cn(
-                (status === "running" || status === "waiting") && config.color
+                "flex flex-shrink-0 items-center gap-0.5 rounded px-1 text-[10px]",
+                session.pr_status === "open" &&
+                  "bg-green-500/20 text-green-400",
+                session.pr_status === "merged" &&
+                  "bg-purple-500/20 text-purple-400",
+                session.pr_status === "closed" && "bg-red-500/20 text-red-400"
               )}
+              title={`PR #${session.pr_number}: ${session.pr_status}`}
             >
-              {config.word}
-            </span>
-            {` · ${timeAgo}`}
-          </span>
-        </span>
-      )}
-
-      {pinned && (
-        <Pin className="text-muted-foreground h-3 w-3 flex-shrink-0 -rotate-45" />
-      )}
-
-      {/* Fork indicator */}
-      {session.parent_session_id && (
-        <GitFork className="text-muted-foreground h-3 w-3 flex-shrink-0" />
-      )}
-
-      {/* TODO: Show port indicator once auto dev server management is implemented.
-          Each worktree gets a unique port (3100, 3110, etc.) for running dev servers.
-          See lib/ports.ts and ideas.md for the planned feature. */}
-
-      {/* PR status badge */}
-      {session.pr_status && (
-        <a
-          href={session.pr_url || "#"}
-          target="_blank"
-          rel="noopener noreferrer"
-          onClick={(e) => e.stopPropagation()}
-          className={cn(
-            "flex flex-shrink-0 items-center gap-0.5 rounded px-1 text-[10px]",
-            session.pr_status === "open" && "bg-green-500/20 text-green-400",
-            session.pr_status === "merged" &&
-              "bg-purple-500/20 text-purple-400",
-            session.pr_status === "closed" && "bg-red-500/20 text-red-400"
+              <GitPullRequest className="h-2.5 w-2.5" />
+              <span>
+                {session.pr_status === "merged"
+                  ? "M"
+                  : session.pr_status === "closed"
+                    ? "X"
+                    : "O"}
+              </span>
+            </a>
           )}
-          title={`PR #${session.pr_number}: ${session.pr_status}`}
-        >
-          <GitPullRequest className="h-2.5 w-2.5" />
-          <span>
-            {session.pr_status === "merged"
-              ? "M"
-              : session.pr_status === "closed"
-                ? "X"
-                : "O"}
-          </span>
-        </a>
-      )}
-
-      {/* Actions: a sheet on touch, a menu with a mouse */}
-      {hasActions && isTouch && (
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label="Session actions"
-          className="h-8 w-8 flex-shrink-0"
-          onClick={(e) => {
-            e.stopPropagation();
-            setSheetOpen(true);
-          }}
-        >
-          <MoreHorizontal className="h-4 w-4" />
-        </Button>
-      )}
-      {hasActions && !isTouch && (
-        <DropdownMenu onOpenChange={handleMenuOpenChange}>
-          <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+        </>
+      }
+      trailing={
+        hasActions ? (
+          // Actions: a sheet on touch, a menu with a mouse
+          isTouch ? (
             <Button
               variant="ghost"
               size="icon-sm"
-              className="h-6 w-6 flex-shrink-0 opacity-100 md:pointer-fine:h-5 md:pointer-fine:w-5 md:pointer-fine:opacity-0 md:pointer-fine:group-hover:opacity-100"
+              aria-label="Session actions"
+              className="h-8 w-8 flex-shrink-0"
+              onClick={(e) => {
+                e.stopPropagation();
+                setSheetOpen(true);
+              }}
             >
-              <MoreHorizontal className="h-3 w-3" />
+              <MoreHorizontal className="h-4 w-4" />
             </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-            {renderMenuItems(false)}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      )}
-    </div>
+          ) : (
+            <DropdownMenu onOpenChange={handleMenuOpenChange}>
+              <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="Session actions"
+                  className="h-6 w-6 flex-shrink-0 opacity-100 md:pointer-fine:h-5 md:pointer-fine:w-5 md:pointer-fine:opacity-0 md:pointer-fine:group-hover:opacity-100"
+                >
+                  <MoreHorizontal className="h-3 w-3" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="end"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {renderMenuItems(false)}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )
+        ) : undefined
+      }
+    />
   );
 
   if (hasActions && isTouch) {
@@ -773,11 +762,11 @@ export function SessionCard({
         <ActionSheet
           open={sheetOpen}
           onOpenChange={setSheetOpen}
-          title={session.name}
+          title={name}
           description={
             session.branch_name
-              ? `${config.word} · ${session.branch_name}`
-              : `${config.word} · ${timeAgo}`
+              ? `${STATE_WORD[state]} · ${session.branch_name}`
+              : `${STATE_WORD[state]} · ${timeAgo}`
           }
           groups={sheetGroups}
         />
@@ -798,20 +787,4 @@ export function SessionCard({
   return cardContent;
 }
 
-export function getTimeAgo(dateStr: string): string {
-  const date = new Date(dateStr + "Z"); // Assume UTC
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffMins = Math.floor(diffMs / 60000);
-
-  if (diffMins < 1) return "just now";
-  if (diffMins < 60) return `${diffMins}m ago`;
-
-  const diffHours = Math.floor(diffMins / 60);
-  if (diffHours < 24) return `${diffHours}h ago`;
-
-  const diffDays = Math.floor(diffHours / 24);
-  if (diffDays < 7) return `${diffDays}d ago`;
-
-  return date.toLocaleDateString();
-}
+export { timeAgo as getTimeAgo } from "@/lib/agent-state";
