@@ -39,13 +39,15 @@ struct RootView: View {
 
 /// Order follows Apple's column rule: the prominent action first, then what's
 /// used most. Frequent and badged items stay longest when the column runs
-/// out of room; the rest fall into the system overflow menu.
+/// out of room; the rest fall into the system overflow menu. The column
+/// stays monochrome whatever the theme; badges are the only colour.
 struct NavToolbar: ToolbarContent {
     let model: AppModel
 
     var body: some ToolbarContent {
         ToolbarItem(placement: .topBarTrailing) {
             Button { model.nav("new") } label: { Label("New", systemImage: "plus") }
+                .tint(.primary)
         }
         .barPriority(true)
 
@@ -53,26 +55,46 @@ struct NavToolbar: ToolbarContent {
             Button { model.nav("inbox") } label: {
                 Label("Inbox", systemImage: model.waiting > 0 ? "tray.full" : "tray")
             }
-            .badge(model.waiting)
+            .badge(model.focus ? 0 : model.waiting)
             .accessibilityValue(model.waiting > 0 ? "\(model.waiting) waiting" : "Nothing waiting")
+            .tint(.primary)
         }
         .barPriority(true)
 
         viewItem("Chat", symbol: "text.bubble", view: .chat, action: "chat")
         viewItem("Terminal", symbol: "apple.terminal", view: .terminal, action: "terminal")
-
-        ToolbarItem(placement: .topBarTrailing) {
-            Button { model.nav("sessions") } label: { Label("Sessions", systemImage: "sidebar.left") }
-        }
-        .barPriority(true)
-
-        viewItem("Changes", symbol: "arrow.triangle.branch", view: .git, action: "git", high: false, badge: model.changes)
-        viewItem("Files", symbol: "folder", view: .files, action: "files", high: false)
+        viewItem("Changes", symbol: "arrow.triangle.branch", view: .git, action: "git", badge: model.focus ? 0 : model.changes)
+        viewItem("Files", symbol: "folder", view: .files, action: "files")
 
         ToolbarItem(placement: .topBarTrailing) {
             Button { model.nav("find") } label: { Label("Find", systemImage: "magnifyingglass") }
+                .tint(.primary)
         }
-        .barPriority(false)
+        .barPriority(true)
+
+        ToolbarItem(placement: .topBarTrailing) {
+            Button { model.nav("focus") } label: {
+                Label {
+                    Text("Focus")
+                } icon: {
+                    Image(systemName: "scope")
+                        .symbolVariant(model.focus ? .fill : .none)
+                        // Something needs you while the badges are hidden
+                        .overlay(alignment: .topTrailing) {
+                            if model.focus && model.focusDot {
+                                Circle()
+                                    .fill(.orange)
+                                    .frame(width: 7, height: 7)
+                                    .offset(x: 3, y: -2)
+                            }
+                        }
+                }
+            }
+            .accessibilityAddTraits(model.focus ? .isSelected : [])
+            .accessibilityValue(model.focus && model.focusDot ? "Something needs you" : "")
+            .tint(.primary)
+        }
+        .barPriority(true)
 
         ToolbarItem(placement: .topBarTrailing) {
             Button { model.nav("settings") } label: {
@@ -80,16 +102,25 @@ struct NavToolbar: ToolbarContent {
                     .symbolVariant(model.settingsOpen ? .fill : .none)
             }
             .accessibilityAddTraits(model.settingsOpen ? .isSelected : [])
+            .tint(.primary)
+        }
+        .barPriority(false)
+
+        ToolbarItem(placement: .topBarTrailing) {
+            Button { model.nav("sessions") } label: { Label("Sessions", systemImage: "sidebar.left") }
+                .tint(.primary)
         }
         .barPriority(false)
 
         ToolbarItem(placement: .topBarTrailing) {
             Button { model.reload() } label: { Label("Reload", systemImage: "arrow.clockwise") }
+                .tint(.primary)
         }
         .barPriority(false)
 
         ToolbarItem(placement: .topBarTrailing) {
             Button { model.showingServer = true } label: { Label("Server", systemImage: "server.rack") }
+                .tint(.primary)
         }
         .barPriority(false)
     }
@@ -107,6 +138,7 @@ struct NavToolbar: ToolbarContent {
             }
             .badge(badge)
             .accessibilityAddTraits(current ? .isSelected : [])
+            .tint(.primary)
         }
         .barPriority(high)
     }

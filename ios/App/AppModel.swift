@@ -29,6 +29,10 @@ final class AppModel {
     var showingServer = false
     /// The web Settings page is showing (the gear fills)
     var settingsOpen = false
+    /// Focus mode: the page hides its strip and the column its badges
+    var focus = false
+    /// Focus is on and something needs you: the amber dot on Focus
+    var focusDot = false
     /// Face ID / Touch ID in front of the app (off unless turned on)
     let lock = AppLock()
     /// The page's background colour, for the edges it doesn't cover
@@ -185,6 +189,8 @@ final class AppModel {
         if let count = message["waiting"] as? Int { waiting = count }
         if let count = message["changes"] as? Int { changes = count }
         settingsOpen = message["settings"] as? Bool ?? false
+        focus = message["focus"] as? Bool ?? false
+        focusDot = message["focusDot"] as? Bool ?? false
         if let css = message["background"] as? String, let color = Self.color(css: css) {
             pageBackground = Color(uiColor: color)
         }
