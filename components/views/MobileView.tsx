@@ -12,7 +12,7 @@ import { QuickSwitcher } from "@/components/QuickSwitcher";
 import type { ViewProps } from "./types";
 import { fileOpenActions } from "@/stores/fileOpen";
 import { mobileNavActions, mobileNavStore } from "@/stores/mobileNav";
-import { NavRail } from "@/components/mobile/NavRail";
+import { ControlColumn } from "@/components/ControlColumn";
 import { useSideRail } from "@/hooks/useSideRail";
 import { isNative } from "@/lib/native-bridge";
 import { loadDuoPreview } from "@/stores/duoPreview";
@@ -45,6 +45,8 @@ export function MobileView({
 }: ViewProps) {
   // The iOS app puts this navigation in the system's own bar
   const railWidth = useSideRail(!isNative());
+  // A phone in a browser has no system column, so the column is a bottom bar
+  const showBar = !railWidth && !isNative();
 
   useEffect(loadDuoPreview, []);
 
@@ -53,7 +55,8 @@ export function MobileView({
   }, [sessionStatuses]);
 
   useEffect(() => {
-    mobileNavStore.railActive = railWidth > 0 || isNative();
+    // The column, the bar or the iOS app's own bar is always showing here
+    mobileNavStore.railActive = true;
     mobileNavStore.railWidth = railWidth;
     return () => {
       mobileNavStore.railWidth = 0;
@@ -69,7 +72,12 @@ export function MobileView({
     [sessions, sessionStatuses]
   );
 
-  const { inboxOpen } = useSnapshot(mobileNavStore);
+  const { inboxOpen, request: viewRequest } = useSnapshot(mobileNavStore);
+  // Picking a view in the column or bar leaves the home for the session
+  const hasSession = !!focusedActiveTab?.sessionId;
+  useEffect(() => {
+    if (viewRequest && hasSession) setSidebarOpen(false);
+  }, [viewRequest, hasSession, setSidebarOpen]);
   const projectNames = useMemo(
     () =>
       Object.fromEntries(
@@ -107,24 +115,24 @@ export function MobileView({
       style={railWidth ? { paddingRight: railWidth } : undefined}
     >
       {railWidth > 0 && (
-        <NavRail
-          columnWidth={railWidth}
-          waitingCount={waitingSessions.length}
-          onInbox={() => mobileNavActions.setInboxOpen(true)}
-          onSessions={() => setSidebarOpen(!sidebarOpen)}
-          onFind={() => setShowQuickSwitcher(true)}
-          onNewSession={() => setShowNewSessionDialog(true)}
-        />
+        <ControlColumn variant="column" sideRailWidth={railWidth} />
       )}
       {/* The home: a page of its own rather than a drawer, the same in the
-          app and a browser. The nav rail stays beside it */}
+          app and a browser. The column or bar stays beside it */}
       {sidebarOpen && (
         <div
           className={cn(
-            "bg-background fixed inset-0 z-40 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)]",
-            !railWidth && "pr-[env(safe-area-inset-right)]"
+            "bg-background fixed inset-0 z-40 pt-[env(safe-area-inset-top)] pl-[env(safe-area-inset-left)]",
+            !railWidth && "pr-[env(safe-area-inset-right)]",
+            !showBar && "pb-[env(safe-area-inset-bottom)]"
           )}
-          style={railWidth ? { right: railWidth } : undefined}
+          style={
+            railWidth
+              ? { right: railWidth }
+              : showBar
+                ? { bottom: "var(--control-bar-h, 0px)" }
+                : undefined
+          }
         >
           <MissionControl
             sessions={sessions}
@@ -135,13 +143,8 @@ export function MobileView({
               attachToSession(session);
               setSidebarOpen(false);
             }}
-            onNewSession={() => setShowNewSessionDialog(true)}
-            // The iOS app's bar and the rail lead back already
-            onClose={
-              focusedActiveTab?.sessionId && !railWidth && !isNative()
-                ? () => setSidebarOpen(false)
-                : undefined
-            }
+            // New and the way back are in the column, the bar or the
+            // iOS app's own bar
             projectsView={sessionList}
           />
         </div>
@@ -151,6 +154,7 @@ export function MobileView({
       <div className="min-h-0 w-full flex-1">
         <PaneLayout renderPane={renderPane} />
       </div>
+      {showBar && <ControlColumn variant="bar" />}
 
       {/* Dialogs */}
       <InboxDialog
