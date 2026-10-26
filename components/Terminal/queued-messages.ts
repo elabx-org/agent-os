@@ -58,3 +58,47 @@ export function readClaudePrompt(term: XTerm) {
 export function showsQueued(prompt: string | null, queued: string[]) {
   return !!prompt && squash(queued.join("")).includes(prompt);
 }
+
+/**
+ * What's typed in Claude Code's input box, as text: its dim placeholder
+ * ("Try …") left out, wrapped rows joined with the space a word wrap took
+ * (none where a long word ran to the edge). "" when empty, null when
+ * there's no box (a menu, a shell).
+ */
+export function readClaudeInput(term: XTerm): string | null {
+  const buffer = term.buffer.active;
+  const lines = screen(term);
+  let start = -1;
+  for (let i = lines.length - 1; i > 0; i--) {
+    if (/^[❯>]/.test(lines[i]) && RULE.test(lines[i - 1])) {
+      start = i;
+      break;
+    }
+  }
+  if (start < 0) return null;
+  const rows: string[] = [];
+  for (let i = start; i < lines.length; i++) {
+    const line = lines[i];
+    if (i > start && (RULE.test(line) || !line.startsWith("  "))) break;
+    const row = buffer.getLine(buffer.baseY + i);
+    if (!row) break;
+    let text = "";
+    for (let x = 0; x < term.cols; x++) {
+      const cell = row.getCell(x);
+      if (!cell || cell.isDim()) continue;
+      text += cell.getChars() || " ";
+    }
+    rows.push(text.replace(/^(?:[❯>] ?| {2})/, "").trimEnd());
+  }
+  let out = "";
+  for (const [i, row] of rows.entries()) {
+    if (!i) out = row;
+    else if (!row) continue;
+    else {
+      // A word wrap drops the space; a long word just runs on
+      const full = rows[i - 1].length >= term.cols - 3;
+      out += (full ? "" : " ") + row;
+    }
+  }
+  return out.trim();
+}

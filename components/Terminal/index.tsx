@@ -40,6 +40,7 @@ import { useSessionDraft } from "@/hooks/useSessionDraft";
 import {
   hasQueued,
   isClaudeBusy,
+  readClaudeInput,
   readClaudePrompt,
   screen as screenRows,
   showsQueued,
@@ -533,6 +534,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
             : hasQueued(term)
               ? [...queuedRef.current, text]
               : [text];
+        lastSendRef.current = Date.now();
         if (text.includes("\n")) sendPaste(text);
         else if (text) sendInput(text);
         setTimeout(() => sendInput("\r"), text ? 80 : 0);
@@ -630,11 +632,109 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
       })();
     }, [xtermRef, sendInput]);
 
+    // Text left in Claude's own box (history recalled there, messages Esc
+    // put back, typing from another device) that the composer hides: shown
+    // above the composer, to move into it or clear. Not while Claude works,
+    // nor just after a send (the text goes through the box on its way)
+    const [strayInput, setStrayInput] = useState<string | null>(null);
+    const lastSendRef = useRef(0);
+    const movingRef = useRef(false);
+    const watchStray =
+      composerOn && active && keysContext === "claude" && !!draftId;
+    useEffect(() => {
+      if (!watchStray) {
+        setStrayInput(null);
+        return;
+      }
+      const check = () => {
+        const term = xtermRef.current;
+        // Claude took what it held (a mid-turn message) and is done
+        if (
+          term &&
+          queuedRef.current.length &&
+          !isClaudeBusy(term) &&
+          !hasQueued(term)
+        )
+          queuedRef.current = [];
+        const typing =
+          document.activeElement?.closest(".xterm") &&
+          document.activeElement.getAttribute("inputmode") !== "none";
+        const text =
+          !term ||
+          typing ||
+          movingRef.current ||
+          Date.now() - lastSendRef.current < 2000 ||
+          queuedRef.current.length > 0 ||
+          isClaudeBusy(term)
+            ? null
+            : readClaudeInput(term);
+        setStrayInput(text || null);
+      };
+      check();
+      const timer = setInterval(check, 1000);
+      return () => clearInterval(timer);
+    }, [watchStray, xtermRef]);
+
+    /** Empties Claude's box: from its end, ^U a row at a time and ⌫ to
+        join the row above, until it reads empty */
+    const clearClaudeInput = useCallback(async () => {
+      const term = xtermRef.current;
+      if (!term) return false;
+      const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+      movingRef.current = true;
+      try {
+        sendInput("\x1b[F");
+        await wait(50);
+        for (let step = 0; step < 60; step++) {
+          if (readClaudeInput(term) === "") return true;
+          sendInput(step % 2 ? "\x7f" : "\x15");
+          await wait(50);
+        }
+        return readClaudeInput(term) === "";
+      } finally {
+        movingRef.current = false;
+      }
+    }, [xtermRef, sendInput]);
+    const moveStray = useCallback(() => {
+      const term = xtermRef.current;
+      const text = term ? readClaudeInput(term) : null;
+      if (!text) return;
+      setStrayInput(null);
+      void clearClaudeInput().then((cleared) => {
+        if (!cleared) return;
+        setComposerText((current) => [text, current].filter(Boolean).join("\n"));
+      });
+    }, [xtermRef, clearClaudeInput, setComposerText]);
+    const clearStray = useCallback(() => {
+      setStrayInput(null);
+      void clearClaudeInput();
+    }, [clearClaudeInput]);
+
     // The keybar's newline key adds a line to the composer while it has focus
     const keybarKeyPress = useCallback(
       (key: string) => {
         if (isTextKey(key) && insertInComposer(key)) return;
         const term = xtermRef.current;
+        // ↑ ↓ at Claude's empty prompt recall its history: into the
+        // composer, as they do typed there, not into Claude's hidden box
+        if (
+          (key === "\x1b[A" || key === "\x1b[B") &&
+          composerOnRef.current &&
+          term &&
+          !isClaudeBusy(term) &&
+          readClaudeInput(term) === ""
+        ) {
+          const box = keybarRef.current?.querySelector<HTMLTextAreaElement>(
+            "textarea[data-composer]"
+          );
+          const arrow = new KeyboardEvent("keydown", {
+            key: key === "\x1b[A" ? "ArrowUp" : "ArrowDown",
+            bubbles: true,
+            cancelable: true,
+          });
+          box?.dispatchEvent(arrow);
+          if (arrow.defaultPrevented) return;
+        }
         const queued =
           (key === "\x1b[A" || key === "\x1b") &&
           composerOnRef.current &&
@@ -1195,6 +1295,9 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
                   getQueued={getQueued}
                   onEditQueued={editQueued}
                   onCancelQueued={cancelQueued}
+                  stray={strayInput}
+                  onMoveStray={moveStray}
+                  onClearStray={clearStray}
                   stateAbove={sideBySide}
                   pages={twoRowPages}
                   extra={
