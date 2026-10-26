@@ -1,3 +1,5 @@
+import { createContext, useContext } from "react";
+import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
@@ -50,64 +52,67 @@ export function AppLogo({ className }: { className?: string }) {
   );
 }
 
+/** Where the home wants the list's + and ⋯: beside its Now | Projects tabs */
+export const ListActionsSlot = createContext<HTMLElement | null>(null);
+
 export function SessionListHeader({
   onNewProject,
   onOpenProject,
   onKillAll,
   onClaudeConfig,
 }: SessionListHeaderProps) {
-  return (
-    // The home's top bar already shows the logo and name
-    <div className="flex items-center justify-end px-3 py-1">
-      <div className="flex gap-1">
-        <DropdownMenu>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon-sm">
-                  <Plus className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-            </TooltipTrigger>
-            <TooltipContent>New project</TooltipContent>
-          </Tooltip>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={onNewProject}>
-              <FolderPlus className="mr-2 h-3 w-3" />
-              New Project
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={onOpenProject}>
-              <FolderOpen className="mr-2 h-3 w-3" />
-              Open Project
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-        <DropdownMenu>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon-sm">
-                  <MoreHorizontal className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-            </TooltipTrigger>
-            <TooltipContent>More options</TooltipContent>
-          </Tooltip>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={onClaudeConfig}>
-              <SlidersHorizontal className="mr-2 h-3 w-3" />
-              Claude Config
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={onKillAll}
-              className="text-red-500 focus:text-red-500"
-            >
-              <Trash2 className="mr-2 h-3 w-3" />
-              Kill all sessions
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
+  const slot = useContext(ListActionsSlot);
+  const actions = (
+    <div className="flex gap-1">
+      <DropdownMenu>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon-sm">
+                <Plus className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+          </TooltipTrigger>
+          <TooltipContent>New project</TooltipContent>
+        </Tooltip>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem onClick={onNewProject}>
+            <FolderPlus className="mr-2 h-3 w-3" />
+            New Project
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={onOpenProject}>
+            <FolderOpen className="mr-2 h-3 w-3" />
+            Open Project
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <DropdownMenu>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon-sm">
+                <MoreHorizontal className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+          </TooltipTrigger>
+          <TooltipContent>More options</TooltipContent>
+        </Tooltip>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem onClick={onClaudeConfig}>
+            <SlidersHorizontal className="mr-2 h-3 w-3" />
+            Claude Config
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={onKillAll}
+            className="text-red-500 focus:text-red-500"
+          >
+            <Trash2 className="mr-2 h-3 w-3" />
+            Kill all sessions
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   );
+  if (slot) return createPortal(actions, slot);
+  return <div className="flex justify-end px-3 py-1">{actions}</div>;
 }
