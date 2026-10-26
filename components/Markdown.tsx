@@ -4,7 +4,8 @@ import * as React from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import hljs from "highlight.js";
-import { Check, Copy } from "lucide-react";
+import type { Element, ElementContent } from "hast";
+import { Check, ChevronRight, Copy, Globe, Lock } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -80,8 +81,74 @@ function CodeBlock({ lang, code }: { lang: string; code: string }) {
   );
 }
 
+// claude.ai artifacts sit behind a login (claude.site ones are public)
+const ARTIFACT_RE =
+  /^https:\/\/(?:(?:www\.)?claude\.ai\/(?:code\/)?artifacts?|claude\.site\/artifacts)\/[\w-]+/i;
+
+function textOf(node: ElementContent): string {
+  if (node.type === "text") return node.value;
+  if (node.type === "element") return node.children.map(textOf).join("");
+  return "";
+}
+
+/** The artifact link a paragraph holds and nothing else, if it does. */
+function loneArtifactLink(p?: Element) {
+  const kids = p?.children.filter(
+    (c) => !(c.type === "text" && !c.value.trim())
+  );
+  const a = kids?.length === 1 ? kids[0] : null;
+  if (a?.type !== "element" || a.tagName !== "a") return null;
+  const href = a.properties.href;
+  if (typeof href !== "string" || !ARTIFACT_RE.test(href)) return null;
+  const text = textOf(a).trim();
+  // A bare URL has no title to show
+  return { href, title: text && text !== href ? text : "Artifact" };
+}
+
+// Nothing is fetched: the artifact is private, so the thumbnail is a sketch
+function ArtifactCard({ href, title }: { href: string; title: string }) {
+  const priv = !/claude\.site\//i.test(href);
+  const Icon = priv ? Lock : Globe;
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="bg-secondary/40 border-border/60 hover:bg-secondary/70 active:bg-secondary/70 my-2 flex max-w-sm items-center gap-3 rounded-2xl border p-2.5 no-underline transition-colors first:mt-0 last:mb-0"
+    >
+      <span
+        aria-hidden
+        className="grid h-[50px] w-[66px] flex-none content-start gap-[3px] rounded-[9px] bg-[#0a0b0d] p-1.5 ring-1 ring-white/10 ring-inset"
+      >
+        <i className="block h-1.5 w-3/5 rounded-sm bg-[#cfd4db]" />
+        <i className="block h-1 rounded-sm bg-[#3a3f48]" />
+        <i className="block h-1 w-4/5 rounded-sm bg-[#3a3f48]" />
+        <span className="mt-0.5 grid grid-cols-3 gap-[3px]">
+          <i className="block h-3.5 rounded-[3px] bg-[#1b1f24]" />
+          <i className="block h-3.5 rounded-[3px] bg-[#1b1f24]" />
+          <i className="block h-3.5 rounded-[3px] bg-[#1b1f24]" />
+        </span>
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="text-foreground block truncate font-semibold">
+          {title}
+        </span>
+        <span className="text-muted-foreground flex items-center gap-1.5 text-xs">
+          <Icon className="h-3 w-3 flex-none" />
+          {priv ? "claude.ai artifact · private" : "claude.site artifact"}
+        </span>
+      </span>
+      <ChevronRight className="text-muted-foreground h-4 w-4 flex-none" />
+    </a>
+  );
+}
+
 const components: Components = {
-  p: ({ children }) => <p className="my-2 first:mt-0 last:mb-0">{children}</p>,
+  p: ({ children, node }) => {
+    const link = loneArtifactLink(node);
+    if (link) return <ArtifactCard {...link} />;
+    return <p className="my-2 first:mt-0 last:mb-0">{children}</p>;
+  },
   h1: ({ children }) => (
     <h1 className="mt-5 mb-2 text-xl font-bold first:mt-0">{children}</h1>
   ),
