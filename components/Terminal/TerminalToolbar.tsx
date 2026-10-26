@@ -814,21 +814,26 @@ export function TerminalToolbar({
     fitAt.key === fitKey
       ? fitAt
       : { key: fitKey, trim: 0, scrolls1: false, scrolls2: false };
-  const { row1Ids, row2Ids } = useMemo(() => {
+  const { row1Ids, row2Ids, trimmable } = useMemo(() => {
     if (mergeRows)
       return {
         row1Ids: Array.from(new Set([...resolvedRow1, ...resolvedRow2])),
         row2Ids: [],
+        trimmable: false,
       };
     // Room for this many keys at their narrowest, less one for the gear
     const fits = rowWidth
       ? Math.floor((rowWidth - ROW_INSET_PX) / KEY_STEP_PX) - 1 - fit.trim
       : Infinity;
+    // Moving another key down still leaves one: past that the row scrolls
+    // (a row narrower than a key, mid-fold, would otherwise trim forever)
+    const trimmable = twoRows && fits > 1;
     if (!twoRows || resolvedRow1.length <= fits || fits < 1)
-      return { row1Ids: resolvedRow1, row2Ids: resolvedRow2 };
+      return { row1Ids: resolvedRow1, row2Ids: resolvedRow2, trimmable };
     return {
       row1Ids: resolvedRow1.slice(0, fits),
       row2Ids: [...resolvedRow1.slice(fits), ...resolvedRow2],
+      trimmable,
     };
   }, [mergeRows, twoRows, rowWidth, fit.trim, resolvedRow1, resolvedRow2]);
 
@@ -889,7 +894,7 @@ export function TerminalToolbar({
       return;
     }
     if (over(row1El) && !fit.scrolls1) {
-      if (twoRows && row1Ids.length > 1)
+      if (trimmable && row1Ids.length > 1)
         setFitAt({ ...fit, trim: fit.trim + 1 });
       else setFitAt({ ...fit, scrolls1: true });
     } else if (over(row2El) && !fit.scrolls2) {
