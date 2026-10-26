@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ChevronLeft, Plus, Settings } from "lucide-react";
+import { FoldSplit } from "@/components/FoldSplit";
 import { AppLogo } from "@/components/SessionList/SessionListHeader";
 import { InboxItem } from "@/components/Inbox";
 import { UsagePill } from "@/components/UsagePill";
@@ -20,6 +21,7 @@ import { useIsNative } from "@/hooks/useIsNative";
 import { displayTitle } from "@/hooks/useSessionTitles";
 import { timeAgo } from "@/lib/agent-state";
 import { openSettings } from "@/stores/settingsPage";
+import { openNew } from "@/stores/newSurface";
 import { openSubagent } from "@/stores/agentOpen";
 import { mobileNavActions } from "@/stores/mobileNav";
 import type { SessionStatus } from "@/components/views/types";
@@ -180,7 +182,20 @@ function Now({
   const project = (session: Session) =>
     session.project_id ? projectNames[session.project_id] : undefined;
 
-  return (
+  // On a table the list stays above the fold and the base answers the
+  // first prompt, or starts something when nothing waits
+  const ref = useRef<HTMLDivElement>(null);
+  const firstCard = first && (
+    <InboxItem
+      as="div"
+      variant="card"
+      session={first}
+      projectName={project(first)}
+      title={displayTitle(first, now.titles).title}
+      onOpen={() => onOpenSession(first)}
+    />
+  );
+  const list = (cardOnBase: boolean) => (
     <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-6">
       {/* The hero: what the home is for */}
       <p className="flex items-baseline gap-2.5 px-2 pt-2 pb-4">
@@ -199,17 +214,12 @@ function Now({
       </p>
 
       <div className="space-y-px">
-        {first && (
-          <InboxItem
-            as="div"
-            variant="card"
-            session={first}
-            projectName={project(first)}
-            title={displayTitle(first, now.titles).title}
-            onOpen={() => onOpenSession(first)}
-          />
+        {firstCard && !cardOnBase && (
+          <>
+            {firstCard}
+            <div className="h-2" />
+          </>
         )}
-        {first && <div className="h-2" />}
         {moreWaiting.map((session) => {
           const { title, idLabel } = displayTitle(session, now.titles);
           return (
@@ -337,6 +347,40 @@ function Now({
           <BackgroundAgents agents={now.elsewhere} title="Other agents" />
         </div>
       )}
+    </div>
+  );
+
+  return (
+    <div ref={ref} className="flex min-h-0 flex-1 flex-col">
+      <FoldSplit
+        el={ref}
+        className="flex-1"
+        top={list(true)}
+        base={
+          // Pushed down to the thumbs, but scrolls from its top if it's taller
+          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-3 pt-2 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
+            <div className="mt-auto flex flex-col gap-3">
+              {firstCard || (
+                <>
+                  <div className="@container/top flex justify-center">
+                    <UsagePill />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => openNew()}
+                    className="bg-primary text-primary-foreground flex h-12 w-full shrink-0 items-center justify-center gap-2 rounded-xl text-sm font-semibold active:opacity-80"
+                  >
+                    <Plus className="h-4 w-4" />
+                    New session
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        }
+      >
+        {list(false)}
+      </FoldSplit>
     </div>
   );
 }
