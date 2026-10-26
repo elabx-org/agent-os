@@ -72,6 +72,7 @@ import {
   WorkflowPanel,
   workflowAgentInfo,
 } from "@/components/WorkflowPhases";
+import { ReplyContextBar, useChatJump } from "@/components/ReplyContext";
 
 const POLL_MS = 1500;
 /** Runs of tool calls longer than this collapse to their last few */
@@ -693,6 +694,32 @@ export function ChatView({
     rows: rowsRef,
     leftRows: leftRowsRef,
   });
+  // "Jump to it" from the reply context: each row is one element, in the
+  // left page's list, the right page's or (one column) the conversation's
+  const convRef = useRef<HTMLDivElement>(null);
+  const findItem = useCallback(
+    (itemId: string) => {
+      const at = rows.findIndex(
+        (r) =>
+          r.id === itemId ||
+          (r.kind === "tools" && r.tools.some((t) => t.id === itemId))
+      );
+      if (at < 0) return null;
+      const [list, i] = !book
+        ? [convRef.current, at]
+        : at < seam
+          ? [leftRowsRef.current, at]
+          : [rowsRef.current, at - seam];
+      const el = list?.children[i];
+      if (!(el instanceof HTMLElement)) return null;
+      // Read where it is, not pulled back down by new output
+      atBottom.current = false;
+      return el;
+    },
+    [rows, book, seam]
+  );
+  useChatJump(session.id, active, findItem);
+
   // Earlier history goes in above: keep what's on screen where it was
   const shown = useRef<{ first?: string; height: number }>({ height: 0 });
   useLayoutEffect(() => {
@@ -987,14 +1014,16 @@ export function ChatView({
                 />
               </div>
             ) : (
-              <Conversation
-                rows={rows}
-                results={results}
-                agents={agentsByTool}
-                onOpenAgent={setOpenAgent}
-                workflows={runsById}
-                onShowWorkflow={setOpenRun}
-              />
+              <div ref={convRef} className="contents">
+                <Conversation
+                  rows={rows}
+                  results={results}
+                  agents={agentsByTool}
+                  onOpenAgent={setOpenAgent}
+                  workflows={runsById}
+                  onShowWorkflow={setOpenRun}
+                />
+              </div>
             )}
             {/* The state line above says so on a table */}
             {status === "running" && !deckControls && (
@@ -1052,6 +1081,13 @@ export function ChatView({
               onRewound={onOpenTerminal}
             />
             <QueuedMessages live={live} />
+            {/* What's being answered, and the passages quoted to answer */}
+            <ReplyContextBar
+              composer={composer}
+              sessionId={session.id}
+              view="chat"
+              bounds={rootRef}
+            />
             <ComposerChips composer={composer} historyChip />
             <div
               className={cn(

@@ -17,6 +17,7 @@ import {
   useClaudeLive,
   type ClaudeKey,
 } from "@/components/Composer/ClaudeStateBar";
+import { ReplyContextBar } from "@/components/ReplyContext";
 import { ComposerPlusMenu } from "./ComposerPlusMenu";
 
 const MAX_ROWS = 5;
@@ -133,6 +134,12 @@ export function Composer({
         known={getQueued?.()}
         onEdit={onEditQueued}
         onCancel={onCancelQueued}
+      />
+      {/* What's being answered, and the passages quoted to answer */}
+      <ReplyContextBar
+        composer={composer}
+        sessionId={sessionId}
+        view="terminal"
       />
       <ComposerChips composer={composer} />
       <div
