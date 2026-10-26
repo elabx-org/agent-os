@@ -183,18 +183,20 @@ function Now({
     session.project_id ? projectNames[session.project_id] : undefined;
 
   // On a table the list stays above the fold and the base answers the
-  // first prompt, or starts something when nothing waits
+  // first prompt, or starts something when nothing waits. The base has room
+  // for every answer, so it shows them all rather than hiding some in More…
   const ref = useRef<HTMLDivElement>(null);
-  const firstCard = first && (
-    <InboxItem
-      as="div"
-      variant="card"
-      session={first}
-      projectName={project(first)}
-      title={displayTitle(first, now.titles).title}
-      onOpen={() => onOpenSession(first)}
-    />
-  );
+  const firstCard = (variant: "card" | "full") =>
+    first && (
+      <InboxItem
+        as="div"
+        variant={variant}
+        session={first}
+        projectName={project(first)}
+        title={displayTitle(first, now.titles).title}
+        onOpen={() => onOpenSession(first)}
+      />
+    );
   const list = (cardOnBase: boolean) => (
     <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-6">
       {/* The hero: what the home is for */}
@@ -214,9 +216,9 @@ function Now({
       </p>
 
       <div className="space-y-px">
-        {firstCard && !cardOnBase && (
+        {first && !cardOnBase && (
           <>
-            {firstCard}
+            {firstCard("card")}
             <div className="h-2" />
           </>
         )}
@@ -360,7 +362,7 @@ function Now({
           // Pushed down to the thumbs, but scrolls from its top if it's taller
           <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-3 pt-2 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
             <div className="mt-auto flex flex-col gap-3">
-              {firstCard || (
+              {firstCard("full") || (
                 <>
                   <div className="@container/top flex justify-center">
                     <UsagePill />
