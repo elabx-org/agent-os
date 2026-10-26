@@ -13,7 +13,7 @@ import { sessionRegistry } from "@/lib/client/session-registry";
 import { cn } from "@/lib/utils";
 import { ConductorPanel } from "@/components/ConductorPanel";
 import { useFileEditor } from "@/hooks/useFileEditor";
-import { MobileTabBar } from "./MobileTabBar";
+import { SessionTitleBar } from "./SessionTitleBar";
 import { DesktopTabBar } from "./DesktopTabBar";
 import {
   TerminalSkeleton,
@@ -64,7 +64,6 @@ interface PaneProps {
     tabId: string,
     ref: TerminalHandle | null
   ) => void;
-  onMenuClick?: () => void;
   onSelectSession?: (sessionId: string) => void;
 }
 
@@ -79,7 +78,6 @@ export const Pane = memo(function Pane({
   sessions,
   projects,
   onRegisterTerminal,
-  onMenuClick,
   onSelectSession,
 }: PaneProps) {
   const { isMobile } = useViewport();
@@ -146,13 +144,11 @@ export const Pane = memo(function Pane({
   // File editor state - lifted here so it persists across view switches
   const fileEditor = useFileEditor();
 
-  // Check if this session is a conductor (has workers)
+  // A conductor's workers, shown from the header's ⋯
   const workerCount = useMemo(() => {
     if (!session) return 0;
     return sessions.filter((s) => s.conductor_session_id === session.id).length;
   }, [session, sessions]);
-
-  const isConductor = workerCount > 0;
 
   // Get current project and its repositories
   const currentProject = useMemo(() => {
@@ -210,12 +206,12 @@ export const Pane = memo(function Pane({
     if (isFocused) mobileNavStore.viewMode = viewMode;
   }, [isFocused, viewMode]);
 
-  // The iOS app badges Changes with the focused session's changed files
+  // The column badges Changes with the focused session's changed files
   const { data: gitStatus } = useGitStatus(session?.working_directory ?? "", {
-    enabled: isFocused && isNative(),
+    enabled: isFocused,
   });
   useEffect(() => {
-    if (!isFocused || !isNative()) return;
+    if (!isFocused) return;
     mobileNavStore.changes = gitStatus
       ? new Set(
           [...gitStatus.staged, ...gitStatus.unstaged, ...gitStatus.untracked].map(
@@ -236,21 +232,19 @@ export const Pane = memo(function Pane({
       }
       if (navRequest.sessionId !== session?.id) return;
     }
-    if (navRequest.mode === "git" && !isMobile && !isNative()) {
-      // The wide layout shows changes in the git drawer beside the terminal;
-      // the iOS app shows them as a view of the session, as on the phone
-      if (session?.working_directory) setGitDrawerOpen((open) => !open);
-    } else if (navRequest.mode === "terminal" || session?.working_directory) {
+    if (navRequest.mode === "terminal" || session?.working_directory) {
       setViewMode(navRequest.mode);
     }
     mobileNavActions.clearRequest();
   }, [
     navRequest,
     isFocused,
-    isMobile,
     session?.id,
     session?.working_directory,
   ]);
+
+  // Not twice: Changes as the view takes the drawer's place
+  const showGitDrawer = gitDrawerOpen && viewMode !== "git";
 
   const handleFocus = useCallback(() => {
     focusPane(paneId);
@@ -396,46 +390,40 @@ export const Pane = memo(function Pane({
       )}
       onClick={handleFocus}
     >
-      {/* Tab Bar - Mobile vs Desktop */}
-      {isMobile ? (
-        <MobileTabBar
-          session={session}
-          sessions={sessions}
-          projects={projects}
-          viewMode={viewMode}
-          isConductor={isConductor}
-          workerCount={workerCount}
-          onMenuClick={onMenuClick}
-          onViewModeChange={setViewMode}
-          onSelectSession={onSelectSession}
-        />
-      ) : (
+      {/* Tabs (wide, two or more), then the header naming the session */}
+      {!isMobile && (
         <DesktopTabBar
           tabs={paneData.tabs}
           activeTabId={paneData.activeTabId}
-          session={session}
           sessions={sessions}
-          viewMode={viewMode}
           isFocused={isFocused}
-          isConductor={isConductor}
-          workerCount={workerCount}
-          canSplit={canSplit}
-          canClose={canClose}
-          hasAttachedTmux={!!activeTab?.attachedTmux}
-          gitDrawerOpen={gitDrawerOpen}
-          shellDrawerOpen={shellDrawerOpen}
           onTabSwitch={(tabId) => switchTab(paneId, tabId)}
           onTabClose={(tabId) => closeTab(paneId, tabId)}
           onTabAdd={() => addTab(paneId)}
-          onViewModeChange={setViewMode}
-          onGitDrawerToggle={() => setGitDrawerOpen((prev) => !prev)}
-          onShellDrawerToggle={() => setShellDrawerOpen((prev) => !prev)}
-          onSplitHorizontal={() => splitHorizontal(paneId)}
-          onSplitVertical={() => splitVertical(paneId)}
-          onClose={() => close(paneId)}
-          onDetach={handleDetach}
         />
       )}
+      <SessionTitleBar
+        session={session}
+        projects={projects}
+        fallbackTitle={activeTab?.attachedTmux}
+        isMobile={isMobile}
+        isFocused={isFocused}
+        viewMode={viewMode}
+        workerCount={workerCount}
+        onViewModeChange={setViewMode}
+        hasAttachedTmux={!!activeTab?.attachedTmux}
+        onDetach={handleDetach}
+        gitDrawerOpen={gitDrawerOpen}
+        shellDrawerOpen={shellDrawerOpen}
+        canSplit={canSplit}
+        canClose={canClose}
+        onGitDrawerToggle={() => setGitDrawerOpen((prev) => !prev)}
+        onShellDrawerToggle={() => setShellDrawerOpen((prev) => !prev)}
+        onTabAdd={() => addTab(paneId)}
+        onSplitHorizontal={() => splitHorizontal(paneId)}
+        onSplitVertical={() => splitVertical(paneId)}
+        onClose={() => close(paneId)}
+      />
 
       {/* Content Area - Mobile: simple flex, Desktop: resizable panels */}
       {isMobile ? (
@@ -503,7 +491,7 @@ export const Pane = memo(function Pane({
             </div>
           )}
 
-          {/* Git - mobile only */}
+          {/* Changes */}
           {session?.working_directory && (
             <div className={viewMode === "git" ? "h-full" : "hidden"}>
               <GitPanel
@@ -541,7 +529,7 @@ export const Pane = memo(function Pane({
           className="min-h-0 flex-1"
         >
           {/* Left column: Main content + Shell drawer */}
-          <ResizablePanel defaultSize={gitDrawerOpen ? 70 : 100} minSize={20}>
+          <ResizablePanel defaultSize={showGitDrawer ? 70 : 100} minSize={20}>
             <ResizablePanelGroup orientation="vertical" className="h-full">
               {/* Main content */}
               <ResizablePanel
@@ -611,7 +599,7 @@ export const Pane = memo(function Pane({
                     </div>
                   )}
 
-                  {/* Changes as a view (the iOS app); the drawer otherwise */}
+                  {/* Changes */}
                   {viewMode === "git" && session?.working_directory && (
                     <div className="h-full">
                       <GitPanel
@@ -663,8 +651,8 @@ export const Pane = memo(function Pane({
             </ResizablePanelGroup>
           </ResizablePanel>
 
-          {/* Git panel - right side, full height */}
-          {gitDrawerOpen && session?.working_directory && (
+          {/* Git drawer - right side, full height */}
+          {showGitDrawer && session?.working_directory && (
             <>
               <ResizablePanelHandle className="bg-border/30 hover:bg-primary/30 active:bg-primary/50 w-px cursor-col-resize transition-colors" />
               <ResizablePanel defaultSize={30} minSize={10}>

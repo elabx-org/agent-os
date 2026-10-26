@@ -488,11 +488,10 @@ function HomeContent() {
         sessions={sessions}
         projects={projects}
         onRegisterTerminal={registerTerminalRef}
-        onMenuClick={isMobile ? () => setSidebarOpen(true) : undefined}
         onSelectSession={handleSelectSession}
       />
     ),
-    [sessions, projects, registerTerminalRef, isMobile, handleSelectSession]
+    [sessions, projects, registerTerminalRef, handleSelectSession]
   );
 
   // New session in project handler
