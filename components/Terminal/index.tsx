@@ -35,8 +35,10 @@ import {
   hasQueued,
   isClaudeBusy,
   readClaudePrompt,
+  screen as screenRows,
   showsQueued,
 } from "./queued-messages";
+import type { ClaudeKey } from "@/components/Composer/ClaudeStateBar";
 import { DeckPad } from "./DeckPad";
 import { useFoldDeck } from "@/hooks/useFoldDeck";
 import { COMPOSER_EVENT, getComposerEnabled } from "./typing-assist";
@@ -508,7 +510,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
     // which the composer hides. If they came from the composer, move them
     // back there. ^U clears a line of the prompt without interrupting Claude
     // (^C would), and a backspace joins the line above.
-    const reclaimQueued = useCallback(() => {
+    const reclaimQueued = useCallback((drop = false) => {
       const term = xtermRef.current;
       const queued = queuedRef.current;
       if (!term || !queued.length) return;
@@ -535,6 +537,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
         }
         if (!cleared) return;
         queuedRef.current = [];
+        if (drop) return;
         setComposerText((current) =>
           [...queued, current].filter(Boolean).join("\n")
         );
@@ -557,6 +560,35 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
       },
       [sendInput, insertInComposer, reclaimQueued, xtermRef]
     );
+
+    // Claude's state under the composer, read from the rows it draws, and
+    // the keys that change it
+    const readScreen = useCallback(() => {
+      const term = xtermRef.current;
+      return term ? screenRows(term) : null;
+    }, [xtermRef]);
+    const sendClaudeKey = useCallback(
+      (key: ClaudeKey, times = 1) => {
+        if (key === "esc") return keybarKeyPress("\x1b");
+        if (key === "shift-tab") return sendInput("\x1b[Z");
+        // Apart: two Escs in one chunk read as Alt+Esc
+        const keys =
+          key === "esc-esc"
+            ? ["\x1b", "\x1b"]
+            : Array<string>(times).fill("\x1b[A");
+        keys.forEach((k, i) => setTimeout(() => sendInput(k), i * 80));
+      },
+      [keybarKeyPress, sendInput]
+    );
+    const getQueued = useCallback(() => queuedRef.current, []);
+    const editQueued = useCallback(
+      () => keybarKeyPress("\x1b[A"),
+      [keybarKeyPress]
+    );
+    const cancelQueued = useCallback(() => {
+      sendInput("\x1b[A");
+      reclaimQueued(true);
+    }, [sendInput, reclaimQueued]);
 
     // Keys and pastes from the iOS app's keyboard bar go to the terminal being
     // typed in; a paste into the terminal is bracketed, so Claude Code takes it
@@ -946,6 +978,11 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
                   onTypeInTerminal={typeInTerminal}
                   onPhoto={() => setShowImagePicker(true)}
                   onSelectText={() => setSelectMode(true)}
+                  readScreen={readScreen}
+                  onClaudeKey={sendClaudeKey}
+                  getQueued={getQueued}
+                  onEditQueued={editQueued}
+                  onCancelQueued={cancelQueued}
                   extra={
                     !deck && (
                       <KeybarToggleButton

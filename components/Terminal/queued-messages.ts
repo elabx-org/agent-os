@@ -1,10 +1,12 @@
 import type { Terminal as XTerm } from "@xterm/xterm";
+import { readClaudeScreen } from "@/lib/claude-screen";
 
 // The box's top rule can carry a label ("─── History 3/14 ───")
 const RULE = /^─{3}/;
 const squash = (text: string) => text.replace(/\s+/g, "");
 
-function screen(term: XTerm) {
+/** The rows on screen, as text */
+export function screen(term: XTerm) {
   const buffer = term.buffer.active;
   const lines: string[] = [];
   for (let y = buffer.baseY; y < buffer.baseY + term.rows; y++) {
@@ -15,9 +17,12 @@ function screen(term: XTerm) {
 
 /** Claude Code is working, or holding messages sent while it works */
 export function isClaudeBusy(term: XTerm) {
-  return screen(term).some(
-    (line) =>
-      line.includes("esc to interru") || line.includes("edit queued messages")
+  const lines = screen(term);
+  return (
+    lines.some(
+      (line) =>
+        line.includes("esc to interru") || line.includes("edit queued messages")
+    ) || readClaudeScreen(lines).spinner !== null
   );
 }
 

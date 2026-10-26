@@ -20,7 +20,8 @@ interface HistoryEntry {
 function readHistory(
   project: string,
   query: string,
-  limit: number
+  limit: number,
+  session: string | null
 ): HistoryEntry[] {
   const out: HistoryEntry[] = [];
   const seen = new Set<string>();
@@ -38,11 +39,20 @@ function readHistory(
       return; // A torn or foreign line: skip it
     }
     if (!row || typeof row !== "object") return;
-    const { display, project: p, timestamp } = row as Record<string, unknown>;
+    const {
+      display,
+      project: p,
+      timestamp,
+      sessionId,
+    } = row as Record<string, unknown>;
     if (typeof display !== "string" || typeof p !== "string") return;
     if (path.resolve(p) !== target) return;
     const text = display.trim();
-    if (!text || seen.has(text)) return;
+    if (!text) return;
+    // One conversation's prompts, repeats included: the rewind list
+    if (session) {
+      if (sessionId !== session || text.startsWith("/")) return;
+    } else if (seen.has(text)) return;
     if (q && !text.toLowerCase().includes(q)) return;
     seen.add(text);
     out.push({
@@ -87,8 +97,9 @@ function readHistory(
 const cache = new Map<string, HistoryEntry[]>();
 
 /**
- * GET /api/claude/history?project=...&q=...&limit=50
- * Recent Claude Code prompts for a project, newest first, de-duplicated
+ * GET /api/claude/history?project=...&q=...&limit=50&session=...
+ * Recent Claude Code prompts for a project, newest first, de-duplicated;
+ * with session, every prompt of that Claude conversation
  */
 export async function GET(request: NextRequest) {
   const params = request.nextUrl.searchParams;
@@ -100,6 +111,7 @@ export async function GET(request: NextRequest) {
     );
   }
   const q = params.get("q")?.trim() ?? "";
+  const session = params.get("session");
   const limit = Math.min(
     Math.max(parseInt(params.get("limit") || "50", 10) || 50, 1),
     MAX_LIMIT
@@ -113,10 +125,10 @@ export async function GET(request: NextRequest) {
     } catch {
       return NextResponse.json({ entries: [] });
     }
-    const key = `${expandPath(project)}\0${q}\0${limit}\0${stamp}`;
+    const key = `${expandPath(project)}\0${q}\0${limit}\0${session}\0${stamp}`;
     let entries = cache.get(key);
     if (!entries) {
-      entries = readHistory(expandPath(project), q, limit);
+      entries = readHistory(expandPath(project), q, limit, session);
       if (cache.size > 100) cache.clear();
       cache.set(key, entries);
     }

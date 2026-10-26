@@ -10,6 +10,13 @@ import {
   ComposerPopover,
   useComposer,
 } from "@/components/Composer";
+import {
+  ClaudeStateBar,
+  QueuedMessages,
+  RewindSheet,
+  useClaudeLive,
+  type ClaudeKey,
+} from "@/components/Composer/ClaudeStateBar";
 import { ComposerPlusMenu } from "./ComposerPlusMenu";
 
 const MAX_ROWS = 5;
@@ -27,6 +34,14 @@ interface ComposerProps {
   onSelectText: () => void;
   /** A control beside the send button (the keybar toggle) */
   extra?: React.ReactNode;
+  /** The terminal's visible rows, where Claude draws its state */
+  readScreen?: () => readonly string[] | null;
+  /** Shift+Tab, Esc and the rest, straight to Claude */
+  onClaudeKey?: (key: ClaudeKey, times?: number) => void;
+  /** What this composer sent that Claude holds until its turn ends */
+  getQueued?: () => string[];
+  onEditQueued?: () => void;
+  onCancelQueued?: () => void;
 }
 
 /**
@@ -43,6 +58,11 @@ export function Composer({
   onPhoto,
   onSelectText,
   extra,
+  readScreen,
+  onClaudeKey,
+  getQueued,
+  onEditQueued,
+  onCancelQueued,
 }: ComposerProps) {
   const { data } = useSessionsQuery();
   const session = sessionId
@@ -56,6 +76,13 @@ export function Composer({
     claude: session?.agent_type === "claude",
   });
   const { textareaRef, display } = composer;
+  // Claude's mode, spinner and status line, mirrored under the box
+  const live = useClaudeLive({
+    sessionId,
+    claude: composer.claude,
+    readScreen,
+    sendKey: onClaudeKey,
+  });
   // Once the text needs a second line, the buttons move under it and the
   // text gets the whole width. It stays that way until the box is empty, so
   // the wider box fitting the text on one line again doesn't flip it back.
@@ -96,6 +123,13 @@ export function Composer({
       onTouchEnd={(e) => e.stopPropagation()}
     >
       <ComposerPopover composer={composer} />
+      <RewindSheet live={live} cwd={composer.cwd} />
+      <QueuedMessages
+        live={live}
+        known={getQueued?.()}
+        onEdit={onEditQueued}
+        onCancel={onCancelQueued}
+      />
       <ComposerChips composer={composer} />
       <div
         className={cn(
@@ -114,10 +148,12 @@ export function Composer({
               ? () => composer.setHistoryOpen(true)
               : undefined
           }
+          onRewind={live.claude ? () => live.setRewindOpen(true) : undefined}
         />
         <ComposerInput
           composer={composer}
           onKeyDown={(e) => {
+            if (live.onKeyDown(e)) return;
             // Return sends, Shift+Return adds a line. On the on-screen keyboard
             // the keybar's newline key adds a line instead.
             if (
@@ -149,6 +185,7 @@ export function Composer({
           <ArrowUp className="h-5 w-5" />
         </button>
       </div>
+      <ClaudeStateBar live={live} />
     </div>
   );
 }

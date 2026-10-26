@@ -17,6 +17,7 @@ import {
   MousePointer2,
   Plus,
   TerminalSquare,
+  Undo2,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -34,6 +35,8 @@ interface ComposerPlusMenuProps {
   onTypeInTerminal: () => void;
   /** Search this project's earlier prompts (Claude sessions) */
   onHistory?: () => void;
+  /** Jump back to an earlier prompt, as Esc Esc (Claude sessions) */
+  onRewind?: () => void;
 }
 
 interface Item {
@@ -55,6 +58,7 @@ export function ComposerPlusMenu({
   onSelectText,
   onTypeInTerminal,
   onHistory,
+  onRewind,
 }: ComposerPlusMenuProps) {
   const [open, setOpen] = useState(false);
   const [showSnippets, setShowSnippets] = useState(false);
@@ -171,6 +175,7 @@ export function ComposerPlusMenu({
     ...(onHistory
       ? [{ icon: History, label: "Earlier prompts", onSelect: onHistory }]
       : []),
+    ...(onRewind ? [{ icon: Undo2, label: "Rewind", onSelect: onRewind }] : []),
     {
       icon: TerminalSquare,
       label: "Type in terminal",
