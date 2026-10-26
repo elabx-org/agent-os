@@ -38,6 +38,12 @@ import {
   postToNative,
 } from "@/lib/native-bridge";
 import { useSessionDraft } from "@/hooks/useSessionDraft";
+import {
+  ComposerChips,
+  ComposerInput,
+  ComposerPopover,
+  useComposer,
+} from "@/components/Composer";
 import { useFoldDeck } from "@/hooks/useFoldDeck";
 import { useSubagents } from "@/hooks/useSubagents";
 import {
@@ -678,27 +684,30 @@ export function ChatView({
 
   // Kept on the server: survives a reload, follows to other devices
   const [draft, setDraft] = useSessionDraft(session.id);
-  const inputRef = useRef<HTMLTextAreaElement>(null);
+  // Pills, pickers, modes and history, shared with the terminal's composer
+  const composer = useComposer({
+    value: draft,
+    onChange: setDraft,
+    sessionId: session.id,
+    cwd: session.working_directory,
+    claude: session.agent_type === "claude",
+  });
+  const inputRef = composer.textareaRef;
   // Return sends, so touch keyboards get a button for a line break
-  const insertText = (text: string) => {
-    const el = inputRef.current;
-    if (!el) return;
-    const { selectionStart: from, selectionEnd: to } = el;
-    setDraft((d) => d.slice(0, from) + text + d.slice(to));
-    const at = from + text.length;
-    requestAnimationFrame(() => el.setSelectionRange(at, at));
-  };
-  const insertNewline = () => insertText("\n");
+  const insertNewline = () => composer.insert("\n");
   // The iOS app's keyboard bar has a new line, / and @ too, and Paste
+  const composerRef = useRef(composer);
+  composerRef.current = composer;
   useEffect(
     () =>
       onNativeEvent((event) => {
         if (document.activeElement !== inputRef.current) return;
-        if (event.type === "key" && isTextKey(event.key)) insertText(event.key);
-        else if (event.type === "paste") insertText(event.text);
+        if (event.type === "key" && isTextKey(event.key))
+          composerRef.current.insert(event.key);
+        else if (event.type === "paste")
+          composerRef.current.pasteText(event.text);
       }),
-    // insertText only reads the ref and the setter
-    []
+    [inputRef]
   );
   // Half open like a laptop or on a table: the conversation stays above the
   // fold, and the composer and the controls sit on the deck below it
@@ -730,6 +739,7 @@ export function ChatView({
       });
       if (res.ok) {
         setDraft("");
+        composerRef.current.sent();
         atBottom.current = true;
       }
     } finally {
@@ -919,67 +929,71 @@ export function ChatView({
           )}
           style={{ height: deck?.deck }}
         >
-          <div
-            className={cn(
-              // Glass-like capsule, as the control column
-              "bg-background/70 border-border flex shrink-0 gap-1.5 rounded-[28px] border p-1.5 shadow-[inset_0_1px_0_hsl(var(--foreground)/0.08)] backdrop-blur-xl backdrop-saturate-150",
-              deck ? "items-start" : "items-end"
-            )}
-          >
-            <button
-              type="button"
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={insertNewline}
-              aria-label="New line"
-              title="New line"
-              className="bg-secondary text-muted-foreground active:bg-accent flex h-[44px] w-[44px] flex-shrink-0 items-center justify-center rounded-full [@media(pointer:fine)]:hidden"
-            >
-              <CornerDownLeft className="h-5 w-5" />
-            </button>
-            <textarea
-              ref={inputRef}
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onFocus={() => {
-                setComposerFocused(true);
-                // The app's keyboard bar shows no terminal keys in chat
-                if (isNative()) postToNative({ type: "keys", context: "chat" });
-              }}
-              onBlur={() => setComposerFocused(false)}
-              onKeyDown={(e) => {
-                // Return sends, Shift+Return adds a line
-                if (
-                  e.key === "Enter" &&
-                  !e.shiftKey &&
-                  !e.nativeEvent.isComposing
-                ) {
-                  e.preventDefault();
-                  send();
-                }
-              }}
-              enterKeyHint="send"
-              rows={1}
-              placeholder="Message Claude"
-              className="bg-secondary text-foreground placeholder:text-muted-foreground max-h-40 min-h-[44px] flex-1 resize-none rounded-2xl px-3.5 py-2.5 text-base leading-6 focus:outline-none"
-            />
-            <button
-              type="button"
-              onClick={send}
-              disabled={!draft.trim() || sending}
-              aria-label="Send"
+          <div className="relative shrink-0">
+            <ComposerPopover composer={composer} />
+            <ComposerChips composer={composer} historyChip />
+            <div
               className={cn(
-                "flex h-[44px] w-[44px] flex-shrink-0 items-center justify-center rounded-full",
-                draft.trim()
-                  ? "bg-primary text-primary-foreground active:opacity-80"
-                  : "bg-secondary text-muted-foreground"
+                // Glass-like capsule, as the control column
+                "bg-background/70 border-border flex shrink-0 gap-1.5 rounded-[28px] border p-1.5 shadow-[inset_0_1px_0_hsl(var(--foreground)/0.08)] backdrop-blur-xl backdrop-saturate-150",
+                deck ? "items-start" : "items-end"
               )}
             >
-              {sending ? (
-                <Loader2 className="h-5 w-5 animate-spin" />
-              ) : (
-                <ArrowUp className="h-5 w-5" />
-              )}
-            </button>
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={insertNewline}
+                aria-label="New line"
+                title="New line"
+                className="bg-secondary text-muted-foreground active:bg-accent flex h-[44px] w-[44px] flex-shrink-0 items-center justify-center rounded-full [@media(pointer:fine)]:hidden"
+              >
+                <CornerDownLeft className="h-5 w-5" />
+              </button>
+              <ComposerInput
+                composer={composer}
+                onFocus={() => {
+                  setComposerFocused(true);
+                  // The app's keyboard bar shows no terminal keys in chat
+                  if (isNative())
+                    postToNative({ type: "keys", context: "chat" });
+                }}
+                onBlur={() => setComposerFocused(false)}
+                onKeyDown={(e) => {
+                  // Return sends, Shift+Return adds a line
+                  if (
+                    e.key === "Enter" &&
+                    !e.shiftKey &&
+                    !e.nativeEvent.isComposing
+                  ) {
+                    e.preventDefault();
+                    send();
+                  }
+                }}
+                enterKeyHint="send"
+                placeholder="Message Claude"
+                className="flex-1"
+                inputClassName="max-h-40"
+                autoGrow
+              />
+              <button
+                type="button"
+                onClick={send}
+                disabled={!draft.trim() || sending}
+                aria-label="Send"
+                className={cn(
+                  "flex h-[44px] w-[44px] flex-shrink-0 items-center justify-center rounded-full",
+                  draft.trim()
+                    ? "bg-primary text-primary-foreground active:opacity-80"
+                    : "bg-secondary text-muted-foreground"
+                )}
+              >
+                {sending ? (
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                ) : (
+                  <ArrowUp className="h-5 w-5" />
+                )}
+              </button>
+            </div>
           </div>
           {/* On the deck, within the thumbs' reach: the answer Claude is
           waiting for, or Stop while it works */}

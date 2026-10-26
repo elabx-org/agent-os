@@ -941,6 +941,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
                 <Composer
                   value={composerText}
                   onChange={setComposerText}
+                  sessionId={draftId}
                   onSend={sendFromComposer}
                   onTypeInTerminal={typeInTerminal}
                   onPhoto={() => setShowImagePicker(true)}

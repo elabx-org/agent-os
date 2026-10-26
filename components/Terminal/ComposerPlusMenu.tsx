@@ -9,6 +9,7 @@ import {
 } from "react";
 import {
   FileText,
+  History,
   ImagePlus,
   Loader2,
   Mic,
@@ -31,6 +32,8 @@ interface ComposerPlusMenuProps {
   onSelectText: () => void;
   /** Hand the keyboard to the terminal (Claude Code's / and @ pickers) */
   onTypeInTerminal: () => void;
+  /** Search this project's earlier prompts (Claude sessions) */
+  onHistory?: () => void;
 }
 
 interface Item {
@@ -51,6 +54,7 @@ export function ComposerPlusMenu({
   onInsert,
   onSelectText,
   onTypeInTerminal,
+  onHistory,
 }: ComposerPlusMenuProps) {
   const [open, setOpen] = useState(false);
   const [showSnippets, setShowSnippets] = useState(false);
@@ -164,6 +168,9 @@ export function ComposerPlusMenu({
       onSelect: onSelectText,
       sheet: true,
     },
+    ...(onHistory
+      ? [{ icon: History, label: "Earlier prompts", onSelect: onHistory }]
+      : []),
     {
       icon: TerminalSquare,
       label: "Type in terminal",

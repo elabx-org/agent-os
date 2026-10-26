@@ -1,0 +1,684 @@
+"use client";
+
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ClipboardEvent,
+  type KeyboardEvent,
+} from "react";
+import {
+  filterCommands,
+  useClaudeCommands,
+  useClaudeHistory,
+  useFileSuggestions,
+  type ClaudeCommand,
+  type FileSuggestion,
+} from "@/hooks/useComposerData";
+import { uploadFileToTemp } from "@/lib/file-upload";
+import {
+  MAGIC_WORDS,
+  magicWordPattern,
+  type MagicWord,
+} from "@/lib/magic-words";
+import {
+  PASTE_LINES,
+  collapse,
+  expand,
+  keepChipsWhole,
+  lineCount,
+  pasteToken,
+  tokenAtCaret,
+  type Chip,
+  type Paste,
+} from "./text";
+
+export interface Suggestion {
+  key: string;
+  label: string;
+  detail: string;
+  hint?: string;
+  /** Heading of the group this one starts, if it starts one */
+  group?: string;
+  insert: string;
+  /** A folder: stay open to pick inside it */
+  keepOpen?: boolean;
+}
+
+export type ComposerMode = "bash" | "memory" | null;
+
+export interface Segment {
+  text: string;
+  kind: "plain" | "magic" | "chip";
+}
+
+interface UseComposerOptions {
+  /** The synced draft: the full text that will be sent */
+  value: string;
+  onChange: (text: string) => void;
+  /** Keeps paste pills across reloads on this device */
+  sessionId?: string | null;
+  /** The session's folder: project commands, @ files and history */
+  cwd?: string | null;
+  /** Claude Code runs in the session: pickers, modes and history */
+  claude?: boolean;
+}
+
+const pastesKey = (id: string) => `agentos:pastes:${id}`;
+
+function readPastes(id: string | null | undefined): Paste[] {
+  if (!id) return [];
+  try {
+    const raw = localStorage.getItem(pastesKey(id));
+    return raw ? (JSON.parse(raw) as Paste[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writePastes(id: string | null | undefined, pastes: Paste[]) {
+  if (!id) return;
+  try {
+    if (pastes.length)
+      localStorage.setItem(pastesKey(id), JSON.stringify(pastes));
+    else localStorage.removeItem(pastesKey(id));
+  } catch {
+    // Private mode or full: the pills just show as text after a reload
+  }
+}
+
+const SOURCE: Record<ClaudeCommand["source"], string> = {
+  builtin: "built-in",
+  skill: "skill",
+  plugin: "plugin",
+  user: "~/.claude",
+  project: ".claude",
+};
+
+const GROUPS: [keyof ReturnType<typeof useClaudeCommands>["groups"], string][] =
+  [
+    ["project", "Project"],
+    ["user", "Your commands"],
+    ["skills", "Skills"],
+    ["plugins", "Plugins"],
+    ["builtin", "Built-in"],
+  ];
+
+const FILE_GROUPS: Record<FileSuggestion["kind"], string> = {
+  changed: "Changed",
+  recent: "Recent",
+  match: "Files",
+};
+
+function fileStatus(code = ""): string {
+  const c = code.trim();
+  if (c === "??") return "untracked";
+  if (c.includes("A")) return "added";
+  if (c.includes("D")) return "deleted";
+  if (c.includes("R")) return "renamed";
+  return "modified";
+}
+
+const MAX_SUGGESTIONS = 60;
+
+/**
+ * Within each group, closer matches first: a path part starting with the
+ * query, then the query anywhere, then the server's fuzzy matches
+ */
+function rankFiles(files: FileSuggestion[], query: string): FileSuggestion[] {
+  const q = query.toLowerCase();
+  if (!q) return files;
+  const score = (path: string) => {
+    const p = path.toLowerCase();
+    if (p.split("/").some((part) => part.startsWith(q))) return 0;
+    return p.includes(q) ? 1 : 2;
+  };
+  const order: FileSuggestion["kind"][] = ["changed", "recent", "match"];
+  return files
+    .map((f, i) => ({ f, i, s: score(f.path), k: order.indexOf(f.kind) }))
+    .sort((a, b) => a.k - b.k || a.s - b.s || a.i - b.i)
+    .map((x) => x.f);
+}
+
+/** The pill the caret landed inside, if any */
+const chipAt = (chips: Chip[], at: number) =>
+  chips.find((c) => c.start < at && at < c.end) ?? null;
+
+/**
+ * The engine behind both composers (the terminal's and the chat's): pills for
+ * pastes and images, the "/" and "@" pickers, "!" and "#" modes, magic words
+ * and ↑/↓ history. The textarea stays native for iOS editing; everything here
+ * is display or insertion, and the text sent is the draft as typed.
+ */
+export function useComposer({
+  value,
+  onChange,
+  sessionId,
+  cwd,
+  claude = true,
+}: UseComposerOptions) {
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Long pastes, so they can show as pills; the draft holds their text
+  const [pastes, setPastesState] = useState<Paste[]>([]);
+  const pastesRef = useRef(pastes);
+  const setPastes = useCallback(
+    (next: Paste[]) => {
+      pastesRef.current = next;
+      setPastesState(next);
+      writePastes(sessionId, next);
+    },
+    [sessionId]
+  );
+  useEffect(() => {
+    const saved = readPastes(sessionId);
+    pastesRef.current = saved;
+    setPastesState(saved);
+  }, [sessionId]);
+
+  const { display, chips } = useMemo(
+    () => collapse(value, pastes),
+    [value, pastes]
+  );
+  const displayRef = useRef(display);
+  displayRef.current = display;
+  const chipsRef = useRef(chips);
+  chipsRef.current = chips;
+
+  // The terminal's keybar and the app's keyboard bar insert into the box's
+  // shown text and save that: put the pills' text back in the draft
+  const shownChips = useRef<Chip[]>([]);
+  useEffect(() => {
+    const healed = expand(value, shownChips.current);
+    if (healed !== value) {
+      onChange(healed);
+      return;
+    }
+    shownChips.current = chips;
+    // Pills whose text is gone; an empty box may just not have loaded yet
+    if (!value) return;
+    const kept = pastesRef.current.filter((p) => value.includes(p.text));
+    if (kept.length !== pastesRef.current.length) setPastes(kept);
+  }, [value, chips, onChange, setPastes]);
+
+  const [caret, setCaret] = useState(0);
+  const [focused, setFocused] = useState(false);
+
+  // Where the caret goes once the new text renders: dictation can deliver
+  // twice before that, and the second part belongs after the first
+  const pendingCaret = useRef<number | null>(null);
+  const placeCaret = useCallback((at: number) => {
+    setCaret(at);
+    pendingCaret.current = at;
+    requestAnimationFrame(() => {
+      pendingCaret.current = null;
+      const el = textareaRef.current;
+      if (el && document.activeElement === el) el.setSelectionRange(at, at);
+    });
+  }, []);
+
+  /** Replace the shown text; the draft gets it with the pills expanded */
+  const setDisplay = useCallback(
+    (next: string, at?: number, withChips = chipsRef.current) => {
+      displayRef.current = next;
+      onChange(expand(next, withChips));
+      if (at !== undefined) placeCaret(at);
+    },
+    [onChange, placeCaret]
+  );
+
+  // ---- "/" and "@" pickers
+  const [dismissed, setDismissed] = useState<string | null>(null);
+  const token = claude && focused ? tokenAtCaret(display, caret) : null;
+  const pickerToken = token && dismissed !== display ? token : null;
+  const { groups } = useClaudeCommands(cwd, claude && focused);
+  const { files } = useFileSuggestions(
+    cwd,
+    pickerToken?.kind === "at" ? pickerToken.query : "",
+    pickerToken?.kind === "at"
+  );
+
+  const suggestions = useMemo<Suggestion[]>(() => {
+    if (!pickerToken) return [];
+    if (pickerToken.kind === "slash") {
+      const toItem = (c: ClaudeCommand, group?: string): Suggestion => ({
+        key: `${c.source}:${c.name}`,
+        label: `/${c.name}`,
+        detail: c.description,
+        hint: SOURCE[c.source],
+        group,
+        insert: `/${c.name} `,
+      });
+      // Typed nothing yet: grouped by where they come from
+      if (!pickerToken.query)
+        return GROUPS.flatMap(([g, title]) =>
+          groups[g].map((c, i) => toItem(c, i === 0 ? title : undefined))
+        ).slice(0, MAX_SUGGESTIONS * 2);
+      // A name that starts with what's typed beats a plugin's or skill's
+      // second half ("co" → compact before commit-commands:commit)
+      const q = pickerToken.query.toLowerCase();
+      const head = (c: ClaudeCommand) =>
+        c.name.toLowerCase().startsWith(q) ? 0 : 1;
+      return filterCommands(groups, pickerToken.query)
+        .map((c, i) => ({ c, i }))
+        .sort((a, b) => head(a.c) - head(b.c) || a.i - b.i)
+        .map(({ c }) => c)
+        .slice(0, MAX_SUGGESTIONS)
+        .map((c) => toItem(c));
+    }
+    const ranked = rankFiles(files, pickerToken.query);
+    return ranked.slice(0, MAX_SUGGESTIONS).map((f, i) => {
+      const dir = f.path.endsWith("/");
+      return {
+        key: `${f.kind}:${f.path}`,
+        label: f.path,
+        detail:
+          f.kind === "changed"
+            ? fileStatus(f.status)
+            : f.kind === "recent"
+              ? "recent"
+              : "",
+        group:
+          i === 0 || ranked[i - 1].kind !== f.kind
+            ? FILE_GROUPS[f.kind]
+            : undefined,
+        insert: `@${f.path}${dir ? "" : " "}`,
+        keepOpen: dir,
+      };
+    });
+  }, [pickerToken?.kind, pickerToken?.query, groups, files]);
+
+  const [selected, setSelected] = useState(0);
+  const pickerKey = pickerToken
+    ? `${pickerToken.kind}:${pickerToken.query}`
+    : "";
+  useEffect(() => setSelected(0), [pickerKey]);
+
+  const choose = useCallback(
+    (s: Suggestion) => {
+      const t = tokenAtCaret(displayRef.current, caret);
+      if (!t) return;
+      const text = displayRef.current;
+      const after = text.slice(t.end);
+      const insert =
+        s.insert.endsWith(" ") && /^\s/.test(after)
+          ? s.insert.slice(0, -1)
+          : s.insert;
+      const next = text.slice(0, t.start) + insert + after;
+      const at = t.start + insert.length + (insert === s.insert ? 0 : 1);
+      setDisplay(next, at);
+      if (!s.keepOpen) setDismissed(next);
+      textareaRef.current?.focus();
+    },
+    [caret, setDisplay]
+  );
+
+  // ---- History: ↑ in an empty box, ↓ back; a search sheet (Ctrl-R)
+  // Fetched once the box has focus; cached after that
+  const { entries } = useClaudeHistory(claude && focused ? cwd : null);
+  const [hist, setHist] = useState(-1);
+  const recalled = hist >= 0 && entries[hist]?.text === value ? hist : -1;
+  const [historyOpen, setHistoryOpen] = useState(false);
+
+  const recall = useCallback(
+    (text: string, index = -1) => {
+      setHist(index);
+      onChange(text);
+      // At the end, where Claude Code leaves it
+      requestAnimationFrame(() => {
+        const el = textareaRef.current;
+        if (!el) return;
+        el.focus();
+        el.setSelectionRange(el.value.length, el.value.length);
+        setCaret(el.value.length);
+      });
+    },
+    [onChange]
+  );
+
+  // ---- Pills: preview, expand, remove
+  const [preview, setPreview] = useState<{
+    kind: Chip["kind"];
+    n: number;
+  } | null>(null);
+  const previewChip =
+    (preview &&
+      chips.find((c) => c.kind === preview.kind && c.n === preview.n)) ||
+    null;
+
+  const removeChip = useCallback(
+    (chip: Chip) => {
+      const text = displayRef.current;
+      // The space it was set apart with goes too
+      const end = text[chip.end] === " " ? chip.end + 1 : chip.end;
+      setDisplay(text.slice(0, chip.start) + text.slice(end), chip.start);
+      if (chip.kind === "paste")
+        setPastes(pastesRef.current.filter((p) => p.n !== chip.n));
+      setPreview(null);
+    },
+    [setDisplay, setPastes]
+  );
+
+  const unfoldChip = useCallback(
+    (chip: Chip) => {
+      setPastes(pastesRef.current.filter((p) => p.n !== chip.n));
+      setPreview(null);
+    },
+    [setPastes]
+  );
+
+  /**
+   * Put text at the caret (or after what's typed, if the box isn't focused).
+   * Spaced: words (a snippet, a path, dictation) stand a space apart from
+   * what's before them; keys go in as they are.
+   */
+  const insert = useCallback(
+    (text: string, spaced = false) => {
+      if (!text) return;
+      const el = textareaRef.current;
+      const current = displayRef.current;
+      const focusedNow = !!el && document.activeElement === el;
+      const from = focusedNow
+        ? (pendingCaret.current ?? el.selectionStart)
+        : current.length;
+      const to = focusedNow
+        ? (pendingCaret.current ?? el.selectionEnd)
+        : current.length;
+      const sep =
+        (spaced || !focusedNow) &&
+        from > 0 &&
+        !/\s/.test(current[from - 1]) &&
+        !/^\s/.test(text)
+          ? " "
+          : "";
+      const added = sep + text;
+      setDisplay(
+        current.slice(0, from) + added + current.slice(to),
+        from + added.length
+      );
+    },
+    [setDisplay]
+  );
+
+  /** A long paste becomes a pill; its text is what's saved and sent */
+  const pasteText = useCallback(
+    (raw: string) => {
+      const text = raw.replace(/\r\n?/g, "\n");
+      if (lineCount(text) <= PASTE_LINES) {
+        insert(text);
+        return;
+      }
+      const n = Math.max(0, ...pastesRef.current.map((p) => p.n)) + 1;
+      const token = pasteToken(n, text);
+      const el = textareaRef.current;
+      const current = displayRef.current;
+      const focusedNow = el && document.activeElement === el;
+      const from = focusedNow ? el.selectionStart : current.length;
+      const to = focusedNow ? el.selectionEnd : current.length;
+      const before =
+        current.slice(0, from) +
+        (from > 0 && !/\s$/.test(current.slice(0, from)) ? " " : "");
+      const next = before + token + current.slice(to);
+      const chip: Chip = {
+        kind: "paste",
+        n,
+        text,
+        token,
+        start: before.length,
+        end: before.length + token.length,
+      };
+      setPastes([...pastesRef.current, { n, text }]);
+      setDisplay(next, chip.end, [...chipsRef.current, chip]);
+    },
+    [insert, setDisplay, setPastes]
+  );
+
+  const [uploading, setUploading] = useState(false);
+  const onPaste = useCallback(
+    (e: ClipboardEvent<HTMLTextAreaElement>) => {
+      const images = [...e.clipboardData.files].filter((f) =>
+        f.type.startsWith("image/")
+      );
+      if (images.length) {
+        e.preventDefault();
+        setUploading(true);
+        void (async () => {
+          try {
+            for (const file of images) {
+              const path = await uploadFileToTemp(file);
+              if (path) insert(`${path} `, true);
+            }
+          } catch (err) {
+            console.error("Failed to upload pasted image:", err);
+          } finally {
+            setUploading(false);
+          }
+        })();
+        return;
+      }
+      const text = e.clipboardData.getData("text/plain");
+      if (lineCount(text.replace(/\r\n?/g, "\n")) > PASTE_LINES) {
+        e.preventDefault();
+        pasteText(text);
+      }
+    },
+    [insert, pasteText]
+  );
+
+  const onTextChange = useCallback(
+    (next: string, at: number) => {
+      const fixed = keepChipsWhole(displayRef.current, next, chipsRef.current);
+      if (fixed) setDisplay(fixed.display, fixed.caret);
+      else {
+        setDisplay(next);
+        setCaret(at);
+      }
+    },
+    [setDisplay]
+  );
+
+  // A tap on a pill opens its preview; the caret never rests inside one
+  const onTap = useCallback(() => {
+    const el = textareaRef.current;
+    if (!el || el.selectionStart !== el.selectionEnd) return;
+    const chip = chipAt(chipsRef.current, el.selectionStart);
+    if (!chip) return;
+    el.setSelectionRange(chip.end, chip.end);
+    setCaret(chip.end);
+    setPreview({ kind: chip.kind, n: chip.n });
+  }, []);
+
+  const onSelect = useCallback(() => {
+    const el = textareaRef.current;
+    if (el) setCaret(el.selectionStart);
+  }, []);
+
+  /**
+   * Keys the composer takes before the box's own Enter handling: picker
+   * navigation, history and Ctrl-R. True when it took the key.
+   */
+  const onKeyDown = useCallback(
+    (e: KeyboardEvent<HTMLTextAreaElement>): boolean => {
+      if (e.nativeEvent.isComposing) return false;
+      const el = e.currentTarget;
+      const plain = !e.shiftKey && !e.altKey && !e.metaKey && !e.ctrlKey;
+
+      if (pickerToken && e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
+        setDismissed(displayRef.current);
+        return true;
+      }
+      if (pickerToken && suggestions.length > 0 && plain) {
+        const s = suggestions[Math.min(selected, suggestions.length - 1)];
+        if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+          e.preventDefault();
+          const step = e.key === "ArrowDown" ? 1 : -1;
+          setSelected(
+            (i) => (i + step + suggestions.length) % suggestions.length
+          );
+          return true;
+        }
+        const word = displayRef.current.slice(
+          pickerToken.start,
+          pickerToken.end
+        );
+        // Enter on a command already typed out sends it, as Claude Code
+        if (
+          e.key === "Tab" ||
+          (e.key === "Enter" && word !== s.insert.trim())
+        ) {
+          e.preventDefault();
+          choose(s);
+          return true;
+        }
+      }
+
+      if (!claude) return false;
+      if (e.key === "r" && e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        setHistoryOpen(true);
+        return true;
+      }
+      if (plain && e.key === "ArrowUp" && entries.length > 0) {
+        const onFirstLine = !el.value
+          .slice(0, el.selectionStart)
+          .includes("\n");
+        if ((value === "" || recalled >= 0) && onFirstLine) {
+          e.preventDefault();
+          const next = Math.min(recalled + 1, entries.length - 1);
+          recall(entries[next].text, next);
+          return true;
+        }
+      }
+      if (plain && e.key === "ArrowDown" && recalled >= 0) {
+        const onLastLine = !el.value.slice(el.selectionEnd).includes("\n");
+        if (onLastLine) {
+          e.preventDefault();
+          const next = recalled - 1;
+          recall(next >= 0 ? entries[next].text : "", next);
+          return true;
+        }
+      }
+      return false;
+    },
+    [
+      pickerToken,
+      suggestions,
+      selected,
+      choose,
+      claude,
+      entries,
+      value,
+      recalled,
+      recall,
+    ]
+  );
+
+  // Arrow keys step over pills, never into them
+  const onKeyUp = useCallback(() => {
+    const el = textareaRef.current;
+    if (!el || el.selectionStart !== el.selectionEnd) return;
+    const chip = chipAt(chipsRef.current, el.selectionStart);
+    if (!chip) return;
+    const at = caret <= chip.start ? chip.end : chip.start;
+    el.setSelectionRange(at, at);
+    setCaret(at);
+  }, [caret]);
+
+  // ---- What the box shows: modes, magic words, highlight
+  const mode: ComposerMode = !claude
+    ? null
+    : display.startsWith("!")
+      ? "bash"
+      : display.startsWith("#")
+        ? "memory"
+        : null;
+
+  const magicWords: MagicWord[] = MAGIC_WORDS;
+  const pattern = useMemo(() => magicWordPattern(magicWords), [magicWords]);
+  const { segments, magic } = useMemo(() => {
+    const ranges: { start: number; end: number; kind: Segment["kind"] }[] =
+      chips.map((c) => ({ start: c.start, end: c.end, kind: "chip" }));
+    const found = new Set<string>();
+    if (claude && pattern && mode !== "bash") {
+      for (const m of display.matchAll(pattern)) {
+        const start = m.index ?? 0;
+        const end = start + m[0].length;
+        if (ranges.some((r) => r.start < end && r.end > start)) continue;
+        ranges.push({ start, end, kind: "magic" });
+        found.add(m[0].toLowerCase());
+      }
+    }
+    ranges.sort((a, b) => a.start - b.start);
+    const out: Segment[] = [];
+    let last = 0;
+    for (const r of ranges) {
+      if (r.start > last)
+        out.push({ text: display.slice(last, r.start), kind: "plain" });
+      out.push({ text: display.slice(r.start, r.end), kind: r.kind });
+      last = r.end;
+    }
+    if (last < display.length)
+      out.push({ text: display.slice(last), kind: "plain" });
+    return {
+      segments: ranges.length ? out : null,
+      magic: magicWords.filter((w) => found.has(w.word.toLowerCase())),
+    };
+  }, [display, chips, claude, pattern, mode, magicWords]);
+
+  /** After a send: the pills and the history position start over */
+  const sent = useCallback(() => {
+    setPastes([]);
+    setHist(-1);
+    setPreview(null);
+    setDismissed(null);
+  }, [setPastes]);
+
+  return {
+    textareaRef,
+    /** The full text, pills expanded: what to send */
+    text: value,
+    display,
+    chips,
+    segments,
+    magic,
+    mode,
+    claude,
+    cwd,
+    focused,
+    setFocused,
+    uploading,
+    // pickers
+    picker: pickerToken && suggestions.length > 0 ? pickerToken.kind : null,
+    suggestions,
+    selected,
+    setSelected,
+    choose,
+    // history
+    recalled,
+    historyCount: entries.length,
+    historyOpen,
+    setHistoryOpen,
+    recall,
+    // pills
+    previewChip,
+    closePreview: () => setPreview(null),
+    removeChip,
+    unfoldChip,
+    // editing
+    insert,
+    pasteText,
+    onTextChange,
+    onPaste,
+    onSelect,
+    onTap,
+    onKeyDown,
+    onKeyUp,
+    sent,
+  };
+}
+
+export type ComposerEngine = ReturnType<typeof useComposer>;
