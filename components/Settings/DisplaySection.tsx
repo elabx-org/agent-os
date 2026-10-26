@@ -14,6 +14,7 @@ import {
 } from "@/lib/theme-config";
 import { cn } from "@/lib/utils";
 import { SettingGroup } from "./SettingGroup";
+import { BackgroundChoice } from "./BackgroundChoice";
 
 /** "Dark · Graphite", for the theme row and the section list */
 export function themeLabel(theme: string | undefined): string {
@@ -84,6 +85,7 @@ export function DisplaySection() {
           />
         </div>
       )}
+      <BackgroundChoice />
     </SettingGroup>
   );
 }
