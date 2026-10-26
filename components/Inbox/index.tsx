@@ -16,7 +16,7 @@ import type { PromptOption, PromptOptionKind } from "@/lib/permission-prompt";
 
 // Amber is "needs you" throughout: the answer that lets Claude go on is the
 // filled one, the rest are outlined
-const KIND_STYLE: Record<PromptOptionKind, string> = {
+export const KIND_STYLE: Record<PromptOptionKind, string> = {
   allow: "bg-amber-400 font-semibold text-amber-950 active:opacity-80",
   always: "border-border border text-foreground active:bg-accent",
   deny: "border-border border text-foreground active:bg-accent",
@@ -27,7 +27,7 @@ const KIND_STYLE: Record<PromptOptionKind, string> = {
  * The card's one row of answers: allow plus deny (or the last option), or
  * for a question with neither, its first two. The rest go behind More…
  */
-function splitOptions(options: PromptOption[]) {
+export function splitOptions(options: PromptOption[]) {
   const allow = options.find((o) => o.kind === "allow");
   let main: PromptOption[];
   if (allow) {
@@ -42,7 +42,7 @@ function splitOptions(options: PromptOption[]) {
 
 // The card's buttons are short: a bare "Yes" reads as Allow and "No" or
 // "No, and tell Claude..." as Deny; a question's answers keep their label
-function shortLabel(option: PromptOption): string {
+export function shortLabel(option: PromptOption): string {
   if (option.kind === "allow" && /^yes\W*$/i.test(option.label)) return "Allow";
   if (
     option.kind === "deny" &&
