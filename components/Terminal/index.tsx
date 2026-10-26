@@ -869,7 +869,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
           <div
             ref={keybarRef}
             className={cn(
-              "bg-background shrink-0",
+              "fold-controls bg-background shrink-0",
               laptopKeys ? "contents" : deck && "flex flex-col"
             )}
             style={

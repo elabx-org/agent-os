@@ -45,8 +45,9 @@ import { MobileView } from "@/components/views/MobileView";
 import { getPendingPrompt, clearPendingPrompt } from "@/stores/initialPrompt";
 import { closeSettings } from "@/stores/settingsPage";
 import { mobileNavStore } from "@/stores/mobileNav";
-import { loadFocus } from "@/stores/focus";
+import { focusStore, loadFocus } from "@/stores/focus";
 import { registerNavHandlers } from "@/lib/nav-actions";
+import { isNative } from "@/lib/native-bridge";
 import { useBackgroundAgents } from "@/components/BackgroundAgents";
 import { SettingsPage } from "@/components/Settings/SettingsPage";
 
@@ -417,13 +418,14 @@ function HomeContent() {
   });
   usePresence(focusedActiveTab?.sessionId ?? undefined);
 
-  // Open beside the session on wide screens. On narrow ones start on the
-  // home unless a session is up; folding an iPhone Duo shut keeps the session
+  // Open beside the session on the web, unless Focus is on. On narrow
+  // screens and the open iPhone Duo (where the home is a page that back
+  // shows) start on the home unless a session is up; folding keeps the session
   useEffect(() => {
     if (!isHydrated) return;
     const onSession = !!focusedActiveTab?.sessionId || linkedSession.current;
     linkedSession.current = false;
-    setSidebarOpen(!isMobile || !onSession);
+    setSidebarOpen(isMobile || isNative() ? !onSession : !focusStore.on);
   }, [isMobile, isHydrated]);
 
   useViewShortcuts();

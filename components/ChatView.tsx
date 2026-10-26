@@ -675,7 +675,7 @@ export function ChatView({
         )}
         <div
           className={cn(
-            "border-border border-t px-2 py-1.5 pb-[calc(0.375rem+env(safe-area-inset-bottom))]",
+            "fold-controls border-border border-t px-2 py-1.5 pb-[calc(0.375rem+env(safe-area-inset-bottom))]",
             deck && "flex flex-col"
           )}
           style={{ height: deck?.deck }}
