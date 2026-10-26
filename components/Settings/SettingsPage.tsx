@@ -8,9 +8,11 @@ import {
   Bell,
   ChevronLeft,
   ChevronRight,
+  CircleStop,
   Columns2,
   Globe,
   Settings,
+  SlidersHorizontal,
   Type,
   Zap,
 } from "lucide-react";
@@ -39,6 +41,8 @@ import {
 import { DisplaySection, themeLabel } from "./DisplaySection";
 import { DuoSection } from "./DuoSection";
 import { UsageSection } from "./UsageSection";
+import { ClaudeCodeSection } from "./ClaudeCodeSection";
+import { SessionsSection } from "./SessionsSection";
 import { SettingGroup } from "./SettingGroup";
 
 const SECTION_TITLE: Record<SettingsSection, string> = {
@@ -46,6 +50,8 @@ const SECTION_TITLE: Record<SettingsSection, string> = {
   display: "Display",
   duo: "iPhone Duo",
   usage: "Usage",
+  claude: "Claude Code",
+  sessions: "Sessions",
   server: "Server",
 };
 
@@ -54,6 +60,8 @@ const SECTION_ICON = {
   display: Type,
   duo: Columns2,
   usage: Zap,
+  claude: SlidersHorizontal,
+  sessions: CircleStop,
   server: Globe,
 } satisfies Record<SettingsSection, unknown>;
 
@@ -113,8 +121,16 @@ function SettingsLayer(props: NotificationsSectionProps) {
 
   // The Duo and Server sections are the iOS app's
   const sections: SettingsSection[] = native
-    ? ["notifications", "display", "duo", "usage", "server"]
-    : ["notifications", "display", "usage"];
+    ? [
+        "notifications",
+        "display",
+        "duo",
+        "usage",
+        "claude",
+        "sessions",
+        "server",
+      ]
+    : ["notifications", "display", "usage", "claude", "sessions"];
   const current = sections.includes(section) ? section : "notifications";
 
   const phone = usePhoneSummary(current);
@@ -126,6 +142,8 @@ function SettingsLayer(props: NotificationsSectionProps) {
     display: <DisplaySection />,
     duo: <DuoSection />,
     usage: <UsageSection />,
+    claude: <ClaudeCodeSection />,
+    sessions: <SessionsSection />,
     server: (
       <SettingGroup className="divide-y-0 p-1">
         <ServerRow />
@@ -142,6 +160,8 @@ function SettingsLayer(props: NotificationsSectionProps) {
       usage && !usage.error
         ? `${usage.plan} · ${Math.round(usage.seven_day.utilization ?? 0)}% this week`
         : "Plan limits",
+    claude: "Claude Config",
+    sessions: "Kill all sessions",
     server: typeof window !== "undefined" ? window.location.host : "",
   };
 

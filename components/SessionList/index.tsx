@@ -8,12 +8,10 @@ import {
   NewProjectDialog,
   ProjectSettingsDialog,
 } from "@/components/Projects";
-import { ClaudeConfigDialog } from "@/components/ClaudeConfig";
 import { FolderPicker } from "@/components/FolderPicker";
 import { SelectionToolbar } from "./SelectionToolbar";
 import { SessionListHeader } from "./SessionListHeader";
 import { GroupSection } from "./GroupSection";
-import { KillAllConfirm } from "./KillAllConfirm";
 import { useSessionListMutations } from "./hooks/useSessionListMutations";
 import { Button } from "@/components/ui/button";
 import { ProjectSectionSkeleton } from "@/components/ui/skeleton";
@@ -76,11 +74,9 @@ export function SessionList({
   const [showFolderPicker, setShowFolderPicker] = useState(false);
   const [editingProject, setEditingProject] =
     useState<ProjectWithRepositories | null>(null);
-  const [showKillAllConfirm, setShowKillAllConfirm] = useState(false);
   const [hoveredSession, setHoveredSession] = useState<Session | null>(null);
   const [hoverPosition, setHoverPosition] = useState({ x: 0, y: 0 });
   const [logsServerId, setLogsServerId] = useState<string | null>(null);
-  const [showClaudeConfig, setShowClaudeConfig] = useState(false);
 
   // Use projects if available
   const useProjectsView = projects.length > 0;
@@ -152,20 +148,11 @@ export function SessionList({
     <div className="flex h-full flex-col overflow-hidden">
       {/* Header */}
       <SessionListHeader
+        projectCount={projects.filter((p) => !p.is_uncategorized).length}
         onNewProject={() => setShowNewProjectDialog(true)}
         onOpenProject={() => setShowFolderPicker(true)}
-        onKillAll={() => setShowKillAllConfirm(true)}
-        onClaudeConfig={() => setShowClaudeConfig(true)}
       />
       {belowHeader}
-
-      {/* Kill All Confirmation */}
-      {showKillAllConfirm && (
-        <KillAllConfirm
-          onCancel={() => setShowKillAllConfirm(false)}
-          onComplete={() => setShowKillAllConfirm(false)}
-        />
-      )}
 
       {/* Selection Toolbar */}
       <SelectionToolbar
@@ -359,21 +346,6 @@ export function SessionList({
         open={editingProject !== null}
         onClose={() => setEditingProject(null)}
         onSave={() => setEditingProject(null)}
-      />
-
-      {/* Claude Config Dialog */}
-      <ClaudeConfigDialog
-        open={showClaudeConfig}
-        onClose={() => setShowClaudeConfig(false)}
-        projectPath={
-          activeSessionId
-            ? projects.find((p) =>
-                sessions.some(
-                  (s) => s.id === activeSessionId && s.project_id === p.id
-                )
-              )?.working_directory
-            : projects.find((p) => !p.is_uncategorized)?.working_directory
-        }
       />
     </div>
   );
