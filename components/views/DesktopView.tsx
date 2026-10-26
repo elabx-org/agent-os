@@ -17,33 +17,46 @@ import { focusStore } from "@/stores/focus";
 import { isNative } from "@/lib/native-bridge";
 import type { Session } from "@/lib/db";
 import { SessionSpread } from "./SessionSpread";
+import { WorkspacePage } from "@/components/WorkspacePage";
+import { workspacePageStore } from "@/stores/workspacePage";
 
-export function DesktopView({
-  sessions,
-  projects,
-  sessionStatuses,
-  sidebarOpen,
-  setSidebarOpen,
-  activeSession,
-  focusedActiveTab,
-  showNewSessionDialog,
-  setShowNewSessionDialog,
-  newSessionProjectId,
-  showQuickSwitcher,
-  setShowQuickSwitcher,
-  attachToSession,
-  openSessionInNewTab,
-  handleNewSessionInProject,
-  handleOpenTerminal,
-  handleSessionCreated,
-  handleCreateProject,
-  handleStartDevServer,
-  handleCreateDevServer,
-  startDevServerProject,
-  setStartDevServerProjectId,
-  renderPane,
-}: ViewProps) {
+export function DesktopView(props: ViewProps) {
+  const {
+    sessions,
+    projects,
+    sessionStatuses,
+    sidebarOpen,
+    setSidebarOpen,
+    activeSession,
+    focusedActiveTab,
+    showNewSessionDialog,
+    setShowNewSessionDialog,
+    newSessionProjectId,
+    showQuickSwitcher,
+    setShowQuickSwitcher,
+    attachToSession,
+    openSessionInNewTab,
+    handleNewSessionInProject,
+    handleOpenTerminal,
+    handleSessionCreated,
+    handleCreateProject,
+    handleStartDevServer,
+    handleCreateDevServer,
+    startDevServerProject,
+    setStartDevServerProjectId,
+    renderPane,
+  } = props;
   const { inboxOpen } = useSnapshot(mobileNavStore);
+  const { page } = useSnapshot(workspacePageStore);
+  const pageOpen = !!page;
+
+  // A page covers the pane, so the column selects no view
+  useEffect(() => {
+    mobileNavStore.homeOpen = pageOpen;
+    return () => {
+      mobileNavStore.homeOpen = false;
+    };
+  }, [pageOpen]);
 
   // Focus hides the home; back still brings it up, and it comes back with
   // Focus off if it was showing
@@ -133,6 +146,11 @@ export function DesktopView({
         session={activeSession}
         projects={projects}
         homeOpen={sidebarOpen}
+        page={
+          pageOpen && (
+            <WorkspacePage view={props} onOpenSession={openFromHome} />
+          )
+        }
         home={
           <MissionControl
             sessions={sessions}

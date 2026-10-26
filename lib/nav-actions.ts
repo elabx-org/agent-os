@@ -6,6 +6,7 @@
 import { mobileNavActions, mobileNavStore } from "@/stores/mobileNav";
 import { closeSettings, openSettings } from "@/stores/settingsPage";
 import { toggleFocus } from "@/stores/focus";
+import { closePage } from "@/stores/workspacePage";
 
 export type NavAction =
   | "new"
@@ -48,6 +49,13 @@ export function runNav(action: NavAction): void {
   // Settings covers the app: anything else in the column leaves it. Focus
   // only changes what shows around the session, so it keeps Settings up
   if (action !== "settings" && action !== "focus") closeSettings();
+  // A view picked over a workspace page goes back to the session
+  const leftPage =
+    (action === "chat" ||
+      action === "terminal" ||
+      action === "git" ||
+      action === "files") &&
+    closePage();
   switch (action) {
     case "inbox":
       return mobileNavActions.setInboxOpen(true);
@@ -64,7 +72,7 @@ export function runNav(action: NavAction): void {
     // Like the rail: the current view again opens the session list
     case "chat":
     case "terminal":
-      return mobileNavStore.viewMode === action
+      return mobileNavStore.viewMode === action && !leftPage
         ? navStore.openSessions()
         : mobileNavActions.requestViewMode(action);
     case "git":

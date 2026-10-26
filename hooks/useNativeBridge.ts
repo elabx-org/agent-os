@@ -11,6 +11,7 @@ import {
 import { runNav } from "@/lib/nav-actions";
 import { mobileNavStore } from "@/stores/mobileNav";
 import { settingsPageStore } from "@/stores/settingsPage";
+import { workspacePageStore } from "@/stores/workspacePage";
 import { focusStore } from "@/stores/focus";
 import { startClientLog } from "@/lib/client-log";
 
@@ -80,6 +81,7 @@ export function useNativeBridge({ waitingCount }: NativeBridgeOptions) {
         changes: mobileNavStore.changes,
         background: getComputedStyle(document.body).backgroundColor,
         settings: settingsPageStore.open,
+        page: workspacePageStore.page?.kind,
         focus: focusStore.on,
         focusDot: focusStore.on && mobileNavStore.needsYou > 0,
         accent: themeAccent(),
@@ -93,6 +95,7 @@ export function useNativeBridge({ waitingCount }: NativeBridgeOptions) {
       subscribeKey(mobileNavStore, "changes", report),
       subscribeKey(mobileNavStore, "needsYou", report),
       subscribeKey(settingsPageStore, "open", report),
+      subscribeKey(workspacePageStore, "page", report),
       subscribeKey(focusStore, "on", report),
     ];
     // A theme change repaints the page: tell the app the new colours
