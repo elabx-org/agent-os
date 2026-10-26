@@ -123,8 +123,11 @@ export function Composer({
   };
 
   return (
+    // z-10: the capsule's backdrop blur makes it a layer of its own, which
+    // otherwise sits under xterm's canvases, so taps on the + menu and the
+    // pickers that open above the box went to the terminal
     <div
-      className="relative mx-2.5 my-1.5"
+      className="relative z-10 mx-2.5 my-1.5"
       onTouchEnd={(e) => e.stopPropagation()}
     >
       <ComposerPopover composer={composer} />
