@@ -33,6 +33,8 @@ export interface NowItems {
   workingCount: number;
   /** Projects with nothing waiting or working, most recently used first */
   quiet: ProjectWithRepositories[];
+  /** Agents outside every project that are neither blocked nor working */
+  elsewhere: BackgroundAgent[];
   titles: Record<string, string>;
 }
 
@@ -85,6 +87,7 @@ export function useNowItems(
   // Blocked agents, one group per project; those outside any project last
   const groups = new Map<string, AgentGroup>();
   const workingAgents: NowItems["working"]["agents"] = [];
+  const elsewhere: BackgroundAgent[] = [];
   for (const agent of agents) {
     const id = agentProject.get(agent.id);
     if (agent.state === "blocked") {
@@ -103,6 +106,8 @@ export function useNowItems(
         projectName: id ? projectName.get(id) : undefined,
       });
       mark(id);
+    } else if (!id) {
+      elsewhere.push(agent);
     }
   }
   const blocked = [...groups.values()].sort(
@@ -153,6 +158,7 @@ export function useNowItems(
       workingAgents.length +
       devServers.length,
     quiet,
+    elsewhere,
     titles,
   };
 }

@@ -5,7 +5,6 @@ import { useEffect, useMemo } from "react";
 import { SessionList } from "@/components/SessionList";
 import { MissionControl } from "@/components/MissionControl";
 import { NewSessionDialog } from "@/components/NewSessionDialog";
-import { NotificationSettings } from "@/components/NotificationSettings";
 import { StartServerDialog } from "@/components/DevServers/StartServerDialog";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,8 +24,6 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { QuickSwitcher } from "@/components/QuickSwitcher";
-import { UsageMonitor } from "@/components/UsageMonitor";
-import { MinimaxUsageMonitor } from "@/components/MinimaxUsageMonitor";
 import type { ViewProps } from "./types";
 import { fileOpenActions } from "@/stores/fileOpen";
 import { useSnapshot } from "valtio";
@@ -49,14 +46,8 @@ export function DesktopView({
   showNewSessionDialog,
   setShowNewSessionDialog,
   newSessionProjectId,
-  showNotificationSettings,
-  setShowNotificationSettings,
   showQuickSwitcher,
   setShowQuickSwitcher,
-  notificationSettings,
-  permissionGranted,
-  updateSettings,
-  requestPermission,
   attachToSession,
   openSessionInNewTab,
   handleNewSessionInProject,
@@ -132,8 +123,8 @@ export function DesktopView({
             ? ""
             : sidebarOpen
               ? native
-                ? // Lying flat the fold doesn't matter: a sidebar, not a page
-                  "border-border w-[min(20rem,40%)] border-r"
+                ? // Lying flat: the left page as Settings has it, unfolded
+                  "border-border w-[455px] border-r"
                 : "w-[22rem]"
               : "w-0"
         )}
@@ -153,7 +144,7 @@ export function DesktopView({
             projectNames={projectNames}
             activeSessionId={focusedActiveTab?.sessionId || undefined}
             onOpenSession={attachToSession}
-            onNewSession={() => setShowNewSessionDialog(true)}
+            // The header has New on the web; the iOS app's bar has its own
             projectsView={sessionList}
           />
         </div>
@@ -259,10 +250,6 @@ export function DesktopView({
                 {waitingSessions.length}
               </button>
             )}
-            <div className="hidden items-center gap-2 xl:flex">
-              <UsageMonitor />
-              <MinimaxUsageMonitor />
-            </div>
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
@@ -278,37 +265,26 @@ export function DesktopView({
                 <p className="text-muted-foreground text-xs">⌘K</p>
               </TooltipContent>
             </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  onClick={() => openSettings()}
-                  aria-label="Settings"
-                >
-                  <Settings className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Settings</p>
-                <p className="text-muted-foreground text-xs">⌘,</p>
-              </TooltipContent>
-            </Tooltip>
-            <NotificationSettings
-              open={showNotificationSettings}
-              onOpenChange={setShowNotificationSettings}
-              settings={notificationSettings}
-              permissionGranted={permissionGranted}
-              waitingSessions={sessions
-                .filter((s) => sessionStatuses[s.id]?.status === "waiting")
-                .map((s) => ({ id: s.id, name: s.name }))}
-              onUpdateSettings={updateSettings}
-              onRequestPermission={requestPermission}
-              onSelectSession={(id) => {
-                const session = sessions.find((s) => s.id === id);
-                if (session) attachToSession(session);
-              }}
-            />
+            {/* The home has the gear, usage and notifications live in
+                Settings; with the home hidden the gear comes here */}
+            {!sidebarOpen && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    onClick={() => openSettings()}
+                    aria-label="Settings"
+                  >
+                    <Settings className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Settings</p>
+                  <p className="text-muted-foreground text-xs">⌘,</p>
+                </TooltipContent>
+              </Tooltip>
+            )}
             <Button
               size="sm"
               onClick={() => setShowNewSessionDialog(true)}

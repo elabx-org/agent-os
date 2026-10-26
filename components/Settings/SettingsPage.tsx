@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useSnapshot } from "valtio";
 import { useTheme } from "next-themes";
+import { useQuery } from "@tanstack/react-query";
 import {
   Bell,
   ChevronLeft,
@@ -16,6 +17,14 @@ import {
 import { AgentRow, SectionHeader } from "@/components/rows/AgentRow";
 import { isNative, postToNative } from "@/lib/native-bridge";
 import { postureStore } from "@/stores/posture";
+import { mobileNavStore } from "@/stores/mobileNav";
+import { useClaudeUsage } from "@/components/UsageMonitor";
+import {
+  DENSITY_EVENT,
+  getDisplayClass,
+  getOffset,
+} from "@/lib/display-density";
+import type { PushSettingsView } from "@/app/api/push/route";
 import { duoPreviewStore } from "@/stores/duoPreview";
 import {
   closeSettings,
@@ -64,13 +73,30 @@ function SettingsLayer(props: NotificationsSectionProps) {
   const { fold } = useSnapshot(postureStore);
   const { on: duoTrial } = useSnapshot(duoPreviewStore);
   const { theme } = useTheme();
+  const { railWidth } = useSnapshot(mobileNavStore);
   const narrow = useNarrow();
   // Only ever mounted in the browser, so no hydration to match
   const native = isNative();
   const backRef = useRef<HTMLButtonElement>(null);
+  const layerRef = useRef<HTMLDivElement>(null);
 
-  // Off the terminal (and the iOS keyboard), so Esc and back work at once
-  useEffect(() => backRef.current?.focus(), []);
+  // Modal for real: the app behind can't take focus or keys (the terminal
+  // would), and focus goes back where it was on close. Off the terminal (and
+  // the iOS keyboard), so Esc and back work at once.
+  useEffect(() => {
+    const previous = document.activeElement as HTMLElement | null;
+    const layer = layerRef.current;
+    const behind = [...(layer?.parentElement?.children ?? [])].filter(
+      (el): el is HTMLElement =>
+        el !== layer && el instanceof HTMLElement && !el.inert
+    );
+    behind.forEach((el) => (el.inert = true));
+    backRef.current?.focus();
+    return () => {
+      behind.forEach((el) => (el.inert = false));
+      if (previous?.isConnected) previous.focus();
+    };
+  }, []);
 
   // Capture: the terminal swallows Esc otherwise. A dialog opened from here
   // (usage details) closes first.
@@ -91,6 +117,10 @@ function SettingsLayer(props: NotificationsSectionProps) {
     : ["notifications", "display", "usage"];
   const current = sections.includes(section) ? section : "notifications";
 
+  const phone = usePhoneSummary(current);
+  const textSize = useTextSize();
+  const { data: usage } = useClaudeUsage();
+
   const body: Record<SettingsSection, ReactNode> = {
     notifications: <NotificationsSection {...props} />,
     display: <DisplaySection />,
@@ -104,14 +134,14 @@ function SettingsLayer(props: NotificationsSectionProps) {
   };
 
   const summary: Record<SettingsSection, string> = {
-    notifications: `Sound ${props.settings.sound ? "on" : "off"} · browser alerts ${
-      props.settings.browserNotifications && props.permissionGranted
-        ? "on"
-        : "off"
-    }`,
-    display: themeLabel(theme),
-    duo: `Closed-screen trial ${duoTrial ? "on" : "off"}`,
-    usage: "Plan limits",
+    notifications: phone ?? `Sound ${props.settings.sound ? "on" : "off"}`,
+    // The variant alone: "Graphite", not "Dark · Graphite"
+    display: `Text size ${textSize > 0 ? "+" : ""}${textSize} · ${themeLabel(theme).split(" · ").pop()}`,
+    duo: `Closed layout · ${duoTrial ? "title in page" : "standard"}`,
+    usage:
+      usage && !usage.error
+        ? `${usage.plan} · ${Math.round(usage.seven_day.utilization ?? 0)}% this week`
+        : "Plan limits",
     server: typeof window !== "undefined" ? window.location.host : "",
   };
 
@@ -121,7 +151,7 @@ function SettingsLayer(props: NotificationsSectionProps) {
       type="button"
       onClick={closeSettings}
       aria-label="Close settings"
-      className="text-muted-foreground active:bg-accent hover:bg-accent grid h-[34px] w-[34px] shrink-0 place-items-center rounded-lg"
+      className="text-muted-foreground active:bg-accent hover:bg-accent relative grid h-[34px] w-[34px] shrink-0 place-items-center rounded-lg after:absolute after:-inset-[5px] after:content-['']"
     >
       <ChevronLeft className="h-5 w-5" />
     </button>
@@ -129,15 +159,21 @@ function SettingsLayer(props: NotificationsSectionProps) {
 
   const layer =
     "bg-background fixed inset-0 z-[45] flex pt-[env(safe-area-inset-top)]";
-  // Clear of the iOS app's system column on the right
-  const rightInset = "pr-[var(--safe-right,env(safe-area-inset-right))]";
+  // Clear of the iOS app's system column on the right. In a browser with the
+  // nav rail in that column, stop at the rail and leave it usable
+  const rightInset = railWidth
+    ? ""
+    : "pr-[var(--safe-right,env(safe-area-inset-right))]";
+  const layerStyle = railWidth ? { right: railWidth } : undefined;
 
   if (narrow) {
     return (
       <div
+        ref={layerRef}
         role="dialog"
         aria-modal="true"
         aria-label="Settings"
+        style={layerStyle}
         className={cn(
           layer,
           rightInset,
@@ -169,9 +205,11 @@ function SettingsLayer(props: NotificationsSectionProps) {
 
   return (
     <div
+      ref={layerRef}
       role="dialog"
       aria-modal="true"
       aria-label="Settings"
+      style={layerStyle}
       className={layer}
     >
       <aside
@@ -233,6 +271,36 @@ function SettingsLayer(props: NotificationsSectionProps) {
       </main>
     </div>
   );
+}
+
+/** "ntfy on", from the server's phone channels; re-read on each section */
+function usePhoneSummary(section: SettingsSection): string | null {
+  const { data, refetch } = useQuery<PushSettingsView>({
+    queryKey: ["push-settings"],
+    queryFn: async () => {
+      const res = await fetch("/api/push");
+      if (!res.ok) throw new Error("Failed to load push settings");
+      return res.json();
+    },
+  });
+  useEffect(() => {
+    refetch();
+  }, [section, refetch]);
+  if (!data) return null;
+  const on = [data.ntfy.enabled && "ntfy", data.apns.enabled && "Apple push"];
+  const channels = on.filter(Boolean).join(" + ");
+  return channels ? `${channels} on` : "Phone alerts off";
+}
+
+/** This display's text size step, following A− / A+ */
+function useTextSize(): number {
+  const [offset, setOffset] = useState(() => getOffset(getDisplayClass()));
+  useEffect(() => {
+    const update = () => setOffset(getOffset(getDisplayClass()));
+    window.addEventListener(DENSITY_EVENT, update);
+    return () => window.removeEventListener(DENSITY_EVENT, update);
+  }, []);
+  return offset;
 }
 
 /**

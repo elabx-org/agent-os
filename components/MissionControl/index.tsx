@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Plus, Settings, Zap } from "lucide-react";
+import { ChevronLeft, Plus, Settings, Zap } from "lucide-react";
 import { InboxItem } from "@/components/Inbox";
 import { UsageMonitor } from "@/components/UsageMonitor";
 import {
   BackgroundAgentGroup,
   BackgroundAgentRow,
+  BackgroundAgents,
 } from "@/components/BackgroundAgents";
 import { DevServerRow } from "@/components/DevServers/DevServerCard";
 import {
@@ -28,6 +29,9 @@ import { useNowItems } from "./useNowItems";
 type Tab = "now" | "projects";
 
 const TAB_KEY = "agentos:mission-tab";
+/** Drawn at 36px; the hit area reaches 44 */
+const iconButton =
+  "text-muted-foreground active:bg-accent hover:bg-accent relative flex h-9 w-9 shrink-0 items-center justify-center rounded-lg after:absolute after:-inset-1 after:content-['']";
 /** Quiet projects listed on Now; the rest are under All projects */
 const QUIET_SHOWN = 3;
 
@@ -39,11 +43,12 @@ interface MissionControlProps {
   /** The open session, highlighted where it's listed */
   selectedId?: string;
   onOpenSession: (session: Session) => void;
-  onNewSession: () => void;
+  /** Left out where the screen has its own New (the desktop header) */
+  onNewSession?: () => void;
+  /** Back to the session underneath, where nothing else leads there */
+  onClose?: () => void;
   /** The full session list, for managing projects and sessions */
   projectsView: React.ReactNode;
-  /** No longer used: Now is the one home on every display */
-  glance?: boolean;
 }
 
 /**
@@ -58,6 +63,7 @@ export function MissionControl({
   selectedId = activeSessionId,
   onOpenSession,
   onNewSession,
+  onClose,
   projectsView,
 }: MissionControlProps) {
   const native = useIsNative();
@@ -78,24 +84,34 @@ export function MissionControl({
   return (
     <div className="bg-background flex h-full flex-col">
       <div className="flex items-center gap-2 px-4 pt-3 pb-1">
+        {onClose && (
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Back to the session"
+            className={cn(iconButton, "-ml-2")}
+          >
+            <ChevronLeft className="h-5 w-5" />
+          </button>
+        )}
         <Zap className="h-4 w-4 shrink-0" aria-hidden="true" />
         <h1 className="min-w-0 flex-1 truncate font-semibold">Agent-OS</h1>
         <UsageMonitor variant="inline" />
-        {!native && (
+        {onNewSession && !native && (
           <button
             type="button"
             onClick={onNewSession}
-            className="text-primary active:bg-accent flex h-9 shrink-0 items-center gap-1 rounded-lg px-2 text-sm font-medium"
+            aria-label="New session"
+            className={iconButton}
           >
             <Plus className="h-4 w-4" />
-            New
           </button>
         )}
         <button
           type="button"
           onClick={() => openSettings()}
           aria-label="Settings"
-          className="text-muted-foreground active:bg-accent -mr-2 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
+          className={cn(iconButton, "-mr-2")}
         >
           <Settings className="h-4 w-4" />
         </button>
@@ -114,7 +130,7 @@ export function MissionControl({
               aria-selected={tab === id}
               onClick={() => chooseTab(id)}
               className={cn(
-                "h-8 flex-1 rounded-md transition-colors",
+                "relative h-8 flex-1 rounded-md transition-colors after:absolute after:inset-x-0 after:-inset-y-1.5 after:content-['']",
                 tab === id
                   ? "bg-background text-foreground shadow-sm"
                   : "text-muted-foreground"
@@ -169,7 +185,7 @@ function Now({
       <p className="flex items-baseline gap-2.5 px-2 pt-2 pb-4">
         {now.needsCount > 0 ? (
           <>
-            <span className="text-[56px] leading-none font-bold text-amber-400 tabular-nums">
+            <span className="text-[56px] leading-none font-bold text-amber-600 tabular-nums dark:text-amber-400">
               {now.needsCount}
             </span>
             <span className="text-[22px] font-semibold">
@@ -311,6 +327,14 @@ function Now({
             ))}
           </div>
         </section>
+      )}
+
+      {/* Agents outside every project, once they've stopped working: listed
+          nowhere else, so open and remove them from here */}
+      {now.elsewhere.length > 0 && (
+        <div className="px-2 pt-3">
+          <BackgroundAgents agents={now.elsewhere} title="Other agents" />
+        </div>
       )}
     </div>
   );

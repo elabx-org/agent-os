@@ -42,7 +42,7 @@ import { getProviderDefinition } from "@/lib/providers/registry";
 import { DesktopView } from "@/components/views/DesktopView";
 import { MobileView } from "@/components/views/MobileView";
 import { getPendingPrompt, clearPendingPrompt } from "@/stores/initialPrompt";
-import { openSettings } from "@/stores/settingsPage";
+import { closeSettings, openSettings } from "@/stores/settingsPage";
 import { SettingsPage } from "@/components/Settings/SettingsPage";
 
 function HomeContent() {
@@ -266,6 +266,8 @@ function HomeContent() {
   // Attach session to terminal
   const attachToSession = useCallback(
     async (session: Session) => {
+      // Whatever opened it, the session shows rather than staying under Settings
+      closeSettings();
       const terminalInfo = getTerminalWithFallback();
       if (!terminalInfo) {
         debugLog(
@@ -351,9 +353,10 @@ function HomeContent() {
       const session = sessions.find((s) => s.id === sessionId);
       if (session) {
         attachToSession(session);
+        if (isMobile) setSidebarOpen(false);
       }
     },
-    [sessions, attachToSession]
+    [sessions, attachToSession, isMobile]
   );
 
   // Notifications
@@ -502,8 +505,10 @@ function HomeContent() {
       if (!data.session) return;
 
       setTimeout(() => attachToSession(data.session), 100);
+      // On a phone the home would cover it
+      if (isMobile) setSidebarOpen(false);
     },
-    [fetchSessions, attachToSession]
+    [fetchSessions, attachToSession, isMobile]
   );
 
   // Project created handler (shared between desktop/mobile)
@@ -555,8 +560,9 @@ function HomeContent() {
       setTimeout(() => {
         attachToSession(data.session);
       }, 100);
+      if (isMobile) setSidebarOpen(false);
     },
-    [projects, fetchSessions, attachToSession]
+    [projects, fetchSessions, attachToSession, isMobile]
   );
 
   // Active session and dev server project

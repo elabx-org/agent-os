@@ -11,7 +11,7 @@ import {
   Globe,
   MoreHorizontal,
 } from "lucide-react";
-import { afterMenuCloses } from "@/lib/utils";
+import { afterMenuCloses, cn } from "@/lib/utils";
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
 import { useViewport } from "@/hooks/useViewport";
 import { Button } from "@/components/ui/button";
@@ -82,9 +82,18 @@ function rowDetail(server: DevServer, port: number | undefined) {
 const typeLabel = (server: DevServer) =>
   server.type === "docker" ? "Docker" : "Node";
 
+/** The 32px buttons keep their size and reach 44px under a finger */
+const TOUCH_HIT =
+  "relative pointer-coarse:after:absolute pointer-coarse:after:-inset-1.5 pointer-coarse:after:content-['']";
+
 function OpenButton({ port }: { port: number }) {
   return (
-    <Button asChild variant="secondary" size="sm" className="h-8">
+    <Button
+      asChild
+      variant="secondary"
+      size="sm"
+      className={cn("h-8", TOUCH_HIT)}
+    >
       <a
         href={urlOf(port)}
         target="_blank"
@@ -109,7 +118,7 @@ function StartButton({
     <Button
       variant="secondary"
       size="sm"
-      className="text-primary h-8"
+      className={cn("text-primary h-8", TOUCH_HIT)}
       disabled={disabled}
       onClick={(e) => {
         e.stopPropagation();
@@ -211,6 +220,7 @@ export function DevServerCard({
     <Button
       variant="ghost"
       size="icon-sm"
+      className={TOUCH_HIT}
       aria-label="Server actions"
       disabled={loading}
       onClick={(e) => {

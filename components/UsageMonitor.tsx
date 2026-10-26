@@ -138,6 +138,17 @@ function DetailBar({
   );
 }
 
+/** Claude plan usage, shared by every monitor and the Settings summary */
+export function useClaudeUsage() {
+  return useQuery<UsageData>({
+    queryKey: ["claude-usage"],
+    queryFn: fetchUsage,
+    refetchInterval: 60_000,
+    retry: 1,
+    staleTime: 30_000,
+  });
+}
+
 export function UsageMonitor({
   variant = "bars",
 }: {
@@ -146,13 +157,7 @@ export function UsageMonitor({
 } = {}) {
   const [dialogOpen, setDialogOpen] = useState(false);
 
-  const { data, isError } = useQuery<UsageData>({
-    queryKey: ["claude-usage"],
-    queryFn: fetchUsage,
-    refetchInterval: 60_000,
-    retry: 1,
-    staleTime: 30_000,
-  });
+  const { data, isError } = useClaudeUsage();
 
   // Compute live countdowns for tooltip
   const tooltipText = useMemo(() => {
@@ -177,7 +182,7 @@ export function UsageMonitor({
           type="button"
           onClick={() => setDialogOpen(true)}
           aria-label={tooltipText}
-          className="text-muted-foreground flex shrink-0 items-center gap-1.5 rounded-md px-1 py-1 font-mono text-[11.5px] whitespace-nowrap tabular-nums"
+          className="text-muted-foreground relative flex shrink-0 items-center gap-1.5 rounded-md px-1 py-1 font-mono text-[11.5px] whitespace-nowrap tabular-nums after:absolute after:inset-x-0 after:-inset-y-2.5 after:content-['']"
         >
           <span>
             5h{" "}

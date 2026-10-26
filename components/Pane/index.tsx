@@ -227,11 +227,14 @@ export const Pane = memo(function Pane({
 
   useEffect(() => {
     if (!navRequest || !isFocused) return;
-    // Asked for a session that's still attaching: wait until it's this one's
-    if (navRequest.sessionId && navRequest.sessionId !== session?.id) {
-      if (Date.now() - navRequest.timestamp > 10_000)
+    // Asked for a session that's still attaching: wait until it's this one's,
+    // but not for ever, nor apply it once it's that old
+    if (navRequest.sessionId) {
+      if (Date.now() - navRequest.timestamp > 10_000) {
         mobileNavActions.clearRequest();
-      return;
+        return;
+      }
+      if (navRequest.sessionId !== session?.id) return;
     }
     if (navRequest.mode === "git" && !isMobile && !isNative()) {
       // The wide layout shows changes in the git drawer beside the terminal;

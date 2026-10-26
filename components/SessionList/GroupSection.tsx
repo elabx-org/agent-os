@@ -3,6 +3,7 @@
 import { afterMenuCloses } from "@/lib/utils";
 import { useState } from "react";
 import { SessionCard } from "@/components/SessionCard";
+import { displayTitle, useListTitles } from "@/hooks/useSessionTitles";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -61,6 +62,8 @@ export function GroupSection({
   onRenameSession,
   hoverHandlers,
 }: GroupSectionProps) {
+  // Titles from the transcripts, as the home shows them
+  const titles = useListTitles(sessions);
   const [newGroupName, setNewGroupName] = useState("");
   const [showNewGroupInput, setShowNewGroupInput] = useState<string | null>(
     null
@@ -216,6 +219,7 @@ export function GroupSection({
                     <div className="min-w-0 flex-1">
                       <SessionCard
                         session={session}
+                        {...displayTitle(session, titles)}
                         isActive={session.id === activeSessionId}
                         isSummarizing={summarizingSessionId === session.id}
                         tmuxStatus={sessionStatuses?.[session.id]?.status}
@@ -246,6 +250,7 @@ export function GroupSection({
                         <SessionCard
                           key={worker.id}
                           session={worker}
+                          {...displayTitle(worker, titles)}
                           isActive={worker.id === activeSessionId}
                           tmuxStatus={sessionStatuses?.[worker.id]?.status}
                           groups={groups}

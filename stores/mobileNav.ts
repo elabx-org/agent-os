@@ -18,6 +18,8 @@ export const mobileNavStore = proxy<{
   statuses: Record<string, SessionStatus>;
   /** The rail is showing, so the tab bar drops its own view switcher */
   railActive: boolean;
+  /** The web rail's width, for layers that must stop short of it */
+  railWidth: number;
   inboxOpen: boolean;
   /** Inside the iOS app, which shows the keys on the keyboard itself */
   nativeKeyboard: boolean;
@@ -28,6 +30,7 @@ export const mobileNavStore = proxy<{
   request: null,
   statuses: {},
   railActive: false,
+  railWidth: 0,
   inboxOpen: false,
   nativeKeyboard: false,
   changes: 0,

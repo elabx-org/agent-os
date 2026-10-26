@@ -26,6 +26,26 @@ export interface SubagentInfo {
   updatedAt: string;
 }
 
+/**
+ * Step counts by file, kept while the file is unchanged: the home polls
+ * every few seconds and a finished agent's file never changes again
+ */
+const stepCache = new Map<
+  string,
+  { mtimeMs: number; size: number; steps: number }
+>();
+
+function countSteps(file: string, stat: fs.Stats): number | null {
+  const cached = stepCache.get(file);
+  if (cached && cached.mtimeMs === stat.mtimeMs && cached.size === stat.size)
+    return cached.steps;
+  if (stat.size > COUNT_LIMIT) return null;
+  const text = fs.readFileSync(file, "utf8");
+  const steps = text.split('"type":"tool_use"').length - 1;
+  stepCache.set(file, { mtimeMs: stat.mtimeMs, size: stat.size, steps });
+  return steps;
+}
+
 function subagentsDir(transcriptFile: string): string {
   return path.join(transcriptFile.replace(/\.jsonl$/, ""), "subagents");
 }
@@ -67,10 +87,11 @@ export function listSubagents(transcriptFile: string): SubagentInfo[] {
     } catch {
       continue;
     }
-    let steps: number | null = null;
-    if (stat.size <= COUNT_LIMIT) {
-      const text = fs.readFileSync(file, "utf8");
-      steps = text.split('"type":"tool_use"').length - 1;
+    let steps: number | null;
+    try {
+      steps = countSteps(file, stat);
+    } catch {
+      steps = null;
     }
     out.push({
       agentId,

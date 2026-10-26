@@ -26,6 +26,21 @@ export function useSessionTitles(sessionIds: string[]): Titles {
   return data ?? {};
 }
 
+/** Titles for a whole list: only auto-named Claude sessions can get one */
+export function useListTitles(
+  sessions: Pick<Session, "id" | "name" | "agent_type">[]
+): Titles {
+  return useSessionTitles(
+    sessions
+      .filter(
+        (s) =>
+          (!s.agent_type || s.agent_type === "claude") &&
+          isAutoSessionName(s.name)
+      )
+      .map((s) => s.id)
+  );
+}
+
 /**
  * What a row shows: an auto name ("Session 24") steps aside for the
  * transcript's title and stays as the small id; a rename always wins.

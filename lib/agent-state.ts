@@ -73,21 +73,22 @@ export const STATE_WORD: Record<AgentState, string> = {
   stopped: "Stopped",
 };
 
+// The 400s wash out on the light themes, so those get the 600s
 export const STATE_TEXT_CLASS: Record<AgentState, string> = {
-  needs: "text-amber-400",
-  work: "text-blue-400",
-  done: "text-emerald-400",
-  error: "text-red-400",
+  needs: "text-amber-600 dark:text-amber-400",
+  work: "text-blue-600 dark:text-blue-400",
+  done: "text-emerald-600 dark:text-emerald-400",
+  error: "text-red-600 dark:text-red-400",
   idle: "text-muted-foreground",
   stopped: "text-muted-foreground",
 };
 
 /** Badge tile tint: the state colour over a faint wash of itself */
 export const STATE_BADGE_CLASS: Record<AgentState, string> = {
-  needs: "bg-amber-400/15 text-amber-400",
-  work: "bg-blue-400/15 text-blue-400",
-  done: "bg-emerald-400/15 text-emerald-400",
-  error: "bg-red-400/15 text-red-400",
+  needs: "bg-amber-400/15 text-amber-600 dark:text-amber-400",
+  work: "bg-blue-400/15 text-blue-600 dark:text-blue-400",
+  done: "bg-emerald-400/15 text-emerald-600 dark:text-emerald-400",
+  error: "bg-red-400/15 text-red-600 dark:text-red-400",
   idle: "bg-secondary text-muted-foreground",
   stopped: "bg-secondary text-muted-foreground",
 };

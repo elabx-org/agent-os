@@ -20,10 +20,13 @@ export function openSubagent(sessionId: string, agentId: string) {
   agentOpenStore.subagent = { sessionId, agentId, ts: Date.now() };
 }
 
+/** Longer than an attach takes; an older request was abandoned or failed */
+const REQUEST_TTL_MS = 10_000;
+
 /** The pending agent id for this session, cleared so it opens only once */
 export function consumeSubagent(sessionId: string): string | null {
   const request = agentOpenStore.subagent;
   if (!request || request.sessionId !== sessionId) return null;
   agentOpenStore.subagent = null;
-  return request.agentId;
+  return Date.now() - request.ts > REQUEST_TTL_MS ? null : request.agentId;
 }

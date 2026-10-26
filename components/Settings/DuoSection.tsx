@@ -19,8 +19,8 @@ export function DuoSection() {
   return (
     <SettingGroup>
       <SettingRow
-        label="New closed-screen layout (trial)"
-        hint="A glance as the home on the outer display"
+        label="Closed layout: title in the page (trial)"
+        hint="On the outer display, the session's title in the page instead of a header band"
       >
         <Switch checked={on} onCheckedChange={setDuoPreview} />
       </SettingRow>

@@ -7,6 +7,19 @@ import { listSubagents, type SubagentInfo } from "@/lib/claude-subagents";
 const MAX_IDS = 20;
 /** Finished ones stay listed this long, so a quick agent still shows */
 const RECENT_MS = 30 * 60_000;
+/** The tmux lookup behind a transcript is reused this long, as for titles */
+const LOOKUP_TTL_MS = 30_000;
+
+const lookups = new Map<string, { at: number; file: string | null }>();
+
+async function transcriptFile(tmuxName: string): Promise<string | null> {
+  const cached = lookups.get(tmuxName);
+  if (cached && Date.now() - cached.at < LOOKUP_TTL_MS) return cached.file;
+  const found = await findTranscript(tmuxName);
+  const file = found?.file ?? null;
+  lookups.set(tmuxName, { at: Date.now(), file });
+  return file;
+}
 
 // GET /api/subagents?sessions=a,b
 // The subagents of several sessions at once, each tagged with its session:
@@ -26,9 +39,9 @@ export async function GET(request: NextRequest) {
       [...new Set(ids)].slice(0, MAX_IDS).map(async (id) => {
         const session = getSession.get(id) as Session | undefined;
         if (!session || session.agent_type !== "claude") return;
-        const found = await findTranscript(session.tmux_name || `claude-${id}`);
-        if (!found?.file) return;
-        for (const agent of listSubagents(found.file)) {
+        const file = await transcriptFile(session.tmux_name || `claude-${id}`);
+        if (!file) return;
+        for (const agent of listSubagents(file)) {
           const recent =
             agent.status === "done" && Date.parse(agent.updatedAt) >= since;
           if (agent.status === "running" || recent) {

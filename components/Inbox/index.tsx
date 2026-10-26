@@ -191,7 +191,7 @@ export function InboxItem({
               <button
                 type="button"
                 onClick={onOpen}
-                className="text-muted-foreground -my-1 justify-self-start py-1 text-xs"
+                className="text-muted-foreground relative -my-1 justify-self-start py-1 text-xs after:absolute after:-inset-x-2 after:-inset-y-2.5 after:content-['']"
               >
                 More…
               </button>

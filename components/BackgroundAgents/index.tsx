@@ -324,8 +324,16 @@ export function NewBackgroundAgentSheet({
  * Claude Code's background agents (`claude --bg`): listed beside the
  * sessions, each with its output, a way into it, and Stop.
  */
-export function BackgroundAgents() {
-  const agents = useBackgroundAgents();
+export function BackgroundAgents({
+  agents: only,
+  title = "Background agents",
+}: {
+  /** Just these, rather than every agent */
+  agents?: BackgroundAgent[];
+  title?: string;
+} = {}) {
+  const all = useBackgroundAgents();
+  const agents = only ?? all;
   const [open, setOpen] = useState<BackgroundAgent | null>(null);
   const [creating, setCreating] = useState(false);
 
@@ -333,7 +341,8 @@ export function BackgroundAgents() {
     <section className="space-y-2">
       <div className="flex items-center justify-between">
         <h2 className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
-          Background agents{agents.length ? ` · ${agents.length}` : ""}
+          {title}
+          {agents.length ? ` · ${agents.length}` : ""}
         </h2>
         <button
           type="button"

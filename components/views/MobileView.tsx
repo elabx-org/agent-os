@@ -54,6 +54,10 @@ export function MobileView({
 
   useEffect(() => {
     mobileNavStore.railActive = railWidth > 0 || isNative();
+    mobileNavStore.railWidth = railWidth;
+    return () => {
+      mobileNavStore.railWidth = 0;
+    };
   }, [railWidth]);
 
   const waitingSessions = useMemo(
@@ -132,6 +136,12 @@ export function MobileView({
               setSidebarOpen(false);
             }}
             onNewSession={() => setShowNewSessionDialog(true)}
+            // The iOS app's bar and the rail lead back already
+            onClose={
+              focusedActiveTab?.sessionId && !railWidth && !isNative()
+                ? () => setSidebarOpen(false)
+                : undefined
+            }
             projectsView={sessionList}
           />
         </div>
@@ -151,6 +161,7 @@ export function MobileView({
         onOpenSession={(session) => {
           attachToSession(session);
           mobileNavActions.requestViewMode("terminal");
+          setSidebarOpen(false);
         }}
       />
       <NewSessionDialog
@@ -170,6 +181,7 @@ export function MobileView({
         onSelectSession={(sessionId) => {
           const session = sessions.find((s) => s.id === sessionId);
           if (session) attachToSession(session);
+          setSidebarOpen(false);
         }}
         onSelectFile={(file, line) => {
           // Convert relative path to absolute by prepending working directory

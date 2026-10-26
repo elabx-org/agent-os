@@ -359,7 +359,7 @@ export function SectionHeader({
         <button
           type="button"
           onClick={action.onClick}
-          className="text-primary ml-auto shrink-0 text-[12.5px] font-medium tracking-normal normal-case"
+          className="hover:text-foreground relative ml-auto shrink-0 text-[12.5px] font-medium tracking-normal normal-case after:absolute after:-inset-x-2 after:-inset-y-3.5 after:content-['']"
         >
           {action.label}
         </button>
