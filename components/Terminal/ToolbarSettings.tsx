@@ -168,6 +168,22 @@ export function ToolbarSettings({
           )}
 
           <div className="bg-card ring-border divide-border divide-y rounded-xl ring-1">
+            {/* Narrow screens: one row that follows Claude, or the rows above */}
+            <label className="flex min-h-[50px] items-center justify-between gap-3 px-3 py-1.5">
+              <span className="min-w-0">
+                <span className="block text-sm">Adaptive row when closed</span>
+                <span className="text-muted-foreground block text-xs">
+                  Keys follow what Claude is doing, flick up for more; ⋯ has
+                  every key. Off: the rows above
+                </span>
+              </span>
+              <Switch
+                checked={preferences.adaptive !== false}
+                onCheckedChange={(checked) =>
+                  onUpdate({ ...preferences, adaptive: checked })
+                }
+              />
+            </label>
             {/* Text box above the keys instead of typing straight into xterm */}
             <label className="flex min-h-[44px] items-center justify-between gap-3 px-3">
               <span className="text-sm">Compose box</span>

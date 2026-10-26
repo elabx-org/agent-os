@@ -132,6 +132,10 @@ export interface ToolbarPreferences {
   pinCtrlC?: boolean;
   /** How the open Duo lays out the composer and keys (Split unless set) */
   duoLayout?: DuoLayout;
+  /** Narrow screens (the closed Duo, phones) show the adaptive row: keys
+      that follow what Claude is doing, every key in its ⋯. Off: the rows
+      above. On unless turned off */
+  adaptive?: boolean;
 }
 
 /** The context rows Settings → Keys edits: Claude, Claude while typing, Shell */
@@ -143,8 +147,9 @@ export type DuoLayout = "split" | "mirrored" | "two-rows";
 
 const PREFERENCES_DB_KEY = "toolbar-preferences";
 
-// Every key, in the order the Standard preset shows them
-const DEFAULT_ROW1: ToolbarButtonId[] = [
+// Every key, in the order the Standard preset shows them (the tools first):
+// also the adaptive row's All keys
+export const DEFAULT_ROW1: ToolbarButtonId[] = [
   "mic", "paste", "select", "image", "snippets",
   "enter", "esc", "newline", "cursor", "backspace",
   "ctrl-c", "ctrl-l", "ctrl-z", "tab", "shift-tab", "ctrl-d", "ctrl-r",

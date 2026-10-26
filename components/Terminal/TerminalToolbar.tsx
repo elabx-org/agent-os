@@ -31,6 +31,7 @@ import { useLongPress } from "@/hooks/useLongPress";
 import {
   type KeysContext,
   type ToolbarButtonId,
+  DEFAULT_ROW1,
   SPECIAL_KEYS,
   contextRow,
   getButtonDef,
@@ -43,6 +44,9 @@ import {
 import { FOLD_CLEAR } from "@/hooks/useHinge";
 import { ToolbarSettings } from "./ToolbarSettings";
 import { KeyLongPressMenu, type MenuKey } from "./KeyLongPressMenu";
+import { AdaptiveKey } from "./AdaptiveKey";
+import { useNarrowScreen } from "@/hooks/useNarrowScreen";
+import { adaptiveRow, type AdaptiveState } from "@/lib/adaptive-keys";
 
 interface TerminalToolbarProps {
   onKeyPress: (key: string) => void;
@@ -69,6 +73,11 @@ interface TerminalToolbarProps {
   overflow?: boolean;
   /** Counts the app's File key presses; each opens the snippets sheet */
   snippetsRequest?: number;
+  /** What the session is doing, for the adaptive row on narrow screens;
+      null where it doesn't apply */
+  adaptiveState?: AdaptiveState | null;
+  /** The options of the prompt Claude shows, for its number keys */
+  promptOptions?: number;
 }
 
 interface Snippet {
@@ -678,6 +687,8 @@ export function TerminalToolbar({
   pages = null,
   overflow = false,
   snippetsRequest = 0,
+  adaptiveState = null,
+  promptOptions = 0,
 }: TerminalToolbarProps) {
   const [showPasteModal, setShowPasteModal] = useState(false);
   const [showSnippetsModal, setShowSnippetsModal] = useState(false);
@@ -748,19 +759,38 @@ export function TerminalToolbar({
   const sourceRow2 = contextMode ? NO_KEYS : preferences.row2;
 
   // Resolve visible buttons for each row, filtering out conditional buttons
-  const resolvedRow1 = useMemo(
-    () =>
-      sourceRow1.filter((id) => {
-        const def = getButtonDef(id);
-        if (!def) return false;
-        if (def.conditional === "mic" && !isMicSupported) return false;
-        if (def.conditional === "image" && !onImagePicker) return false;
-        if (def.conditional === "select-mode" && !onSelectModeChange)
-          return false;
-        return true;
-      }),
-    [sourceRow1, isMicSupported, onImagePicker, onSelectModeChange]
+  const offered = useCallback(
+    (id: ToolbarButtonId) => {
+      const def = getButtonDef(id);
+      if (!def) return false;
+      if (def.conditional === "mic" && !isMicSupported) return false;
+      if (def.conditional === "image" && !onImagePicker) return false;
+      if (def.conditional === "select-mode" && !onSelectModeChange)
+        return false;
+      return true;
+    },
+    [isMicSupported, onImagePicker, onSelectModeChange]
   );
+  const resolvedRow1 = useMemo(
+    () => sourceRow1.filter(offered),
+    [sourceRow1, offered]
+  );
+
+  // Narrow screens: one row that follows Claude, every key in its ⋯
+  const narrow = useNarrowScreen();
+  const adaptive =
+    preferences.adaptive !== false &&
+    narrow &&
+    !!adaptiveState &&
+    !pages &&
+    !overflow &&
+    !singleRow &&
+    !keepRows;
+  const adaptiveKeys = useMemo(
+    () => (adaptiveState ? adaptiveRow(adaptiveState, promptOptions) : []),
+    [adaptiveState, promptOptions]
+  );
+  const allKeys = useMemo(() => DEFAULT_ROW1.filter(offered), [offered]);
 
   const resolvedRow2 = useMemo(
     () =>
@@ -1082,6 +1112,47 @@ export function TerminalToolbar({
 
   if (!visible) return null;
 
+  const settings = (
+    <ToolbarSettings
+      open={showSettings}
+      onClose={() => setShowSettings(false)}
+      preferences={preferences}
+      onUpdate={updatePreferences}
+      row={rowIdFor(context, keyboardUp)}
+    />
+  );
+
+  if (adaptive)
+    return (
+      <>
+        <PasteModal
+          open={showPasteModal}
+          onClose={() => setShowPasteModal(false)}
+          onPaste={onPaste || sendText}
+        />
+        <SnippetsModal
+          open={showSnippetsModal}
+          onClose={() => setShowSnippetsModal(false)}
+          onInsert={onPaste || sendText}
+        />
+        {settings}
+        <div
+          className="keybar-row keybar-adaptive bg-background/95 border-border flex items-center gap-1 border-t px-2 py-1.5 backdrop-blur"
+          onTouchEnd={(e) => e.stopPropagation()}
+        >
+          {adaptiveKeys.map((k) => (
+            <AdaptiveKey key={k.id} k={k} onKeyPress={onKeyPress} />
+          ))}
+          <MoreKey
+            label="All keys"
+            keys={allKeys}
+            renderKey={renderButton}
+            onSettings={() => setShowSettings(true)}
+          />
+        </div>
+      </>
+    );
+
   return (
     <>
       <PasteModal
@@ -1094,13 +1165,7 @@ export function TerminalToolbar({
         onClose={() => setShowSnippetsModal(false)}
         onInsert={onPaste || sendText}
       />
-      <ToolbarSettings
-        open={showSettings}
-        onClose={() => setShowSettings(false)}
-        preferences={preferences}
-        onUpdate={updatePreferences}
-        row={rowIdFor(context, keyboardUp)}
-      />
+      {settings}
 
       {/* Row 1 — always visible */}
       <div
@@ -1212,10 +1277,12 @@ function pageStart(x: number): number {
  * for the next tap); the key settings come last.
  */
 function MoreKey({
+  label = "More keys",
   keys,
   renderKey,
   onSettings,
 }: {
+  label?: string;
   keys: ToolbarButtonId[];
   renderKey: (id: ToolbarButtonId) => React.ReactNode;
   onSettings: () => void;
@@ -1261,9 +1328,9 @@ function MoreKey({
       <button
         ref={buttonRef}
         type="button"
-        aria-label="More keys"
+        aria-label={label}
         aria-expanded={!!anchor}
-        title="More keys"
+        title={label}
         onMouseDown={(e) => e.preventDefault()}
         onClick={(e) => {
           e.stopPropagation();
@@ -1285,7 +1352,7 @@ function MoreKey({
           <div
             ref={panelRef}
             role="menu"
-            aria-label="More keys"
+            aria-label={label}
             className="bg-popover border-border fixed z-50 flex flex-wrap justify-end gap-1 rounded-xl border p-1.5 shadow-lg"
             style={{
               bottom: innerHeight - anchor.top + 6,

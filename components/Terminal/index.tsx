@@ -50,6 +50,8 @@ import { DeckStateLine } from "@/components/DeckStateLine";
 import { DeckContext } from "@/components/ReplyContext/ContextPanel";
 import { InboxItem } from "@/components/Inbox";
 import { useSessionPrompt } from "@/data/prompts/queries";
+import { useNarrowScreen } from "@/hooks/useNarrowScreen";
+import { adaptiveIds, type AdaptiveState } from "@/lib/adaptive-keys";
 import type { Session } from "@/lib/db";
 import { useFoldDeck } from "@/hooks/useFoldDeck";
 import {
@@ -366,6 +368,22 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
     const agentType = draftId ? (sessionAgentType ?? "claude") : "shell";
     const keysContext: KeysContext =
       agentType === "claude" ? "claude" : "shell";
+    // The adaptive row (narrow screens) follows what Claude is doing: a
+    // question on screen gets a number key per option
+    const sessionStatus = draftId ? statuses[draftId]?.status : undefined;
+    const { data: askPrompt } = useSessionPrompt(draftId ?? "", {
+      enabled: keysContext === "claude" && sessionStatus === "waiting",
+    });
+    const promptOptions =
+      sessionStatus === "waiting" ? (askPrompt?.options.length ?? 0) : 0;
+    const adaptiveState: AdaptiveState =
+      keysContext === "shell"
+        ? "shell"
+        : sessionStatus === "running"
+          ? "working"
+          : promptOptions > 0
+            ? "asks"
+            : "idle";
     const keyboardUp = keyboard.height > 0 || nativeKeyboard;
     // Slide, don't resize: with the keyboard up the terminal keeps its rows
     // (no refit, so tmux doesn't redraw) and slides up so the line in use sits
@@ -433,10 +451,14 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
     // already gets the typing row
     const { preferences: keyPrefs } = useToolbarPreferences();
     const nativeRow = rowIdFor(keysContext, true);
+    // On a narrow screen the bar shows the adaptive row too
+    const narrow = useNarrowScreen();
     const nativeIds =
-      keyPrefs.contextRows?.[nativeRow] || keyPrefs.pinCtrlC === false
-        ? savedContextRow(nativeRow, keyPrefs).join()
-        : "";
+      narrow && keyPrefs.adaptive !== false
+        ? adaptiveIds(adaptiveState, promptOptions).join()
+        : keyPrefs.contextRows?.[nativeRow] || keyPrefs.pinCtrlC === false
+          ? savedContextRow(nativeRow, keyPrefs).join()
+          : "";
     useEffect(() => {
       const el = containerRef.current;
       if (!el || !isNative()) return;
@@ -1221,6 +1243,8 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
                 selectMode={selectMode}
                 onSelectModeChange={setSelectMode}
                 snippetsRequest={snippetsRequest}
+                adaptiveState={adaptiveState}
+                promptOptions={promptOptions}
                 // The deck has no keybar toggle, so its row always shows
                 visible={
                   (toolbarVisible || tabletopBase) &&

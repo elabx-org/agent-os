@@ -312,6 +312,16 @@ html[data-fold="vertical"] [data-spread="wide"] .fold-controls {
   min-width: 40px;
 }
 
+/* The adaptive row has few keys: they share all of it, a wide one (Esc ·
+   Interrupt) taking more */
+.keybar-row.keybar-adaptive > button {
+  max-width: none;
+  min-width: 40px;
+}
+.keybar-row.keybar-adaptive > button.adaptive-wide {
+  flex-grow: 3;
+}
+
 /* A keybar row too long for the screen scrolls: fade the right edge as a
    hint, with end padding so the last key clears the fade */
 .keybar-row.keybar-scrolls {
