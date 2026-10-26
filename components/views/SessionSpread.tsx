@@ -1,6 +1,14 @@
 "use client";
 
-import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import dynamic from "next/dynamic";
 import { useSnapshot } from "valtio";
 import type { Session } from "@/lib/db";
@@ -35,6 +43,22 @@ function useMinWidth(px: number): boolean {
     return () => mq.removeEventListener("change", update);
   }, [px]);
   return matches;
+}
+
+/** Where the fold crosses a pane laid across both pages, in viewport px */
+export interface SpreadFold {
+  start: number;
+  end: number;
+}
+
+const SpreadContext = createContext<SpreadFold | null>(null);
+
+/**
+ * The fold, while the pane spans both pages of the open Duo (Focus), so the
+ * chat can read as a book; null otherwise
+ */
+export function useSpreadFold(): SpreadFold | null {
+  return useContext(SpreadContext);
 }
 
 interface SessionSpreadProps {
@@ -92,6 +116,16 @@ export function SessionSpread({
   // Across the fold: content may cross it, controls move right of it
   const paneWide = pages && !homeOpen && !changesLeft && !showRail;
   const pageGap = pages && (homeOpen || changesLeft);
+  // Flat there's no gutter: the pages meet at the hinge
+  const spreadStart = book ? book.start : hingeX;
+  const spreadEnd = book ? book.end : hingeX;
+  const spreadFold = useMemo<SpreadFold | null>(
+    () =>
+      paneWide && spreadStart !== null && spreadEnd !== null
+        ? { start: spreadStart, end: spreadEnd }
+        : null,
+    [paneWide, spreadStart, spreadEnd]
+  );
 
   useEffect(() => {
     mobileNavStore.railShown = showRail;
@@ -169,7 +203,9 @@ export function SessionSpread({
           className="mx-auto h-full w-full"
           style={focus && !native ? { maxWidth: FOCUS_MAX_WIDTH } : undefined}
         >
-          {children}
+          <SpreadContext.Provider value={spreadFold}>
+            {children}
+          </SpreadContext.Provider>
         </div>
       </div>
 
