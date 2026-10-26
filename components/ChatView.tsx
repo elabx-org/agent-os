@@ -30,6 +30,7 @@ import {
 import { cn } from "@/lib/utils";
 import { Markdown } from "@/components/Markdown";
 import { InboxItem } from "@/components/Inbox";
+import { useSessionPrompt } from "@/data/prompts/queries";
 import { mobileNavStore } from "@/stores/mobileNav";
 import {
   isNative,
@@ -44,6 +45,13 @@ import {
   ComposerPopover,
   useComposer,
 } from "@/components/Composer";
+import {
+  ClaudeStateBar,
+  PendingPermission,
+  QueuedMessages,
+  RewindSheet,
+  useClaudeLive,
+} from "@/components/Composer/ClaudeStateBar";
 import { useFoldDeck } from "@/hooks/useFoldDeck";
 import { useSubagents } from "@/hooks/useSubagents";
 import {
@@ -693,6 +701,19 @@ export function ChatView({
     claude: session.agent_type === "claude",
   });
   const inputRef = composer.textareaRef;
+  // Claude's mode, spinner and status line, mirrored under the box
+  const live = useClaudeLive({
+    sessionId: session.id,
+    claude: composer.claude,
+    active,
+  });
+  // Its hook knows of a permission request before the screen poll does
+  const pending = live.state.pendingPermission;
+  const needsYou = status === "waiting" || !!pending;
+  const { data: prompt, isLoading: promptLoading } = useSessionPrompt(
+    session.id,
+    { enabled: active && needsYou }
+  );
   // Return sends, so touch keyboards get a button for a line break
   const insertNewline = () => composer.insert("\n");
   // The iOS app's keyboard bar has a new line, / and @ too, and Paste
@@ -746,6 +767,19 @@ export function ChatView({
       setSending(false);
     }
   }, [draft, session.id]);
+
+  // The answer Claude waits on: the screen's prompt with its options, or
+  // what the hook recorded when the screen can't be read
+  const needsYouCard = needsYou && (
+    <>
+      <ul>
+        <InboxItem session={session} onOpen={onOpenTerminal} questionsOnly />
+      </ul>
+      {pending && !prompt && !promptLoading && (
+        <PendingPermission tool={pending} onOpenTerminal={onOpenTerminal} />
+      )}
+    </>
+  );
 
   const earlier = state === "ready" && truncated && (
     <div ref={topRef} className="flex justify-center py-1">
@@ -901,15 +935,7 @@ export function ChatView({
                 Claude is working
               </div>
             )}
-            {status === "waiting" && !deckControls && (
-              <ul>
-                <InboxItem
-                  session={session}
-                  onOpen={onOpenTerminal}
-                  questionsOnly
-                />
-              </ul>
-            )}
+            {!deckControls && needsYouCard}
           </div>
         </div>
 
@@ -931,6 +957,12 @@ export function ChatView({
         >
           <div className="relative shrink-0">
             <ComposerPopover composer={composer} />
+            <RewindSheet
+              live={live}
+              cwd={composer.cwd}
+              onRewound={onOpenTerminal}
+            />
+            <QueuedMessages live={live} />
             <ComposerChips composer={composer} historyChip />
             <div
               className={cn(
@@ -959,6 +991,7 @@ export function ChatView({
                 }}
                 onBlur={() => setComposerFocused(false)}
                 onKeyDown={(e) => {
+                  if (live.onKeyDown(e)) return;
                   // Return sends, Shift+Return adds a line
                   if (
                     e.key === "Enter" &&
@@ -994,20 +1027,13 @@ export function ChatView({
                 )}
               </button>
             </div>
+            <ClaudeStateBar live={live} />
           </div>
           {/* On the deck, within the thumbs' reach: the answer Claude is
           waiting for, or Stop while it works */}
           {deckControls && (
             <div className="flex min-h-0 flex-1 flex-col justify-end gap-3 overflow-y-auto px-2 pt-3">
-              {status === "waiting" && (
-                <ul>
-                  <InboxItem
-                    session={session}
-                    onOpen={onOpenTerminal}
-                    questionsOnly
-                  />
-                </ul>
-              )}
+              {needsYouCard}
               {status === "running" && (
                 <button
                   type="button"
