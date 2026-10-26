@@ -119,8 +119,9 @@ export const Pane = memo(function Pane({
     // The iOS app shows changes as a view instead
     if (isNative()) return false;
     const stored = localStorage.getItem("gitDrawerOpen");
-    // Default closed where it would squeeze the terminal (Duo inner display)
-    return stored === null ? window.innerWidth >= 1280 : stored === "true";
+    // Default closed where it would squeeze the terminal beside the live
+    // activity rail
+    return stored === null ? window.innerWidth >= 1600 : stored === "true";
   });
   const [shellDrawerOpen, setShellDrawerOpen] = useState(() => {
     if (typeof window === "undefined") return false;
