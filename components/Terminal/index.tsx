@@ -349,9 +349,16 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
         const rowHeight = screen.offsetHeight / term.rows;
         const top = screen.getBoundingClientRect().top + offset;
         const bottom = top + (last + 1) * rowHeight;
+        const hostRect = host.getBoundingClientRect();
+        // Never past the cursor's line: output drawn below it (a tmux
+        // status line) mustn't push the line being typed off the top
+        const cursorTop = top + buffer.cursorY * rowHeight;
         const next = Math.max(
           0,
-          Math.ceil(bottom - host.getBoundingClientRect().bottom)
+          Math.min(
+            Math.ceil(bottom - hostRect.bottom),
+            Math.floor(cursorTop - hostRect.top)
+          )
         );
         if (next === offset) return;
         offset = next;

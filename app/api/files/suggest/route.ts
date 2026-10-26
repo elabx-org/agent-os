@@ -225,9 +225,16 @@ export async function GET(request: NextRequest) {
       out.push(s);
     };
 
-    for (const c of changed ?? []) if (matches(c.path)) add(c);
-    for (const p of index.recent)
-      if (matches(p)) add({ path: p, kind: "recent" });
+    // Within changed and recent, the closest match first
+    const closest = <T>(items: T[], path: (item: T) => string) =>
+      q
+        ? items
+            .filter((item) => matches(path(item)))
+            .sort((a, b) => score(path(b), q) - score(path(a), q))
+        : items;
+    for (const c of closest(changed ?? [], (c) => c.path)) add(c);
+    for (const p of closest(index.recent, (p) => p))
+      add({ path: p, kind: "recent" });
     if (q) {
       [...index.files, ...index.dirs]
         .map((p) => ({ p, s: score(p, q) }))

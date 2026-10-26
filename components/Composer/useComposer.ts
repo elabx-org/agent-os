@@ -257,13 +257,25 @@ export function useComposer({
           groups[g].map((c, i) => toItem(c, i === 0 ? title : undefined))
         ).slice(0, MAX_SUGGESTIONS * 2);
       // A name that starts with what's typed beats a plugin's or skill's
-      // second half ("co" → compact before commit-commands:commit)
+      // second half ("co" → compact before commit-commands:commit), the
+      // command part matching too beats a plugin whose name alone does
+      // (commit before commit-commands:clean_gone), and shorter commands
+      // come first so "/co" isn't buried under long skill names
       const q = pickerToken.query.toLowerCase();
       const head = (c: ClaudeCommand) =>
         c.name.toLowerCase().startsWith(q) ? 0 : 1;
+      const command = (c: ClaudeCommand) =>
+        c.name.toLowerCase().slice(c.name.lastIndexOf(":") + 1);
+      const own = (c: ClaudeCommand) => (command(c).startsWith(q) ? 0 : 1);
       return filterCommands(groups, pickerToken.query)
         .map((c, i) => ({ c, i }))
-        .sort((a, b) => head(a.c) - head(b.c) || a.i - b.i)
+        .sort(
+          (a, b) =>
+            head(a.c) - head(b.c) ||
+            own(a.c) - own(b.c) ||
+            command(a.c).length - command(b.c).length ||
+            a.i - b.i
+        )
         .map(({ c }) => c)
         .slice(0, MAX_SUGGESTIONS)
         .map((c) => toItem(c));
