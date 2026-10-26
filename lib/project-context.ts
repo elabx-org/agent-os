@@ -6,6 +6,7 @@ import type { Project, Session } from "./db";
 import { getProject, getProjectSessions } from "./projects";
 import { readClaudeSessionMeta } from "./claude-transcript";
 import { parseProjectHooks } from "./project-hooks";
+import { withClaudeState, type HookGroup } from "./claude-state";
 
 export { parseProjectHooks } from "./project-hooks";
 
@@ -159,10 +160,7 @@ fi
 
 /** Claude Code settings for a session in the project: its hooks */
 function sessionSettings(project: Project, session: Session) {
-  const hooks: Record<
-    string,
-    { matcher?: string; hooks: { type: "command"; command: string }[] }[]
-  > = {
+  const hooks: Record<string, HookGroup[]> = {
     UserPromptSubmit: [
       {
         hooks: [
@@ -184,22 +182,32 @@ function sessionSettings(project: Project, session: Session) {
 }
 
 /**
- * Writes what a Claude session in a project starts with: its project note
- * (null when it has none) and its settings (the project's hooks)
+ * Writes what a Claude session starts with: its project note (null when it
+ * has none) and its settings (the project's hooks, and the hooks and status
+ * line that record Claude's state for every session)
  */
 export async function writeProjectContext(
   session: Session
 ): Promise<{ file: string | null; settings: string | null }> {
   const file = path.join(contextDir(), `${session.id}.md`);
   const settingsFile = path.join(contextDir(), `${session.id}.settings.json`);
-  const project =
-    session.agent_type === "claude" && session.project_id
-      ? getProject(session.project_id)
-      : undefined;
-  if (!project || project.is_uncategorized) {
+  if (session.agent_type !== "claude") {
     fs.rmSync(file, { force: true });
     fs.rmSync(settingsFile, { force: true });
     return { file: null, settings: null };
+  }
+  const project = session.project_id
+    ? getProject(session.project_id)
+    : undefined;
+  if (!project || project.is_uncategorized) {
+    fs.rmSync(file, { force: true });
+    fs.mkdirSync(contextDir(), { recursive: true });
+    fs.writeFileSync(
+      settingsFile,
+      JSON.stringify(withClaudeState(session.id, {}), null, 2),
+      { mode: 0o600 }
+    );
+    return { file: null, settings: settingsFile };
   }
 
   fs.mkdirSync(suggestionsDir(project.id), { recursive: true });
@@ -219,7 +227,11 @@ export async function writeProjectContext(
   );
   fs.writeFileSync(
     settingsFile,
-    JSON.stringify(sessionSettings(project, session), null, 2),
+    JSON.stringify(
+      withClaudeState(session.id, sessionSettings(project, session)),
+      null,
+      2
+    ),
     { mode: 0o600 }
   );
 
