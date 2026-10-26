@@ -13,6 +13,8 @@ export const replyContextStore = proxy<{
   /** Sessions whose context another layout shows (how many), so the card
    * stays away */
   shownElsewhere: Record<string, number>;
+  /** Sessions shown as the spread's right page, "Your reply" */
+  replyPage: Record<string, true>;
   /** Sessions whose composer is in use on a touch screen, keyboard up */
   typing: Record<string, true>;
   /** A chat item to scroll to, taken by that session's ChatView */
@@ -20,6 +22,7 @@ export const replyContextStore = proxy<{
 }>({
   dismissed: {},
   shownElsewhere: {},
+  replyPage: {},
   typing: {},
   jump: null,
 });
@@ -40,6 +43,17 @@ export function useContextShownElsewhere(
 ): boolean {
   const { shownElsewhere } = useSnapshot(replyContextStore);
   return !!sessionId && !!shownElsewhere[sessionId];
+}
+
+/** The spread shows this session as the reply to the turn on its left */
+export function setReplyPage(sessionId: string, on: boolean) {
+  if (on) replyContextStore.replyPage[sessionId] = true;
+  else delete replyContextStore.replyPage[sessionId];
+}
+
+export function useReplyPage(sessionId: string | null | undefined): boolean {
+  const { replyPage } = useSnapshot(replyContextStore);
+  return !!sessionId && !!replyPage[sessionId];
 }
 
 export function setTyping(sessionId: string, on: boolean) {

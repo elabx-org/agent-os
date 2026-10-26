@@ -646,11 +646,14 @@ export function useComposer({
     };
   }, [display, chips, claude, pattern, mode, magicWords]);
 
-  // Passages quoted with "Reply to this" go first, as blockquotes
+  // Passages quoted with "Reply to this" go first, as blockquotes. A slash
+  // command, bash or memory line must keep its prefix first to run, so it
+  // goes alone and the quotes wait for the next message
   const quotes = useQuotes(sessionId);
+  const command = !!claude && /^[/!#]/.test(value.trimStart());
   const text = useMemo(
-    () => (quotes.length ? formatWithQuotes(quotes, value) : value),
-    [quotes, value]
+    () => (quotes.length && !command ? formatWithQuotes(quotes, value) : value),
+    [quotes, value, command]
   );
 
   /** After a send: the pills, quotes and history position start over */
@@ -659,8 +662,8 @@ export function useComposer({
     setHist(-1);
     setPreview(null);
     setDismissed(null);
-    if (sessionId) clearQuotes(sessionId);
-  }, [setPastes, sessionId]);
+    if (sessionId && !command) clearQuotes(sessionId);
+  }, [setPastes, sessionId, command]);
 
   return {
     textareaRef,

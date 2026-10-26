@@ -950,7 +950,8 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
                   onClick={replyToSelection}
                   aria-disabled={!selectedText}
                   className={cn(
-                    "bg-primary-foreground/20 ml-auto mr-2 rounded px-2.5 py-1.5 text-xs",
+                    // A 44px touch, kept clear of Done
+                    "bg-primary-foreground/20 relative ml-auto mr-4 rounded px-2.5 py-1.5 text-xs after:absolute after:-inset-x-1 after:-inset-y-2",
                     !selectedText && "opacity-50"
                   )}
                 >

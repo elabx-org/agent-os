@@ -189,6 +189,14 @@ function promptTool(prompt: PermissionPrompt): string {
   return prompt.title.split(/\s+/)[0] || "tool";
 }
 
+/** Whether the screen's question is the ask's (wrapping aside); a screen
+ * without one parsed can't tell, so it counts */
+function sameQuestion(asked: string | null, prompt: PermissionPrompt): boolean {
+  const norm = (t: string) => t.replace(/\s+/g, " ").trim().toLowerCase();
+  const shown = norm(prompt.question).slice(0, 24);
+  return !shown || !asked || norm(asked).startsWith(shown);
+}
+
 /**
  * Folds in the selection prompt on screen: an AskUserQuestion's options get
  * the prompt's to answer with; any other prompt is a permission request.
@@ -210,7 +218,21 @@ export function mergePrompt(
       if (live) used.add(live.index);
       return { ...o, answer: live ?? null };
     });
-    return { ...ctx, options };
+    // The ask holds only its first question, and the tool stays pending
+    // through the later ones and the Submit screen: unless the screen is
+    // that question, show and answer what's on screen
+    if (options.every((o) => o.answer) && sameQuestion(ctx.question, prompt))
+      return { ...ctx, options };
+    return {
+      ...ctx,
+      question: prompt.question || prompt.title,
+      excerpt: clip(prompt.options.map((o) => o.label).join(" · ")),
+      options: prompt.options.map((o) => ({
+        index: o.index + 1,
+        label: o.label,
+        answer: o,
+      })),
+    };
   }
 
   const tool = ctx?.pendingTool ?? promptTool(prompt);

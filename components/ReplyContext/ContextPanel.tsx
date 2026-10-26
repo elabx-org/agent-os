@@ -110,10 +110,10 @@ export function ContextPanel({
     : undefined;
 
   const asks = context?.kind === "ask" || context?.kind === "permission";
+  // The page is the turn, whatever it ends in (as in the mock); only a
+  // turn still running says so
   const label =
-    !context || context.kind === "message"
-      ? "Claude's last turn"
-      : context.label;
+    context?.kind === "working" ? context.label : "Claude's last turn";
 
   return (
     <section
@@ -133,14 +133,10 @@ export function ContextPanel({
             "[html[data-native]_&]:pt-[calc(0.75rem+env(safe-area-inset-top))]"
         )}
       >
-        {asks ? (
-          <ClaudeMark size={11} />
-        ) : (
-          <Lock
-            aria-hidden="true"
-            className="text-muted-foreground h-3 w-3 shrink-0"
-          />
-        )}
+        <Lock
+          aria-hidden="true"
+          className="text-muted-foreground h-3 w-3 shrink-0"
+        />
         <span className="text-muted-foreground min-w-0 flex-1 truncate text-[10px] font-medium tracking-[0.08em] uppercase">
           {label}
         </span>

@@ -139,7 +139,8 @@ export function ReplySheet({
           type="button"
           onClick={onClose}
           aria-label="Back to the session"
-          className="mx-auto flex h-5 w-16 items-center justify-center"
+          // The one tap target out on a phone: a 44px touch
+          className="relative mx-auto flex h-5 w-16 items-center justify-center after:absolute after:inset-x-0 after:-inset-y-3"
         >
           <span className="bg-muted-foreground/40 h-1 w-9 rounded-full" />
         </button>

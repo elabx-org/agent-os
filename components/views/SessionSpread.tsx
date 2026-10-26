@@ -28,6 +28,7 @@ import { ContextPanel } from "@/components/ReplyContext/ContextPanel";
 import { useReplyContext } from "@/hooks/useReplyContext";
 import {
   setContextShownElsewhere,
+  setReplyPage,
   useReplying,
 } from "@/components/ReplyContext/store";
 
@@ -214,7 +215,11 @@ export function SessionSpread({
   useEffect(() => {
     if (!replyId) return;
     setContextShownElsewhere(replyId, true);
-    return () => setContextShownElsewhere(replyId, false);
+    setReplyPage(replyId, true);
+    return () => {
+      setContextShownElsewhere(replyId, false);
+      setReplyPage(replyId, false);
+    };
   }, [replyId]);
 
   useEffect(() => {

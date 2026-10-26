@@ -6,6 +6,7 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type TouchEvent as ReactTouchEvent,
 } from "react";
@@ -14,6 +15,7 @@ import { cn } from "@/lib/utils";
 import { haptic } from "@/lib/haptics";
 import { gestures } from "@/lib/gestures";
 import { addQuote } from "@/stores/replyQuotes";
+import { postureStore } from "@/stores/posture";
 
 const HOLD_MS = 350;
 const MOVE_PX = 8;
@@ -26,6 +28,19 @@ interface Open {
   block: HTMLElement;
   /** Text selected inside the message, which goes instead of the block */
   selection: string;
+  /** Opened with a mouse: the menu takes the focus for the keys */
+  mouse?: boolean;
+}
+
+/** The status strip's height (env() only reads in CSS) */
+function safeTop(): number {
+  const probe = document.createElement("div");
+  probe.style.cssText =
+    "position:fixed;visibility:hidden;padding-top:env(safe-area-inset-top)";
+  document.body.appendChild(probe);
+  const top = parseFloat(getComputedStyle(probe).paddingTop) || 0;
+  probe.remove();
+  return top;
 }
 
 /** What's selected, if it lies inside the block's message */
@@ -150,7 +165,10 @@ export function useQuoteMenu({
       e.preventDefault();
       return;
     }
-    const block = (e.target as Element).closest<HTMLElement>(BLOCK);
+    const target = e.target as Element;
+    // A link or button keeps the browser's menu (Copy link address…)
+    if (target.closest("a, button")) return;
+    const block = target.closest<HTMLElement>(BLOCK);
     if (!block) return;
     e.preventDefault();
     setOpen({
@@ -158,10 +176,19 @@ export function useQuoteMenu({
       y: e.clientY,
       block,
       selection: selectionIn(block),
+      mouse: true,
     });
   };
 
   const close = useCallback(() => setOpen(null), []);
+
+  // A mouse-opened menu takes the focus, so it's reached by keys and read
+  // out; a touch one leaves it in the box, so the keyboard stays up
+  const returnTo = useRef<HTMLElement | null>(null);
+  const giveBack = () => {
+    returnTo.current?.focus({ preventScroll: true });
+    returnTo.current = null;
+  };
 
   // The block shows what the menu acts on
   useEffect(() => {
@@ -184,7 +211,11 @@ export function useQuoteMenu({
     const onDown = (e: PointerEvent) => {
       if (!menuRef.current?.contains(e.target as Node)) close();
     };
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && close();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      close();
+      giveBack();
+    };
     document.addEventListener("pointerdown", onDown, true);
     document.addEventListener("keydown", onKey);
     window.addEventListener("resize", close);
@@ -197,19 +228,64 @@ export function useQuoteMenu({
     };
   }, [open, close]);
 
-  // Above the finger, centred on it, kept on screen
+  // Above the finger, centred on it, kept on screen: below the status strip,
+  // above a docked keyboard, and on the finger's side of a fold
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
   useLayoutEffect(() => {
     const el = menuRef.current;
     if (!open || !el) return setPos(null);
     const { width, height } = el.getBoundingClientRect();
-    const left = Math.min(
-      Math.max(8, open.x - width / 2),
-      innerWidth - width - 8
-    );
+    const vv = window.visualViewport;
+    const fold = postureStore.fold;
+    let minLeft = 8;
+    let maxLeft = innerWidth - width - 8;
+    let minTop = (vv?.offsetTop ?? 0) + safeTop() + 8;
+    let maxTop = (vv ? vv.offsetTop + vv.height : innerHeight) - height - 8;
+    if (fold?.axis === "vertical") {
+      if (open.x < fold.start)
+        maxLeft = Math.min(maxLeft, fold.start - width - 8);
+      else minLeft = Math.max(minLeft, fold.end + 8);
+    } else if (fold?.axis === "horizontal") {
+      if (open.y < fold.start)
+        maxTop = Math.min(maxTop, fold.start - height - 8);
+      else minTop = Math.max(minTop, fold.end + 8);
+    }
+    const left = Math.max(minLeft, Math.min(open.x - width / 2, maxLeft));
     const above = open.y - height - 16;
-    setPos({ left, top: above >= 8 ? above : open.y + 24 });
+    const top = above >= minTop ? above : open.y + 24;
+    setPos({ left, top: Math.max(minTop, Math.min(top, maxTop)) });
   }, [open]);
+
+  useEffect(() => {
+    if (!open?.mouse) return;
+    const prev = document.activeElement;
+    returnTo.current = prev instanceof HTMLElement ? prev : null;
+    menuRef.current
+      ?.querySelector<HTMLElement>("[role=menuitem]")
+      ?.focus({ preventScroll: true });
+  }, [open]);
+
+  // Arrows, Home/End and Tab move along the row
+  const onMenuKey = (e: ReactKeyboardEvent) => {
+    const items = Array.from(
+      menuRef.current?.querySelectorAll<HTMLElement>("[role=menuitem]") ?? []
+    );
+    const at = items.indexOf(document.activeElement as HTMLElement);
+    const step: Record<string, number> = {
+      ArrowRight: 1,
+      ArrowDown: 1,
+      ArrowLeft: -1,
+      ArrowUp: -1,
+    };
+    let next: number | null = null;
+    if (e.key in step) next = at + step[e.key];
+    else if (e.key === "Tab") next = at + (e.shiftKey ? -1 : 1);
+    else if (e.key === "Home") next = 0;
+    else if (e.key === "End") next = items.length - 1;
+    if (next === null || !items.length) return;
+    e.preventDefault();
+    items[(next + items.length) % items.length].focus();
+  };
 
   const reply = () => {
     if (!open) return;
@@ -236,6 +312,7 @@ export function useQuoteMenu({
     navigator.clipboard?.writeText(text.trim()).catch(() => {});
     haptic("light");
     close();
+    giveBack();
   };
   // The block selected, for the system's handles to take from there
   const select = () => {
@@ -252,6 +329,8 @@ export function useQuoteMenu({
         ref={menuRef}
         role="menu"
         aria-label="Quote"
+        aria-orientation="horizontal"
+        onKeyDown={onMenuKey}
         className={cn(
           "bg-popover text-popover-foreground border-border fixed z-50 flex overflow-hidden rounded-xl border shadow-lg",
           !pos && "invisible"
@@ -269,6 +348,7 @@ export function useQuoteMenu({
             key={label}
             type="button"
             role="menuitem"
+            tabIndex={-1}
             // Keeps a desktop selection, and the focus where it was
             onMouseDown={(e) => e.preventDefault()}
             onClick={act}
