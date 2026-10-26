@@ -3,6 +3,7 @@ import { useSnapshot } from "valtio";
 import type { DevServer, Session } from "@/lib/db";
 import type { GitFile } from "@/lib/git-status";
 import type { SubagentInfo } from "@/lib/claude-subagents";
+import type { WorkflowInfo } from "@/lib/claude-workflows";
 import type { PermissionPrompt } from "@/lib/permission-prompt";
 import type { SessionStatus } from "@/components/views/types";
 import {
@@ -14,7 +15,7 @@ import { mobileNavStore } from "@/stores/mobileNav";
 import { useGitStatus, usePRStatus } from "@/data/git/queries";
 import { useDevServersQuery } from "@/data/dev-servers";
 import { useSessionPrompt } from "@/data/prompts/queries";
-import { useSubagents } from "./useSubagents";
+import { useSubagents, useWorkflows } from "./useSubagents";
 
 export interface SessionActivity {
   state: AgentState;
@@ -25,6 +26,7 @@ export interface SessionActivity {
   prompt?: PermissionPrompt | null;
   files: { count: number; list: GitFile[] };
   agents: { list: SubagentInfo[]; running: number };
+  workflows: { list: WorkflowInfo[]; running: number };
   devServer?: DevServer;
   pr?: { number: number; url: string; status: string; title?: string };
 }
@@ -157,6 +159,7 @@ export function useSessionActivity(
   });
   const { data: git } = useGitStatus(dir, { enabled: on });
   const agentList = useSubagents(id, on);
+  const workflowList = useWorkflows(id, on);
   const { data: servers } = useDevServersQuery();
   const { data: prData } = usePRStatus(on && rail ? dir : "");
 
@@ -184,6 +187,14 @@ export function useSessionActivity(
       running: agentList.filter((a) => a.status === "running").length,
     }),
     [agentList]
+  );
+
+  const workflows = useMemo(
+    () => ({
+      list: workflowList,
+      running: workflowList.filter((w) => w.status === "running").length,
+    }),
+    [workflowList]
   );
 
   const devServer = useMemo(() => {
@@ -234,6 +245,7 @@ export function useSessionActivity(
     prompt: state === "needs" ? prompt : undefined,
     files,
     agents,
+    workflows,
     devServer,
     pr,
   };

@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useRef, type ReactNode } from "react";
-import { File, GitPullRequest, Loader2 } from "lucide-react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { File, GitPullRequest, Loader2, Workflow } from "lucide-react";
 import type { Session } from "@/lib/db";
 import type { SubagentInfo } from "@/lib/claude-subagents";
+import type { WorkflowInfo } from "@/lib/claude-workflows";
 import { cn } from "@/lib/utils";
 import {
   fromSubagentStatus,
@@ -25,6 +26,8 @@ import { runNav } from "@/lib/nav-actions";
 
 const MAX_FILES = 5;
 const MAX_AGENTS = 5;
+const MAX_WORKFLOWS = 3;
+const MAX_WORKFLOW_AGENTS = 8;
 
 const PR_PILL: Record<string, string> = {
   open: "bg-blue-400/15 text-blue-600 dark:text-blue-400",
@@ -52,7 +55,7 @@ export function ActivityRail({
   className?: string;
 }) {
   const activity = useSessionActivity(session, { active, rail: true });
-  const { files, agents, devServer, pr } = activity;
+  const { files, agents, workflows, devServer, pr } = activity;
   const block = cn(
     "border-border grid gap-1 border-b last:border-b-0",
     compact ? "px-2 py-2" : "px-3 py-2.5"
@@ -62,6 +65,15 @@ export function ActivityRail({
     mobileNavActions.requestViewMode("chat", session.id);
     onNavigate?.();
   };
+
+  // Running runs first, then the most recent
+  const workflowRows = [...workflows.list]
+    .sort(
+      (a, b) =>
+        Number(b.status === "running") - Number(a.status === "running") ||
+        b.updatedAt.localeCompare(a.updatedAt)
+    )
+    .slice(0, MAX_WORKFLOWS);
 
   // Running agents first, then the most recent
   const agentRows = [...agents.list]
@@ -136,12 +148,25 @@ export function ActivityRail({
         )}
       </section>
 
+      {workflows.list.length > 0 && (
+        <section className={block}>
+          <SectionHeader className="pt-1" count={workflows.list.length}>
+            Workflows
+          </SectionHeader>
+          <div className="min-w-0 space-y-px">
+            {workflowRows.map((run) => (
+              <WorkflowRow key={run.runId} run={run} />
+            ))}
+          </div>
+        </section>
+      )}
+
       {agents.list.length > 0 && (
         <section className={block}>
           <SectionHeader className="pt-1" count={agents.list.length}>
             Agents
           </SectionHeader>
-          <div className="space-y-px">
+          <div className="min-w-0 space-y-px">
             {agentRows.map((agent) => (
               <SubagentRow
                 key={agent.agentId}
@@ -391,6 +416,102 @@ function SubagentRow({
       onClick={onOpen}
     />
   );
+}
+
+/**
+ * A workflow run: its phase and agents at a glance, a bar of its phases, and
+ * its agents on tap
+ */
+function WorkflowRow({ run }: { run: WorkflowInfo }) {
+  const [open, setOpen] = useState(false);
+  const state = fromSubagentStatus(
+    run.status === "failed" ? "stopped" : run.status
+  );
+  const running = run.status === "running";
+  const phaseIndex = run.phase ? run.phases.indexOf(run.phase) : -1;
+  const done = run.agents.filter((a) => a.status === "done").length;
+  const parts = [
+    run.phase &&
+      (phaseIndex >= 0 && running
+        ? `${run.phase} (${phaseIndex + 1}/${run.phases.length})`
+        : running
+          ? run.phase
+          : null),
+    running
+      ? `${done}/${run.agents.length} agents`
+      : plural(run.agents.length, "agent"),
+    duration(run.startedAt, running ? new Date().toISOString() : run.updatedAt),
+  ].filter(Boolean);
+  const agents = [...run.agents]
+    .sort(
+      (a, b) => Number(b.status === "running") - Number(a.status === "running")
+    )
+    .slice(0, MAX_WORKFLOW_AGENTS);
+
+  return (
+    <div>
+      <AgentRow
+        kind="subagent"
+        icon={Workflow}
+        state={state}
+        title={run.name}
+        subtitle={
+          <>
+            <StateWord state={state} />
+            {run.status === "failed" && " (failed)"}
+            {parts.map((part) => ` · ${part}`).join("")}
+          </>
+        }
+        dense
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+      />
+      {running && run.phases.length > 1 && (
+        <div aria-hidden="true" className="flex gap-1 px-2 pb-1.5 pl-[50px]">
+          {run.phases.map((phase, i) => (
+            <span
+              key={phase}
+              title={phase}
+              className={cn(
+                "h-1 flex-1 rounded-full",
+                i < phaseIndex
+                  ? "bg-emerald-500"
+                  : i === phaseIndex
+                    ? "animate-pulse bg-blue-500"
+                    : "bg-secondary"
+              )}
+            />
+          ))}
+        </div>
+      )}
+      {open && (
+        <ul className="space-y-0.5 pb-1.5 pl-[50px] text-[12px]">
+          {agents.map((agent) => (
+            <li key={agent.agentId} className="flex min-w-0 items-center gap-2">
+              <span className="min-w-0 flex-1 truncate font-mono">
+                {agent.label}
+              </span>
+              {agent.phase && (
+                <span className="text-muted-foreground shrink-0">
+                  {agent.phase}
+                </span>
+              )}
+              <StateWord state={fromSubagentStatus(agent.status)} />
+            </li>
+          ))}
+          {run.agents.length > agents.length && (
+            <li className="text-muted-foreground">
+              {run.agents.length - agents.length} more
+            </li>
+          )}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function plural(n: number, word: string) {
+  return `${n} ${word}${n === 1 ? "" : "s"}`;
 }
 
 function LineCounts({ add, del }: { add?: number; del?: number }) {
