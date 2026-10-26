@@ -23,6 +23,7 @@ import {
   Settings,
   Upload,
   Ellipsis,
+  type LucideIcon,
 } from "lucide-react";
 import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
@@ -78,7 +79,35 @@ interface TerminalToolbarProps {
   adaptiveState?: AdaptiveState | null;
   /** The options of the prompt Claude shows, for its number keys */
   promptOptions?: number;
+  /** The adaptive row sits above the composer and leads with the tools:
+      Photo, Paste (Copy while text is selected) and File */
+  tools?: RowTools | null;
+  /** What ⋯ offers besides the keys (the composer's +, which hides) */
+  actions?: RowAction[];
 }
+
+export interface RowTools {
+  onPhoto: () => void;
+  onFile: () => void;
+  /** Text is selected: the clipboard key copies it */
+  canCopy: boolean;
+  /** Pick text to copy (held Paste) */
+  onSelectText: () => void;
+}
+
+export interface RowAction {
+  icon: LucideIcon;
+  label: string;
+  onSelect: () => void;
+}
+
+// ⋯ already has these as the tools
+const TOOL_KEYS = new Set<ToolbarButtonId>([
+  "paste",
+  "select",
+  "image",
+  "snippets",
+]);
 
 interface Snippet {
   id: string;
@@ -669,6 +698,85 @@ function CopyButton({
   );
 }
 
+/**
+ * Paste, or Copy while text is selected (filled with the accent so the
+ * change shows). Held, it does the other one: Paste while Copy shows, and
+ * picking text to copy while Paste does.
+ */
+function ClipboardKey({
+  canCopy,
+  copied,
+  onCopy,
+  onPaste,
+  onSelectText,
+}: {
+  canCopy: boolean;
+  copied: boolean;
+  onCopy: () => void;
+  onPaste: () => void;
+  onSelectText: () => void;
+}) {
+  const ref = useRef<HTMLButtonElement>(null);
+  useLongPress(ref, canCopy ? onPaste : onSelectText);
+  const Icon = canCopy || copied ? Copy : Clipboard;
+  const label = canCopy ? "Copy" : "Paste";
+  return (
+    <button
+      ref={ref}
+      type="button"
+      aria-label={label}
+      title={label}
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={(e) => {
+        e.stopPropagation();
+        if (canCopy) onCopy();
+        else onPaste();
+      }}
+      className={cn(
+        KEY_CLASS,
+        copied
+          ? "bg-green-500 text-white"
+          : canCopy
+            ? "bg-primary text-primary-foreground ring-primary/40 ring-2"
+            : "bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground"
+      )}
+    >
+      <Icon className="h-4 w-4" />
+    </button>
+  );
+}
+
+function ToolKey({
+  icon: Icon,
+  label,
+  onPress,
+}: {
+  icon: LucideIcon;
+  label: string;
+  onPress: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={(e) => {
+        e.stopPropagation();
+        // The sheet it opens would sit under the keyboard
+        (document.activeElement as HTMLElement | null)?.blur();
+        onPress();
+      }}
+      className={cn(
+        KEY_CLASS,
+        "bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground"
+      )}
+    >
+      <Icon className="h-4 w-4" />
+    </button>
+  );
+}
+
 // --- Main component ---
 
 export function TerminalToolbar({
@@ -689,6 +797,8 @@ export function TerminalToolbar({
   snippetsRequest = 0,
   adaptiveState = null,
   promptOptions = 0,
+  tools = null,
+  actions,
 }: TerminalToolbarProps) {
   const [showPasteModal, setShowPasteModal] = useState(false);
   const [showSnippetsModal, setShowSnippetsModal] = useState(false);
@@ -790,7 +900,11 @@ export function TerminalToolbar({
     () => (adaptiveState ? adaptiveRow(adaptiveState, promptOptions) : []),
     [adaptiveState, promptOptions]
   );
-  const allKeys = useMemo(() => DEFAULT_ROW1.filter(offered), [offered]);
+  const allKeys = useMemo(
+    () =>
+      DEFAULT_ROW1.filter((id) => offered(id) && !(tools && TOOL_KEYS.has(id))),
+    [offered, tools]
+  );
 
   const resolvedRow2 = useMemo(
     () =>
@@ -1137,9 +1251,30 @@ export function TerminalToolbar({
         />
         {settings}
         <div
-          className="keybar-row keybar-adaptive bg-background/95 border-border flex items-center gap-1 border-t px-2 py-1.5 backdrop-blur"
+          className={cn(
+            "keybar-row keybar-adaptive bg-background/95 border-border flex items-center gap-1 border-t px-2 py-1.5 backdrop-blur",
+            tools && "keybar-tools"
+          )}
           onTouchEnd={(e) => e.stopPropagation()}
         >
+          {tools && (
+            <>
+              <ToolKey icon={ImagePlus} label="Photo" onPress={tools.onPhoto} />
+              <ClipboardKey
+                canCopy={tools.canCopy}
+                copied={copyFeedback}
+                onCopy={handleCopy}
+                onPaste={handlePaste}
+                onSelectText={tools.onSelectText}
+              />
+              <ToolKey
+                icon={FileText}
+                label="File or snippet"
+                onPress={tools.onFile}
+              />
+              <div className="bg-border mx-0.5 h-6 w-px shrink-0" />
+            </>
+          )}
           {adaptiveKeys.map((k) => (
             <AdaptiveKey key={k.id} k={k} onKeyPress={onKeyPress} />
           ))}
@@ -1148,6 +1283,7 @@ export function TerminalToolbar({
             keys={allKeys}
             renderKey={renderButton}
             onSettings={() => setShowSettings(true)}
+            actions={actions}
           />
         </div>
       </>
@@ -1281,11 +1417,14 @@ function MoreKey({
   keys,
   renderKey,
   onSettings,
+  actions,
 }: {
   label?: string;
   keys: ToolbarButtonId[];
   renderKey: (id: ToolbarButtonId) => React.ReactNode;
   onSettings: () => void;
+  /** Listed under the keys, each closing the panel */
+  actions?: RowAction[];
 }) {
   const buttonRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -1389,6 +1528,27 @@ function MoreKey({
             >
               <Settings className="h-4 w-4" />
             </button>
+            {actions && actions.length > 0 && (
+              <div className="border-border mt-1 grid w-full grid-cols-2 gap-0.5 border-t pt-1.5">
+                {actions.map(({ icon: Icon, label, onSelect }) => (
+                  <button
+                    key={label}
+                    type="button"
+                    role="menuitem"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      close();
+                      onSelect();
+                    }}
+                    className="text-foreground active:bg-muted flex min-h-11 items-center gap-2 rounded-lg px-2 text-left text-[13px]"
+                  >
+                    <Icon className="text-muted-foreground h-4 w-4 shrink-0" />
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>,
           document.body
         )}

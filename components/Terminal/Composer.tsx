@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type MutableRefObject } from "react";
 import { ArrowUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSessionsQuery } from "@/data/sessions";
@@ -20,7 +20,7 @@ import {
 } from "@/components/Composer/ClaudeStateBar";
 import { ReplyContextBar } from "@/components/ReplyContext";
 import type { SpreadPages } from "@/components/views/SessionSpread";
-import { ComposerPlusMenu } from "./ComposerPlusMenu";
+import { ComposerPlusMenu, type ComposerTools } from "./ComposerPlusMenu";
 
 const MAX_ROWS = 5;
 
@@ -57,6 +57,9 @@ interface ComposerProps {
   /** Across both pages of the open Duo (Two rows): the box on the left
       page, its buttons and Claude's state on the right one */
   pages?: SpreadPages | null;
+  /** The key row above has the tools: no +, its actions through `toolsRef` */
+  noPlus?: boolean;
+  toolsRef?: MutableRefObject<ComposerTools | null>;
 }
 
 /**
@@ -84,6 +87,8 @@ export function Composer({
   active = true,
   stateAbove = false,
   pages,
+  noPlus = false,
+  toolsRef,
 }: ComposerProps) {
   const { data } = useSessionsQuery();
   const session = sessionId
@@ -204,6 +209,8 @@ export function Composer({
               : undefined
           }
           onRewind={live.claude ? () => live.setRewindOpen(true) : undefined}
+          hidden={noPlus}
+          toolsRef={toolsRef}
         />
         <ComposerInput
           composer={composer}

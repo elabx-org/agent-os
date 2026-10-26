@@ -312,16 +312,16 @@ html[data-fold="vertical"] [data-spread="wide"] .fold-controls {
   min-width: 40px;
 }
 
-/* The adaptive row has few keys: they share all of it, a wide one (Esc ·
-   Interrupt) taking more */
+/* The adaptive row has few keys: they share all of it */
 .keybar-row.keybar-adaptive > button {
   max-width: none;
   min-width: 40px;
   /* The flick's key shows above it */
   overflow: visible;
 }
-.keybar-row.keybar-adaptive > button.adaptive-wide {
-  flex-grow: 3;
+/* Above the composer the tools lead it: nine keys share the closed Duo */
+.keybar-row.keybar-adaptive.keybar-tools > button {
+  min-width: 28px;
 }
 
 /* A keybar row too long for the screen scrolls: fade the right edge as a

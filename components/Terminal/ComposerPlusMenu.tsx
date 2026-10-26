@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
+  type MutableRefObject,
 } from "react";
 import {
   FileText,
@@ -37,6 +38,18 @@ interface ComposerPlusMenuProps {
   onHistory?: () => void;
   /** Jump back to an earlier prompt, as Esc Esc (Claude sessions) */
   onRewind?: () => void;
+  /** No + (the key row above the composer has the tools): the menu's
+      actions are offered through `toolsRef` instead */
+  hidden?: boolean;
+  toolsRef?: MutableRefObject<ComposerTools | null>;
+}
+
+/** The +'s actions, for the key row's tools and its ⋯ */
+export interface ComposerTools {
+  /** File or snippet: the sheet, its pick going into the composer */
+  file: () => void;
+  history?: () => void;
+  rewind?: () => void;
 }
 
 interface Item {
@@ -59,6 +72,8 @@ export function ComposerPlusMenu({
   onTypeInTerminal,
   onHistory,
   onRewind,
+  hidden = false,
+  toolsRef,
 }: ComposerPlusMenuProps) {
   const [open, setOpen] = useState(false);
   const [showSnippets, setShowSnippets] = useState(false);
@@ -149,6 +164,18 @@ export function ComposerPlusMenu({
     }
   }, []);
 
+  useEffect(() => {
+    if (!toolsRef) return;
+    toolsRef.current = {
+      file: () => setShowSnippets(true),
+      history: onHistory,
+      rewind: onRewind,
+    };
+    return () => {
+      toolsRef.current = null;
+    };
+  }, [toolsRef, onHistory, onRewind]);
+
   const items: Item[] = [
     { icon: ImagePlus, label: "Photo", onSelect: onPhoto, sheet: true },
     {
@@ -184,7 +211,11 @@ export function ComposerPlusMenu({
   ];
 
   return (
-    <div ref={rootRef} className="relative flex-shrink-0">
+    // Hidden, it takes no room (nor a gap) in the composer's row
+    <div
+      ref={rootRef}
+      className={cn("relative flex-shrink-0", hidden && "contents")}
+    >
       <button
         ref={triggerRef}
         type="button"
@@ -200,6 +231,7 @@ export function ComposerPlusMenu({
         }}
         className={cn(
           "flex h-[44px] w-[44px] touch-manipulation items-center justify-center rounded-full",
+          hidden && "hidden",
           isListening
             ? "animate-pulse bg-red-500 text-white"
             : open

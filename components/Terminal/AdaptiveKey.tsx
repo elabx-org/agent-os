@@ -97,16 +97,10 @@ export function AdaptiveKey({
         k.danger
           ? "border border-red-500/40 bg-red-500/15 text-red-400"
           : "bg-secondary text-secondary-foreground",
-        !flicking && "active:bg-primary active:text-primary-foreground",
-        k.caption && "adaptive-wide"
+        !flicking && "active:bg-primary active:text-primary-foreground"
       )}
     >
       <span>{k.label}</span>
-      {k.caption && (
-        <span className="text-muted-foreground text-xs font-normal">
-          {k.caption}
-        </span>
-      )}
       {k.flick && (
         <span
           aria-hidden="true"
