@@ -145,10 +145,21 @@ function record(dir, input) {
         state.pending_permission = null;
         state.notification = null;
         break;
-      case "PreToolUse":
+      case "PreToolUse": {
         state.busy = true;
         state.current_tool = tool;
+        // The same thread moving on to another tool: the request was
+        // answered (a denial runs no tool, so no PostToolUse clears it)
+        const pending = state.pending_permission;
+        if (
+          pending &&
+          pending.id !== tool?.id &&
+          (pending.agent_id ?? null) === (agentId ?? null)
+        ) {
+          state.pending_permission = null;
+        }
         break;
+      }
       case "PermissionRequest":
         state.pending_permission = tool;
         break;
@@ -169,7 +180,10 @@ function record(dir, input) {
           message: line.message ?? null,
           at: now,
         };
-        if (line.notification_type === "idle_prompt") state.busy = false;
+        if (line.notification_type === "idle_prompt") {
+          state.busy = false;
+          state.pending_permission = null;
+        }
         break;
       case "SubagentStart":
         state.busy = true;

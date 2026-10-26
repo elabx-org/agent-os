@@ -61,13 +61,13 @@ export function setupTouchScroll(config: TouchScrollConfig): () => void {
     const stepPx = () =>
       (term.element ? term.element.offsetHeight / term.rows : 16) * 0.5;
 
-    // SGR mouse wheel at 1;1, batched into one message: 65 up, 64 down
+    // SGR mouse wheel at 1;1, batched into one message: 64 wheel up, 65 wheel down
     // (positive steps: finger moving down, i.e. back through history)
     const sendWheel = (steps: number) => {
       const ws = wsRef.current;
       const count = Math.min(Math.abs(steps), MAX_STEPS_PER_FRAME);
       if (!ws || ws.readyState !== WebSocket.OPEN || count === 0) return false;
-      const event = steps > 0 ? "\x1b[<65;1;1M" : "\x1b[<64;1;1M";
+      const event = steps > 0 ? "\x1b[<64;1;1M" : "\x1b[<65;1;1M";
       try {
         ws.send(JSON.stringify({ type: "input", data: event.repeat(count) }));
         return true;

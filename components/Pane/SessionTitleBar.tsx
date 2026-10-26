@@ -210,7 +210,7 @@ export function SessionTitleBar({
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => peekTo(mode)}
                   className={cn(
-                    "relative rounded-md px-2 py-0.5 leading-4 after:absolute after:-inset-x-0.5 after:-inset-y-2 after:content-['']",
+                    "relative rounded-md px-2 py-0.5 leading-4 after:absolute after:-inset-x-0.5 after:-inset-y-3 after:content-['']",
                     peek === mode
                       ? "bg-accent text-foreground"
                       : "text-muted-foreground"

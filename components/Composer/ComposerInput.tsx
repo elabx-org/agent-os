@@ -58,8 +58,18 @@ export function ComposerInput({
     onSelect,
     onTap,
     setFocused,
+    picker,
+    listboxId,
+    selected,
   } = composer;
   const backdropRef = useRef<HTMLDivElement>(null);
+  // The "/" and "@" lists are driven from the box, which keeps focus: a
+  // combobox, so screen readers hear them open and the option in play.
+  // ComposerPopover shows history or a pill's preview over them.
+  const listShown =
+    !!picker &&
+    !composer.previewChip &&
+    !(composer.historyOpen && composer.cwd);
 
   useLayoutEffect(() => {
     const el = textareaRef.current;
@@ -83,7 +93,8 @@ export function ComposerInput({
       className={cn(
         "bg-secondary relative min-w-0 rounded-2xl",
         // Claude Code's bash pink, and memory's grey, on the left edge
-        mode === "bash" && "rounded-l-xl shadow-[inset_3px_0_0_#FD5DB1]",
+        mode === "bash" &&
+          "rounded-l-xl shadow-[inset_3px_0_0_#C2187A] dark:shadow-[inset_3px_0_0_#FD5DB1]",
         mode === "memory" && "rounded-l-xl shadow-[inset_3px_0_0_#8E96A2]",
         className
       )}
@@ -160,6 +171,13 @@ export function ComposerInput({
           onScroll?.(e);
         }}
         rows={1}
+        role="combobox"
+        aria-autocomplete="list"
+        aria-expanded={listShown}
+        aria-controls={listShown ? listboxId : undefined}
+        aria-activedescendant={
+          listShown ? `${listboxId}-${selected}` : undefined
+        }
         {...props}
         // Commands aren't prose
         spellCheck={mode === "bash" ? false : props.spellCheck}

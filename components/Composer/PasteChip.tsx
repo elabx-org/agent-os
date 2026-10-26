@@ -15,7 +15,7 @@ interface PasteChipProps {
 const PREVIEW_LINES = 6;
 
 const ACTION =
-  "bg-muted text-foreground active:bg-accent hover:bg-accent min-h-8 rounded-full px-3 text-xs";
+  "bg-muted text-foreground active:bg-accent hover:bg-accent min-h-8 rounded-full px-3 text-xs pointer-coarse:min-h-11";
 
 function size(text: string): string {
   const bytes = new TextEncoder().encode(text).length;
@@ -35,7 +35,11 @@ export function PasteChip({
       if (!rootRef.current?.contains(e.target as Node)) onClose();
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key !== "Escape") return;
+      // Closing the preview, not an Esc for Claude
+      e.preventDefault();
+      e.stopPropagation();
+      onClose();
     };
     document.addEventListener("pointerdown", onDown, true);
     document.addEventListener("keydown", onKey, true);

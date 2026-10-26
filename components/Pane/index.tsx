@@ -465,6 +465,7 @@ export const Pane = memo(function Pane({
                 <Terminal
                   ref={getTerminalRef(tab.id)}
                   draftId={tab.sessionId}
+                  active={viewMode === "terminal" && isActive}
                   agentType={
                     sessions.find((s) => s.id === tab.sessionId)?.agent_type
                   }
@@ -577,6 +578,7 @@ export const Pane = memo(function Pane({
                         <Terminal
                           ref={getTerminalRef(tab.id)}
                           draftId={tab.sessionId}
+                          active={viewMode === "terminal" && isActive}
                           agentType={
                             sessions.find((s) => s.id === tab.sessionId)
                               ?.agent_type

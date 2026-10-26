@@ -50,12 +50,14 @@ export function useClaudeCommands(
 }
 
 /** Group order in the picker: what the user wrote before what ships */
+// The mock's filtered order: the project's own, skills and plugins, built-in,
+// then yours
 const GROUP_ORDER: (keyof ClaudeCommandGroups)[] = [
   "project",
-  "user",
   "skills",
   "plugins",
   "builtin",
+  "user",
 ];
 
 /**

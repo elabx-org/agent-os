@@ -22,6 +22,8 @@ export interface ClaudeStatus {
   fast_mode: boolean | null;
   vim: { mode?: string } | null;
   session_name: string | null;
+  /** The first line the user's own status line command printed */
+  line: string | null;
 }
 
 export interface ClaudeTool {
@@ -263,7 +265,16 @@ function statusOf(raw: unknown): ClaudeStatus | null {
     fast_mode: typeof s.fast_mode === "boolean" ? s.fast_mode : null,
     vim: vim ? { mode: vim.mode as string | undefined } : null,
     session_name: typeof s.session_name === "string" ? s.session_name : null,
+    line: null,
   };
+}
+
+function readLine(file: string): string | null {
+  try {
+    return fs.readFileSync(file, "utf8").trim() || null;
+  } catch {
+    return null;
+  }
 }
 
 /** What the session's hooks and status line last recorded */
@@ -277,6 +288,7 @@ export function readClaudeState(sessionId: string): ClaudeState {
   const state = obj(stateFile?.data) ?? {};
   const status = obj(statusFile?.data);
   const notification = obj(state.notification);
+  const parsed = statusOf(status);
   const updated = Math.max(statusFile?.mtime ?? 0, stateFile?.mtime ?? 0);
   const claudeSessionId =
     (typeof status?.session_id === "string" && status.session_id) ||
@@ -284,7 +296,10 @@ export function readClaudeState(sessionId: string): ClaudeState {
     null;
   return {
     claudeSessionId,
-    status: statusOf(status),
+    status: parsed && {
+      ...parsed,
+      line: readLine(path.join(dir, "statusline.txt")),
+    },
     mode:
       typeof state.permission_mode === "string" ? state.permission_mode : null,
     busy: typeof state.busy === "boolean" ? state.busy : null,

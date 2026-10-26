@@ -1,17 +1,12 @@
 "use client";
 
-import {
-  useCallback,
-  useLayoutEffect,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
+import { useCallback, useRef, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { HistorySheet } from "./HistorySheet";
 import { PasteChip } from "./PasteChip";
 import { SuggestionPopover } from "./SuggestionPopover";
 import type { ComposerEngine } from "./useComposer";
+import { usePopoverPlacement } from "./usePopoverPlacement";
 
 /**
  * What floats over the composer: the history search, a pill's preview, or
@@ -52,6 +47,7 @@ export function ComposerPopover({ composer }: { composer: ComposerEngine }) {
   else if (composer.picker)
     panel = (
       <SuggestionPopover
+        id={composer.listboxId}
         kind={composer.picker}
         items={composer.suggestions}
         selected={composer.selected}
@@ -60,24 +56,21 @@ export function ComposerPopover({ composer }: { composer: ComposerEngine }) {
       />
     );
 
-  // Above the composer, or below it when it sits high on the screen (the
-  // terminal's keybar can be at the top)
   const anchorRef = useRef<HTMLDivElement>(null);
-  const [below, setBelow] = useState(false);
-  const open = panel !== null;
-  // Measured each render while open: the composer moves with the keyboard
-  useLayoutEffect(() => {
-    const box = anchorRef.current?.parentElement?.getBoundingClientRect();
-    if (open && box) setBelow(box.top < window.innerHeight - box.bottom);
-  });
+  const { below, maxHeight } = usePopoverPlacement(anchorRef, panel !== null);
+  // The panels cap themselves at 320px; only a tighter side (the deck, a
+  // landscape keyboard) scrolls the whole panel and clips its shadow
+  const tight = maxHeight !== undefined && maxHeight < 360;
 
   return (
     <div
       ref={anchorRef}
       className={cn(
         "absolute inset-x-0 z-50",
-        below ? "top-full mt-2" : "bottom-full mb-2"
+        below ? "top-full mt-2" : "bottom-full mb-2",
+        tight && "overflow-y-auto overscroll-contain"
       )}
+      style={tight ? { maxHeight } : undefined}
     >
       {panel}
     </div>

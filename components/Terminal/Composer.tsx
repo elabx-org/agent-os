@@ -42,6 +42,8 @@ interface ComposerProps {
   getQueued?: () => string[];
   onEditQueued?: () => void;
   onCancelQueued?: () => void;
+  /** Hidden behind another tab or view: Claude's state isn't read */
+  active?: boolean;
 }
 
 /**
@@ -63,6 +65,7 @@ export function Composer({
   getQueued,
   onEditQueued,
   onCancelQueued,
+  active = true,
 }: ComposerProps) {
   const { data } = useSessionsQuery();
   const session = sessionId
@@ -80,6 +83,7 @@ export function Composer({
   const live = useClaudeLive({
     sessionId,
     claude: composer.claude,
+    active,
     readScreen,
     sendKey: onClaudeKey,
   });

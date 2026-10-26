@@ -3,7 +3,8 @@
  * Agent-OS: Claude Code status line wrapper. Saves the status line JSON
  * (model, context, cost, rate limits) to <state dir>/status.json for the web
  * UI, then runs the user's own status line command, if they have one, with
- * the same input and prints what it prints.
+ * the same input and prints what it prints. Its first line is saved too
+ * (statusline.txt), so the UI shows what the user's footer shows.
  *
  * Usage: agentos-statusline.mjs <state dir>, status JSON on stdin.
  */
@@ -52,6 +53,27 @@ function userCommand(data) {
   return null;
 }
 
+// Colours, cursor moves and OSC links (OSC 8) off: the UI shows plain text
+const ANSI =
+  /\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b[@-_]/g;
+
+/** The first non-empty line, plain, or removes the file when there's none */
+function saveLine(dir, text) {
+  const file = path.join(dir, "statusline.txt");
+  const line = (text || "")
+    .replace(ANSI, "")
+    .split("\n")
+    .map((l) => l.replace(/[\x00-\x1f\x7f]/g, "").trim())
+    .find(Boolean);
+  if (!line) {
+    fs.rmSync(file, { force: true });
+    return;
+  }
+  const tmp = `${file}.${process.pid}.tmp`;
+  fs.writeFileSync(tmp, line.slice(0, 500));
+  fs.renameSync(tmp, file);
+}
+
 let raw = "";
 let data = null;
 try {
@@ -71,6 +93,7 @@ try {
 
 try {
   const command = userCommand(data);
+  let output = "";
   if (command) {
     const result = spawnSync(command, {
       input: raw,
@@ -79,7 +102,16 @@ try {
       timeout: 10000,
       stdio: ["pipe", "pipe", "ignore"],
     });
-    if (result.stdout) process.stdout.write(result.stdout);
+    output = result.stdout || "";
+    if (output) process.stdout.write(output);
+  }
+  const dir = process.argv[2];
+  if (dir) {
+    try {
+      saveLine(dir, output);
+    } catch {
+      // The UI falls back to model · context · cost
+    }
   }
 } catch {
   // No line rather than an error in Claude's footer

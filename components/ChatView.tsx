@@ -707,8 +707,13 @@ export function ChatView({
     claude: composer.claude,
     active,
   });
-  // Its hook knows of a permission request before the screen poll does
-  const pending = live.state.pendingPermission;
+  // Its hook knows of a permission request before the screen poll does. A
+  // denied request leaves no hook event behind, so it only counts while the
+  // session isn't idle.
+  const pending =
+    status === "waiting" || status === "running"
+      ? live.state.pendingPermission
+      : null;
   const needsYou = status === "waiting" || !!pending;
   const { data: prompt, isLoading: promptLoading } = useSessionPrompt(
     session.id,

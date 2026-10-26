@@ -8,7 +8,13 @@ import {
   type KeyboardEvent,
 } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Pencil, ShieldQuestion, Square, X } from "lucide-react";
+import {
+  Pencil,
+  ShieldQuestion,
+  Square,
+  SquareTerminal,
+  X,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useClaudeState } from "@/hooks/useClaudeState";
 import { useSharedPoll } from "@/hooks/useSharedPoll";
@@ -17,6 +23,7 @@ import type { ClaudeState, ClaudeTool } from "@/lib/claude-state";
 import type { ChatItem } from "@/lib/claude-transcript";
 import type { HistoryEntry } from "@/hooks/useComposerData";
 import { GROUP_HEADING, POPOVER } from "./SuggestionPopover";
+import { usePopoverPlacement } from "./usePopoverPlacement";
 
 /** The keys that change Claude's state, passed straight through */
 export type ClaudeKey = "shift-tab" | "esc" | "esc-esc" | "up";
@@ -205,7 +212,8 @@ const PAUSE = (
   </svg>
 );
 
-// Claude Code's own labels and colours; default mode shows nothing
+// Claude Code's own labels and colours (its dark terminal's, and darker ones
+// that stay legible in the light theme); default mode shows nothing
 const MODE_LABEL: Record<
   string,
   { icon: React.ReactNode; label: string; className: string }
@@ -213,22 +221,26 @@ const MODE_LABEL: Record<
   acceptEdits: {
     icon: G2,
     label: "accept edits on",
-    className: "bg-[#AF87FF]/12 text-[#AF87FF]",
+    className:
+      "bg-[#7A3FD1]/10 text-[#7A3FD1] dark:bg-[#AF87FF]/12 dark:text-[#AF87FF]",
   },
   plan: {
     icon: PAUSE,
     label: "plan mode on",
-    className: "bg-[#48968C]/14 text-[#48968C]",
+    className:
+      "bg-[#2B6E66]/10 text-[#2B6E66] dark:bg-[#48968C]/14 dark:text-[#48968C]",
   },
   auto: {
     icon: G2,
     label: "auto mode on",
-    className: "bg-[#E0A54B]/12 text-[#E0A54B]",
+    className:
+      "bg-[#8A5A00]/10 text-[#8A5A00] dark:bg-[#E0A54B]/12 dark:text-[#E0A54B]",
   },
   bypassPermissions: {
     icon: G2,
     label: "bypass permissions on",
-    className: "bg-[#FF6B80]/12 text-[#FF6B80]",
+    className:
+      "bg-[#B4233A]/10 text-[#B4233A] dark:bg-[#FF6B80]/12 dark:text-[#FF6B80]",
   },
   dontAsk: {
     icon: G2,
@@ -237,10 +249,14 @@ const MODE_LABEL: Record<
   },
 };
 
-/** Model · context · cost, from the status line Claude last ran */
+/**
+ * What the user's own status line prints, or model · context · cost from the
+ * JSON Claude last gave it when they have none
+ */
 function statusText(state: ClaudeState): string {
   const s = state.status;
   if (!s) return "";
+  if (s.line) return s.line;
   const used = s.context_window?.used_percentage;
   const cost = s.cost?.total_cost_usd;
   return [
@@ -254,8 +270,8 @@ function statusText(state: ClaudeState): string {
 
 const ROW =
   "flex min-w-0 items-center gap-1.5 font-mono text-[10.5px] leading-4 whitespace-nowrap text-muted-foreground/80";
-// Small to look at, the size of a finger to press
-const HIT = "relative after:absolute after:-inset-x-1 after:-inset-y-2.5";
+// Small to look at, the size of a finger to press (16px + 28 = 44)
+const HIT = "relative after:absolute after:-inset-x-1 after:-inset-y-3.5";
 
 /**
  * Under the box, as under Claude Code's: the permission mode (tap cycles
@@ -303,7 +319,7 @@ export function ClaudeStateBar({
           {modePill}
           {spinner && (
             <>
-              <span className="min-w-0 truncate text-[#D77757]">
+              <span className="min-w-0 truncate text-[#B5532F] dark:text-[#D77757]">
                 ✻ {spinner.verb}…{" "}
                 <span className="text-muted-foreground/80">
                   {spinner.elapsed ? `${spinner.elapsed} · ` : ""}esc to
@@ -357,7 +373,7 @@ export function QueuedMessages({
   const texts = mine ? known : screen.queued;
   if (!texts.length) return null;
   const action =
-    "text-muted-foreground active:bg-accent hover:bg-accent flex h-8 w-8 shrink-0 items-center justify-center rounded-full";
+    "text-muted-foreground active:bg-accent hover:bg-accent relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full after:absolute after:-inset-1.5";
   return (
     <div
       className="border-border text-muted-foreground mb-1.5 ml-12 flex items-center gap-2 rounded-[14px] border border-dashed py-1 pr-1 pl-3 text-[12.5px]"
@@ -439,6 +455,9 @@ async function fetchPrompts(
     .reverse();
 }
 
+const RESTORE =
+  "inline-flex min-h-7 items-center rounded-full px-3 text-xs select-none";
+
 /**
  * Esc Esc: this conversation's prompts, newest first. Choosing one opens
  * Claude Code's own rewind list on it; Claude then asks what to restore.
@@ -484,6 +503,12 @@ export function RewindSheet({
     };
   }, [rewindOpen, setRewindOpen]);
 
+  // Opens away from the fold, as the composer's other popovers
+  const { below, maxHeight } = usePopoverPlacement(
+    rootRef,
+    rewindOpen && live.claude
+  );
+
   if (!rewindOpen || !live.claude) return null;
 
   // Claude's list opens on "(current)"; each Up is one prompt further back
@@ -497,7 +522,12 @@ export function RewindSheet({
   return (
     <div
       ref={rootRef}
-      className={cn(POPOVER, "absolute inset-x-0 bottom-full z-50 mb-2")}
+      className={cn(
+        POPOVER,
+        "absolute inset-x-0 z-50 overflow-y-auto overscroll-contain",
+        below ? "top-full mt-2" : "bottom-full mb-2"
+      )}
+      style={{ maxHeight }}
     >
       <div className={GROUP_HEADING}>Rewind · Esc Esc · jump back to</div>
       <div
@@ -513,7 +543,7 @@ export function RewindSheet({
             aria-selected={false}
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => choose(i)}
-            className="text-muted-foreground active:bg-muted hover:bg-muted flex min-h-9 w-full items-baseline gap-2 rounded-[10px] px-2.5 py-1.5 text-left text-[13px]"
+            className="text-muted-foreground active:bg-muted hover:bg-muted flex min-h-9 w-full items-baseline gap-2 rounded-[10px] px-2.5 py-1.5 text-left text-[13px] pointer-coarse:min-h-11 pointer-coarse:py-3"
           >
             <span className="min-w-0 flex-1 truncate">
               {item.text.split("\n")[0]}
@@ -529,8 +559,19 @@ export function RewindSheet({
           </div>
         )}
       </div>
-      <div className={cn(GROUP_HEADING, "tracking-normal normal-case")}>
-        Claude asks what to restore next
+      {/* The mock's choice, shown but not pressable: Claude's restore
+          prompt numbers its options differently by what changed, so it's
+          answered there */}
+      <div className="flex items-center gap-1.5 px-2.5 pt-2 pb-1">
+        <span className={cn(RESTORE, "bg-foreground text-background")}>
+          Conversation
+        </span>
+        <span className={cn(RESTORE, "bg-muted text-muted-foreground")}>
+          Code and conversation
+        </span>
+        <span className="text-muted-foreground/70 ml-auto text-[10px]">
+          Claude asks which
+        </span>
       </div>
     </div>
   );
@@ -564,7 +605,8 @@ export function PendingPermission({
 }) {
   const summary = toolSummary(tool);
   return (
-    <div className="border-border bg-secondary/40 flex items-center gap-3 rounded-2xl border p-3">
+    // Needs-you amber, as the inbox's card: the accent stays for Send
+    <div className="flex items-center gap-3 rounded-2xl border border-amber-400/30 bg-amber-400/[0.06] p-3">
       <ShieldQuestion className="h-5 w-5 shrink-0 text-amber-400" />
       <div className="min-w-0 flex-1">
         <p className="text-sm font-medium">
@@ -579,9 +621,10 @@ export function PendingPermission({
       <button
         type="button"
         onClick={onOpenTerminal}
-        className="bg-primary text-primary-foreground h-9 shrink-0 rounded-full px-3 text-xs font-semibold active:opacity-80"
+        className="text-muted-foreground active:bg-accent hover:bg-accent flex h-11 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium"
       >
-        Answer
+        <SquareTerminal className="h-4 w-4" />
+        Answer in terminal
       </button>
     </div>
   );

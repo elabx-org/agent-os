@@ -90,6 +90,8 @@ interface TerminalProps {
   draftId?: string | null;
   /** What runs in that session, from the pane's session list */
   agentType?: string;
+  /** Shown (its tab and the terminal view); a hidden one stops polling */
+  active?: boolean;
 }
 
 export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
@@ -102,6 +104,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
       showImageButton = true,
       draftId,
       agentType: sessionAgentType,
+      active = true,
     },
     ref
   ) {
@@ -986,6 +989,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
                   onPhoto={() => setShowImagePicker(true)}
                   onSelectText={() => setSelectMode(true)}
                   readScreen={readScreen}
+                  active={active}
                   onClaudeKey={sendClaudeKey}
                   getQueued={getQueued}
                   onEditQueued={editQueued}

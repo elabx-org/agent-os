@@ -12,6 +12,8 @@ export const GROUP_HEADING =
   "text-muted-foreground/80 px-2.5 pt-1.5 pb-0.5 text-[10px] font-semibold tracking-[0.08em] uppercase";
 
 interface SuggestionPopoverProps {
+  /** The composer box points at it (aria-controls) and its options */
+  id: string;
   kind: "slash" | "at";
   items: Suggestion[];
   selected: number;
@@ -21,6 +23,7 @@ interface SuggestionPopoverProps {
 
 /** Claude Code's "/" commands or "@" files, filtered as you type */
 export function SuggestionPopover({
+  id,
   kind,
   items,
   selected,
@@ -38,6 +41,7 @@ export function SuggestionPopover({
     <div className={POPOVER}>
       <div
         ref={listRef}
+        id={id}
         role="listbox"
         aria-label={kind === "slash" ? "Commands" : "Files"}
         className="max-h-[min(45vh,320px)] overflow-y-auto overscroll-contain"
@@ -47,15 +51,17 @@ export function SuggestionPopover({
             {item.group && <div className={GROUP_HEADING}>{item.group}</div>}
             <button
               type="button"
+              id={`${id}-${i}`}
               role="option"
               aria-selected={i === selected}
+              tabIndex={-1}
               data-index={i}
               // Keep the keyboard up: focus stays in the box
               onMouseDown={(e) => e.preventDefault()}
               onMouseEnter={() => onHover(i)}
               onClick={() => onChoose(item)}
               className={cn(
-                "flex min-h-9 w-full items-baseline gap-2 rounded-[10px] px-2.5 py-1.5 text-left",
+                "flex min-h-9 w-full items-baseline gap-2 rounded-[10px] px-2.5 py-1.5 text-left pointer-coarse:min-h-11 pointer-coarse:py-3",
                 i === selected ? "bg-muted" : "active:bg-muted"
               )}
             >

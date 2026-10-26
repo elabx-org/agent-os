@@ -3,6 +3,7 @@
 import {
   useCallback,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -97,14 +98,16 @@ const SOURCE: Record<ClaudeCommand["source"], string> = {
   project: ".claude",
 };
 
-const GROUPS: [keyof ReturnType<typeof useClaudeCommands>["groups"], string][] =
-  [
-    ["project", "Project"],
-    ["user", "Your commands"],
-    ["skills", "Skills"],
-    ["plugins", "Plugins"],
-    ["builtin", "Built-in"],
-  ];
+type CommandGroup = keyof ReturnType<typeof useClaudeCommands>["groups"];
+
+// Typed nothing yet: the project's own on top, then the mock's built-in,
+// skills and plugins, your commands
+const GROUPS: [CommandGroup[], string][] = [
+  [["project"], "Project"],
+  [["builtin"], "Built-in"],
+  [["skills", "plugins"], "Skills and plugins"],
+  [["user"], "Your commands"],
+];
 
 const FILE_GROUPS: Record<FileSuggestion["kind"], string> = {
   changed: "Changed",
@@ -240,6 +243,9 @@ export function useComposer({
     pickerToken?.kind === "at"
   );
 
+  // The picker's list, for the box's combobox semantics
+  const listboxId = useId();
+
   const suggestions = useMemo<Suggestion[]>(() => {
     if (!pickerToken) return [];
     if (pickerToken.kind === "slash") {
@@ -253,14 +259,16 @@ export function useComposer({
       });
       // Typed nothing yet: grouped by where they come from
       if (!pickerToken.query)
-        return GROUPS.flatMap(([g, title]) =>
-          groups[g].map((c, i) => toItem(c, i === 0 ? title : undefined))
+        return GROUPS.flatMap(([keys, title]) =>
+          keys
+            .flatMap((g) => groups[g])
+            .map((c, i) => toItem(c, i === 0 ? title : undefined))
         ).slice(0, MAX_SUGGESTIONS * 2);
       // A name that starts with what's typed beats a plugin's or skill's
       // second half ("co" → compact before commit-commands:commit), the
       // command part matching too beats a plugin whose name alone does
-      // (commit before commit-commands:clean_gone), and shorter commands
-      // come first so "/co" isn't buried under long skill names
+      // (commit before commit-commands:clean_gone); otherwise the groups'
+      // order, so "/co" leads with code-review and commit as in the mock
       const q = pickerToken.query.toLowerCase();
       const head = (c: ClaudeCommand) =>
         c.name.toLowerCase().startsWith(q) ? 0 : 1;
@@ -270,11 +278,7 @@ export function useComposer({
       return filterCommands(groups, pickerToken.query)
         .map((c, i) => ({ c, i }))
         .sort(
-          (a, b) =>
-            head(a.c) - head(b.c) ||
-            own(a.c) - own(b.c) ||
-            command(a.c).length - command(b.c).length ||
-            a.i - b.i
+          (a, b) => head(a.c) - head(b.c) || own(a.c) - own(b.c) || a.i - b.i
         )
         .map(({ c }) => c)
         .slice(0, MAX_SUGGESTIONS)
@@ -665,6 +669,7 @@ export function useComposer({
     uploading,
     // pickers
     picker: pickerToken && suggestions.length > 0 ? pickerToken.kind : null,
+    listboxId,
     suggestions,
     selected,
     setSelected,

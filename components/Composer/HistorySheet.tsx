@@ -117,7 +117,7 @@ export function HistorySheet({ cwd, onChoose, onClose }: HistorySheetProps) {
             onMouseEnter={() => setSelected(i)}
             onClick={() => onChoose(entry.text)}
             className={cn(
-              "text-muted-foreground flex min-h-9 w-full items-baseline gap-2 rounded-[10px] px-2.5 py-1.5 text-left text-[13px]",
+              "text-muted-foreground flex min-h-9 w-full items-baseline gap-2 rounded-[10px] px-2.5 py-1.5 text-left text-[13px] pointer-coarse:min-h-11 pointer-coarse:py-3",
               i === selected ? "bg-muted" : "active:bg-muted"
             )}
           >

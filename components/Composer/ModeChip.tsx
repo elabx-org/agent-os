@@ -7,6 +7,8 @@ import type { ComposerEngine } from "./useComposer";
 
 const CHIP =
   "bg-secondary text-muted-foreground inline-flex h-6 max-w-full items-center gap-1.5 rounded-full px-2.5 text-[11px] whitespace-nowrap";
+// The pressable ones take a 44px touch (24px + 20)
+const CHIP_BUTTON = cn(CHIP, "relative after:absolute after:-inset-y-2.5");
 
 interface ComposerChipsProps {
   composer: ComposerEngine;
@@ -39,7 +41,12 @@ export function ComposerChips({
       onMouseDown={(e) => e.preventDefault()}
     >
       {mode === "bash" && (
-        <span className={cn(CHIP, "bg-[#FD5DB1]/12 text-[#FD5DB1]")}>
+        <span
+          className={cn(
+            CHIP,
+            "bg-[#C2187A]/10 text-[#C2187A] dark:bg-[#FD5DB1]/12 dark:text-[#FD5DB1]"
+          )}
+        >
           <b className="font-semibold">!</b> Bash · runs in the shell, output
           goes to Claude
         </span>
@@ -62,7 +69,7 @@ export function ComposerChips({
         </span>
       ))}
       {recalled >= 0 && (
-        <button type="button" onClick={openHistory} className={CHIP}>
+        <button type="button" onClick={openHistory} className={CHIP_BUTTON}>
           <History className="h-3 w-3" />
           <b className="text-foreground font-semibold">↑</b> {recalled + 1} of{" "}
           {historyCount} · this project
@@ -70,7 +77,7 @@ export function ComposerChips({
         </button>
       )}
       {offerHistory && recalled < 0 && (
-        <button type="button" onClick={openHistory} className={CHIP}>
+        <button type="button" onClick={openHistory} className={CHIP_BUTTON}>
           <History className="h-3 w-3" />
           Earlier prompts
         </button>
