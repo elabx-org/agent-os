@@ -359,7 +359,7 @@ function PromptAnswer({
   if (prompt === null)
     return (
       <p className="text-muted-foreground text-[12.5px]">
-        Needs a typed reply.{" "}
+        Claude finished its turn.{" "}
         <button type="button" onClick={onMore} className="underline">
           Open the chat
         </button>

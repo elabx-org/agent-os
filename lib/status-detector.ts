@@ -36,6 +36,9 @@ const BUSY_INDICATORS = [
   "· esc to interrupt",
 ];
 
+/** "Waiting for 1 dynamic workflow to finish", "… 2 background agents …" */
+const BACKGROUND_WAIT = /waiting for \d+ [\w -]{1,40} to finish/i;
+
 const SPINNER_CHARS = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
 const WHIMSICAL_WORDS = [
@@ -171,6 +174,10 @@ function checkBusyIndicators(content: string): boolean {
 
   // Check text indicators in recent lines
   if (BUSY_INDICATORS.some((ind) => recentContent.includes(ind))) return true;
+
+  // Its turn ended but it waits on its own background work (a workflow,
+  // agents, a shell) and carries on when that finishes
+  if (BACKGROUND_WAIT.test(lines.slice(-16).join("\n"))) return true;
 
   // Check whimsical words + "tokens" pattern in recent lines
   if (

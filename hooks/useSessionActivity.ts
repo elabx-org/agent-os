@@ -206,7 +206,8 @@ export function useSessionActivity(
   let now: SessionActivity["now"];
   if (state === "needs") {
     now = {
-      label: "Waiting for your answer",
+      // No question on screen: its turn ended and the next message is yours
+      label: prompt === null ? "Your turn" : "Waiting for your answer",
       command: prompt?.detail?.split("\n")[0]?.trim() || undefined,
       startedAt: since,
     };
