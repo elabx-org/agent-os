@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { X, ChevronUp, ChevronDown, RotateCcw } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
+import { cn } from "@/lib/utils";
 import {
   getComposerEnabled,
   getTypingAssist,
@@ -38,10 +39,22 @@ export function ToolbarSettings({
     row2: [...preferences.row2],
     hidden: [...preferences.hidden],
   }));
+  // Stays mounted: pick up the saved preferences (loaded after mount) on open
+  useEffect(() => {
+    if (open)
+      setPrefs({
+        ...preferences,
+        row1: [...preferences.row1],
+        row2: [...preferences.row2],
+        hidden: [...preferences.hidden],
+      });
+  }, [open, preferences]);
   const [typingAssist, setTypingAssistState] = useState(getTypingAssist);
   const [composer, setComposer] = useState(getComposerEnabled);
 
-  const apply = (next: ToolbarPreferences) => {
+  // Changing a key by hand leaves the context rows for a custom row
+  const apply = (next: ToolbarPreferences, preset = false) => {
+    if (!preset) next = { ...next, mode: "custom" };
     setPrefs(next);
     onUpdate(next);
   };
@@ -52,7 +65,7 @@ export function ToolbarSettings({
       next.layout = "double";
       // Move nav+shell buttons to row2 by default when switching to double
       if (next.row2.length === 0) {
-        const moveToRow2 = new Set<ToolbarButtonId>(["arrow-left", "arrow-right", "arrow-up", "arrow-down", "char-tilde", "char-slash", "char-pipe", "char-gt"]);
+        const moveToRow2 = new Set<ToolbarButtonId>(["arrow-left", "arrow-right", "arrow-up", "arrow-down", "char-tilde", "char-slash", "char-pipe", "char-gt", "char-at"]);
         next.row2 = next.row1.filter((id) => moveToRow2.has(id));
         next.row1 = next.row1.filter((id) => !moveToRow2.has(id));
       }
@@ -67,12 +80,15 @@ export function ToolbarSettings({
 
   const applyPreset = (id: PresetId) => {
     const preset = PRESETS[id].get();
-    apply({
-      ...preset,
-      row1: [...preset.row1],
-      row2: [...preset.row2],
-      hidden: [...preset.hidden],
-    });
+    apply(
+      {
+        ...preset,
+        row1: [...preset.row1],
+        row2: [...preset.row2],
+        hidden: [...preset.hidden],
+      },
+      true
+    );
   };
 
   const toggleButton = (id: ToolbarButtonId) => {
@@ -229,18 +245,34 @@ export function ToolbarSettings({
             />
           </div>
 
-          {/* Presets */}
-          <div className="flex gap-2">
+          {/* Presets: Context (D) first, the default */}
+          <div className="flex flex-wrap gap-2">
             {(Object.keys(PRESETS) as PresetId[]).map((id) => (
               <button
                 key={id}
                 onClick={() => applyPreset(id)}
-                className="bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground rounded-md px-3 py-1.5 text-xs font-medium"
+                title={PRESETS[id].description}
+                className={cn(
+                  "active:bg-primary active:text-primary-foreground rounded-md px-3 py-1.5 text-xs font-medium",
+                  id === "context" && prefs.mode === "context"
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-secondary text-secondary-foreground"
+                )}
               >
                 {PRESETS[id].label}
+                {id === "context" && (
+                  <span className="ml-1 opacity-70">· default</span>
+                )}
               </button>
             ))}
           </div>
+          {prefs.mode === "context" && (
+            <p className="text-muted-foreground text-xs">
+              {PRESETS.context.description}: Claude Code or the shell, keyboard
+              up or down. Hold ^C for ^D ^Z ^L and this menu, hold / for more
+              characters. Changing a key below makes a custom row.
+            </p>
+          )}
         </div>
 
         {/* Button list */}
@@ -316,7 +348,7 @@ export function ToolbarSettings({
         {/* Footer */}
         <div className="border-border border-t px-4 py-3">
           <button
-            onClick={() => applyPreset("standard")}
+            onClick={() => applyPreset("context")}
             className="text-muted-foreground flex w-full items-center justify-center gap-1.5 text-xs"
           >
             <RotateCcw className="h-3.5 w-3.5" />

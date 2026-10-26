@@ -27,6 +27,8 @@ import { cn } from "@/lib/utils";
 import { SearchBar } from "./SearchBar";
 import { ScrollToBottomButton } from "./ScrollToBottomButton";
 import { TerminalToolbar } from "./TerminalToolbar";
+import type { KeysContext } from "./toolbar-config";
+import { useSessionsQuery } from "@/data/sessions/queries";
 import { KeybarToggleButton } from "./KeybarToggleButton";
 import { Composer } from "./Composer";
 import { useSessionDraft } from "@/hooks/useSessionDraft";
@@ -309,6 +311,29 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
     // Laptop pose while typing: the composer is the screen's last line, above
     // the fold, and the key rows fill the deck between the fold and the keyboard
     const laptopKeys = !!deck && nativeKeyboard;
+
+    // The key row follows what runs here: Claude Code or a shell (a tab
+    // with no session, a shell session, the other agents' CLIs)
+    const { data: sessionsData } = useSessionsQuery();
+    const agentType = draftId
+      ? (sessionsData?.sessions.find((s) => s.id === draftId)?.agent_type ??
+        "claude")
+      : "shell";
+    const keysContext: KeysContext =
+      agentType === "claude" ? "claude" : "shell";
+    const keyboardUp = keyboard.height > 0 || nativeKeyboard;
+    // The app's keyboard bar shows the same row; told whenever this
+    // terminal takes focus and when the row changes while it has it
+    const nativeKeys =
+      keyboardUp && keysContext === "claude" ? "claude-up" : keysContext;
+    useEffect(() => {
+      const el = containerRef.current;
+      if (!el || !isNative()) return;
+      const post = () => postToNative({ type: "keys", context: nativeKeys });
+      if (el.contains(document.activeElement)) post();
+      el.addEventListener("focusin", post);
+      return () => el.removeEventListener("focusin", post);
+    }, [nativeKeys]);
 
     const toggleToolbar = () => {
       const next = !toolbarVisible;
@@ -894,6 +919,8 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
                 onSelectModeChange={setSelectMode}
                 visible={toolbarVisible && (!nativeKeyboard || laptopKeys)}
                 keepRows={laptopKeys}
+                context={keysContext}
+                keyboardUp={keyboardUp}
               />
             </div>
             {deck && !nativeKeyboard && keyboard.height === 0 && (

@@ -30,7 +30,12 @@ import { cn } from "@/lib/utils";
 import { Markdown } from "@/components/Markdown";
 import { InboxItem } from "@/components/Inbox";
 import { mobileNavStore } from "@/stores/mobileNav";
-import { isTextKey, onNativeEvent } from "@/lib/native-bridge";
+import {
+  isNative,
+  isTextKey,
+  onNativeEvent,
+  postToNative,
+} from "@/lib/native-bridge";
 import { useSessionDraft } from "@/hooks/useSessionDraft";
 import { useFoldDeck } from "@/hooks/useFoldDeck";
 import { useSubagents } from "@/hooks/useSubagents";
@@ -688,7 +693,11 @@ export function ChatView({ session, active, onOpenTerminal }: ChatViewProps) {
               ref={inputRef}
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
-              onFocus={() => setComposerFocused(true)}
+              onFocus={() => {
+                setComposerFocused(true);
+                // The app's keyboard bar shows no terminal keys in chat
+                if (isNative()) postToNative({ type: "keys", context: "chat" });
+              }}
               onBlur={() => setComposerFocused(false)}
               onKeyDown={(e) => {
                 // Return sends, Shift+Return adds a line

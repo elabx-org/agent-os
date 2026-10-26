@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useRef,
   useState,
   useMemo,
 } from "react";
@@ -23,13 +24,17 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
+import { useLongPress } from "@/hooks/useLongPress";
 import {
+  type KeysContext,
   type ToolbarButtonId,
   SPECIAL_KEYS,
+  contextRow,
   getButtonDef,
   useToolbarPreferences,
 } from "./toolbar-config";
 import { ToolbarSettings } from "./ToolbarSettings";
+import { KeyLongPressMenu, type MenuKey } from "./KeyLongPressMenu";
 
 interface TerminalToolbarProps {
   onKeyPress: (key: string) => void;
@@ -42,6 +47,10 @@ interface TerminalToolbarProps {
   onLayoutChange?: (layout: "single" | "double") => void;
   /** Rows fill a deck of their own (laptop pose): keep both, however short the screen */
   keepRows?: boolean;
+  /** What the terminal runs, for the context row */
+  context?: KeysContext;
+  /** The on-screen keyboard is up (Claude Code's context row changes) */
+  keyboardUp?: boolean;
 }
 
 interface Snippet {
@@ -448,49 +457,21 @@ function SnippetsButton({ onOpen }: { onOpen: () => void }) {
   );
 }
 
-function ShiftButton({
-  active,
-  onToggle,
-}: {
-  active: boolean;
-  onToggle: () => void;
-}) {
+// Tap: return. Hold: a new line without sending (Claude Code's ⇧↵)
+function EnterButton({ onPress }: { onPress: (key: string) => void }) {
+  const ref = useRef<HTMLButtonElement>(null);
+  useLongPress(ref, () => onPress("\n"));
   return (
     <button
+      ref={ref}
       type="button"
       onMouseDown={(e) => e.preventDefault()}
       onClick={(e) => {
         e.stopPropagation();
-        onToggle();
-      }}
-      className={cn(
-        "flex h-[40px] min-w-[40px] flex-shrink-0 items-center justify-center rounded-xl px-3 text-[13px] font-medium",
-        active
-          ? "bg-primary text-primary-foreground"
-          : "bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground"
-      )}
-    >
-      {"\u21E7"}
-    </button>
-  );
-}
-
-function EnterButton({
-  shiftActive,
-  onPress,
-}: {
-  shiftActive: boolean;
-  onPress: (key: string) => void;
-}) {
-  return (
-    <button
-      type="button"
-      onMouseDown={(e) => e.preventDefault()}
-      onClick={(e) => {
-        e.stopPropagation();
-        onPress(shiftActive ? "\n" : "\r");
+        onPress("\r");
       }}
       className="bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground flex h-[40px] min-w-[40px] flex-shrink-0 items-center justify-center rounded-xl px-3 text-[13px] font-medium"
+      title="Tap: return | Hold: new line"
     >
       {"\u21B5"}
     </button>
@@ -661,11 +642,12 @@ export function TerminalToolbar({
   visible = true,
   onLayoutChange,
   keepRows = false,
+  context = "claude",
+  keyboardUp = false,
 }: TerminalToolbarProps) {
   const [showPasteModal, setShowPasteModal] = useState(false);
   const [showSnippetsModal, setShowSnippetsModal] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const [shiftActive, setShiftActive] = useState(false);
   const [copyFeedback, setCopyFeedback] = useState(false);
   const { preferences, updatePreferences: persistPreferences } =
     useToolbarPreferences();
@@ -721,10 +703,17 @@ export function TerminalToolbar({
     [persistPreferences, onLayoutChange]
   );
 
+  // The context preset: one row chosen by what's running, never two
+  const contextMode = preferences.mode === "context";
+  const sourceRow1 = contextMode
+    ? contextRow(context, keyboardUp)
+    : preferences.row1;
+  const sourceRow2 = contextMode ? NO_KEYS : preferences.row2;
+
   // Resolve visible buttons for each row, filtering out conditional buttons
   const resolvedRow1 = useMemo(
     () =>
-      preferences.row1.filter((id) => {
+      sourceRow1.filter((id) => {
         const def = getButtonDef(id);
         if (!def) return false;
         if (def.conditional === "mic" && !isMicSupported) return false;
@@ -733,12 +722,12 @@ export function TerminalToolbar({
           return false;
         return true;
       }),
-    [preferences.row1, isMicSupported, onImagePicker, onSelectModeChange]
+    [sourceRow1, isMicSupported, onImagePicker, onSelectModeChange]
   );
 
   const resolvedRow2 = useMemo(
     () =>
-      preferences.row2.filter((id) => {
+      sourceRow2.filter((id) => {
         const def = getButtonDef(id);
         if (!def) return false;
         if (def.conditional === "mic" && !isMicSupported) return false;
@@ -747,25 +736,22 @@ export function TerminalToolbar({
           return false;
         return true;
       }),
-    [preferences.row2, isMicSupported, onImagePicker, onSelectModeChange]
+    [sourceRow2, isMicSupported, onImagePicker, onSelectModeChange]
   );
 
   // Short landscape screens (iPhone Duo inner display, phones on their side)
   // can't spare height for a second row, so it joins the first one, which scrolls
   const shortLandscape = useShortLandscape();
+  const twoRowLayout = preferences.layout === "double" && !contextMode;
   const mergeRows =
-    preferences.layout === "double" &&
-    resolvedRow2.length > 0 &&
-    shortLandscape &&
-    !keepRows;
+    twoRowLayout && resolvedRow2.length > 0 && shortLandscape && !keepRows;
   // A narrow screen (the closed phone) can't fit a long first row: its last
   // keys move to the start of the second row, so none hide past the edge.
   // A row that still doesn't fit scrolls, with a fade at the end as a hint.
   const [row1El, row1Ref] = useState<HTMLDivElement | null>(null);
   const [row2El, row2Ref] = useState<HTMLDivElement | null>(null);
   const rowWidth = useRowWidth(row1El);
-  const twoRows =
-    preferences.layout === "double" && resolvedRow2.length > 0 && !mergeRows;
+  const twoRows = twoRowLayout && resolvedRow2.length > 0 && !mergeRows;
   // What measuring found for these keys at this width: keys to move down
   // (dividers take room too) and which rows still scroll
   const fitKey = [
@@ -848,29 +834,62 @@ export function TerminalToolbar({
               onOpen={() => setShowSnippetsModal(true)}
             />
           );
-        case "shift":
-          return (
-            <ShiftButton
-              key={id}
-              active={shiftActive}
-              onToggle={() => setShiftActive((s) => !s)}
-            />
-          );
         case "enter":
-          return (
-            <EnterButton
-              key={id}
-              shiftActive={shiftActive}
-              onPress={(k) => {
-                onKeyPress(k);
-                setShiftActive(false);
-              }}
-            />
-          );
+          return <EnterButton key={id} onPress={onKeyPress} />;
         case "cursor":
           return <CursorTrackpadButton key={id} onKeyPress={onKeyPress} />;
         case "backspace":
           return <BackspaceButton key={id} onKeyPress={onKeyPress} />;
+        case "ctrl-c":
+          return (
+            <KeyLongPressMenu
+              key={id}
+              label="^C"
+              keyCode={SPECIAL_KEYS.CTRL_C}
+              menu={CTRL_C_MENU}
+              onKeyPress={onKeyPress}
+              className={cn(
+                KEY_CLASS,
+                "active:bg-primary active:text-primary-foreground border border-red-500/40 bg-red-500/15 text-red-400",
+                // Set apart at the end of the context row
+                contextMode ? "ml-auto" : "mx-1"
+              )}
+              // The context row has no room for the gear: it lives here
+              extra={
+                contextMode
+                  ? (close) => (
+                      <button
+                        type="button"
+                        aria-label="Toolbar settings"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          close();
+                          setShowSettings(true);
+                        }}
+                        className="text-muted-foreground active:bg-primary active:text-primary-foreground flex h-[40px] min-w-[40px] items-center justify-center rounded-lg"
+                      >
+                        <Settings className="h-4 w-4" />
+                      </button>
+                    )
+                  : undefined
+              }
+            />
+          );
+        case "char-slash":
+          return (
+            <KeyLongPressMenu
+              key={id}
+              label="/"
+              keyCode="/"
+              menu={SLASH_MENU}
+              onKeyPress={onKeyPress}
+              className={cn(
+                KEY_CLASS,
+                "bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground"
+              )}
+            />
+          );
         default: {
           const def = getButtonDef(id);
           if (!def || !def.key) return null;
@@ -893,8 +912,8 @@ export function TerminalToolbar({
       selectMode,
       onSelectModeChange,
       onImagePicker,
-      shiftActive,
       onKeyPress,
+      contextMode,
     ]
   );
 
@@ -908,8 +927,9 @@ export function TerminalToolbar({
         const def = getButtonDef(id);
         if (!def) continue;
 
-        // Insert divider between different groups
-        if (lastGroup !== null && def.group !== lastGroup) {
+        // Insert divider between different groups (the context row is
+        // short enough to read without them)
+        if (!contextMode && lastGroup !== null && def.group !== lastGroup) {
           elements.push(
             <div
               key={`div-${lastGroup}-${def.group}`}
@@ -935,7 +955,7 @@ export function TerminalToolbar({
 
       return elements;
     },
-    [renderButton, selectMode, onCopy, handleCopy, copyFeedback]
+    [renderButton, selectMode, onCopy, handleCopy, copyFeedback, contextMode]
   );
 
   if (!visible) return null;
@@ -970,19 +990,23 @@ export function TerminalToolbar({
       >
         {renderRow(row1Ids)}
 
-        {/* Gear icon — always last, separated */}
-        <div className="bg-border mx-1 h-6 w-px" />
-        <button
-          type="button"
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={(e) => {
-            e.stopPropagation();
-            setShowSettings(true);
-          }}
-          className="bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground flex h-[40px] min-w-[40px] flex-shrink-0 items-center justify-center rounded-xl px-3 text-[13px] font-medium"
-        >
-          <Settings className="h-4 w-4" />
-        </button>
+        {/* Gear icon — always last, separated (in ^C's menu on the context row) */}
+        {!contextMode && (
+          <>
+            <div className="bg-border mx-1 h-6 w-px" />
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowSettings(true);
+              }}
+              className="bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground flex h-[40px] min-w-[40px] flex-shrink-0 items-center justify-center rounded-xl px-3 text-[13px] font-medium"
+            >
+              <Settings className="h-4 w-4" />
+            </button>
+          </>
+        )}
       </div>
 
       {/* Row 2 — only when double layout with buttons */}
@@ -1001,6 +1025,22 @@ export function TerminalToolbar({
     </>
   );
 }
+
+const KEY_CLASS =
+  "flex h-[40px] min-w-[40px] flex-shrink-0 items-center justify-center rounded-xl px-3 text-[13px] font-medium";
+
+const NO_KEYS: ToolbarButtonId[] = [];
+
+// Held ^C and / give the rarer keys
+const CTRL_C_MENU: MenuKey[] = [
+  { label: "^D", key: SPECIAL_KEYS.CTRL_D },
+  { label: "^Z", key: SPECIAL_KEYS.CTRL_Z },
+  { label: "^L", key: SPECIAL_KEYS.CTRL_L },
+];
+const SLASH_MENU: MenuKey[] = ["~", "|", ">", "-", "_"].map((c) => ({
+  label: c,
+  key: c,
+}));
 
 // A key at its narrowest (globals.css) plus the gap after it, and the
 // row's padding and the divider before the gear, less the last key's gap
