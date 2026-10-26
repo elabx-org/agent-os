@@ -16,6 +16,7 @@ import { getProviderDefinition } from "./providers/registry";
 import { statusDetector } from "./status-detector";
 import { wrapWithBanner } from "./banner";
 import { runInBackground } from "./async-operations";
+import { writeClaudeStateSettings } from "./claude-state";
 
 const execAsync = promisify(exec);
 
@@ -173,6 +174,10 @@ export async function spawnWorker(
     autoApprove: true,
     // Pass branch name as the native worktree name for providers that support it
     worktreeName: useWorktree && hasNativeWorktree ? branchName : undefined,
+    settingsFile:
+      agentType === "claude"
+        ? writeClaudeStateSettings(sessionId) || undefined
+        : undefined,
   });
   const flagsStr = flags.join(" ");
 
