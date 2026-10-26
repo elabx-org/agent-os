@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 import SwiftUI
+import UIKit
 import UniformTypeIdentifiers
 import WebKit
 
@@ -30,6 +31,8 @@ final class AppModel {
     let lock = AppLock()
     /// The page's background colour, for the edges it doesn't cover
     var pageBackground: Color?
+    /// The theme's accent, for the app's own confirm buttons and the Safari sheet
+    var accent: UIColor?
     var fold: Fold? {
         didSet { if fold != oldValue { sendFold() } }
     }
@@ -175,15 +178,18 @@ final class AppModel {
         if let count = message["waiting"] as? Int { waiting = count }
         if let count = message["changes"] as? Int { changes = count }
         if let css = message["background"] as? String, let color = Self.color(css: css) {
-            pageBackground = color
+            pageBackground = Color(uiColor: color)
+        }
+        if let css = message["accent"] as? String, let color = Self.color(css: css) {
+            accent = color
         }
     }
 
     /// "rgb(r, g, b)" or "rgba(r, g, b, a)" from getComputedStyle
-    private static func color(css: String) -> Color? {
+    private static func color(css: String) -> UIColor? {
         let parts = css.split(whereSeparator: { !"0123456789.".contains($0) }).compactMap { Double($0) }
         guard parts.count >= 3 else { return nil }
-        return Color(red: parts[0] / 255, green: parts[1] / 255, blue: parts[2] / 255)
+        return UIColor(red: parts[0] / 255, green: parts[1] / 255, blue: parts[2] / 255, alpha: 1)
     }
 
     /// `keep`: also store the event's value under that key on `window.agentosNative`

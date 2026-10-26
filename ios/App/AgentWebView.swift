@@ -1,4 +1,5 @@
 import ObjectiveC
+import SafariServices
 import SwiftUI
 import UIKit
 import WebKit
@@ -79,15 +80,67 @@ struct AgentWebContainer: UIViewRepresentable {
             if scrollView.contentOffset != .zero { scrollView.contentOffset = .zero }
         }
 
-        // Links that open a new window leave for Safari
+        // Links that open a new window show in a Safari sheet over the app;
+        // mail, phone and other apps' links go to their apps
         func webView(
             _ webView: WKWebView,
             createWebViewWith configuration: WKWebViewConfiguration,
             for navigationAction: WKNavigationAction,
             windowFeatures: WKWindowFeatures
         ) -> WKWebView? {
-            if let url = navigationAction.request.url { UIApplication.shared.open(url) }
+            guard let url = navigationAction.request.url else { return nil }
+            MainActor.assumeIsolated {
+                if Self.isWeb(url) { showInSafari(url, from: webView) } else { UIApplication.shared.open(url) }
+            }
             return nil
+        }
+
+        // A tapped link to another site opens in the sheet rather than
+        // replacing Agent-OS; the page's own links and redirects (sign-in)
+        // stay in the app
+        func webView(
+            _ webView: WKWebView,
+            decidePolicyFor navigationAction: WKNavigationAction,
+            decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
+        ) {
+            guard let url = navigationAction.request.url,
+                  navigationAction.targetFrame?.isMainFrame == true else { return decisionHandler(.allow) }
+            if !Self.isWeb(url) && !Self.staysInPage(url) {
+                decisionHandler(.cancel)
+                MainActor.assumeIsolated { UIApplication.shared.open(url) }
+                return
+            }
+            if navigationAction.navigationType == .linkActivated, Self.isWeb(url),
+               let host = url.host(), host != webView.url?.host() {
+                decisionHandler(.cancel)
+                MainActor.assumeIsolated { showInSafari(url, from: webView) }
+                return
+            }
+            decisionHandler(.allow)
+        }
+
+        /// What SFSafariViewController can show
+        private static func isWeb(_ url: URL) -> Bool {
+            ["http", "https"].contains(url.scheme?.lowercased() ?? "")
+        }
+
+        /// Schemes WebKit loads itself (blank frames, inline data, downloads)
+        private static func staysInPage(_ url: URL) -> Bool {
+            ["about", "data", "blob", "javascript", "file"].contains(url.scheme?.lowercased() ?? "")
+        }
+
+        /// Done, Share and Open in Safari come with it; sign-ins made in it
+        /// last between links. A page sheet: UIKit can't place a sheet on
+        /// one page of the open iPhone Duo.
+        @MainActor
+        private func showInSafari(_ url: URL, from webView: WKWebView) {
+            let config = SFSafariViewController.Configuration()
+            config.barCollapsingEnabled = true
+            let safari = SFSafariViewController(url: url, configuration: config)
+            safari.dismissButtonStyle = .done
+            safari.preferredControlTintColor = model.accent
+            safari.modalPresentationStyle = .pageSheet
+            present(safari, from: webView) {}
         }
 
         func webView(
@@ -151,11 +204,11 @@ struct AgentWebContainer: UIViewRepresentable {
         }
 
         @MainActor
-        private func present(_ alert: UIAlertController, from webView: WKWebView, orElse fail: () -> Void) {
+        private func present(_ controller: UIViewController, from webView: WKWebView, orElse fail: () -> Void) {
             var top = webView.window?.rootViewController
             while let next = top?.presentedViewController { top = next }
             guard let top else { return fail() }
-            top.present(alert, animated: true)
+            top.present(controller, animated: true)
         }
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
