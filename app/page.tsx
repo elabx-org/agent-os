@@ -44,6 +44,7 @@ import { DesktopView } from "@/components/views/DesktopView";
 import { MobileView } from "@/components/views/MobileView";
 import { getPendingPrompt, clearPendingPrompt } from "@/stores/initialPrompt";
 import { closeSettings } from "@/stores/settingsPage";
+import { closePage } from "@/stores/workspacePage";
 import { mobileNavStore } from "@/stores/mobileNav";
 import { focusStore, loadFocus } from "@/stores/focus";
 import { registerNavHandlers } from "@/lib/nav-actions";
@@ -271,8 +272,10 @@ function HomeContent() {
   // Attach session to terminal
   const attachToSession = useCallback(
     async (session: Session) => {
-      // Whatever opened it, the session shows rather than staying under Settings
+      // Whatever opened it, the session shows rather than staying under
+      // Settings or a workspace page
       closeSettings();
+      closePage();
       const terminalInfo = getTerminalWithFallback();
       if (!terminalInfo) {
         debugLog(
@@ -385,11 +388,15 @@ function HomeContent() {
   useEffect(
     () =>
       registerNavHandlers({
-        openSessions: () => setSidebarOpen((open) => !open),
+        // On a phone a page covers the home: leave it for the home
+        openSessions: () =>
+          isMobile && closePage()
+            ? setSidebarOpen(true)
+            : setSidebarOpen((open) => !open),
         openFind: () => setShowQuickSwitcher(true),
         openNewSession: () => setShowNewSessionDialog(true),
       }),
-    []
+    [isMobile]
   );
 
   // Workers show inside their conductor's session; parked agents are

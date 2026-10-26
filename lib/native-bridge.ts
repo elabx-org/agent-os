@@ -10,6 +10,7 @@
 import type { PaneViewMode } from "@/stores/mobileNav";
 import type { Fold } from "@/stores/posture";
 import type { NavAction } from "@/lib/nav-actions";
+import type { WorkspacePageKind } from "@/stores/workspacePage";
 
 export type NativeNavAction = NavAction;
 
@@ -44,6 +45,8 @@ export interface NativeState {
   background?: string;
   /** The Settings page is showing (older app builds ignore it) */
   settings?: boolean;
+  /** The workspace page showing, if any (older app builds ignore it) */
+  page?: WorkspacePageKind;
   /** Focus mode is on (stores/focus.ts) */
   focus?: boolean;
   /** Focus is on and something needs you: the amber dot on the toggle */

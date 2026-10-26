@@ -17,32 +17,35 @@ import { useSideRail } from "@/hooks/useSideRail";
 import { isNative } from "@/lib/native-bridge";
 import { loadDuoPreview } from "@/stores/duoPreview";
 import { cn } from "@/lib/utils";
+import { WorkspacePage } from "@/components/WorkspacePage";
+import { workspacePageStore } from "@/stores/workspacePage";
 
-export function MobileView({
-  sessions,
-  projects,
-  sessionStatuses,
-  sidebarOpen,
-  setSidebarOpen,
-  activeSession,
-  focusedActiveTab,
-  showNewSessionDialog,
-  setShowNewSessionDialog,
-  newSessionProjectId,
-  showQuickSwitcher,
-  setShowQuickSwitcher,
-  attachToSession,
-  openSessionInNewTab,
-  handleNewSessionInProject,
-  handleOpenTerminal,
-  handleSessionCreated,
-  handleCreateProject,
-  handleStartDevServer,
-  handleCreateDevServer,
-  startDevServerProject,
-  setStartDevServerProjectId,
-  renderPane,
-}: ViewProps) {
+export function MobileView(props: ViewProps) {
+  const {
+    sessions,
+    projects,
+    sessionStatuses,
+    sidebarOpen,
+    setSidebarOpen,
+    activeSession,
+    focusedActiveTab,
+    showNewSessionDialog,
+    setShowNewSessionDialog,
+    newSessionProjectId,
+    showQuickSwitcher,
+    setShowQuickSwitcher,
+    attachToSession,
+    openSessionInNewTab,
+    handleNewSessionInProject,
+    handleOpenTerminal,
+    handleSessionCreated,
+    handleCreateProject,
+    handleStartDevServer,
+    handleCreateDevServer,
+    startDevServerProject,
+    setStartDevServerProjectId,
+    renderPane,
+  } = props;
   // The iOS app puts this navigation in the system's own bar
   const railWidth = useSideRail(!isNative());
   // A phone in a browser has no system column, so the column is a bottom bar
@@ -72,12 +75,16 @@ export function MobileView({
     [sessions, sessionStatuses]
   );
 
+  const { page } = useSnapshot(workspacePageStore);
+  const pageOpen = !!page;
+
+  // A page covers the pane too
   useEffect(() => {
-    mobileNavStore.homeOpen = sidebarOpen;
+    mobileNavStore.homeOpen = sidebarOpen || pageOpen;
     return () => {
       mobileNavStore.homeOpen = false;
     };
-  }, [sidebarOpen]);
+  }, [sidebarOpen, pageOpen]);
 
   const { inboxOpen, request: viewRequest } = useSnapshot(mobileNavStore);
   // Picking a view in the column or bar leaves the home for the session
@@ -116,6 +123,18 @@ export function MobileView({
     />
   );
 
+  // The home and pages: a full screen beside the column or above the bar
+  const layerClass = cn(
+    "bg-background fixed inset-0 z-40 pt-[env(safe-area-inset-top)] pl-[env(safe-area-inset-left)]",
+    !railWidth && "pr-[env(safe-area-inset-right)]",
+    !showBar && "pb-[env(safe-area-inset-bottom)]"
+  );
+  const layerStyle = railWidth
+    ? { right: railWidth }
+    : showBar
+      ? { bottom: "var(--control-bar-h, 0px)" }
+      : undefined;
+
   return (
     <main
       className="bg-background flex h-dvh flex-col overflow-hidden"
@@ -127,20 +146,7 @@ export function MobileView({
       {/* The home: a page of its own rather than a drawer, the same in the
           app and a browser. The column or bar stays beside it */}
       {sidebarOpen && (
-        <div
-          className={cn(
-            "bg-background fixed inset-0 z-40 pt-[env(safe-area-inset-top)] pl-[env(safe-area-inset-left)]",
-            !railWidth && "pr-[env(safe-area-inset-right)]",
-            !showBar && "pb-[env(safe-area-inset-bottom)]"
-          )}
-          style={
-            railWidth
-              ? { right: railWidth }
-              : showBar
-                ? { bottom: "var(--control-bar-h, 0px)" }
-                : undefined
-          }
-        >
+        <div className={layerClass} style={layerStyle}>
           <MissionControl
             sessions={sessions}
             sessionStatuses={sessionStatuses}
@@ -157,8 +163,22 @@ export function MobileView({
         </div>
       )}
 
-      {/* Terminal fills the screen */}
-      <div className="min-h-0 w-full flex-1">
+      {/* A workspace page: over the home it was opened from, so back
+          shows the home again */}
+      {pageOpen && (
+        <div className={layerClass} style={layerStyle}>
+          <WorkspacePage
+            view={props}
+            onOpenSession={(session) => {
+              attachToSession(session);
+              setSidebarOpen(false);
+            }}
+          />
+        </div>
+      )}
+
+      {/* Terminal fills the screen; out of reach while a page covers it */}
+      <div className="min-h-0 w-full flex-1" inert={pageOpen}>
         <PaneLayout renderPane={renderPane} />
       </div>
       {showBar && <ControlColumn variant="bar" />}
