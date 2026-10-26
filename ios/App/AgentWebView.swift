@@ -223,6 +223,10 @@ struct AgentWebContainer: UIViewRepresentable {
             top.present(controller, animated: true)
         }
 
+        func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+            MainActor.assumeIsolated { model.pageStarted() }
+        }
+
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             MainActor.assumeIsolated { model.pageLoaded() }
         }

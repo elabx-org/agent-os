@@ -2,7 +2,7 @@ import UIKit
 import UserNotifications
 
 /// Push notifications: asks once, registers with APNs, and opens the session
-/// a tapped notification is about. The server sends them (lib/push in the web app).
+/// (or Needs you) a tapped notification is about. The server sends them (lib/push in the web app).
 @MainActor
 final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     let model = AppModel()
@@ -36,11 +36,15 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         [.banner, .list, .sound]
     }
 
+    /// A session's notification opens that session; a background agent's
+    /// (no sessionId) opens Needs you
     nonisolated func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         didReceive response: UNNotificationResponse
     ) async {
-        guard let id = response.notification.request.content.userInfo["sessionId"] as? String else { return }
-        await MainActor.run { model.openSession(id) }
+        let id = response.notification.request.content.userInfo["sessionId"] as? String
+        await MainActor.run {
+            if let id { model.openSession(id) } else { model.openNav("inbox") }
+        }
     }
 }

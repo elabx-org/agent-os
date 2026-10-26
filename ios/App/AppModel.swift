@@ -3,6 +3,7 @@ import Observation
 import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
+import UserNotifications
 import WebKit
 
 /// The web app's views that the system bar switches between
@@ -22,8 +23,14 @@ final class AppModel {
     }
     /// The focused pane's view, reported by the page
     var view: PaneView = .terminal
-    /// Sessions waiting on an answer (the Inbox badge)
-    var waiting = 0
+    /// Sessions and background agents waiting on you (the Needs you badge),
+    /// also on the app icon
+    var waiting = 0 {
+        didSet {
+            guard waiting != oldValue else { return }
+            UNUserNotificationCenter.current().setBadgeCount(waiting) { _ in }
+        }
+    }
     /// Changed files in the focused session (the Changes badge)
     var changes = 0
     var showingServer = false
@@ -54,6 +61,10 @@ final class AppModel {
     @ObservationIgnored weak var webView: WKWebView?
     /// A session to open once the page has loaded (a notification or link launched the app)
     @ObservationIgnored private var pendingSession: String?
+    /// A column action to run once the page is listening (a tapped agent notification)
+    @ObservationIgnored private var pendingNav: String?
+    /// The page has reported its state, so its nav listener is up
+    @ObservationIgnored private var pageReady = false
     /// A shared file to hand to the page once it has loaded
     @ObservationIgnored private var pendingFile: [String: String]?
     /// The APNs device token, handed to the server from the page so it carries the login
@@ -107,9 +118,30 @@ final class AppModel {
             share(file: url)
             return
         }
+        if url.scheme == "agentos", url.host == "inbox" {
+            openNav("inbox")
+            return
+        }
         guard url.scheme == "agentos", url.host == "session",
               let id = url.pathComponents.dropFirst().first, !id.isEmpty else { return }
         openSession(id)
+    }
+
+    /// A nav action that may arrive before the page has started (cold launch)
+    func openNav(_ action: String) {
+        pendingNav = action
+        if pageReady { flushNav() }
+    }
+
+    private func flushNav() {
+        guard let action = pendingNav else { return }
+        pendingNav = nil
+        nav(action)
+    }
+
+    /// A new document: its listeners aren't up until it reports its state
+    func pageStarted() {
+        pageReady = false
     }
 
     func openSession(_ id: String) {
@@ -208,6 +240,8 @@ final class AppModel {
             return
         }
         guard message["type"] as? String == "state" else { return }
+        pageReady = true
+        flushNav()
         if let raw = message["viewMode"] as? String, let mode = PaneView(rawValue: raw) { view = mode }
         if let count = message["waiting"] as? Int { waiting = count }
         if let count = message["changes"] as? Int { changes = count }

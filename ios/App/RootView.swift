@@ -59,7 +59,7 @@ struct NavToolbar: ToolbarContent {
 
         ToolbarItem(placement: .topBarTrailing) {
             Button { model.nav("inbox") } label: {
-                Label("Inbox", systemImage: model.waiting > 0 ? "tray.full" : "tray")
+                Label("Needs you", systemImage: model.waiting > 0 ? "tray.full" : "tray")
             }
             .badge(model.focus ? 0 : model.waiting)
             .accessibilityValue(model.waiting > 0 ? "\(model.waiting) waiting" : "Nothing waiting")
