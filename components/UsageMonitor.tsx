@@ -27,7 +27,7 @@ interface ExtraUsage {
   monthly_limit: number | null;
 }
 
-interface UsageData {
+export interface UsageData {
   five_hour: UsageBlock;
   seven_day: UsageBlock;
   seven_day_sonnet: UsageBlock | null;
@@ -49,13 +49,13 @@ function barColor(pct: number): string {
   return "bg-emerald-500";
 }
 
-function barTextColor(pct: number): string {
+export function barTextColor(pct: number): string {
   if (pct >= 80) return "text-red-400";
   if (pct >= 50) return "text-amber-400";
   return "text-emerald-400";
 }
 
-function formatCountdown(resetsAt: string | null): string {
+export function formatCountdown(resetsAt: string | null): string {
   if (!resetsAt) return "";
   const diff = new Date(resetsAt).getTime() - Date.now();
   if (diff <= 0) return "now";
@@ -96,7 +96,7 @@ function MiniBar({
 }
 
 // Larger bar for the detail dialog
-function DetailBar({
+export function DetailBar({
   label,
   pct,
   resetsAt,
