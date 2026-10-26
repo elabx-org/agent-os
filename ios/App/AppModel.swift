@@ -27,6 +27,8 @@ final class AppModel {
     /// Changed files in the focused session (the Changes badge)
     var changes = 0
     var showingServer = false
+    /// The web Settings page is showing (the gear fills)
+    var settingsOpen = false
     /// Face ID / Touch ID in front of the app (off unless turned on)
     let lock = AppLock()
     /// The page's background colour, for the edges it doesn't cover
@@ -173,10 +175,16 @@ final class AppModel {
             Haptics.play(message["style"] as? String ?? "light")
             return
         }
+        if message["type"] as? String == "server" {
+            // Settings → Server: the app's own server and lock screen
+            showingServer = true
+            return
+        }
         guard message["type"] as? String == "state" else { return }
         if let raw = message["viewMode"] as? String, let mode = PaneView(rawValue: raw) { view = mode }
         if let count = message["waiting"] as? Int { waiting = count }
         if let count = message["changes"] as? Int { changes = count }
+        settingsOpen = message["settings"] as? Bool ?? false
         if let css = message["background"] as? String, let color = Self.color(css: css) {
             pageBackground = Color(uiColor: color)
         }

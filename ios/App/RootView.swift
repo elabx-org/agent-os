@@ -75,6 +75,15 @@ struct NavToolbar: ToolbarContent {
         .barPriority(false)
 
         ToolbarItem(placement: .topBarTrailing) {
+            Button { model.nav("settings") } label: {
+                Label("Settings", systemImage: "gearshape")
+                    .symbolVariant(model.settingsOpen ? .fill : .none)
+            }
+            .accessibilityAddTraits(model.settingsOpen ? .isSelected : [])
+        }
+        .barPriority(false)
+
+        ToolbarItem(placement: .topBarTrailing) {
             Button { model.reload() } label: { Label("Reload", systemImage: "arrow.clockwise") }
         }
         .barPriority(false)
