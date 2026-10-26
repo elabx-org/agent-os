@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
 import os from "os";
+import crypto from "crypto";
 
 export async function POST(request: Request) {
   try {
@@ -44,7 +45,9 @@ export async function POST(request: Request) {
       const ext = mimeType?.split("/")[1] || "png";
       const safeName =
         filename?.replace(/[^a-zA-Z0-9._-]/g, "_") || "screenshot";
-      const uniqueName = `${Date.now()}-${safeName}`;
+      // Random suffix: parallel uploads of two "image.png" can land in the
+      // same millisecond and would otherwise overwrite each other
+      const uniqueName = `${Date.now()}-${crypto.randomUUID().slice(0, 8)}-${safeName}`;
       // A name with its own extension keeps it (notes.txt, not notes.txt.plain)
       finalName = /\.[a-zA-Z0-9]{1,8}$/.test(safeName)
         ? uniqueName

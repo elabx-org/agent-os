@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { proxy } from "valtio";
+import { toast } from "sonner";
 import {
   preferencesKeys,
   usePreference,
@@ -390,13 +391,26 @@ export function useToolbarPreferences() {
   );
 
   // Shown at once, before the save's optimistic update a tick later, so a
-  // second quick change builds on the first
+  // second quick change builds on the first. That update's own rollback
+  // would only restore this preview, so a failed save puts back what was
+  // there before and asks the server again
   const updatePreferences = useCallback(
     (next: ToolbarPreferences) => {
+      const key = preferencesKeys.detail(PREFERENCES_DB_KEY);
+      const previous = queryClient.getQueryData(key);
       previewPreferences(next);
-      mutate({ key: PREFERENCES_DB_KEY, value: next });
+      mutate(
+        { key: PREFERENCES_DB_KEY, value: next },
+        {
+          onError: () => {
+            queryClient.setQueryData(key, previous);
+            queryClient.invalidateQueries({ queryKey: key });
+            toast.error("Couldn't save that change");
+          },
+        }
+      );
     },
-    [previewPreferences, mutate]
+    [queryClient, previewPreferences, mutate]
   );
 
   return { preferences, updatePreferences, previewPreferences, isLoading };
@@ -408,8 +422,10 @@ export function useDuoLayout(): DuoLayout {
 }
 
 /** Settings → Keys is open. On the open Duo it covers the right page, so a
-    split row shows its keys on the left page meanwhile, beside the list */
-export const keysSettingsStore = proxy({ open: false });
+    split row shows its keys on the left page meanwhile, beside the list.
+    rowWidth: what that row last measured (0 until a Duo page shows one),
+    so Settings' preview and ⋯ divider cut where the row beside them does */
+export const keysSettingsStore = proxy({ open: false, rowWidth: 0 });
 
 // --- Presets ---
 

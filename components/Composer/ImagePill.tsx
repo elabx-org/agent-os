@@ -83,25 +83,35 @@ export function ImagePillTarget({
 }) {
   // Said with plain hyphens
   const label = name.replace(/\u2011/g, "-");
+  // Spans so they sit in the text's flow; Enter or Space acts like a tap
+  const keys = (act: () => void) => (e: React.KeyboardEvent) => {
+    if (e.key !== "Enter" && e.key !== " ") return;
+    e.preventDefault();
+    act();
+  };
   return (
     <>
       <span
         role="button"
+        tabIndex={0}
         aria-label={`View ${label}`}
         // Keeps the box's focus (and the keyboard) while it's touched
         onMouseDown={(e) => e.preventDefault()}
         onClick={() => onOpen(chip)}
+        onKeyDown={keys(() => onOpen(chip))}
         className="pointer-events-auto cursor-pointer py-[5px]"
       >
         {chip.token.slice(0, -1)}
       </span>
       <span
         role="button"
+        tabIndex={0}
         aria-label={`Remove ${label}`}
         onMouseDown={(e) => e.preventDefault()}
         onClick={() => onRemove(chip)}
-        // A bigger target than the × itself
-        className="pointer-events-auto relative cursor-pointer after:absolute after:-inset-x-2 after:-inset-y-2.5 after:content-['']"
+        onKeyDown={keys(() => onRemove(chip))}
+        // 44px across: mostly over the pill's end, little over the text after
+        className="pointer-events-auto relative cursor-pointer after:absolute after:-inset-y-2.5 after:-right-3 after:-left-6 after:content-['']"
       >
         {chip.token.slice(-1)}
       </span>

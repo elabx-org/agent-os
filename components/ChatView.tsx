@@ -828,10 +828,20 @@ export function ChatView({
   // A finished turn or a typed-reply wait has nothing to answer here
   const hasCard = !!prompt || (!!pending && !promptLoading);
 
-  // Across both pages without the book (the conversation still loading, or
-  // none): the composer on the left page and, while Claude asks, its answers
-  // on the right, instead of all of it squeezed right of the fold
-  const controlPages = !paged && !deck ? pages : null;
+  // Across both pages: the composer on the left page and, while Claude
+  // asks, its answers on the right, instead of all of it squeezed right of
+  // the fold. In the book they run under both pages (the left page's rows
+  // end above them); not with a subagent on the right page
+  const controlPages = (book || !paged) && !deck ? pages : null;
+  const controlsRef = useRef<HTMLDivElement>(null);
+  const [controlsHeight, setControlsHeight] = useState(0);
+  useEffect(() => {
+    const el = controlsRef.current;
+    if (!el || !book) return;
+    const ro = new ResizeObserver(() => setControlsHeight(el.offsetHeight));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [book]);
   const ask = useReplyContext(session.id, !!controlPages && active && needsYou);
   const needsYouCard = needsYou && (
     <>
@@ -879,8 +889,16 @@ export function ChatView({
               leftAtBottom.current =
                 el.scrollHeight - el.scrollTop - el.clientHeight < 48;
             }}
-            className="bg-background min-h-0 shrink-0 overflow-y-auto px-3 pt-3 pb-[calc(0.75rem+var(--pane-inset-bottom,env(safe-area-inset-bottom)))]"
-            style={{ width: pages.left }}
+            className={cn(
+              "bg-background min-h-0 shrink-0 overflow-y-auto px-3 pt-3",
+              !controlPages &&
+                "pb-[calc(0.75rem+var(--pane-inset-bottom,env(safe-area-inset-bottom)))]"
+            )}
+            // The composer runs under this page too
+            style={{
+              width: pages.left,
+              paddingBottom: controlPages ? controlsHeight + 12 : undefined,
+            }}
           >
             <div className="mx-auto flex min-h-full max-w-3xl flex-col justify-end gap-3">
               {earlier}
@@ -1025,14 +1043,23 @@ export function ChatView({
           />
         )}
         <div
+          ref={controlsRef}
           className={cn(
             "px-2.5 pt-1.5 pb-[calc(0.625rem+var(--pane-inset-bottom,env(safe-area-inset-bottom)))]",
             // As pages, it already sits on one side of the fold
             !paged && !controlPages && "fold-controls",
             deck && "flex flex-col",
-            controlPages && "flex items-end"
+            controlPages && "flex items-end",
+            book && controlPages && "bg-background relative"
           )}
-          style={{ height: deck?.deck }}
+          style={{
+            height: deck?.deck,
+            // The book's right page holds it: reach back under the left page
+            marginLeft:
+              book && controlPages
+                ? -(controlPages.left + controlPages.gutter)
+                : undefined,
+          }}
         >
           {/* On the base, nearest the work above: the answer Claude is
           waiting for, or Stop / Changes / Terminal. The composer comes last,

@@ -26,6 +26,10 @@ final class KeyboardBar: UIInputView {
         guard context != self.context || ids != self.ids else { return }
         self.context = context
         self.ids = ids
+        // A new row gets its own chance to part around the hinge
+        splitOverflows = false
+        let wanted = wantedLayout
+        if wanted != layout { layout = wanted }
         build()
     }
 
@@ -182,6 +186,9 @@ final class KeyboardBar: UIInputView {
     }
 
     private var layout = Layout.row(compact: false)
+    /// The user's row is too wide for a page either side of the hinge, so
+    /// it scrolls as one row instead of running into the hinge or off the edge
+    private var splitOverflows = false
     /// What build() added, so a rebuild leaves UIInputView's own views alone
     private var built: [UIView] = []
     /// Pins the split groups clear of the hinge (±20 pt)
@@ -219,11 +226,15 @@ final class KeyboardBar: UIInputView {
         return convert(CGPoint(x: window.bounds.midX, y: 0), from: window).x
     }
 
+    private var wantedLayout: Layout {
+        bounds.width >= 700 && hinge != nil && !splitOverflows ? .split : .row(compact: bounds.width < 600)
+    }
+
     override func layoutSubviews() {
         super.layoutSubviews()
         // Open flat the inner display is wide enough to part the keys; a
         // phone in landscape just gets a gap in the middle
-        let wanted: Layout = bounds.width >= 700 && hinge != nil ? .split : .row(compact: bounds.width < 600)
+        let wanted = wantedLayout
         if wanted != layout {
             layout = wanted
             build()
@@ -265,6 +276,18 @@ final class KeyboardBar: UIInputView {
         if layout == .split {
             let left = stack(keys.left, compact: false)
             let right = stack(keys.right, compact: false)
+            // Rows are the user's now, so check each half fits its page
+            let middle = hinge ?? bounds.midX
+            let leftRoom = middle - 20 - 8
+            let rightRoom = bounds.width - 4 - dismissWidth - 8 - (middle + 20)
+            let size = UIView.layoutFittingCompressedSize
+            if left.systemLayoutSizeFitting(size).width > leftRoom
+                || right.systemLayoutSizeFitting(size).width > rightRoom {
+                splitOverflows = true
+                layout = wantedLayout
+                build()
+                return
+            }
             for view in [left, right] {
                 view.translatesAutoresizingMaskIntoConstraints = false
                 addSubview(view)

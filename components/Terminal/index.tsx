@@ -29,8 +29,9 @@ import { ScrollToBottomButton } from "./ScrollToBottomButton";
 import { TerminalToolbar } from "./TerminalToolbar";
 import {
   type KeysContext,
-  contextRow,
   keysSettingsStore,
+  rowIdFor,
+  savedContextRow,
   useToolbarPreferences,
 } from "./toolbar-config";
 import { KeybarToggleButton } from "./KeybarToggleButton";
@@ -424,13 +425,20 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
     // terminal takes focus and when the row changes while it has it
     const nativeKeys =
       keyboardUp && keysContext === "claude" ? "claude-up" : keysContext;
-    // ...in the order set in Settings → Keys
+    // ...in the order set in Settings → Keys. Only a row the user changed:
+    // the bar's own defaults keep the system Paste control. The bar only
+    // shows with the keyboard up, so "claude" (sent while it comes up)
+    // already gets the typing row
     const { preferences: keyPrefs } = useToolbarPreferences();
-    const nativeIds = contextRow(keysContext, keyboardUp, keyPrefs).join();
+    const nativeRow = rowIdFor(keysContext, true);
+    const nativeIds =
+      keyPrefs.contextRows?.[nativeRow] || keyPrefs.pinCtrlC === false
+        ? savedContextRow(nativeRow, keyPrefs).join()
+        : "";
     useEffect(() => {
       const el = containerRef.current;
       if (!el || !isNative()) return;
-      const ids = nativeIds ? nativeIds.split(",") : [];
+      const ids = nativeIds ? nativeIds.split(",") : undefined;
       const post = () =>
         postToNative({ type: "keys", context: nativeKeys, ids });
       if (el.contains(document.activeElement)) post();

@@ -34,6 +34,7 @@ import {
   SPECIAL_KEYS,
   contextRow,
   getButtonDef,
+  keysSettingsStore,
   pinnedRow,
   rowIdFor,
   splitOverflow,
@@ -781,6 +782,10 @@ export function TerminalToolbar({
   const [row1El, row1Ref] = useState<HTMLDivElement | null>(null);
   const [row2El, row2Ref] = useState<HTMLDivElement | null>(null);
   const rowWidth = useRowWidth(row1El);
+  // A page of the open Duo: Settings → Keys previews at this width
+  useEffect(() => {
+    if (overflow && rowWidth) keysSettingsStore.rowWidth = rowWidth;
+  }, [overflow, rowWidth]);
   const twoRows = twoRowLayout && resolvedRow2.length > 0 && !mergeRows;
   // What measuring found for these keys at this width: keys to move down
   // (dividers take room too) and which rows still scroll
@@ -1220,16 +1225,21 @@ function MoreKey({
       )
         close();
     };
+    // Before xterm or the composer sees it (focus stays there), so Esc
+    // closes the panel without also interrupting Claude
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") close();
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      e.stopPropagation();
+      close();
     };
     document.addEventListener("pointerdown", onDown, true);
-    document.addEventListener("keydown", onKey);
+    document.addEventListener("keydown", onKey, true);
     window.addEventListener("resize", close);
     window.addEventListener("scroll", close, true);
     return () => {
       document.removeEventListener("pointerdown", onDown, true);
-      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("keydown", onKey, true);
       window.removeEventListener("resize", close);
       window.removeEventListener("scroll", close, true);
     };

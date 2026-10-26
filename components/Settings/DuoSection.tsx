@@ -51,6 +51,14 @@ export function DuoSection() {
               updatePreferences({ ...preferences, duoLayout })
             }
           />
+          {/* Two rows parts the context row; fixed rows keep to Split */}
+          {preferences.duoLayout === "two-rows" &&
+            preferences.mode === "custom" && (
+              <span className="text-muted-foreground block text-xs">
+                Two rows needs Follow context in Keys. With fixed rows the open
+                Duo shows Split.
+              </span>
+            )}
         </div>
         <SettingRow as="div" label="Keys" hint="Each context's key row">
           <button

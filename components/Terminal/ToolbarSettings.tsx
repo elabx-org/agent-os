@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useSnapshot } from "valtio";
 import {
   X,
   ChevronUp,
@@ -227,7 +228,7 @@ export function Segmented<T extends string>({
           aria-checked={option.value === value}
           onClick={() => onChange(option.value)}
           className={cn(
-            "min-h-[32px] flex-1 rounded-md px-2 text-xs font-medium",
+            "min-h-11 flex-1 rounded-md px-2 text-xs font-medium",
             option.value === value
               ? "bg-background text-foreground shadow-sm"
               : "text-muted-foreground"
@@ -331,6 +332,9 @@ function ContextRowsEditor({
   const { previewPreferences } = useToolbarPreferences();
   const pinCtrlC = prefs.pinCtrlC ?? true;
   const duoLayout = prefs.duoLayout ?? "split";
+  // The live row's own width once a Duo page has shown it; else the estimate
+  const { rowWidth: measured } = useSnapshot(keysSettingsStore);
+  const openRowPx = measured || OPEN_DUO_ROW_PX;
   const row = savedContextRow(rowId, prefs);
   const pinned = pinCtrlC && row.includes("ctrl-c");
   // While a key is dragged the list keeps its order (dnd-kit moves the rows);
@@ -400,8 +404,7 @@ function ContextRowsEditor({
   const cutAt = (width: number) =>
     splitOverflow(row, width, { pinCtrlC })[0].length - (pinned ? 1 : 0);
   const closedCut = cutAt(CLOSED_ROW_PX);
-  const openCut =
-    duoLayout === "two-rows" ? movable.length : cutAt(OPEN_DUO_ROW_PX);
+  const openCut = duoLayout === "two-rows" ? movable.length : cutAt(openRowPx);
   const divider = (at: number) => {
     const closed = at === closedCut;
     const openDuo = at === openCut;
@@ -452,7 +455,7 @@ function ContextRowsEditor({
               : "Open Duo · split row"
           }
           row={row}
-          width={duoLayout === "two-rows" ? undefined : OPEN_DUO_ROW_PX}
+          width={duoLayout === "two-rows" ? undefined : openRowPx}
           pinCtrlC={pinCtrlC}
         />
       </div>
@@ -514,7 +517,7 @@ function ContextRowsEditor({
                 title={
                   def.conditional ? `${def.label} (when available)` : def.label
                 }
-                className="bg-secondary text-secondary-foreground active:bg-accent flex min-h-[32px] items-center gap-1 rounded-lg py-1 pr-2 pl-1"
+                className="bg-secondary text-secondary-foreground active:bg-accent flex min-h-11 items-center gap-1 rounded-lg py-1 pr-2 pl-1"
               >
                 <Plus className="text-muted-foreground h-3.5 w-3.5" />
                 <KeyChip id={def.id} className="bg-transparent px-0.5" />
@@ -604,7 +607,8 @@ function SortableKey({
             {...attributes}
             {...listeners}
             aria-label={`Reorder ${label}`}
-            className="text-muted-foreground flex h-8 w-7 flex-shrink-0 cursor-grab touch-none items-center justify-center"
+            // 44px to grab; the row's padding and gap give back the room
+            className="text-muted-foreground -ml-2 flex h-11 w-11 flex-shrink-0 cursor-grab touch-none items-center justify-center"
           >
             <GripVertical className="h-4 w-4" />
           </button>
@@ -651,7 +655,7 @@ function KeyItem({
   const label = def?.label ?? id;
   return (
     <div className="border-border flex min-h-[44px] items-center gap-2 border-b px-2 last:border-b-0">
-      {handle ?? <span className="w-7 flex-shrink-0" />}
+      {handle ?? <span className="-ml-2 w-11 flex-shrink-0" />}
       <KeyChip id={id} />
       <span className="min-w-0 flex-1 truncate text-sm">
         {label}
@@ -670,9 +674,12 @@ function KeyItem({
         type="button"
         onClick={() => onRemove(id)}
         aria-label={`Remove ${label}`}
-        className="bg-destructive/15 text-destructive grid h-6 w-6 flex-shrink-0 place-items-center rounded-full"
+        // A 44px target round the small minus
+        className="-mr-2 grid h-11 w-11 flex-shrink-0 place-items-center"
       >
-        <Minus className="h-3.5 w-3.5" />
+        <span className="bg-destructive/15 text-destructive grid h-6 w-6 place-items-center rounded-full">
+          <Minus className="h-3.5 w-3.5" />
+        </span>
       </button>
     </div>
   );

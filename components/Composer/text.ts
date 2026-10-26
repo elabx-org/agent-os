@@ -43,11 +43,11 @@ export function imagePaths(draft: string): string[] {
   return [...new Set([...draft.matchAll(IMAGE_PATH)].map((m) => m[0]))];
 }
 
-/** "IMG_7654" from ".../1730000000000-IMG_7654.jpeg" */
+/** "IMG_7654" from ".../1730000000000-1a2b3c4d-IMG_7654.jpeg" */
 export function imageName(path: string): string {
   const base = path.slice(path.lastIndexOf("/") + 1);
   const name = base
-    .replace(/^\d{10,}-/, "")
+    .replace(/^\d{10,}-(?:[0-9a-f]{8}-)?/, "")
     .replace(/\.[^.]+$/, "")
     .replace(/\s+/g, "_")
     // A hyphen could break the pill over two lines
