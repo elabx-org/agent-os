@@ -27,7 +27,11 @@ import { cn } from "@/lib/utils";
 import { SearchBar } from "./SearchBar";
 import { ScrollToBottomButton } from "./ScrollToBottomButton";
 import { TerminalToolbar } from "./TerminalToolbar";
-import type { KeysContext } from "./toolbar-config";
+import {
+  type KeysContext,
+  contextRow,
+  useToolbarPreferences,
+} from "./toolbar-config";
 import { KeybarToggleButton } from "./KeybarToggleButton";
 import { Composer } from "./Composer";
 import { useSessionDraft } from "@/hooks/useSessionDraft";
@@ -413,14 +417,19 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
     // terminal takes focus and when the row changes while it has it
     const nativeKeys =
       keyboardUp && keysContext === "claude" ? "claude-up" : keysContext;
+    // ...in the order set in Settings → Keys
+    const { preferences: keyPrefs } = useToolbarPreferences();
+    const nativeIds = contextRow(keysContext, keyboardUp, keyPrefs).join();
     useEffect(() => {
       const el = containerRef.current;
       if (!el || !isNative()) return;
-      const post = () => postToNative({ type: "keys", context: nativeKeys });
+      const ids = nativeIds ? nativeIds.split(",") : [];
+      const post = () =>
+        postToNative({ type: "keys", context: nativeKeys, ids });
       if (el.contains(document.activeElement)) post();
       el.addEventListener("focusin", post);
       return () => el.removeEventListener("focusin", post);
-    }, [nativeKeys]);
+    }, [nativeKeys, nativeIds]);
 
     const toggleToolbar = () => {
       const next = !toolbarVisible;

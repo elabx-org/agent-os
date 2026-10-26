@@ -130,6 +130,9 @@ export type HapticStyle =
 export interface NativeKeys {
   type: "keys";
   context: "claude" | "claude-up" | "shell" | "chat";
+  /** The row's keys in order (ToolbarButtonId, ^C already pinned), as set
+      in Settings → Keys; older pages send none */
+  ids?: string[];
 }
 
 /** Settings → Server: the app's own server and sign-in screen */
