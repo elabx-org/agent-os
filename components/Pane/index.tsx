@@ -30,6 +30,8 @@ import { ShellDrawer } from "@/components/ShellDrawer";
 import { useSnapshot } from "valtio";
 import { fileOpenStore, fileOpenActions } from "@/stores/fileOpen";
 import { mobileNavStore, mobileNavActions } from "@/stores/mobileNav";
+import { focusStore } from "@/stores/focus";
+import { ActivityStrip } from "@/components/Session/ActivityStrip";
 import { isNative } from "@/lib/native-bridge";
 import { useSharedFiles } from "@/hooks/useSharedFiles";
 import { useGitStatus } from "@/data/git/queries";
@@ -165,6 +167,16 @@ export const Pane = memo(function Pane({
 
   // Watch for file open requests
   const { request: fileOpenRequest } = useSnapshot(fileOpenStore);
+
+  // The activity strip says what the session is doing, unless the rail
+  // beside the pane already does or Focus hides both
+  const { railShown } = useSnapshot(mobileNavStore);
+  const { on: focusOn } = useSnapshot(focusStore);
+  const showStrip =
+    !!session &&
+    (viewMode === "chat" || viewMode === "terminal") &&
+    !focusOn &&
+    !railShown;
 
   // Reset view mode and file editor when session changes
   useEffect(() => {
@@ -424,6 +436,7 @@ export const Pane = memo(function Pane({
         onSplitVertical={() => splitVertical(paneId)}
         onClose={() => close(paneId)}
       />
+      {showStrip && session && <ActivityStrip session={session} />}
 
       {/* Content Area - Mobile: simple flex, Desktop: resizable panels */}
       {isMobile ? (
@@ -477,6 +490,7 @@ export const Pane = memo(function Pane({
             <ChatView
               session={session}
               active
+              hideAgentsBar={showStrip}
               onOpenTerminal={() => setViewMode("terminal")}
             />
           )}
@@ -585,6 +599,7 @@ export const Pane = memo(function Pane({
                     <ChatView
                       session={session}
                       active
+                      hideAgentsBar={showStrip}
                       onOpenTerminal={() => setViewMode("terminal")}
                     />
                   )}

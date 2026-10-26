@@ -417,11 +417,18 @@ interface ChatViewProps {
   session: Session;
   /** Only poll while the view is showing */
   active: boolean;
+  /** The activity strip above shows the agents, so the pill row goes */
+  hideAgentsBar?: boolean;
   onOpenTerminal: () => void;
 }
 
 /** Claude Code's session as a conversation, read from its transcript */
-export function ChatView({ session, active, onOpenTerminal }: ChatViewProps) {
+export function ChatView({
+  session,
+  active,
+  hideAgentsBar,
+  onOpenTerminal,
+}: ChatViewProps) {
   const { items, state, truncated, loadEarlier, loadingEarlier } =
     useTranscript(`/api/sessions/${session.id}`, active);
   const { statuses, nativeKeyboard } = useSnapshot(mobileNavStore);
@@ -548,7 +555,7 @@ export function ChatView({ session, active, onOpenTerminal }: ChatViewProps) {
         ref={rootRef}
         className="bg-background flex h-full min-w-0 flex-1 flex-col"
       >
-        {agents.length > 0 && (
+        {agents.length > 0 && !hideAgentsBar && (
           <div className="border-border shrink-0 border-b px-3 py-1.5">
             <button
               type="button"
