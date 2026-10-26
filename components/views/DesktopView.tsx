@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import { SessionList } from "@/components/SessionList";
 import { MissionControl } from "@/components/MissionControl";
-import { NewSessionDialog } from "@/components/NewSessionDialog";
+import { NewSurfaceHost } from "@/components/New/NewSurface";
 import { StartServerDialog } from "@/components/DevServers/StartServerDialog";
 import { PaneLayout } from "@/components/PaneLayout";
 import { QuickSwitcher } from "@/components/QuickSwitcher";
@@ -29,9 +29,6 @@ export function DesktopView(props: ViewProps) {
     setSidebarOpen,
     activeSession,
     focusedActiveTab,
-    showNewSessionDialog,
-    setShowNewSessionDialog,
-    newSessionProjectId,
     showQuickSwitcher,
     setShowQuickSwitcher,
     attachToSession,
@@ -173,11 +170,8 @@ export function DesktopView(props: ViewProps) {
         projectNames={projectNames}
         onOpenSession={attachToSession}
       />
-      <NewSessionDialog
-        open={showNewSessionDialog}
+      <NewSurfaceHost
         projects={projects}
-        selectedProjectId={newSessionProjectId ?? undefined}
-        onClose={() => setShowNewSessionDialog(false)}
         onCreated={handleSessionCreated}
         onCreateProject={handleCreateProject}
       />
