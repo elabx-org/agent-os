@@ -7,6 +7,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type RefObject,
 } from "react";
 import { useSnapshot } from "valtio";
 import {
@@ -30,10 +31,20 @@ import { cn } from "@/lib/utils";
 import { Markdown } from "@/components/Markdown";
 import { InboxItem } from "@/components/Inbox";
 import { mobileNavStore } from "@/stores/mobileNav";
-import { isTextKey, onNativeEvent } from "@/lib/native-bridge";
+import {
+  isNative,
+  isTextKey,
+  onNativeEvent,
+  postToNative,
+} from "@/lib/native-bridge";
 import { useSessionDraft } from "@/hooks/useSessionDraft";
 import { useFoldDeck } from "@/hooks/useFoldDeck";
 import { useSubagents } from "@/hooks/useSubagents";
+import {
+  useSpreadFold,
+  type SpreadFold,
+} from "@/components/views/SessionSpread";
+import { FOLD_CLEAR } from "@/hooks/useHinge";
 import { AgentRow, KindBadge, StateWord } from "@/components/rows/AgentRow";
 import { fromSubagentStatus } from "@/lib/agent-state";
 import { agentOpenStore, consumeSubagent } from "@/stores/agentOpen";
@@ -181,6 +192,148 @@ function useRows(items: ChatItem[]) {
     }
     return { rows, results };
   }, [items]);
+}
+
+/** Narrower pages than this and the chat stays one column */
+const PAGE_MIN = 280;
+
+interface BookPages {
+  /** The left page's width, from the element's left edge */
+  left: number;
+  /** Empty between the pages (only the hinge's clearance while flat) */
+  gutter: number;
+}
+
+/** How `ref`'s element splits into two pages at the fold; null if it doesn't */
+function useBookPages(
+  ref: RefObject<HTMLElement | null>,
+  fold: SpreadFold | null
+): BookPages | null {
+  const [pages, setPages] = useState<BookPages | null>(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el || !fold) {
+      setPages(null);
+      return;
+    }
+    const measure = () => {
+      const rect = el.getBoundingClientRect();
+      // Flat there's no gutter, but controls on either page (a tool row,
+      // the composer) still keep clear of the hinge
+      const clear = fold.end > fold.start ? 0 : FOLD_CLEAR;
+      const left = Math.round(fold.start - clear - rect.left);
+      const gutter = Math.round(fold.end - fold.start + clear * 2);
+      const fits =
+        left >= PAGE_MIN && rect.right - fold.end - clear >= PAGE_MIN;
+      setPages((prev) =>
+        !fits
+          ? null
+          : prev?.left === left && prev.gutter === gutter
+            ? prev
+            : { left, gutter }
+      );
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    window.addEventListener("resize", measure);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, [ref, fold]);
+  return pages;
+}
+
+/**
+ * Where the conversation turns the page: the index of the first row on the
+ * right page, which the latest rows fill (the last one always goes there).
+ * Rows are measured as they render; a row's height on the right page is kept
+ * once seen there, so a row at the seam can't bounce between the pages.
+ */
+function useSeam(
+  ids: string[],
+  enabled: boolean,
+  refs: {
+    /** The right page's scroller, its rows, and the left page's rows */
+    page: RefObject<HTMLElement | null>;
+    rows: RefObject<HTMLElement | null>;
+    leftRows: RefObject<HTMLElement | null>;
+  }
+): number {
+  const [seam, setSeam] = useState(0);
+  const heights = useRef<{ width: number; byId: Map<string, number> }>({
+    width: 0,
+    byId: new Map(),
+  });
+  // The rows each page holds now: the DOM matches the last render
+  const rendered = useRef({ ids, seam });
+  rendered.current = { ids, seam };
+  const { page, rows, leftRows } = refs;
+
+  const measure = useCallback(() => {
+    const scroller = page.current;
+    const right = rows.current;
+    const left = leftRows.current;
+    if (!scroller || !right || !left) return;
+    const { ids, seam } = rendered.current;
+    const cache = heights.current;
+    if (cache.width !== right.clientWidth) {
+      cache.width = right.clientWidth;
+      cache.byId.clear();
+    }
+    const height = (el: Element) => el.getBoundingClientRect().height;
+    Array.from(right.children).forEach((el, i) => {
+      const id = ids[seam + i];
+      if (id) cache.byId.set(id, height(el));
+    });
+    const leftHeights = Array.from(left.children).map(height);
+
+    const style = getComputedStyle(scroller);
+    const gap = parseFloat(getComputedStyle(right).rowGap) || 0;
+    // What else the right page holds below the rows: "Claude is working", a prompt
+    const extras =
+      (right.parentElement?.offsetHeight ?? 0) - right.offsetHeight;
+    const room =
+      scroller.clientHeight -
+      parseFloat(style.paddingTop) -
+      parseFloat(style.paddingBottom) -
+      extras;
+
+    let next = ids.length;
+    let used = 0;
+    for (let i = ids.length - 1; i >= 0; i--) {
+      const h = cache.byId.get(ids[i]) ?? leftHeights[i] ?? 0;
+      const add = next < ids.length ? h + gap : h;
+      if (next < ids.length && used + add > room) break;
+      used += add;
+      next = i;
+    }
+    setSeam(next);
+  }, [page, rows, leftRows]);
+
+  useLayoutEffect(() => {
+    if (!enabled) {
+      setSeam(0);
+      heights.current.byId.clear();
+      return;
+    }
+    measure();
+  }, [enabled, ids, seam, measure]);
+
+  // Content that grows (a tool's result, an expanded diff) or a page that
+  // changes height (the composer grows) moves the seam
+  useEffect(() => {
+    if (!enabled) return;
+    const ro = new ResizeObserver(measure);
+    const content = rows.current?.parentElement;
+    for (const el of [page.current, rows.current, content, leftRows.current]) {
+      if (el) ro.observe(el);
+    }
+    return () => ro.disconnect();
+  }, [enabled, measure, page, rows, leftRows]);
+
+  return enabled ? seam : 0;
 }
 
 /** Lines shown before "Show all": the first change with a line of context */
@@ -412,11 +565,18 @@ interface ChatViewProps {
   session: Session;
   /** Only poll while the view is showing */
   active: boolean;
+  /** The activity strip above shows the agents, so the pill row goes */
+  hideAgentsBar?: boolean;
   onOpenTerminal: () => void;
 }
 
 /** Claude Code's session as a conversation, read from its transcript */
-export function ChatView({ session, active, onOpenTerminal }: ChatViewProps) {
+export function ChatView({
+  session,
+  active,
+  hideAgentsBar,
+  onOpenTerminal,
+}: ChatViewProps) {
   const { items, state, truncated, loadEarlier, loadingEarlier } =
     useTranscript(`/api/sessions/${session.id}`, active);
   const { statuses, nativeKeyboard } = useSnapshot(mobileNavStore);
@@ -444,23 +604,60 @@ export function ChatView({ session, active, onOpenTerminal }: ChatViewProps) {
   }, [active, openRequest, session.id]);
   const opened = agents.find((a) => a.agentId === openAgent);
 
+  // Focus on the open Duo: the conversation reads across both pages like a
+  // book, earlier rows on the left page and the latest with the composer on
+  // the right. An open subagent takes the right page instead.
+  const outerRef = useRef<HTMLDivElement>(null);
+  const pages = useBookPages(outerRef, useSpreadFold());
+  const book = !!pages && !opened && state === "ready";
+  // Either way each column keeps to one side of the fold
+  const paged = book || (!!pages && !!opened);
+  const leftRef = useRef<HTMLDivElement>(null);
+  const leftRowsRef = useRef<HTMLDivElement>(null);
+  const rowsRef = useRef<HTMLDivElement>(null);
+  const leftAtBottom = useRef(true);
+
   // Follow new output while the reader is at the bottom
   const scrollRef = useRef<HTMLDivElement>(null);
   const atBottom = useRef(true);
+  const rowIds = useMemo(() => rows.map((r) => r.id), [rows]);
+  const seam = useSeam(rowIds, book, {
+    page: scrollRef,
+    rows: rowsRef,
+    leftRows: leftRowsRef,
+  });
   // Earlier history goes in above: keep what's on screen where it was
   const shown = useRef<{ first?: string; height: number }>({ height: 0 });
   useLayoutEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
+    // In the book, history goes in at the top of the left page
+    const left = book ? leftRef.current : null;
+    const top = left ?? el;
     const { first, height } = shown.current;
     const prepended =
       first !== undefined &&
       items[0]?.id !== first &&
       items.some((i) => i.id === first);
-    if (prepended) el.scrollTop += el.scrollHeight - height;
-    else if (atBottom.current) el.scrollTop = el.scrollHeight;
-    shown.current = { first: items[0]?.id, height: el.scrollHeight };
-  }, [items, rows, results, status]);
+    if (prepended) top.scrollTop += top.scrollHeight - height;
+    else if (left && leftAtBottom.current) left.scrollTop = left.scrollHeight;
+    if (atBottom.current && !(prepended && !left)) {
+      el.scrollTop = el.scrollHeight;
+    }
+    shown.current = { first: items[0]?.id, height: top.scrollHeight };
+  }, [items, rows, results, status, book, seam]);
+
+  // The left page stays on its latest rows while they change size
+  useEffect(() => {
+    const left = leftRef.current;
+    const content = leftRowsRef.current;
+    if (!book || !left || !content) return;
+    const ro = new ResizeObserver(() => {
+      if (leftAtBottom.current) left.scrollTop = left.scrollHeight;
+    });
+    ro.observe(content);
+    return () => ro.disconnect();
+  }, [book]);
 
   // Scrolling near the top loads the page above
   const topRef = useRef<HTMLDivElement>(null);
@@ -469,12 +666,15 @@ export function ChatView({ session, active, onOpenTerminal }: ChatViewProps) {
     if (!el || !truncated) return;
     const io = new IntersectionObserver(
       ([entry]) => entry.isIntersecting && loadEarlier(),
-      { root: scrollRef.current, rootMargin: "400px 0px 0px 0px" }
+      {
+        root: book ? leftRef.current : scrollRef.current,
+        rootMargin: "400px 0px 0px 0px",
+      }
     );
     io.observe(el);
     return () => io.disconnect();
     // Again after each page, in case the top is still in view
-  }, [truncated, loadEarlier, state, items.length]);
+  }, [truncated, loadEarlier, state, items.length, book]);
 
   // Kept on the server: survives a reload, follows to other devices
   const [draft, setDraft] = useSessionDraft(session.id);
@@ -537,13 +737,67 @@ export function ChatView({ session, active, onOpenTerminal }: ChatViewProps) {
     }
   }, [draft, session.id]);
 
+  const earlier = state === "ready" && truncated && (
+    <div ref={topRef} className="flex justify-center py-1">
+      <button
+        type="button"
+        onClick={loadEarlier}
+        disabled={loadingEarlier}
+        className="text-muted-foreground active:bg-accent hover:bg-accent flex h-9 items-center gap-2 rounded-full px-4 text-xs"
+      >
+        {loadingEarlier && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+        {loadingEarlier ? "Loading earlier messages…" : "Earlier messages"}
+      </button>
+    </div>
+  );
+  const gutter = pages && pages.gutter > 0 && (
+    <div
+      aria-hidden="true"
+      className="bg-background shrink-0"
+      style={{ width: pages.gutter }}
+    />
+  );
+
   return (
-    <div className="relative flex h-full">
+    <div ref={outerRef} className="relative flex h-full">
+      {/* The book's left page: earlier rows, down to where the right one
+          picks up */}
+      {book && pages && (
+        <>
+          <div
+            ref={leftRef}
+            onScroll={(e) => {
+              const el = e.currentTarget;
+              leftAtBottom.current =
+                el.scrollHeight - el.scrollTop - el.clientHeight < 48;
+            }}
+            className="bg-background min-h-0 shrink-0 overflow-y-auto px-3 pt-3 pb-[calc(0.75rem+var(--pane-inset-bottom,env(safe-area-inset-bottom)))]"
+            style={{ width: pages.left }}
+          >
+            <div className="mx-auto flex min-h-full max-w-3xl flex-col justify-end gap-3">
+              {earlier}
+              <div ref={leftRowsRef} className="flex flex-col gap-3">
+                <Conversation
+                  rows={rows.slice(0, seam)}
+                  results={results}
+                  agents={agentsByTool}
+                  onOpenAgent={setOpenAgent}
+                />
+              </div>
+            </div>
+          </div>
+          {gutter}
+        </>
+      )}
       <div
         ref={rootRef}
-        className="bg-background flex h-full min-w-0 flex-1 flex-col"
+        className={cn(
+          "bg-background flex h-full min-w-0 flex-col",
+          pages && opened ? "shrink-0" : "flex-1"
+        )}
+        style={pages && opened ? { width: pages.left } : undefined}
       >
-        {agents.length > 0 && (
+        {agents.length > 0 && !hideAgentsBar && (
           <div className="border-border shrink-0 border-b px-3 py-1.5">
             <button
               type="button"
@@ -613,29 +867,24 @@ export function ChatView({ session, active, onOpenTerminal }: ChatViewProps) {
                 </button>
               </div>
             )}
-            {state === "ready" && truncated && (
-              <div ref={topRef} className="flex justify-center py-1">
-                <button
-                  type="button"
-                  onClick={loadEarlier}
-                  disabled={loadingEarlier}
-                  className="text-muted-foreground active:bg-accent hover:bg-accent flex h-9 items-center gap-2 rounded-full px-4 text-xs"
-                >
-                  {loadingEarlier && (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  )}
-                  {loadingEarlier
-                    ? "Loading earlier messages…"
-                    : "Earlier messages"}
-                </button>
+            {!book && earlier}
+            {book ? (
+              <div ref={rowsRef} className="flex flex-col gap-3">
+                <Conversation
+                  rows={rows.slice(seam)}
+                  results={results}
+                  agents={agentsByTool}
+                  onOpenAgent={setOpenAgent}
+                />
               </div>
+            ) : (
+              <Conversation
+                rows={rows}
+                results={results}
+                agents={agentsByTool}
+                onOpenAgent={setOpenAgent}
+              />
             )}
-            <Conversation
-              rows={rows}
-              results={results}
-              agents={agentsByTool}
-              onOpenAgent={setOpenAgent}
-            />
             {status === "running" && (
               <div className="text-muted-foreground flex items-center gap-2 text-xs">
                 <Loader2 className="text-primary h-3.5 w-3.5 animate-spin" />
@@ -663,14 +912,17 @@ export function ChatView({ session, active, onOpenTerminal }: ChatViewProps) {
         )}
         <div
           className={cn(
-            "border-border border-t px-2 py-1.5 pb-[calc(0.375rem+env(safe-area-inset-bottom))]",
+            "px-2.5 pt-1.5 pb-[calc(0.625rem+var(--pane-inset-bottom,env(safe-area-inset-bottom)))]",
+            // As pages, it already sits on one side of the fold
+            !paged && "fold-controls",
             deck && "flex flex-col"
           )}
           style={{ height: deck?.deck }}
         >
           <div
             className={cn(
-              "flex shrink-0 gap-1.5",
+              // Glass-like capsule, as the control column
+              "bg-background/70 border-border flex shrink-0 gap-1.5 rounded-[28px] border p-1.5 shadow-[inset_0_1px_0_hsl(var(--foreground)/0.08)] backdrop-blur-xl backdrop-saturate-150",
               deck ? "items-start" : "items-end"
             )}
           >
@@ -688,7 +940,11 @@ export function ChatView({ session, active, onOpenTerminal }: ChatViewProps) {
               ref={inputRef}
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
-              onFocus={() => setComposerFocused(true)}
+              onFocus={() => {
+                setComposerFocused(true);
+                // The app's keyboard bar shows no terminal keys in chat
+                if (isNative()) postToNative({ type: "keys", context: "chat" });
+              }}
               onBlur={() => setComposerFocused(false)}
               onKeyDown={(e) => {
                 // Return sends, Shift+Return adds a line
@@ -757,12 +1013,19 @@ export function ChatView({ session, active, onOpenTerminal }: ChatViewProps) {
           )}
         </div>
       </div>
+      {opened && pages && gutter}
       {opened && (
         <SubagentPanel
           key={opened.agentId}
           sessionId={session.id}
           agent={opened}
           onClose={() => setOpenAgent(null)}
+          // The right page, with the conversation on the left
+          className={
+            pages
+              ? "md:w-auto md:max-w-none md:flex-1 md:border-l-0"
+              : undefined
+          }
         />
       )}
     </div>
@@ -777,10 +1040,12 @@ function SubagentPanel({
   sessionId,
   agent,
   onClose,
+  className,
 }: {
   sessionId: string;
   agent: SubagentInfo;
   onClose: () => void;
+  className?: string;
 }) {
   const { items, state, truncated, loadEarlier, loadingEarlier } =
     useTranscript(
@@ -799,7 +1064,10 @@ function SubagentPanel({
   return (
     <section
       aria-label={agent.description}
-      className="bg-background border-border absolute inset-0 z-10 flex flex-col md:static md:w-[46%] md:max-w-xl md:shrink-0 md:border-l"
+      className={cn(
+        "bg-background border-border absolute inset-0 z-10 flex flex-col md:static md:w-[46%] md:max-w-xl md:shrink-0 md:border-l",
+        className
+      )}
     >
       <header className="border-border flex shrink-0 items-center gap-2 border-b px-2 py-1.5">
         <button
@@ -829,7 +1097,7 @@ function SubagentPanel({
           atBottom.current =
             el.scrollHeight - el.scrollTop - el.clientHeight < 48;
         }}
-        className="min-h-0 flex-1 overflow-y-auto px-3 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]"
+        className="min-h-0 flex-1 overflow-y-auto px-3 py-3 pb-[calc(0.75rem+var(--pane-inset-bottom,env(safe-area-inset-bottom)))]"
       >
         <div className="mx-auto flex max-w-3xl flex-col gap-3">
           {state === "loading" && (

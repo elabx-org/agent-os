@@ -7,6 +7,8 @@ export interface SessionStatus {
   sessionName: string;
   status: "idle" | "running" | "waiting" | "error" | "dead";
   lastLine?: string;
+  /** The pane's last few non-empty lines, oldest first */
+  recentLines?: string[];
   claudeSessionId?: string | null;
 }
 

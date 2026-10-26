@@ -105,6 +105,9 @@ export function createTerminal(
   };
 
   // Handle Cmd+A, Cmd+C, Cmd+V via document event listener (more reliable than attachCustomKeyEventHandler)
+  // Only those: ⌘1–4, ⌘., ⌘K, ⌘I, ⌘N and ⌘, pass through to the app's
+  // shortcuts (hooks/useViewShortcuts.ts), and xterm sends nothing for ⌘
+  // keys on a Mac. Plain Ctrl keys, Esc included, stay with tmux
   const handleKeyDown = (event: KeyboardEvent) => {
     // Only handle when terminal is focused (xterm creates its textarea inside the container)
     if (!container.contains(document.activeElement)) return;

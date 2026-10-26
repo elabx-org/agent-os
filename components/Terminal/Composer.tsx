@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ArrowUp, TerminalSquare } from "lucide-react";
+import { ArrowUp } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ComposerPlusMenu } from "./ComposerPlusMenu";
 
 const MAX_ROWS = 5;
 
@@ -13,6 +14,8 @@ interface ComposerProps {
   onSend: (text: string) => void;
   /** Hand the keyboard to the terminal (Claude Code's / and @ pickers) */
   onTypeInTerminal: () => void;
+  onPhoto: () => void;
+  onSelectText: () => void;
   /** A control beside the send button (the keybar toggle) */
   extra?: React.ReactNode;
 }
@@ -27,6 +30,8 @@ export function Composer({
   onChange,
   onSend,
   onTypeInTerminal,
+  onPhoto,
+  onSelectText,
   extra,
 }: ComposerProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -51,6 +56,19 @@ export function Composer({
     el.style.height = `${Math.min(el.scrollHeight, lineHeight * MAX_ROWS + padding)}px`;
   }, [value, stacked]);
 
+  // A snippet, file path or dictation joins what's typed, a space apart.
+  // Read through a ref: dictation can deliver twice before a re-render.
+  const valueRef = useRef(value);
+  valueRef.current = value;
+  const insert = (text: string) => {
+    if (!text) return;
+    const current = valueRef.current;
+    const next =
+      (current && !/\s$/.test(current) ? `${current} ` : current) + text;
+    valueRef.current = next;
+    onChange(next);
+  };
+
   const send = () => {
     onSend(value);
     onChange("");
@@ -59,21 +77,18 @@ export function Composer({
   return (
     <div
       className={cn(
-        "border-border flex items-end gap-1.5 border-t px-2 py-1.5",
+        // Glass-like capsule, as the control column
+        "bg-background/70 border-border mx-2.5 my-1.5 flex items-end gap-1.5 rounded-[28px] border p-1.5 shadow-[inset_0_1px_0_hsl(var(--foreground)/0.08)] backdrop-blur-xl backdrop-saturate-150",
         stacked && "flex-wrap"
       )}
       onTouchEnd={(e) => e.stopPropagation()}
     >
-      <button
-        type="button"
-        onMouseDown={(e) => e.preventDefault()}
-        onClick={onTypeInTerminal}
-        className="bg-secondary text-muted-foreground active:bg-primary active:text-primary-foreground flex h-[44px] w-[44px] flex-shrink-0 touch-manipulation items-center justify-center rounded-full"
-        aria-label="Type in terminal"
-        title="Type in terminal (for / and @ suggestions)"
-      >
-        <TerminalSquare className="h-5 w-5" />
-      </button>
+      <ComposerPlusMenu
+        onPhoto={onPhoto}
+        onInsert={insert}
+        onSelectText={onSelectText}
+        onTypeInTerminal={onTypeInTerminal}
+      />
       <textarea
         ref={textareaRef}
         value={value}
@@ -89,7 +104,7 @@ export function Composer({
         data-composer=""
         enterKeyHint="send"
         rows={1}
-        placeholder="Message"
+        placeholder="Type into the terminal"
         autoCapitalize="sentences"
         className={cn(
           "bg-secondary text-foreground placeholder:text-muted-foreground min-h-[44px] flex-1 resize-none rounded-2xl px-3.5 py-2.5 text-base leading-6 focus:outline-none",
@@ -102,12 +117,8 @@ export function Composer({
         type="button"
         onMouseDown={(e) => e.preventDefault()}
         onClick={send}
-        className={cn(
-          "flex h-[44px] w-[44px] flex-shrink-0 touch-manipulation items-center justify-center rounded-full",
-          value
-            ? "bg-primary text-primary-foreground active:opacity-80"
-            : "bg-secondary text-muted-foreground active:bg-primary active:text-primary-foreground"
-        )}
+        // The one accent control on screen, also when it just presses Enter
+        className="bg-primary text-primary-foreground flex h-[44px] w-[44px] flex-shrink-0 touch-manipulation items-center justify-center rounded-full active:opacity-80"
         aria-label={value ? "Send" : "Press Enter"}
         title={value ? "Send" : "Press Enter"}
       >

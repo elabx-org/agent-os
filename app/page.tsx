@@ -31,6 +31,7 @@ import { useNativeBridge } from "@/hooks/useNativeBridge";
 import { useSessionLinks } from "@/hooks/useSessionLinks";
 import { usePresence } from "@/hooks/usePresence";
 import { useFoldPosture } from "@/hooks/useFoldPosture";
+import { useViewShortcuts } from "@/hooks/useViewShortcuts";
 import { useSessions } from "@/hooks/useSessions";
 import { useProjects } from "@/hooks/useProjects";
 import { useDevServersManager } from "@/hooks/useDevServersManager";
@@ -42,7 +43,11 @@ import { getProviderDefinition } from "@/lib/providers/registry";
 import { DesktopView } from "@/components/views/DesktopView";
 import { MobileView } from "@/components/views/MobileView";
 import { getPendingPrompt, clearPendingPrompt } from "@/stores/initialPrompt";
-import { closeSettings, openSettings } from "@/stores/settingsPage";
+import { closeSettings } from "@/stores/settingsPage";
+import { mobileNavStore } from "@/stores/mobileNav";
+import { focusStore, loadFocus } from "@/stores/focus";
+import { registerNavHandlers } from "@/lib/nav-actions";
+import { isNative } from "@/lib/native-bridge";
 import { SettingsPage } from "@/components/Settings/SettingsPage";
 
 function HomeContent() {
@@ -376,15 +381,29 @@ function HomeContent() {
   });
 
   useFoldPosture();
-  useNativeBridge({
-    waitingCount: sessions.filter(
-      (s) =>
-        !s.conductor_session_id && sessionStatuses[s.id]?.status === "waiting"
-    ).length,
-    openSessions: () => setSidebarOpen((open) => !open),
-    openFind: () => setShowQuickSwitcher(true),
-    openNewSession: () => setShowNewSessionDialog(true),
-  });
+  useEffect(loadFocus, []);
+  useEffect(
+    () =>
+      registerNavHandlers({
+        openSessions: () => setSidebarOpen((open) => !open),
+        openFind: () => setShowQuickSwitcher(true),
+        openNewSession: () => setShowNewSessionDialog(true),
+      }),
+    []
+  );
+
+  // Workers show inside their conductor's session; parked agents are
+  // already left out of the background list
+  const waitingCount = sessions.filter(
+    (s) =>
+      !s.conductor_session_id && sessionStatuses[s.id]?.status === "waiting"
+  ).length;
+  // Blocked background agents join the count once the Inbox can list them;
+  // polling them here would also keep the agents poll running for good
+  useEffect(() => {
+    mobileNavStore.needsYou = waitingCount;
+  }, [waitingCount]);
+  useNativeBridge({ waitingCount });
 
   // Notification links open their session; on a phone, over the home. A
   // link can land before the start state below is chosen, so note it
@@ -396,29 +415,17 @@ function HomeContent() {
   });
   usePresence(focusedActiveTab?.sessionId ?? undefined);
 
-  // Open beside the session on wide screens. On narrow ones start on the
-  // home unless a session is up; folding an iPhone Duo shut keeps the session
+  // Open beside the session on the web, unless Focus is on. On narrow
+  // screens and the open iPhone Duo (where the home is a page that back
+  // shows) start on the home unless a session is up; folding keeps the session
   useEffect(() => {
     if (!isHydrated) return;
     const onSession = !!focusedActiveTab?.sessionId || linkedSession.current;
     linkedSession.current = false;
-    setSidebarOpen(!isMobile || !onSession);
+    setSidebarOpen(isMobile || isNative() ? !onSession : !focusStore.on);
   }, [isMobile, isHydrated]);
 
-  // Keyboard shortcuts: Cmd+K opens the quick switcher, Cmd+, Settings
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
-        e.preventDefault();
-        setShowQuickSwitcher(true);
-      } else if ((e.metaKey || e.ctrlKey) && e.key === ",") {
-        e.preventDefault();
-        openSettings();
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  useViewShortcuts();
 
   // A restarted session (lib/restart-session.ts) starts again in the terminal
   useEffect(() => {
@@ -480,11 +487,10 @@ function HomeContent() {
         sessions={sessions}
         projects={projects}
         onRegisterTerminal={registerTerminalRef}
-        onMenuClick={isMobile ? () => setSidebarOpen(true) : undefined}
         onSelectSession={handleSelectSession}
       />
     ),
-    [sessions, projects, registerTerminalRef, isMobile, handleSelectSession]
+    [sessions, projects, registerTerminalRef, handleSelectSession]
   );
 
   // New session in project handler

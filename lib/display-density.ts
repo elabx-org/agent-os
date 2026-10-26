@@ -15,7 +15,7 @@ interface Density {
 
 const DEFAULTS: Record<DisplayClass, Density> = {
   // Phones and the Duo outer display
-  compact: { ui: 15, terminalFontSize: 11, terminalLineHeight: 1.15 },
+  compact: { ui: 15, terminalFontSize: 12, terminalLineHeight: 1.15 },
   // Duo inner display and tablets: touch, but wide
   tablet: { ui: 14, terminalFontSize: 12, terminalLineHeight: 1.15 },
   desktop: { ui: 16, terminalFontSize: 14, terminalLineHeight: 1.2 },

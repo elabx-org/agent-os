@@ -263,6 +263,18 @@ html[data-fold="vertical"] [data-slot="dialog-content"] {
   max-width: min(32rem, calc(var(--page-width) - 2rem));
 }
 
+/* The open iPhone Duo with a pane across both pages (Focus): its content may
+   cross the fold, but the keys, the composer and their buttons sit right of
+   it. Flat, the hinge is the middle (useHinge); half open, the fold's end */
+html[data-hinge] [data-spread="wide"] .fold-controls {
+  padding-left: calc(
+    var(--hinge-x) + var(--fold-clear) - env(safe-area-inset-left)
+  ) !important;
+}
+html[data-fold="vertical"] [data-spread="wide"] .fold-controls {
+  padding-left: calc(var(--fold-end) - env(safe-area-inset-left)) !important;
+}
+
 /* Laptop pose while typing: the key rows share the deck above the keyboard,
    growing into keys taller than usual instead of leaving a gap */
 .keybar-fill {

@@ -1,7 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import type { ReactNode } from "react";
 import { Inbox as InboxIcon, Loader2, SquareTerminal } from "lucide-react";
 import {
   Dialog,
@@ -10,34 +9,25 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { KindBadge } from "@/components/rows/AgentRow";
+import { useAnswerPrompt, useSessionPrompt } from "@/data/prompts/queries";
 import { cn } from "@/lib/utils";
 import type { Session } from "@/lib/db";
-import type {
-  PermissionPrompt,
-  PromptOption,
-  PromptOptionKind,
-} from "@/lib/permission-prompt";
+import type { PromptOption, PromptOptionKind } from "@/lib/permission-prompt";
 
 // Amber is "needs you" throughout: the answer that lets Claude go on is the
 // filled one, the rest are outlined
-const KIND_STYLE: Record<PromptOptionKind, string> = {
+export const KIND_STYLE: Record<PromptOptionKind, string> = {
   allow: "bg-amber-400 font-semibold text-amber-950 active:opacity-80",
   always: "border-border border text-foreground active:bg-accent",
   deny: "border-border border text-foreground active:bg-accent",
   other: "border-border border text-foreground active:bg-accent",
 };
 
-async function fetchPrompt(id: string): Promise<PermissionPrompt | null> {
-  const res = await fetch(`/api/sessions/${id}/prompt`);
-  if (!res.ok) return null;
-  return (await res.json()).prompt ?? null;
-}
-
 /**
  * The card's one row of answers: allow plus deny (or the last option), or
  * for a question with neither, its first two. The rest go behind More…
  */
-function splitOptions(options: PromptOption[]) {
+export function splitOptions(options: PromptOption[]) {
   const allow = options.find((o) => o.kind === "allow");
   let main: PromptOption[];
   if (allow) {
@@ -52,7 +42,7 @@ function splitOptions(options: PromptOption[]) {
 
 // The card's buttons are short: a bare "Yes" reads as Allow and "No" or
 // "No, and tell Claude..." as Deny; a question's answers keep their label
-function shortLabel(option: PromptOption): string {
+export function shortLabel(option: PromptOption): string {
   if (option.kind === "allow" && /^yes\W*$/i.test(option.label)) return "Allow";
   if (
     option.kind === "deny" &&
@@ -89,35 +79,8 @@ export function InboxItem({
   /** "div" when it isn't inside a list */
   as?: "li" | "div";
 }) {
-  const queryClient = useQueryClient();
-  const queryKey = ["session-prompt", session.id];
-  const { data: prompt, isLoading } = useQuery({
-    queryKey,
-    queryFn: () => fetchPrompt(session.id),
-    refetchInterval: 2000,
-  });
-  const [answering, setAnswering] = useState<number | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  const answer = async (option: PromptOption) => {
-    setAnswering(option.index);
-    setError(null);
-    try {
-      const res = await fetch(`/api/sessions/${session.id}/prompt`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ index: option.index, label: option.label }),
-      });
-      if (!res.ok) {
-        setError((await res.json()).error ?? "Couldn't answer");
-      }
-    } catch {
-      setError("Couldn't reach the server");
-    } finally {
-      setAnswering(null);
-      queryClient.invalidateQueries({ queryKey });
-    }
-  };
+  const { data: prompt, isLoading } = useSessionPrompt(session.id);
+  const { answer, answering, error } = useAnswerPrompt(session.id);
 
   if (questionsOnly && !prompt) return null;
 
