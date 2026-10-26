@@ -58,6 +58,7 @@ import {
   postToNative,
 } from "@/lib/native-bridge";
 import { mobileNavStore } from "@/stores/mobileNav";
+import { addQuote } from "@/stores/replyQuotes";
 import { KeyboardDebugOverlay, useKeyboardDebug } from "./KeyboardDebugOverlay";
 import { useFileDrop } from "@/hooks/useFileDrop";
 import { uploadFileToTemp } from "@/lib/file-upload";
@@ -737,6 +738,36 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
       fetchTmuxBuffer();
     }, [selectMode, xtermRef]);
 
+    // Select mode's "Reply to this": the copy view's selection, quoted over
+    // the composer. Taken on press too, as the tap can clear the selection.
+    const [selectedText, setSelectedText] = useState("");
+    const pickedRef = useRef("");
+    useEffect(() => {
+      if (!selectMode) return setSelectedText("");
+      const onChange = () => {
+        const sel = window.getSelection();
+        const inView =
+          !!sel &&
+          !sel.isCollapsed &&
+          !!selectTextRef.current?.contains(sel.anchorNode);
+        setSelectedText(inView ? sel.toString().trim() : "");
+      };
+      document.addEventListener("selectionchange", onChange);
+      return () => document.removeEventListener("selectionchange", onChange);
+    }, [selectMode]);
+    const replyToSelection = useCallback(() => {
+      const text = pickedRef.current || selectedText;
+      pickedRef.current = "";
+      if (!draftId || !text) return;
+      addQuote(draftId, text);
+      window.getSelection()?.removeAllRanges();
+      // Within the tap, so iOS raises the keyboard
+      keybarRef.current
+        ?.querySelector<HTMLTextAreaElement>("textarea[data-composer]")
+        ?.focus();
+      setSelectMode(false);
+    }, [draftId, selectedText]);
+
     // Auto-copy: when user drags to select text (tmux handles the selection),
     // grab tmux buffer on mouseup and copy to system clipboard
     const dragStartRef = useRef<{ x: number; y: number } | null>(null);
@@ -900,6 +931,20 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
           >
             <div className="bg-primary text-primary-foreground flex items-center justify-between px-3 py-2 text-xs font-medium">
               <span>Hold to select and copy · tap a link to open it</span>
+              {composerOn && draftId && (
+                <button
+                  onPointerDown={() => (pickedRef.current = selectedText)}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={replyToSelection}
+                  aria-disabled={!selectedText}
+                  className={cn(
+                    "bg-primary-foreground/20 ml-auto mr-2 rounded px-2.5 py-1.5 text-xs",
+                    !selectedText && "opacity-50"
+                  )}
+                >
+                  Reply to this
+                </button>
+              )}
               <button
                 onClick={() => setSelectMode(false)}
                 className="bg-primary-foreground/20 rounded px-2 py-0.5 text-xs"

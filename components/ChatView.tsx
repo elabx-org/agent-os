@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Markdown } from "@/components/Markdown";
+import { useQuoteMenu } from "@/components/QuoteMenu";
 import { InboxItem } from "@/components/Inbox";
 import { useSessionPrompt } from "@/data/prompts/queries";
 import { mobileNavActions, mobileNavStore } from "@/stores/mobileNav";
@@ -555,6 +556,7 @@ function Conversation({
   onOpenAgent,
   workflows,
   onShowWorkflow,
+  quotable,
 }: {
   rows: Row[];
   results: Map<string, ResultItem>;
@@ -562,6 +564,8 @@ function Conversation({
   onOpenAgent?: (agentId: string) => void;
   workflows?: Map<string, WorkflowInfo>;
   onShowWorkflow?: (runId: string) => void;
+  /** Claude's messages offer "Reply to this" */
+  quotable?: boolean;
 }) {
   return (
     <>
@@ -588,7 +592,13 @@ function Conversation({
             </div>
           </details>
         ) : row.kind === "assistant" ? (
-          <Markdown key={row.id} text={row.text} className="break-words" />
+          <Markdown
+            key={row.id}
+            text={row.text}
+            className="break-words"
+            quotable={quotable}
+            sourceId={row.id}
+          />
         ) : (
           <ToolRun
             key={row.id}
@@ -799,6 +809,11 @@ export function ChatView({
     session.id,
     { enabled: active && needsYou }
   );
+  // Hold (or right-click) a block of Claude's reply to quote it, then type
+  const quoteMenu = useQuoteMenu({
+    sessionId: session.id,
+    onQuoted: () => inputRef.current?.focus(),
+  });
   // Return sends, so touch keyboards get a button for a line break
   const insertNewline = () => composer.insert("\n");
   // The iOS app's keyboard bar has a new line, / and @ too, and Paste
@@ -897,6 +912,7 @@ export function ChatView({
         <>
           <div
             ref={leftRef}
+            {...quoteMenu.handlers}
             onScroll={(e) => {
               const el = e.currentTarget;
               leftAtBottom.current =
@@ -915,6 +931,7 @@ export function ChatView({
                   onOpenAgent={setOpenAgent}
                   workflows={runsById}
                   onShowWorkflow={setOpenRun}
+                  quotable
                 />
               </div>
             </div>
@@ -975,6 +992,7 @@ export function ChatView({
         {deck && <DeckStateLine session={session} active={active} />}
         <div
           ref={scrollRef}
+          {...quoteMenu.handlers}
           onScroll={(e) => {
             const el = e.currentTarget;
             atBottom.current =
@@ -1011,6 +1029,7 @@ export function ChatView({
                   onOpenAgent={setOpenAgent}
                   workflows={runsById}
                   onShowWorkflow={setOpenRun}
+                  quotable
                 />
               </div>
             ) : (
@@ -1022,6 +1041,7 @@ export function ChatView({
                   onOpenAgent={setOpenAgent}
                   workflows={runsById}
                   onShowWorkflow={setOpenRun}
+                  quotable
                 />
               </div>
             )}
@@ -1184,6 +1204,7 @@ export function ChatView({
           }
         />
       )}
+      {quoteMenu.menu}
     </div>
   );
 }

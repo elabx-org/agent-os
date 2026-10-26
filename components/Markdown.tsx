@@ -17,20 +17,77 @@ import { cn } from "@/lib/utils";
 export const Markdown = React.memo(function Markdown({
   text,
   className,
+  quotable,
+  sourceId,
 }: {
   text: string;
   className?: string;
+  /** Each block carries its source in `data-quote`, for "Reply to this" */
+  quotable?: boolean;
+  /** The chat item it renders, which a quote remembers */
+  sourceId?: string;
 }) {
   return (
-    <div className={cn("markdown min-w-0 text-sm leading-relaxed", className)}>
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
-        {text}
-      </ReactMarkdown>
+    <div
+      className={cn("markdown min-w-0 text-sm leading-relaxed", className)}
+      data-quotable={quotable || undefined}
+      data-source-id={sourceId}
+    >
+      <SourceContext.Provider value={quotable ? text : null}>
+        <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+          {text}
+        </ReactMarkdown>
+      </SourceContext.Provider>
     </div>
   );
 });
 
-function CodeBlock({ lang, code }: { lang: string; code: string }) {
+/** The Markdown being rendered, while its blocks can be quoted */
+const SourceContext = React.createContext<string | null>(null);
+
+/**
+ * A block's own Markdown, so a quote keeps its `code` and **bold**: list
+ * markers, heading hashes, a list item's sub-list and the indent or `>` of
+ * an enclosing list or quote are left out.
+ */
+function useQuoteSource(node: Element | undefined, kind: "p" | "h" | "li") {
+  const source = React.useContext(SourceContext);
+  if (source == null || !node?.position) return undefined;
+  const start = node.position.start.offset;
+  let end = node.position.end.offset;
+  if (start == null || end == null) return undefined;
+  if (kind === "li") {
+    const sub = node.children.find(
+      (c) => c.type === "element" && (c.tagName === "ul" || c.tagName === "ol")
+    );
+    const subStart = sub?.position?.start.offset;
+    if (subStart != null) end = subStart;
+  }
+  let raw = source.slice(start, end);
+  if (kind === "li")
+    raw = raw.replace(/^\s*(?:[-*+]|\d+[.)])\s+(?:\[[ xX]\]\s+)?/, "");
+  if (kind === "h")
+    raw = raw
+      .replace(/^#{1,6}\s+/, "")
+      .replace(/\s+#+\s*$/, "")
+      .replace(/\n\s*[=-]+\s*$/, "");
+  const text = raw
+    .split("\n")
+    .map((line) => line.replace(/^\s*(?:>\s?)*/, "").trimEnd())
+    .join("\n")
+    .trim();
+  return text || undefined;
+}
+
+function CodeBlock({
+  lang,
+  code,
+  quotable,
+}: {
+  lang: string;
+  code: string;
+  quotable?: boolean;
+}) {
   const [copied, setCopied] = React.useState(false);
   const html = React.useMemo(() => {
     try {
@@ -50,7 +107,13 @@ function CodeBlock({ lang, code }: { lang: string; code: string }) {
   };
 
   return (
-    <div className="border-border/60 my-3 overflow-hidden rounded-xl border bg-zinc-950/60">
+    <div
+      className="border-border/60 my-3 overflow-hidden rounded-xl border bg-zinc-950/60"
+      // Quoted whole, fenced, wherever it sits in the source
+      data-quote={
+        quotable ? `${fence(code)}${lang}\n${code}\n${fence(code)}` : undefined
+      }
+    >
       <div className="border-border/60 flex items-center justify-between border-b py-1 pr-1 pl-3 text-xs text-zinc-400">
         <span>{lang || "code"}</span>
         <button
@@ -79,6 +142,12 @@ function CodeBlock({ lang, code }: { lang: string; code: string }) {
       </pre>
     </div>
   );
+}
+
+/** A code fence longer than any run of backticks in the code */
+function fence(code: string) {
+  const runs = code.match(/`+/g) ?? [];
+  return "`".repeat(Math.max(3, ...runs.map((r) => r.length + 1)));
 }
 
 // claude.ai artifacts sit behind a login (claude.site ones are public)
@@ -144,27 +213,67 @@ function ArtifactCard({ href, title }: { href: string; title: string }) {
 }
 
 const components: Components = {
-  p: ({ children, node }) => {
+  p: function P({ children, node }) {
+    const quote = useQuoteSource(node, "p");
     const link = loneArtifactLink(node);
     if (link) return <ArtifactCard {...link} />;
-    return <p className="my-2 first:mt-0 last:mb-0">{children}</p>;
+    return (
+      <p className="my-2 first:mt-0 last:mb-0" data-quote={quote}>
+        {children}
+      </p>
+    );
   },
-  h1: ({ children }) => (
-    <h1 className="mt-5 mb-2 text-xl font-bold first:mt-0">{children}</h1>
-  ),
-  h2: ({ children }) => (
-    <h2 className="mt-4 mb-2 text-lg font-bold first:mt-0">{children}</h2>
-  ),
-  h3: ({ children }) => (
-    <h3 className="mt-3 mb-1.5 text-base font-semibold first:mt-0">
-      {children}
-    </h3>
-  ),
-  h4: ({ children }) => (
-    <h4 className="mt-3 mb-1 font-semibold first:mt-0">{children}</h4>
-  ),
-  h5: ({ children }) => <h5 className="mt-2 mb-1 font-medium">{children}</h5>,
-  h6: ({ children }) => <h6 className="mt-2 mb-1 font-medium">{children}</h6>,
+  h1: function H1({ children, node }) {
+    const quote = useQuoteSource(node, "h");
+    return (
+      <h1 className="mt-5 mb-2 text-xl font-bold first:mt-0" data-quote={quote}>
+        {children}
+      </h1>
+    );
+  },
+  h2: function H2({ children, node }) {
+    const quote = useQuoteSource(node, "h");
+    return (
+      <h2 className="mt-4 mb-2 text-lg font-bold first:mt-0" data-quote={quote}>
+        {children}
+      </h2>
+    );
+  },
+  h3: function H3({ children, node }) {
+    const quote = useQuoteSource(node, "h");
+    return (
+      <h3
+        className="mt-3 mb-1.5 text-base font-semibold first:mt-0"
+        data-quote={quote}
+      >
+        {children}
+      </h3>
+    );
+  },
+  h4: function H4({ children, node }) {
+    const quote = useQuoteSource(node, "h");
+    return (
+      <h4 className="mt-3 mb-1 font-semibold first:mt-0" data-quote={quote}>
+        {children}
+      </h4>
+    );
+  },
+  h5: function H5({ children, node }) {
+    const quote = useQuoteSource(node, "h");
+    return (
+      <h5 className="mt-2 mb-1 font-medium" data-quote={quote}>
+        {children}
+      </h5>
+    );
+  },
+  h6: function H6({ children, node }) {
+    const quote = useQuoteSource(node, "h");
+    return (
+      <h6 className="mt-2 mb-1 font-medium" data-quote={quote}>
+        {children}
+      </h6>
+    );
+  },
   a: ({ href, children }) => (
     <a
       href={href}
@@ -192,11 +301,17 @@ const components: Components = {
       {children}
     </ol>
   ),
-  li: ({ children }) => (
-    <li className="marker:text-muted-foreground pl-0.5 [&>ol]:my-1 [&>ul]:my-1">
-      {children}
-    </li>
-  ),
+  li: function Li({ children, node }) {
+    const quote = useQuoteSource(node, "li");
+    return (
+      <li
+        className="marker:text-muted-foreground pl-0.5 [&>ol]:my-1 [&>ul]:my-1"
+        data-quote={quote}
+      >
+        {children}
+      </li>
+    );
+  },
   input: ({ checked, type }) =>
     type === "checkbox" ? (
       <input
@@ -261,12 +376,19 @@ const components: Components = {
     </td>
   ),
   pre: ({ children }) => <>{children}</>,
-  code: ({ className, children }) => {
+  code: function Code({ className, children }) {
+    const quotable = React.useContext(SourceContext) != null;
     const text = String(children ?? "");
     const lang = /language-([\w+#.-]+)/.exec(className ?? "")?.[1];
     // Fenced blocks end in a newline or carry a language; inline code doesn't
     if (lang || text.includes("\n"))
-      return <CodeBlock lang={lang ?? ""} code={text.replace(/\n$/, "")} />;
+      return (
+        <CodeBlock
+          lang={lang ?? ""}
+          code={text.replace(/\n$/, "")}
+          quotable={quotable}
+        />
+      );
     return (
       <code className="bg-secondary rounded px-1.5 py-0.5 font-mono text-[0.85em] break-words">
         {children}
