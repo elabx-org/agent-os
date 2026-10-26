@@ -257,12 +257,8 @@ function NowBlock({
           elapsed={elapsed}
         >
           {now.label}
-          {now.command && (
-            <code className="text-muted-foreground ml-1.5 font-mono text-[12.5px] font-normal">
-              {now.command}
-            </code>
-          )}
         </BigState>
+        {now.command && <NowCommand key={now.command} text={now.command} />}
         <IndeterminateBar />
       </div>
     );
@@ -272,6 +268,28 @@ function NowBlock({
     <div className="px-2 pb-1">
       <BigState mark={<StateDot state={state} />}>{now.label}</BigState>
     </div>
+  );
+}
+
+/**
+ * The command or path being worked on, under the label: wrapped to three
+ * lines, and all of it on tap
+ */
+function NowCommand({ text }: { text: string }) {
+  const [full, setFull] = useState(false);
+  return (
+    <button
+      type="button"
+      aria-expanded={full}
+      title={text}
+      onClick={() => setFull((f) => !f)}
+      className={cn(
+        "text-muted-foreground -mt-1 pl-[26px] text-left font-mono text-[12px] leading-snug break-all",
+        !full && "line-clamp-3"
+      )}
+    >
+      {text}
+    </button>
   );
 }
 
