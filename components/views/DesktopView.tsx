@@ -13,8 +13,11 @@ import type { ViewProps } from "./types";
 import { fileOpenActions } from "@/stores/fileOpen";
 import { useSnapshot } from "valtio";
 import { subscribeKey } from "valtio/utils";
-import { InboxDialog } from "@/components/Inbox";
-import { mobileNavActions, mobileNavStore } from "@/stores/mobileNav";
+import {
+  NeedsYouDialog,
+  useNeedsYouPage,
+} from "@/components/Notifications/NeedsYouPage";
+import { mobileNavStore } from "@/stores/mobileNav";
 import { focusStore } from "@/stores/focus";
 import { isNative } from "@/lib/native-bridge";
 import { useIsNative } from "@/hooks/useIsNative";
@@ -46,10 +49,11 @@ export function DesktopView(props: ViewProps) {
     setStartDevServerProjectId,
     renderPane,
   } = props;
-  const { inboxOpen } = useSnapshot(mobileNavStore);
   const { page } = useSnapshot(workspacePageStore);
   const pageOpen = !!page;
   const native = useIsNative();
+  // Needs you: a page across the open Duo, a dialog on the web
+  useNeedsYouPage(native);
 
   // A page covers the pane, so the column selects no view
   useEffect(() => {
@@ -90,14 +94,6 @@ export function DesktopView(props: ViewProps) {
   useEffect(() => {
     mobileNavStore.statuses = sessionStatuses;
   }, [sessionStatuses]);
-  const waitingSessions = useMemo(
-    () =>
-      sessions.filter(
-        (s) =>
-          !s.conductor_session_id && sessionStatuses[s.id]?.status === "waiting"
-      ),
-    [sessions, sessionStatuses]
-  );
   const projectNames = useMemo(
     () =>
       Object.fromEntries(
@@ -160,6 +156,7 @@ export function DesktopView(props: ViewProps) {
         session={activeSession}
         projects={projects}
         homeOpen={sidebarOpen}
+        pageSpread={page?.kind === "inbox"}
         page={
           pageOpen && (
             <WorkspacePage view={props} onOpenSession={openFromHome} />
@@ -180,13 +177,9 @@ export function DesktopView(props: ViewProps) {
       </SessionSpread>
 
       {/* Dialogs */}
-      <InboxDialog
-        open={inboxOpen}
-        onOpenChange={mobileNavActions.setInboxOpen}
-        waitingSessions={waitingSessions}
-        projectNames={projectNames}
-        onOpenSession={attachToSession}
-      />
+      {!native && (
+        <NeedsYouDialog view={props} onOpenSession={attachToSession} />
+      )}
       <NewSurfaceHost
         projects={projects}
         onCreated={handleSessionCreated}

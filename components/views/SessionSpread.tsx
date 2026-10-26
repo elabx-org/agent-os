@@ -89,6 +89,11 @@ interface SessionSpreadProps {
   homeOpen: boolean;
   /** A workspace page standing in for the panes and the rail, or null */
   page?: ReactNode;
+  /**
+   * The page lays out its own list | detail around the fold (Needs you), so
+   * on the open Duo it takes both pages and the home makes way
+   */
+  pageSpread?: boolean;
   /** The panes */
   children: ReactNode;
 }
@@ -102,8 +107,8 @@ interface SessionSpreadProps {
  * the chat reads as a book, the terminal takes the right page with Changes on
  * the left, and anything else takes the right page.
  *
- * A workspace page takes the pane's place (on the right page) and the panes
- * wait under it, hidden.
+ * A workspace page takes the pane's place (on the right page, or both pages
+ * for one with its own list | detail) and the panes wait under it, hidden.
  *
  * Every slot keeps its place whether shown or not, so the panes never
  * remount (a terminal must not attach twice).
@@ -112,8 +117,9 @@ export function SessionSpread({
   session,
   projects,
   home,
-  homeOpen,
+  homeOpen: homeWanted,
   page,
+  pageSpread,
   children,
 }: SessionSpreadProps) {
   const native = useIsNative();
@@ -133,6 +139,8 @@ export function SessionSpread({
 
   const folder = session?.working_directory;
   const pageOpen = !!page;
+  const pageWide = !!pages && pageOpen && !!pageSpread;
+  const homeOpen = homeWanted && !pageWide;
   // Two sessions open: one on each page, in place of the rail
   const { paneCount } = usePanes();
   const twoPages = !!pages && paneCount > 1 && !pageOpen;
@@ -167,7 +175,7 @@ export function SessionSpread({
     !changesLeft &&
     !showRail &&
     !splitFold &&
-    (pageOpen || (!!book && viewMode !== "chat"));
+    (pageOpen ? !pageWide : !!book && viewMode !== "chat");
   // Across the fold: content may cross it, controls move right of it
   const paneWide =
     pages && !homeOpen && !changesLeft && !showRail && !paneRight && !splitFold;
@@ -289,7 +297,8 @@ export function SessionSpread({
       )}
 
       <div
-        data-spread={paneWide ? "wide" : undefined}
+        // A spread page keeps its controls on its own pages
+        data-spread={paneWide && !pageWide ? "wide" : undefined}
         className={cn("flex min-w-0", paneLeft ? "flex-shrink-0" : "flex-1")}
         style={paneLeft ? { width: leftPage } : undefined}
       >
@@ -305,7 +314,9 @@ export function SessionSpread({
               </SpreadPanesContext.Provider>
             </SpreadContext.Provider>
           </div>
-          {page}
+          <SpreadContext.Provider value={spreadFold}>
+            {page}
+          </SpreadContext.Provider>
         </div>
       </div>
 
