@@ -65,7 +65,10 @@ async function poll() {
   try {
     const res = await fetch("/api/background-agents");
     const data = await res.json();
-    shared = data.agents ?? [];
+    // Parked sessions are listed as the sessions they are
+    shared = ((data.agents ?? []) as BackgroundAgent[]).filter(
+      (a) => !a.agentOsSessionId
+    );
     listeners.forEach((listener) => listener(shared));
   } catch {
     // Keep the last list

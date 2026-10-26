@@ -1,14 +1,35 @@
 import { NextRequest, NextResponse } from "next/server";
 import { validateWorkingDirectory } from "@/lib/projects";
+import { getDb } from "@/lib/db";
 import {
   listBackgroundAgents,
+  parkedJobPanes,
   startBackgroundAgent,
 } from "@/lib/claude-background";
 
 // GET /api/background-agents - Claude Code's background agents, newest first
 export async function GET() {
   try {
-    return NextResponse.json({ agents: await listBackgroundAgents() });
+    const [agents, parked] = await Promise.all([
+      listBackgroundAgents(),
+      parkedJobPanes(),
+    ]);
+    // A session sent to the background is still that Agent-OS session
+    const byTmux = new Map(
+      (
+        getDb()
+          .prepare(
+            "SELECT id, tmux_name FROM sessions WHERE tmux_name IS NOT NULL"
+          )
+          .all() as { id: string; tmux_name: string }[]
+      ).map((s) => [s.tmux_name, s.id])
+    );
+    for (const agent of agents) {
+      const pane = parked.get(agent.id);
+      const sessionId = pane ? byTmux.get(pane) : undefined;
+      if (sessionId) agent.agentOsSessionId = sessionId;
+    }
+    return NextResponse.json({ agents });
   } catch (error) {
     console.error("Error listing background agents:", error);
     return NextResponse.json({ agents: [], error: "Couldn't list them" });

@@ -23,6 +23,11 @@ export interface BackgroundAgent {
   state: string;
   sessionId: string;
   startedAt: number;
+  /**
+   * The Agent-OS session this is, when it began in one and was sent to the
+   * background (parked): lists show it as that session, not twice
+   */
+  agentOsSessionId?: string;
 }
 
 // Never a leading "-": it would reach the CLI as a flag
@@ -67,6 +72,45 @@ export async function listBackgroundAgents(): Promise<BackgroundAgent[]> {
       startedAt: typeof a.startedAt === "number" ? a.startedAt : 0,
     }))
     .sort((a, b) => b.startedAt - a.startedAt);
+}
+
+/**
+ * Background jobs that a tmux pane's Claude Code was parked into, by job id:
+ * the pane's process records `parkedJobId` in ~/.claude/sessions/<pid>.json
+ */
+export async function parkedJobPanes(): Promise<Map<string, string>> {
+  const panes = new Map<string, string>();
+  try {
+    const { stdout } = await execFileAsync("tmux", [
+      "list-panes",
+      "-a",
+      "-F",
+      "#{pane_pid} #{session_name}",
+    ]);
+    for (const line of stdout.trim().split("\n")) {
+      const [pid, name] = line.split(" ");
+      if (pid && name) panes.set(pid, name);
+    }
+  } catch {
+    return new Map();
+  }
+  const dir = path.join(
+    process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), ".claude"),
+    "sessions"
+  );
+  const parked = new Map<string, string>();
+  for (const [pid, name] of panes) {
+    try {
+      const meta = JSON.parse(
+        fs.readFileSync(path.join(dir, `${pid}.json`), "utf8")
+      );
+      if (typeof meta.parkedJobId === "string")
+        parked.set(meta.parkedJobId, name);
+    } catch {
+      // Not Claude Code, or no record
+    }
+  }
+  return parked;
 }
 
 /** Starts `claude --bg` in `cwd` with the prompt; returns what it printed */
