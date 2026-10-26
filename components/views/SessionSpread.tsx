@@ -21,8 +21,7 @@ import { GitPanelSkeleton } from "@/components/Pane/PaneSkeletons";
 import { useIsNative } from "@/hooks/useIsNative";
 import { FOLD_CLEAR, useHinge } from "@/hooks/useHinge";
 import { postureStore } from "@/stores/posture";
-import { focusStore, setFocus } from "@/stores/focus";
-import { PanelRight } from "lucide-react";
+import { focusStore } from "@/stores/focus";
 import { mobileNavStore } from "@/stores/mobileNav";
 
 const GitPanel = dynamic(
@@ -226,28 +225,8 @@ export function SessionSpread({
       ? { width: leftPage }
       : undefined;
 
-  // In Focus, a way back to the rail where it would be
-  const railPill =
-    focus &&
-    !!session &&
-    !pageOpen &&
-    !homeOpen &&
-    !splitFold &&
-    (viewMode === "terminal" || viewMode === "chat") &&
-    (pages || (roomForRail && !native));
-
   return (
     <div className="relative flex min-h-0 min-w-0 flex-1">
-      {railPill && (
-        <button
-          type="button"
-          onClick={() => setFocus(false)}
-          className="bg-secondary/90 text-muted-foreground hover:text-foreground kb-compact-hide absolute top-[60px] right-[124px] z-20 flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium shadow-md backdrop-blur [html[data-native]_&]:top-[calc(60px+env(safe-area-inset-top))] [html[data-native]_&]:right-[60px]"
-        >
-          <PanelRight aria-hidden="true" className="h-3.5 w-3.5" />
-          Live activity
-        </button>
-      )}
       {/* The home: a sidebar on the web, the left page on the open Duo */}
       <div
         className={cn(
