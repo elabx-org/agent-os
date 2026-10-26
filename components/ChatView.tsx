@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Markdown } from "@/components/Markdown";
+import { useQuoteMenu } from "@/components/QuoteMenu";
 import { InboxItem } from "@/components/Inbox";
 import { useSessionPrompt } from "@/data/prompts/queries";
 import { mobileNavActions, mobileNavStore } from "@/stores/mobileNav";
@@ -72,6 +73,11 @@ import {
   WorkflowPanel,
   workflowAgentInfo,
 } from "@/components/WorkflowPhases";
+import {
+  DeckContext,
+  ReplyContextBar,
+  useChatJump,
+} from "@/components/ReplyContext";
 
 const POLL_MS = 1500;
 /** Runs of tool calls longer than this collapse to their last few */
@@ -554,6 +560,7 @@ function Conversation({
   onOpenAgent,
   workflows,
   onShowWorkflow,
+  quotable,
 }: {
   rows: Row[];
   results: Map<string, ResultItem>;
@@ -561,6 +568,8 @@ function Conversation({
   onOpenAgent?: (agentId: string) => void;
   workflows?: Map<string, WorkflowInfo>;
   onShowWorkflow?: (runId: string) => void;
+  /** Claude's messages offer "Reply to this" */
+  quotable?: boolean;
 }) {
   return (
     <>
@@ -587,7 +596,13 @@ function Conversation({
             </div>
           </details>
         ) : row.kind === "assistant" ? (
-          <Markdown key={row.id} text={row.text} className="break-words" />
+          <Markdown
+            key={row.id}
+            text={row.text}
+            className="break-words"
+            quotable={quotable}
+            sourceId={row.id}
+          />
         ) : (
           <ToolRun
             key={row.id}
@@ -693,6 +708,32 @@ export function ChatView({
     rows: rowsRef,
     leftRows: leftRowsRef,
   });
+  // "Jump to it" from the reply context: each row is one element, in the
+  // left page's list, the right page's or (one column) the conversation's
+  const convRef = useRef<HTMLDivElement>(null);
+  const findItem = useCallback(
+    (itemId: string) => {
+      const at = rows.findIndex(
+        (r) =>
+          r.id === itemId ||
+          (r.kind === "tools" && r.tools.some((t) => t.id === itemId))
+      );
+      if (at < 0) return null;
+      const [list, i] = !book
+        ? [convRef.current, at]
+        : at < seam
+          ? [leftRowsRef.current, at]
+          : [rowsRef.current, at - seam];
+      const el = list?.children[i];
+      if (!(el instanceof HTMLElement)) return null;
+      // Read where it is, not pulled back down by new output
+      atBottom.current = false;
+      return el;
+    },
+    [rows, book, seam]
+  );
+  useChatJump(session.id, active, findItem);
+
   // Earlier history goes in above: keep what's on screen where it was
   const shown = useRef<{ first?: string; height: number }>({ height: 0 });
   useLayoutEffect(() => {
@@ -772,6 +813,11 @@ export function ChatView({
     session.id,
     { enabled: active && needsYou }
   );
+  // Hold (or right-click) a block of Claude's reply to quote it, then type
+  const quoteMenu = useQuoteMenu({
+    sessionId: session.id,
+    onQuoted: () => inputRef.current?.focus(),
+  });
   // Return sends, so touch keyboards get a button for a line break
   const insertNewline = () => composer.insert("\n");
   // The iOS app's keyboard bar has a new line, / and @ too, and Paste
@@ -806,7 +852,8 @@ export function ChatView({
 
   const [sending, setSending] = useState(false);
   const send = useCallback(async () => {
-    const text = draft.trim();
+    // The draft, after any quoted passages
+    const text = composerRef.current.text.trim();
     if (!text) return;
     setSending(true);
     try {
@@ -869,6 +916,7 @@ export function ChatView({
         <>
           <div
             ref={leftRef}
+            {...quoteMenu.handlers}
             onScroll={(e) => {
               const el = e.currentTarget;
               leftAtBottom.current =
@@ -887,6 +935,7 @@ export function ChatView({
                   onOpenAgent={setOpenAgent}
                   workflows={runsById}
                   onShowWorkflow={setOpenRun}
+                  quotable
                 />
               </div>
             </div>
@@ -947,6 +996,7 @@ export function ChatView({
         {deck && <DeckStateLine session={session} active={active} />}
         <div
           ref={scrollRef}
+          {...quoteMenu.handlers}
           onScroll={(e) => {
             const el = e.currentTarget;
             atBottom.current =
@@ -983,17 +1033,21 @@ export function ChatView({
                   onOpenAgent={setOpenAgent}
                   workflows={runsById}
                   onShowWorkflow={setOpenRun}
+                  quotable
                 />
               </div>
             ) : (
-              <Conversation
-                rows={rows}
-                results={results}
-                agents={agentsByTool}
-                onOpenAgent={setOpenAgent}
-                workflows={runsById}
-                onShowWorkflow={setOpenRun}
-              />
+              <div ref={convRef} className="contents">
+                <Conversation
+                  rows={rows}
+                  results={results}
+                  agents={agentsByTool}
+                  onOpenAgent={setOpenAgent}
+                  workflows={runsById}
+                  onShowWorkflow={setOpenRun}
+                  quotable
+                />
+              </div>
             )}
             {/* The state line above says so on a table */}
             {status === "running" && !deckControls && (
@@ -1051,6 +1105,13 @@ export function ChatView({
               onRewound={onOpenTerminal}
             />
             <QueuedMessages live={live} />
+            {/* What's being answered, and the passages quoted to answer */}
+            <ReplyContextBar
+              composer={composer}
+              sessionId={session.id}
+              view="chat"
+              bounds={rootRef}
+            />
             <ComposerChips composer={composer} historyChip />
             <div
               className={cn(
@@ -1147,6 +1208,14 @@ export function ChatView({
           }
         />
       )}
+      {/* On a table while typing: Claude's last turn over the chat above */}
+      <DeckContext
+        sessionId={session.id}
+        view="chat"
+        on={!!deck && active}
+        cover={scrollRef}
+      />
+      {quoteMenu.menu}
     </div>
   );
 }

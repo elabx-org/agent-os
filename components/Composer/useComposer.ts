@@ -19,6 +19,7 @@ import {
   type FileSuggestion,
 } from "@/hooks/useComposerData";
 import { uploadFileToTemp } from "@/lib/file-upload";
+import { clearQuotes, formatWithQuotes, useQuotes } from "@/stores/replyQuotes";
 import {
   MAGIC_WORDS,
   magicWordPattern,
@@ -645,18 +646,30 @@ export function useComposer({
     };
   }, [display, chips, claude, pattern, mode, magicWords]);
 
-  /** After a send: the pills and the history position start over */
+  // Passages quoted with "Reply to this" go first, as blockquotes. A slash
+  // command, bash or memory line must keep its prefix first to run, so it
+  // goes alone and the quotes wait for the next message
+  const quotes = useQuotes(sessionId);
+  const command = !!claude && /^[/!#]/.test(value.trimStart());
+  const text = useMemo(
+    () => (quotes.length && !command ? formatWithQuotes(quotes, value) : value),
+    [quotes, value, command]
+  );
+
+  /** After a send: the pills, quotes and history position start over */
   const sent = useCallback(() => {
     setPastes([]);
     setHist(-1);
     setPreview(null);
     setDismissed(null);
-  }, [setPastes]);
+    if (sessionId && !command) clearQuotes(sessionId);
+  }, [setPastes, sessionId, command]);
 
   return {
     textareaRef,
-    /** The full text, pills expanded: what to send */
-    text: value,
+    /** The full text, pills expanded and quotes first: what to send */
+    text,
+    quotes,
     display,
     chips,
     segments,

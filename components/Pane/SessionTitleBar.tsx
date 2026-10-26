@@ -41,6 +41,7 @@ import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
 import { useIsNative } from "@/hooks/useIsNative";
 import { usePanes } from "@/contexts/PaneContext";
 import { BesideItems } from "@/components/BesideItems";
+import { useReplyPage } from "@/components/ReplyContext/store";
 import {
   STATE_DOT_CLASS,
   STATE_TEXT_CLASS,
@@ -153,6 +154,8 @@ export function SessionTitleBar({
   // marks a short docked keyboard on <html> (useKeyboardInset); the iOS app
   // reports its keyboard instead.
   const nativeTyping = native && nativeKeyboard;
+  // The open Duo's right page answers the turn on the left one
+  const replyPage = useReplyPage(session?.id);
   const slimRef = useRef<HTMLDivElement>(null);
   const peek =
     session && (viewMode === "terminal" || viewMode === "chat")
@@ -192,8 +195,13 @@ export function SessionTitleBar({
               )}
             />
           )}
+          {replyPage && (
+            <span className="text-muted-foreground shrink-0 text-[10px] font-medium tracking-[0.08em] uppercase">
+              Your reply ·
+            </span>
+          )}
           <span className="min-w-0 truncate font-semibold">{title}</span>
-          {idLabel && (
+          {idLabel && !replyPage && (
             <span className="text-muted-foreground shrink-0">· {idLabel}</span>
           )}
           {peek && (
