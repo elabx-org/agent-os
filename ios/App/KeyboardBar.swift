@@ -1,4 +1,5 @@
 import UIKit
+import UIKit.UIGestureRecognizerSubclass
 import UniformTypeIdentifiers
 
 /// The terminal keys Claude Code needs, on the keyboard itself, following
@@ -48,6 +49,8 @@ final class KeyboardBar: UIInputView {
         var repeats = false
         /// Held, a menu of these (title, sequence)
         var menu: [(String, String)] = []
+        /// A flick up sends these instead (apart), shown small in the corner
+        var flick: (title: String, sequences: [String])?
     }
 
     private enum Item {
@@ -55,6 +58,8 @@ final class KeyboardBar: UIInputView {
         case paste
         /// A key the page answers with a sheet or a mode
         case tool(Tool)
+        /// ⋯: every key, as a menu
+        case allKeys
     }
 
     private enum Tool {
@@ -98,6 +103,31 @@ final class KeyboardBar: UIInputView {
     /// with the web row's group so runs of a kind sit together. Keys the bar
     /// can't offer (mic) are nil and skipped.
     private static func item(for id: String) -> (item: Item, group: String)? {
+        guard var entry = baseItem(for: id) else { return nil }
+        if case .key(var key) = entry.item, !key.repeats, let flick = flicks[id] {
+            key.flick = flick
+            entry.item = .key(key)
+        }
+        return entry
+    }
+
+    /// The adaptive row's flicks (lib/adaptive-keys.ts); arrows repeat when
+    /// held instead
+    private static let flicks: [String: (title: String, sequences: [String])] = [
+        "esc": ("Esc Esc", ["\u{1b}", "\u{1b}"]),
+        "tab": ("⇧Tab", ["\u{1b}[Z"]),
+        "shift-tab": ("Tab", ["\t"]),
+        "enter": ("⇧↵", ["\n"]),
+        "ctrl-c": ("^D", ["\u{04}"]),
+        "char-slash": ("@", ["@"]),
+        "ctrl-r": ("^L", ["\u{0c}"]),
+    ]
+
+    private static func baseItem(for id: String) -> (item: Item, group: String)? {
+        if id.hasPrefix("digit-") {
+            let digit = String(id.dropFirst(6))
+            return (.key(Key(title: digit, sequence: digit, label: "Option \(digit)")), "digits")
+        }
         switch id {
         // With Tab and ⇧Tab, as the bar's own sets have it
         case "esc": return (.key(esc), "control")
@@ -273,7 +303,16 @@ final class KeyboardBar: UIInputView {
         leftEnd = nil
         rightStart = nil
 
-        let keys = ids.flatMap { Self.set(ids: $0) } ?? Self.set(for: context)
+        var keys = ids.flatMap { Self.set(ids: $0) } ?? Self.set(for: context)
+        if context != "chat" {
+            // ⋯ last: every key, whatever the row leaves out
+            var right = keys.right.isEmpty ? keys.left : keys.right
+            if right.isEmpty { right = [[]] }
+            right[right.count - 1].append(.allKeys)
+            keys = keys.right.isEmpty
+                ? KeySet(left: right, right: [])
+                : KeySet(left: keys.left, right: right)
+        }
         let compact = layout == .row(compact: true)
 
         let dismiss = UIButton(configuration: .plain())
@@ -400,6 +439,8 @@ final class KeyboardBar: UIInputView {
             return control
         case .tool(let tool):
             return toolButton(tool, compact: compact)
+        case .allKeys:
+            return allKeysButton(compact: compact)
         }
     }
 
@@ -419,6 +460,10 @@ final class KeyboardBar: UIInputView {
 
         let button = UIButton(configuration: config)
         button.accessibilityLabel = key.label ?? key.title
+        if let flick = key.flick {
+            button.accessibilityHint = "Flick up for \(flick.title)"
+            addFlick(flick, to: button)
+        }
         button.widthAnchor.constraint(greaterThanOrEqualToConstant: compact ? 28 : 44).isActive = true
         if !key.menu.isEmpty {
             // Held: the rarer keys; a tap still sends the key itself
@@ -452,6 +497,60 @@ final class KeyboardBar: UIInputView {
         return button
     }
 
+    /// Every key, as a menu: the row's override for what it leaves out
+    private func allKeysButton(compact: Bool) -> UIButton {
+        var config = UIButton.Configuration.gray()
+        config.cornerStyle = .medium
+        config.image = UIImage(systemName: "ellipsis")
+        let button = UIButton(configuration: config)
+        button.accessibilityLabel = "All keys"
+        button.widthAnchor.constraint(equalToConstant: compact ? 40 : 44).isActive = true
+        let send = { [weak self] (sequences: [String]) in
+            guard let self else { return }
+            self.haptics.impactOccurred()
+            for (index, sequence) in sequences.enumerated() {
+                if index == 0 { self.onKey?(sequence) } else {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.08 * Double(index)) { [weak self] in
+                        self?.onKey?(sequence)
+                    }
+                }
+            }
+        }
+        func keys(_ title: String, _ entries: [(String, String)]) -> UIMenu {
+            UIMenu(title: title, options: .displayInline, children: entries.map { name, sequence in
+                UIAction(title: name) { _ in send([sequence]) }
+            })
+        }
+        let tools = UIMenu(title: "", options: .displayInline, children: [
+            UIAction(title: "Copy", image: UIImage(systemName: "text.cursor")) { [weak self] _ in self?.onSelect?() },
+            UIAction(title: "Paste", image: UIImage(systemName: "doc.on.clipboard")) { [weak self] _ in
+                if let text = UIPasteboard.general.string, !text.isEmpty { self?.onPaste?(text) }
+            },
+            UIAction(title: "Photo", image: UIImage(systemName: "photo")) { [weak self] _ in self?.onImage?() },
+            UIAction(title: "File", image: UIImage(systemName: "doc.text")) { [weak self] _ in self?.onSnippets?() },
+        ])
+        button.menu = UIMenu(title: "All keys", children: [
+            tools,
+            keys("Keys", [
+                ("Esc", "\u{1b}"), ("Tab", "\t"), ("⇧Tab", "\u{1b}[Z"),
+                ("↵ Return", "\r"), ("⇧↵ New line", "\n"), ("Space", " "), ("⌫ Delete", "\u{7f}"),
+            ]),
+            keys("Control", [
+                ("^C", "\u{03}"), ("^D", "\u{04}"), ("^Z", "\u{1a}"), ("^L", "\u{0c}"), ("^R", "\u{12}"),
+            ]),
+            keys("Move", [
+                ("← Left", "\u{1b}[D"), ("↑ Up", "\u{1b}[A"), ("↓ Down", "\u{1b}[B"), ("→ Right", "\u{1b}[C"),
+                ("Home", "\u{1b}[H"), ("End", "\u{1b}[F"), ("Page up", "\u{1b}[5~"), ("Page down", "\u{1b}[6~"),
+            ]),
+            keys("Symbols", ["/", "@", "~", "|", ">", "-", "_"].map { ($0, $0) }),
+            UIMenu(title: "", options: .displayInline, children: [
+                UIAction(title: "Esc Esc") { _ in send(["\u{1b}", "\u{1b}"]) },
+            ]),
+        ])
+        button.showsMenuAsPrimaryAction = true
+        return button
+    }
+
     private func toolButton(_ tool: Tool, compact: Bool) -> UIButton {
         let symbol: String, label: String
         switch tool {
@@ -477,6 +576,37 @@ final class KeyboardBar: UIInputView {
         return button
     }
 
+    /// The second key a flick up sends, small in the corner; the pan cancels
+    /// the tap, so a flick never also sends the key itself
+    private func addFlick(_ flick: (title: String, sequences: [String]), to button: UIButton) {
+        let corner = UILabel()
+        corner.text = flick.title
+        corner.font = .systemFont(ofSize: 9)
+        corner.textColor = .secondaryLabel
+        corner.isUserInteractionEnabled = false
+        corner.translatesAutoresizingMaskIntoConstraints = false
+        button.addSubview(corner)
+        NSLayoutConstraint.activate([
+            corner.topAnchor.constraint(equalTo: button.topAnchor, constant: 2),
+            corner.trailingAnchor.constraint(equalTo: button.trailingAnchor, constant: -4),
+        ])
+        let pan = FlickGesture(target: self, action: #selector(flicked(_:)))
+        pan.sequences = flick.sequences
+        button.addGestureRecognizer(pan)
+    }
+
+    @objc private func flicked(_ pan: FlickGesture) {
+        guard pan.state == .ended, pan.translation(in: pan.view).y < -18 else { return }
+        haptics.impactOccurred()
+        for (index, sequence) in pan.sequences.enumerated() {
+            if index == 0 { onKey?(sequence) } else {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.08 * Double(index)) { [weak self] in
+                    self?.onKey?(sequence)
+                }
+            }
+        }
+    }
+
     override func paste(itemProviders: [NSItemProvider]) {
         guard let provider = itemProviders.first(where: { $0.canLoadObject(ofClass: String.self) }) else { return }
         _ = provider.loadObject(ofClass: String.self) { [weak self] text, _ in
@@ -496,5 +626,17 @@ final class KeyboardBar: UIInputView {
             repeatTimer?.invalidate()
             repeatTimer = nil
         }
+    }
+}
+
+/// A flick up on a key: only a mostly vertical, upward pan
+private final class FlickGesture: UIPanGestureRecognizer {
+    var sequences: [String] = []
+
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent) {
+        super.touchesMoved(touches, with: event)
+        guard state == .began || state == .possible, let view else { return }
+        let t = translation(in: view)
+        if t.y > 6 || abs(t.x) > abs(t.y) + 8 { state = .failed }
     }
 }
