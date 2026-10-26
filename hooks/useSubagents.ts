@@ -1,31 +1,34 @@
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import type { SubagentInfo } from "@/lib/claude-subagents";
+import { useSharedPoll } from "./useSharedPoll";
 
 const AGENTS_POLL_MS = 3000;
 
-/** The subagents the session has started, by the Agent call that started each */
-export function useSubagents(sessionId: string, active: boolean) {
-  const [agents, setAgents] = useState<SubagentInfo[]>([]);
-  useEffect(() => {
-    setAgents([]);
-    if (!active) return;
-    let stopped = false;
-    let timer: ReturnType<typeof setTimeout>;
-    const poll = async () => {
-      try {
-        const res = await fetch(`/api/sessions/${sessionId}/subagents`);
-        const data = await res.json();
-        if (!stopped) setAgents(data.subagents ?? []);
-      } catch {
-        // Try again next tick
-      }
-      if (!stopped) timer = setTimeout(poll, AGENTS_POLL_MS);
-    };
-    poll();
-    return () => {
-      stopped = true;
-      clearTimeout(timer);
-    };
-  }, [sessionId, active]);
-  return agents;
+export const subagentKeys = {
+  session: (sessionId: string) => ["subagents", sessionId] as const,
+};
+
+async function fetchSubagents(sessionId: string): Promise<SubagentInfo[]> {
+  const res = await fetch(`/api/sessions/${sessionId}/subagents`);
+  if (!res.ok) throw new Error("Failed to fetch subagents");
+  return (await res.json()).subagents ?? [];
 }
+
+/**
+ * The subagents the session has started, by the Agent call that started
+ * each. Chat and the activity rail share one poll.
+ */
+export function useSubagents(sessionId: string, active: boolean) {
+  const queryKey = subagentKeys.session(sessionId);
+  const { data } = useQuery({
+    queryKey,
+    queryFn: () => fetchSubagents(sessionId),
+    enabled: active,
+    staleTime: AGENTS_POLL_MS,
+  });
+  useSharedPoll(queryKey, AGENTS_POLL_MS, active);
+  return (active && data) || NONE;
+}
+
+// One empty list, so consumers' memos don't rerun on every render
+const NONE: SubagentInfo[] = [];
