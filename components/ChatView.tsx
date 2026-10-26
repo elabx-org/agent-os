@@ -20,7 +20,6 @@ import {
   Loader2,
   Pencil,
   Search,
-  Square,
   SquareTerminal,
   Wrench,
   type LucideIcon,
@@ -31,7 +30,7 @@ import { cn } from "@/lib/utils";
 import { Markdown } from "@/components/Markdown";
 import { InboxItem } from "@/components/Inbox";
 import { useSessionPrompt } from "@/data/prompts/queries";
-import { mobileNavStore } from "@/stores/mobileNav";
+import { mobileNavActions, mobileNavStore } from "@/stores/mobileNav";
 import {
   isNative,
   isTextKey,
@@ -53,6 +52,8 @@ import {
   useClaudeLive,
 } from "@/components/Composer/ClaudeStateBar";
 import { useFoldDeck } from "@/hooks/useFoldDeck";
+import { useElapsed, useSessionActivity } from "@/hooks/useSessionActivity";
+import { DeckActions } from "@/components/DeckActions";
 import { useSubagents, useWorkflows } from "@/hooks/useSubagents";
 import {
   useSpreadFold,
@@ -785,21 +786,13 @@ export function ChatView({
     [inputRef]
   );
   // Half open like a laptop or on a table: the conversation stays above the
-  // fold, and the composer and the controls sit on the deck below it
+  // fold, and the composer and the controls sit on the deck below it. On a
+  // table (not typing) the live state joins the work above, and the base
+  // holds the actions or the answer first, the composer last.
   const rootRef = useRef<HTMLDivElement>(null);
   const [composerFocused, setComposerFocused] = useState(false);
   const deck = useFoldDeck(rootRef);
   const deckControls = deck && !composerFocused && !nativeKeyboard;
-
-  const [stopping, setStopping] = useState(false);
-  const stop = async () => {
-    setStopping(true);
-    try {
-      await fetch(`/api/sessions/${session.id}/interrupt`, { method: "POST" });
-    } finally {
-      setStopping(false);
-    }
-  };
 
   const [sending, setSending] = useState(false);
   const send = useCallback(async () => {
@@ -939,6 +932,7 @@ export function ChatView({
             )}
           </div>
         )}
+        {deckControls && <DeckStateLine session={session} active={active} />}
         <div
           ref={scrollRef}
           onScroll={(e) => {
@@ -989,7 +983,8 @@ export function ChatView({
                 onShowWorkflow={setOpenRun}
               />
             )}
-            {status === "running" && (
+            {/* The state line above says so on a table */}
+            {status === "running" && !deckControls && (
               <div className="text-muted-foreground flex items-center gap-2 text-xs">
                 <Loader2 className="text-primary h-3.5 w-3.5 animate-spin" />
                 Claude is working
@@ -1015,6 +1010,27 @@ export function ChatView({
           )}
           style={{ height: deck?.deck }}
         >
+          {/* On the base, nearest the work above: the answer Claude is
+          waiting for, or Stop / Changes / Terminal. The composer comes last,
+          within the thumbs' reach. */}
+          {deckControls && (
+            <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-2 pt-1.5 pb-3">
+              {needsYou ? (
+                needsYouCard
+              ) : (
+                <DeckActions
+                  sessionId={session.id}
+                  status={status}
+                  view="chat"
+                  onView={(mode) =>
+                    mode === "terminal"
+                      ? onOpenTerminal()
+                      : mobileNavActions.requestViewMode(mode, session.id)
+                  }
+                />
+              )}
+            </div>
+          )}
           <div className="relative shrink-0">
             <ComposerPopover composer={composer} />
             <RewindSheet
@@ -1028,7 +1044,7 @@ export function ChatView({
               className={cn(
                 // Glass-like capsule, as the control column
                 "bg-background/70 border-border flex shrink-0 gap-1.5 rounded-[28px] border p-1.5 shadow-[inset_0_1px_0_hsl(var(--foreground)/0.08)] backdrop-blur-xl backdrop-saturate-150",
-                deck ? "items-start" : "items-end"
+                deck && !deckControls ? "items-start" : "items-end"
               )}
             >
               <button
@@ -1089,28 +1105,6 @@ export function ChatView({
             </div>
             <ClaudeStateBar live={live} />
           </div>
-          {/* On the deck, within the thumbs' reach: the answer Claude is
-          waiting for, or Stop while it works */}
-          {deckControls && (
-            <div className="flex min-h-0 flex-1 flex-col justify-end gap-3 overflow-y-auto px-2 pt-3">
-              {needsYouCard}
-              {status === "running" && (
-                <button
-                  type="button"
-                  onClick={stop}
-                  disabled={stopping}
-                  className="flex h-14 w-full shrink-0 items-center justify-center gap-2 rounded-2xl border border-red-500/40 bg-red-500/10 text-sm font-semibold text-red-400 active:opacity-70"
-                >
-                  {stopping ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Square className="h-4 w-4 fill-current" />
-                  )}
-                  Stop Claude
-                </button>
-              )}
-            </div>
-          )}
         </div>
       </div>
       {side && pages && gutter}
@@ -1140,6 +1134,57 @@ export function ChatView({
               : undefined
           }
         />
+      )}
+    </div>
+  );
+}
+
+/**
+ * Tabletop: what the session is doing right now, big enough to read from
+ * across the table. Mounted only there, so it polls only then.
+ */
+function DeckStateLine({
+  session,
+  active,
+}: {
+  session: Session;
+  active: boolean;
+}) {
+  const { state, now } = useSessionActivity(session, { active });
+  const elapsed = useElapsed(state === "work" ? now.startedAt : undefined);
+  const needs = state === "needs";
+
+  return (
+    <div className="border-border flex h-12 shrink-0 items-center gap-2.5 overflow-hidden border-b px-4 whitespace-nowrap">
+      {needs ? (
+        <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-amber-400 shadow-[0_0_0_3px_rgba(242,176,30,.18)]" />
+      ) : state === "work" ? (
+        <Loader2 className="h-4 w-4 shrink-0 animate-spin text-blue-500" />
+      ) : (
+        <span
+          className={cn(
+            "h-2.5 w-2.5 shrink-0 rounded-full",
+            state === "done"
+              ? "bg-emerald-500"
+              : state === "error"
+                ? "bg-red-500"
+                : "bg-muted-foreground/50"
+          )}
+        />
+      )}
+      <span className="shrink-0 text-xl font-medium">{now.label}</span>
+      {now.command && (
+        <code
+          title={now.command}
+          className="text-muted-foreground min-w-0 truncate font-mono text-base"
+        >
+          {now.command}
+        </code>
+      )}
+      {elapsed && (
+        <span className="text-muted-foreground ml-auto shrink-0 text-sm tabular-nums">
+          {elapsed}
+        </span>
       )}
     </div>
   );
