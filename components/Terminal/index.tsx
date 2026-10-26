@@ -39,7 +39,7 @@ import {
   showsQueued,
 } from "./queued-messages";
 import type { ClaudeKey } from "@/components/Composer/ClaudeStateBar";
-import { DeckPad } from "./DeckPad";
+import { DeckActions } from "@/components/DeckActions";
 import { useFoldDeck } from "@/hooks/useFoldDeck";
 import { COMPOSER_EVENT, getComposerEnabled } from "./typing-assist";
 import { useTerminalConnection, useTerminalSearch } from "./hooks";
@@ -309,7 +309,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
     // The iOS app sizes the page above the keyboard itself
     const keyboard = useKeyboardInset(showKeybar && !isNative());
     // ...and shows the keys on the keyboard, so the keybar steps aside
-    const { nativeKeyboard } = useSnapshot(mobileNavStore);
+    const { nativeKeyboard, statuses } = useSnapshot(mobileNavStore);
     // Split/floating keyboards cover the bottom without shrinking the viewport,
     // so move the keybar to the top where it stays reachable
     // Half open like a laptop: output above the fold, input on the deck below
@@ -318,6 +318,9 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
     // Laptop pose while typing: the composer is the screen's last line, above
     // the fold, and the key rows fill the deck between the fold and the keyboard
     const laptopKeys = !!deck && nativeKeyboard;
+    // Tabletop with the keyboard down: the base holds Stop / Changes /
+    // Terminal, then the key row, then the composer nearest the thumbs
+    const tabletopBase = !!deck && !nativeKeyboard && keyboard.height === 0;
 
     // The key row follows what runs here: Claude Code or a shell (a tab
     // with no session, a shell session, the other agents' CLIs)
@@ -975,9 +978,19 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
                   }
             }
           >
+            {tabletopBase && draftId && (
+              <DeckActions
+                sessionId={draftId}
+                status={statuses[draftId]?.status}
+                view="terminal"
+                className="px-3 pt-2"
+              />
+            )}
+            {tabletopBase && <div className="min-h-0 flex-1" />}
+            {/* Ordered rather than moved, so the composer never remounts */}
             <div
               className="bg-background shrink-0"
-              style={{ order: laptopKeys ? 1 : undefined }}
+              style={{ order: laptopKeys ? 1 : tabletopBase ? 3 : undefined }}
             >
               {composerOn && (
                 <Composer
@@ -1008,7 +1021,13 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
             </div>
             <div
               className={cn(laptopKeys && "keybar-fill bg-background min-h-0")}
-              style={laptopKeys ? { order: 3, height: deck.deck } : undefined}
+              style={
+                laptopKeys
+                  ? { order: 3, height: deck.deck }
+                  : tabletopBase
+                    ? { order: 2 }
+                    : undefined
+              }
             >
               <TerminalToolbar
                 onKeyPress={keybarKeyPress}
@@ -1017,15 +1036,16 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
                 onCopy={copySelection}
                 selectMode={selectMode}
                 onSelectModeChange={setSelectMode}
-                visible={toolbarVisible && (!nativeKeyboard || laptopKeys)}
+                // The deck has no keybar toggle, so its row always shows
+                visible={
+                  (toolbarVisible || tabletopBase) &&
+                  (!nativeKeyboard || laptopKeys)
+                }
                 keepRows={laptopKeys}
                 context={keysContext}
                 keyboardUp={keyboardUp}
               />
             </div>
-            {deck && !nativeKeyboard && keyboard.height === 0 && (
-              <DeckPad onKeyPress={keybarKeyPress} />
-            )}
           </div>
         )}
 
