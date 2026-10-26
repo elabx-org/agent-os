@@ -53,7 +53,7 @@ import {
   useClaudeLive,
 } from "@/components/Composer/ClaudeStateBar";
 import { useFoldDeck } from "@/hooks/useFoldDeck";
-import { useSubagents } from "@/hooks/useSubagents";
+import { useSubagents, useWorkflows } from "@/hooks/useSubagents";
 import {
   useSpreadFold,
   type SpreadFold,
@@ -65,6 +65,12 @@ import { agentOpenStore, consumeSubagent } from "@/stores/agentOpen";
 import type { Session } from "@/lib/db";
 import type { ChatItem } from "@/lib/claude-transcript";
 import type { SubagentInfo } from "@/lib/claude-subagents";
+import type { WorkflowInfo } from "@/lib/claude-workflows";
+import {
+  WorkflowCard,
+  WorkflowPanel,
+  workflowAgentInfo,
+} from "@/components/WorkflowPhases";
 
 const POLL_MS = 1500;
 /** Runs of tool calls longer than this collapse to their last few */
@@ -492,11 +498,15 @@ function ToolRun({
   results,
   agents,
   onOpenAgent,
+  workflows,
+  onShowWorkflow,
 }: {
   tools: ToolItem[];
   results: Map<string, ResultItem>;
   agents?: Map<string, SubagentInfo>;
   onOpenAgent?: (agentId: string) => void;
+  workflows?: Map<string, WorkflowInfo>;
+  onShowWorkflow?: (runId: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const hidden = expanded ? 0 : Math.max(0, tools.length - TOOL_RUN_VISIBLE);
@@ -513,6 +523,18 @@ function ToolRun({
       )}
       {tools.slice(hidden).map((tool) => {
         const agent = agents?.get(tool.id);
+        const runId =
+          tool.name === "Workflow" ? results.get(tool.id)?.runId : undefined;
+        const run = runId ? workflows?.get(runId) : undefined;
+        if (run && onOpenAgent && onShowWorkflow)
+          return (
+            <WorkflowCard
+              key={tool.id}
+              run={run}
+              onOpenAgent={onOpenAgent}
+              onShowAll={() => onShowWorkflow(run.runId)}
+            />
+          );
         return agent && onOpenAgent ? (
           <SubagentRow key={tool.id} agent={agent} onOpen={onOpenAgent} />
         ) : (
@@ -529,11 +551,15 @@ function Conversation({
   results,
   agents,
   onOpenAgent,
+  workflows,
+  onShowWorkflow,
 }: {
   rows: Row[];
   results: Map<string, ResultItem>;
   agents?: Map<string, SubagentInfo>;
   onOpenAgent?: (agentId: string) => void;
+  workflows?: Map<string, WorkflowInfo>;
+  onShowWorkflow?: (runId: string) => void;
 }) {
   return (
     <>
@@ -568,6 +594,8 @@ function Conversation({
             results={results}
             agents={agents}
             onOpenAgent={onOpenAgent}
+            workflows={workflows}
+            onShowWorkflow={onShowWorkflow}
           />
         )
       )}
@@ -608,7 +636,16 @@ export function ChatView({
   const running = agents.filter((a) => a.status === "running");
   const [openAgent, setOpenAgent] = useState<string | null>(null);
   const [agentList, setAgentList] = useState(false);
-  useEffect(() => setOpenAgent(null), [session.id]);
+  const runs = useWorkflows(session.id, active);
+  const runsById = useMemo(
+    () => new Map(runs.map((r) => [r.runId, r] as const)),
+    [runs]
+  );
+  const [openRun, setOpenRun] = useState<string | null>(null);
+  useEffect(() => {
+    setOpenAgent(null);
+    setOpenRun(null);
+  }, [session.id]);
   // A subagent row elsewhere (the home) asked for this one's panel
   const { subagent: openRequest } = useSnapshot(agentOpenStore);
   useEffect(() => {
@@ -616,16 +653,28 @@ export function ChatView({
     const agentId = consumeSubagent(session.id);
     if (agentId) setOpenAgent(agentId);
   }, [active, openRequest, session.id]);
-  const opened = agents.find((a) => a.agentId === openAgent);
+  const opened = useMemo(() => {
+    if (!openAgent) return undefined;
+    const sub = agents.find((a) => a.agentId === openAgent);
+    if (sub) return sub;
+    // A workflow's agent opens in the same panel
+    for (const run of runs) {
+      const agent = run.agents.find((a) => a.agentId === openAgent);
+      if (agent) return workflowAgentInfo(run, agent);
+    }
+  }, [agents, runs, openAgent]);
+  const openedRun = openRun ? runsById.get(openRun) : undefined;
+  // What takes the right page: an agent, or a whole workflow
+  const side = !!opened || !!openedRun;
 
   // Focus on the open Duo: the conversation reads across both pages like a
   // book, earlier rows on the left page and the latest with the composer on
   // the right. An open subagent takes the right page instead.
   const outerRef = useRef<HTMLDivElement>(null);
   const pages = useBookPages(outerRef, useSpreadFold());
-  const book = !!pages && !opened && state === "ready";
+  const book = !!pages && !side && state === "ready";
   // Either way each column keeps to one side of the fold
-  const paged = book || (!!pages && !!opened);
+  const paged = book || (!!pages && side);
   const leftRef = useRef<HTMLDivElement>(null);
   const leftRowsRef = useRef<HTMLDivElement>(null);
   const rowsRef = useRef<HTMLDivElement>(null);
@@ -808,7 +857,7 @@ export function ChatView({
   );
 
   return (
-    <div ref={outerRef} className="relative flex h-full">
+    <div ref={outerRef} className="@container/chat relative flex h-full">
       {/* The book's left page: earlier rows, down to where the right one
           picks up */}
       {book && pages && (
@@ -831,6 +880,8 @@ export function ChatView({
                   results={results}
                   agents={agentsByTool}
                   onOpenAgent={setOpenAgent}
+                  workflows={runsById}
+                  onShowWorkflow={setOpenRun}
                 />
               </div>
             </div>
@@ -842,9 +893,9 @@ export function ChatView({
         ref={rootRef}
         className={cn(
           "bg-background flex h-full min-w-0 flex-col",
-          pages && opened ? "shrink-0" : "flex-1"
+          pages && side ? "shrink-0" : "flex-1"
         )}
-        style={pages && opened ? { width: pages.left } : undefined}
+        style={pages && side ? { width: pages.left } : undefined}
       >
         {agents.length > 0 && !hideAgentsBar && (
           <div className="border-border shrink-0 border-b px-3 py-1.5">
@@ -924,6 +975,8 @@ export function ChatView({
                   results={results}
                   agents={agentsByTool}
                   onOpenAgent={setOpenAgent}
+                  workflows={runsById}
+                  onShowWorkflow={setOpenRun}
                 />
               </div>
             ) : (
@@ -932,6 +985,8 @@ export function ChatView({
                 results={results}
                 agents={agentsByTool}
                 onOpenAgent={setOpenAgent}
+                workflows={runsById}
+                onShowWorkflow={setOpenRun}
               />
             )}
             {status === "running" && (
@@ -1058,7 +1113,20 @@ export function ChatView({
           )}
         </div>
       </div>
-      {opened && pages && gutter}
+      {side && pages && gutter}
+      {openedRun && !opened && (
+        <WorkflowPanel
+          key={openedRun.runId}
+          run={openedRun}
+          onOpenAgent={setOpenAgent}
+          onClose={() => setOpenRun(null)}
+          className={
+            pages
+              ? "@2xl/chat:w-auto @2xl/chat:max-w-none @2xl/chat:flex-1 @2xl/chat:border-l-0"
+              : undefined
+          }
+        />
+      )}
       {opened && (
         <SubagentPanel
           key={opened.agentId}
@@ -1068,7 +1136,7 @@ export function ChatView({
           // The right page, with the conversation on the left
           className={
             pages
-              ? "md:w-auto md:max-w-none md:flex-1 md:border-l-0"
+              ? "@2xl/chat:w-auto @2xl/chat:max-w-none @2xl/chat:flex-1 @2xl/chat:border-l-0"
               : undefined
           }
         />
@@ -1110,7 +1178,7 @@ function SubagentPanel({
     <section
       aria-label={agent.description}
       className={cn(
-        "bg-background border-border absolute inset-0 z-10 flex flex-col md:static md:w-[46%] md:max-w-xl md:shrink-0 md:border-l",
+        "bg-background border-border absolute inset-0 z-10 flex flex-col @2xl/chat:static @2xl/chat:w-[46%] @2xl/chat:max-w-xl @2xl/chat:shrink-0 @2xl/chat:border-l",
         className
       )}
     >
