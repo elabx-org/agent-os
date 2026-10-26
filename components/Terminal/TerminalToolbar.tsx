@@ -34,6 +34,7 @@ import {
   SPECIAL_KEYS,
   contextRow,
   getButtonDef,
+  pinnedRow,
   rowIdFor,
   splitOverflow,
   useToolbarPreferences,
@@ -62,6 +63,9 @@ interface TerminalToolbarProps {
   /** Across both pages of the open Duo (Two rows): the context row's keys
       either side of the gutter, every one shown */
   pages?: { left: number; gutter: number } | null;
+  /** One row at full size with ⋯ for the rest, fixed rows too (a page of
+      the open Duo, Split or Mirrored) */
+  overflow?: boolean;
 }
 
 interface Snippet {
@@ -669,6 +673,7 @@ export function TerminalToolbar({
   keyboardUp = false,
   singleRow = false,
   pages = null,
+  overflow = false,
 }: TerminalToolbarProps) {
   const [showPasteModal, setShowPasteModal] = useState(false);
   const [showSnippetsModal, setShowSnippetsModal] = useState(false);
@@ -786,6 +791,7 @@ export function TerminalToolbar({
     resolvedRow1.join(),
     resolvedRow2.join(),
     pages?.left,
+    overflow,
   ].join("|");
   const [fitAt, setFitAt] = useState({
     key: "",
@@ -819,22 +825,32 @@ export function TerminalToolbar({
   // go into ⋯, in order, with a pinned ^C still last. Across both pages (Two
   // rows) they split either side of the gutter instead, every one shown.
   const pinCtrlC = preferences.pinCtrlC ?? true;
+  // Fixed rows on a page of the open Duo: one row too, never shrunk or
+  // scrolling (their keys in order, the second row's after the first's)
+  const fullRow = useMemo(
+    () =>
+      contextMode
+        ? resolvedRow1
+        : overflow && !twoRows
+          ? pinnedRow(row1Ids, pinCtrlC)
+          : null,
+    [contextMode, resolvedRow1, overflow, twoRows, row1Ids, pinCtrlC]
+  );
   const contextKeys = useMemo(() => {
-    if (!contextMode || !rowWidth) return null;
-    const pinned =
-      pinCtrlC && resolvedRow1[resolvedRow1.length - 1] === "ctrl-c";
+    if (!fullRow || !rowWidth) return null;
+    const pinned = pinCtrlC && fullRow[fullRow.length - 1] === "ctrl-c";
     const tail: ToolbarButtonId[] = pinned ? ["ctrl-c"] : [];
     if (pages) {
-      const [fits] = splitOverflow(resolvedRow1, pages.left, { pinCtrlC });
+      const [fits] = splitOverflow(fullRow, pages.left, { pinCtrlC });
       const left = fits.slice(0, fits.length - tail.length);
       return {
         head: left,
         more: NO_KEYS,
-        tail: resolvedRow1.slice(left.length),
+        tail: fullRow.slice(left.length),
         gear: true,
       };
     }
-    const [shown, over] = splitOverflow(resolvedRow1, rowWidth, { pinCtrlC });
+    const [shown, over] = splitOverflow(fullRow, rowWidth, { pinCtrlC });
     let head = shown.slice(0, shown.length - tail.length);
     let more = over;
     // Measuring found the row still too long: one more key goes
@@ -846,10 +862,10 @@ export function TerminalToolbar({
     // The quiet gear only when it fits too (held ^C and ⋯ offer it)
     const gear =
       !more.length &&
-      !splitOverflow(resolvedRow1, rowWidth, { pinCtrlC, reserve: GEAR_PX })[1]
+      !splitOverflow(fullRow, rowWidth, { pinCtrlC, reserve: GEAR_PX })[1]
         .length;
     return { head, more, tail, gear };
-  }, [contextMode, rowWidth, pinCtrlC, resolvedRow1, pages, fit.trim]);
+  }, [fullRow, rowWidth, pinCtrlC, pages, fit.trim]);
 
   useLayoutEffect(() => {
     if (!row1El || !rowWidth) return;

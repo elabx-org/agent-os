@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   X,
   ChevronUp,
@@ -57,6 +57,7 @@ import {
   CLOSED_ROW_PX,
   OPEN_DUO_ROW_PX,
   getButtonDef,
+  keysSettingsStore,
   savedContextRow,
   splitOverflow,
   useToolbarPreferences,
@@ -106,6 +107,14 @@ export function ToolbarSettings({
   }
   const [typingAssist, setTypingAssistState] = useState(getTypingAssist);
   const [composer, setComposer] = useState(getComposerEnabled);
+
+  useEffect(() => {
+    if (!open) return;
+    keysSettingsStore.open = true;
+    return () => {
+      keysSettingsStore.open = false;
+    };
+  }, [open]);
 
   if (!open) return null;
 

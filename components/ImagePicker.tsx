@@ -166,7 +166,9 @@ export function ImagePicker({
   const pathSegments = currentPath.split("/").filter(Boolean);
 
   return (
-    <div className="bg-background fixed inset-0 z-50 flex flex-col">
+    // On the open Duo it takes the right page, as the image viewer does:
+    // full width, its upload button would sit in the fold
+    <div className="bg-background fixed inset-0 z-50 flex flex-col [html[data-fold=vertical]_&]:left-[var(--fold-end)] [html[data-hinge]_&]:left-[calc(var(--hinge-x)+var(--fold-clear))]">
       {/* Header */}
       <div className="border-border bg-background/95 flex items-center gap-2 border-b p-3 backdrop-blur-sm">
         <Button

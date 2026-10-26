@@ -124,9 +124,10 @@ export function useSpreadPages(
       const end =
         rect.right - (parseFloat(getComputedStyle(el).paddingRight) || 0);
       const clear = fold.end > fold.start ? 0 : FOLD_CLEAR;
-      const left = Math.round(fold.start - clear - start);
-      const gutter = Math.round(fold.end - fold.start + clear * 2);
-      const right = Math.round(end - fold.end - clear);
+      // Whole pixels, rounded towards the pages so none lands in the gutter
+      const left = Math.floor(fold.start - clear - start);
+      const gutter = Math.ceil(fold.end + clear - start) - left;
+      const right = Math.floor(end - fold.end - clear);
       const fits = left >= PAGE_MIN && right >= PAGE_MIN;
       setPages((prev) =>
         !fits

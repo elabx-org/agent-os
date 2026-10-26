@@ -30,6 +30,7 @@ import { TerminalToolbar } from "./TerminalToolbar";
 import {
   type KeysContext,
   contextRow,
+  keysSettingsStore,
   useToolbarPreferences,
 } from "./toolbar-config";
 import { KeybarToggleButton } from "./KeybarToggleButton";
@@ -88,6 +89,9 @@ export interface TerminalHandle {
   sendCommand: (command: string) => void;
   sendInput: (data: string) => void;
   sendPaste: (data: string) => void;
+  /** A file's path from elsewhere (the share sheet): into the composer as
+      its own pill, or typed with a space after */
+  attachPath: (path: string) => void;
   focus: () => void;
   getScrollState: () => TerminalScrollState | null;
   restoreScrollState: (state: TerminalScrollState) => void;
@@ -243,6 +247,10 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
       sendCommand,
       sendInput,
       sendPaste,
+      attachPath: (path: string) =>
+        composerOnRef.current
+          ? handleImageSelect(path)
+          : sendInput(`${path} `),
       focus,
       getScrollState,
       restoreScrollState,
@@ -692,11 +700,16 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
       keybarRef,
       showKeybar && !deck ? spreadFold : null
     );
-    const duoLayout = !duoPages
+    const savedLayout = !duoPages
       ? null
       : keyPrefs.duoLayout === "two-rows" && keyPrefs.mode !== "context"
         ? "split"
         : (keyPrefs.duoLayout ?? "split");
+    // Settings → Keys takes the right page: the keys move left meanwhile,
+    // so the row shows each change beside the list
+    const { open: keysOpen } = useSnapshot(keysSettingsStore);
+    const duoLayout =
+      keysOpen && savedLayout === "split" ? "mirrored" : savedLayout;
     const sideBySide = duoLayout === "split" || duoLayout === "mirrored";
     const leftSlot = duoPages
       ? { width: duoPages.left, flexShrink: 0 }
@@ -1201,6 +1214,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
                 keyboardUp={keyboardUp}
                 singleRow={tabletopBase}
                 pages={twoRowPages}
+                overflow={sideBySide}
               />
             </div>
           </div>

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { proxy } from "valtio";
 import {
   preferencesKeys,
   usePreference,
@@ -405,6 +406,10 @@ export function useToolbarPreferences() {
 export function useDuoLayout(): DuoLayout {
   return useToolbarPreferences().preferences.duoLayout ?? "split";
 }
+
+/** Settings → Keys is open. On the open Duo it covers the right page, so a
+    split row shows its keys on the left page meanwhile, beside the list */
+export const keysSettingsStore = proxy({ open: false });
 
 // --- Presets ---
 
