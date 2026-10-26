@@ -7,26 +7,17 @@ import { SessionList } from "@/components/SessionList";
 import { MissionControl } from "@/components/MissionControl";
 import { NewSessionDialog } from "@/components/NewSessionDialog";
 import { StartServerDialog } from "@/components/DevServers/StartServerDialog";
-import { ThemeToggle } from "@/components/ThemeToggle";
-import { TextSizeControl } from "@/components/TextSizeControl";
 import { PaneLayout } from "@/components/PaneLayout";
-import { SwipeSidebar } from "@/components/mobile/SwipeSidebar";
 import { QuickSwitcher } from "@/components/QuickSwitcher";
 import { UsageMonitor } from "@/components/UsageMonitor";
-import { MinimaxUsageMonitor } from "@/components/MinimaxUsageMonitor";
 import type { ViewProps } from "./types";
 import { fileOpenActions } from "@/stores/fileOpen";
 import { mobileNavActions, mobileNavStore } from "@/stores/mobileNav";
 import { NavRail } from "@/components/mobile/NavRail";
 import { useSideRail } from "@/hooks/useSideRail";
 import { isNative } from "@/lib/native-bridge";
-import { useIsNative } from "@/hooks/useIsNative";
-import { Switch } from "@/components/ui/switch";
-import {
-  duoPreviewStore,
-  loadDuoPreview,
-  setDuoPreview,
-} from "@/stores/duoPreview";
+import { loadDuoPreview } from "@/stores/duoPreview";
+import { cn } from "@/lib/utils";
 
 export function MobileView({
   sessions,
@@ -55,7 +46,6 @@ export function MobileView({
 }: ViewProps) {
   // The iOS app puts this navigation in the system's own bar
   const railWidth = useSideRail(!isNative());
-  const native = useIsNative();
 
   useEffect(loadDuoPreview, []);
 
@@ -77,7 +67,6 @@ export function MobileView({
   );
 
   const { inboxOpen } = useSnapshot(mobileNavStore);
-  const { on: duoPreview } = useSnapshot(duoPreviewStore);
   const projectNames = useMemo(
     () =>
       Object.fromEntries(
@@ -119,87 +108,40 @@ export function MobileView({
           columnWidth={railWidth}
           waitingCount={waitingSessions.length}
           onInbox={() => mobileNavActions.setInboxOpen(true)}
-          onSessions={() => setSidebarOpen(true)}
+          onSessions={() => setSidebarOpen(!sidebarOpen)}
           onFind={() => setShowQuickSwitcher(true)}
           onNewSession={() => setShowNewSessionDialog(true)}
         />
       )}
-      {native ? (
-        // The app's home, a page of its own rather than a drawer
-        sidebarOpen && (
-          <div className="bg-background fixed inset-0 z-40 pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)]">
-            <MissionControl
-              sessions={sessions}
-              sessionStatuses={sessionStatuses}
-              projectNames={projectNames}
-              activeSessionId={focusedActiveTab?.sessionId || undefined}
-              onOpenSession={(session) => {
-                attachToSession(session);
-                setSidebarOpen(false);
-              }}
-              onNewSession={() => setShowNewSessionDialog(true)}
-              glance={native && duoPreview}
-              projectsView={
-                <div className="flex h-full flex-col">
-                  <div className="min-h-0 flex-1 overflow-hidden">
-                    {cloneElement(sessionList, {
-                      belowHeader: (
-                        <div className="px-3 pb-2">
-                          <UsageMonitor />
-                        </div>
-                      ),
-                    })}
-                  </div>
-                  <div className="space-y-1 px-4 py-2">
-                    <MinimaxUsageMonitor />
-                    <TextSizeControl />
-                    <div className="flex items-center justify-between">
-                      <span className="text-muted-foreground text-xs">
-                        Theme
-                      </span>
-                      <ThemeToggle />
-                    </div>
-                    <label className="flex min-h-[44px] items-center justify-between gap-3">
-                      <span className="text-muted-foreground text-xs">
-                        New closed-screen layout (trial)
-                      </span>
-                      <Switch
-                        checked={duoPreview}
-                        onCheckedChange={setDuoPreview}
-                      />
-                    </label>
-                  </div>
+      {/* The home: a page of its own rather than a drawer, the same in the
+          app and a browser. The nav rail stays beside it */}
+      {sidebarOpen && (
+        <div
+          className={cn(
+            "bg-background fixed inset-0 z-40 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)]",
+            !railWidth && "pr-[env(safe-area-inset-right)]"
+          )}
+          style={railWidth ? { right: railWidth } : undefined}
+        >
+          <MissionControl
+            sessions={sessions}
+            sessionStatuses={sessionStatuses}
+            projectNames={projectNames}
+            activeSessionId={focusedActiveTab?.sessionId || undefined}
+            onOpenSession={(session) => {
+              attachToSession(session);
+              setSidebarOpen(false);
+            }}
+            onNewSession={() => setShowNewSessionDialog(true)}
+            projectsView={cloneElement(sessionList, {
+              belowHeader: (
+                <div className="px-3 pb-2">
+                  <UsageMonitor />
                 </div>
-              }
-            />
-          </div>
-        )
-      ) : (
-        <>
-          {/* Swipe sidebar */}
-          <SwipeSidebar
-            isOpen={sidebarOpen}
-            onClose={() => setSidebarOpen(false)}
-          >
-            <div className="flex h-full flex-col">
-              {/* Session list */}
-              <div className="min-h-0 flex-1 overflow-hidden">
-                {sessionList}
-              </div>
-
-              {/* Sidebar footer */}
-              <div className="mt-auto space-y-1 px-4 py-2">
-                <UsageMonitor />
-                <MinimaxUsageMonitor />
-                <TextSizeControl />
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground text-xs">Theme</span>
-                  <ThemeToggle />
-                </div>
-              </div>
-            </div>
-          </SwipeSidebar>
-        </>
+              ),
+            })}
+          />
+        </div>
       )}
 
       {/* Terminal fills the screen */}

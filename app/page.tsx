@@ -383,17 +383,23 @@ function HomeContent() {
     openNewSession: () => setShowNewSessionDialog(true),
   });
 
-  // Notification links open their session; on a phone, over the session list
+  // Notification links open their session; on a phone, over the home. A
+  // link can land before the start state below is chosen, so note it
+  const linkedSession = useRef(false);
   useSessionLinks(sessions, (session) => {
+    linkedSession.current = true;
     attachToSession(session);
     if (isMobile) setSidebarOpen(false);
   });
   usePresence(focusedActiveTab?.sessionId ?? undefined);
 
-  // Open beside the session on wide screens, closed on narrow ones; folding
-  // an iPhone Duo shut keeps the session rather than the list
+  // Open beside the session on wide screens. On narrow ones start on the
+  // home unless a session is up; folding an iPhone Duo shut keeps the session
   useEffect(() => {
-    if (isHydrated) setSidebarOpen(!isMobile);
+    if (!isHydrated) return;
+    const onSession = !!focusedActiveTab?.sessionId || linkedSession.current;
+    linkedSession.current = false;
+    setSidebarOpen(!isMobile || !onSession);
   }, [isMobile, isHydrated]);
 
   // Keyboard shortcuts: Cmd+K opens the quick switcher, Cmd+, Settings
