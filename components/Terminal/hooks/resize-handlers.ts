@@ -42,8 +42,13 @@ export function setupResizeHandlers(config: ResizeHandlersConfig): () => void {
     return !!el && el.offsetParent !== null && el.clientWidth > 0;
   };
 
+  // While the on-screen keyboard is up the terminal keeps its rows and slides
+  // instead (see Terminal): a refit would make tmux redraw everything
+  const keepsRows = () =>
+    !!containerRef.current?.hasAttribute("data-keep-rows");
+
   const fitIfVisible = (restoreScroll: () => void) => {
-    if (!isVisible()) return;
+    if (!isVisible() || keepsRows()) return;
     fitAddon.fit();
     fixMobileScrollbarWidth();
     restoreScroll();

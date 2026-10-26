@@ -21,13 +21,9 @@ C_PINK=$'\\033[38;5;213m'
 C_MUTED=$'\\033[38;5;245m'
 C_BOLD=$'\\033[1m'
 
-# Configure tmux status bar
-tmux set-option status-style 'bg=#1e1e2e,fg=#cdd6f4' 2>/dev/null
-tmux set-option status-left '#[fg=#cba6f7,bold] AgentOS #[fg=#6c7086]| ' 2>/dev/null
-tmux set-option status-left-length 20 2>/dev/null
-tmux set-option status-right '#[fg=#6c7086]| #[fg=#89b4fa]#S #[fg=#6c7086]| #[fg=#a6adc8]%H:%M ' 2>/dev/null
-tmux set-option status-right-length 40 2>/dev/null
-tmux set-option status-position bottom 2>/dev/null
+# No tmux status line: Agent-OS's header already names the session, and on a
+# phone the keyboard leaves few enough rows
+tmux set-option status off 2>/dev/null
 
 # Clear and show banner
 clear
