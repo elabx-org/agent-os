@@ -7,10 +7,7 @@ import {
   PageHeader,
   type PageProps,
 } from "@/components/WorkspacePage";
-import {
-  NewBackgroundAgentSheet,
-  useBackgroundAgentsByProject,
-} from "@/components/BackgroundAgents";
+import { useBackgroundAgentsByProject } from "@/components/BackgroundAgents";
 import {
   ProjectActionItems,
   projectActionGroups,
@@ -29,6 +26,7 @@ import { useListTitles } from "@/hooks/useSessionTitles";
 import { useViewport } from "@/hooks/useViewport";
 import { mobileNavActions } from "@/stores/mobileNav";
 import { backPage, openPage } from "@/stores/workspacePage";
+import { openNew } from "@/stores/newSurface";
 import type { ProjectWithDevServers } from "@/lib/projects";
 import {
   AgentsSection,
@@ -132,13 +130,11 @@ function ProjectWorkspace({
   const keepName = useRef(false);
   const nameInput = useRef<HTMLInputElement>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
-  // The folder a new background agent starts in, while its sheet is open
-  const [newAgentIn, setNewAgentIn] = useState<string | null>(null);
 
   const newSession = () => view.handleNewSessionInProject(project.id);
   const newAgent = uncategorized
     ? undefined
-    : () => setNewAgentIn(project.working_directory);
+    : () => openNew({ projectId: project.id, runAs: "background" });
   const settings = uncategorized
     ? undefined
     : () => openPage({ kind: "projectSettings", projectId: project.id });
@@ -368,10 +364,6 @@ function ProjectWorkspace({
         title={project.name}
         description={home(project.working_directory)}
         groups={projectActionGroups(project, { ...handlers, onRename: rename })}
-      />
-      <NewBackgroundAgentSheet
-        cwd={newAgentIn}
-        onClose={() => setNewAgentIn(null)}
       />
     </div>
   );

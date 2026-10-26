@@ -6,10 +6,8 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from "react";
-import { FolderOpen, Loader2, Plus } from "lucide-react";
-import { toast } from "sonner";
+import { Plus } from "lucide-react";
 import { proxy, useSnapshot } from "valtio";
-import { cn } from "@/lib/utils";
 import {
   STATE_TEXT_CLASS,
   STATE_WORD,
@@ -17,18 +15,16 @@ import {
   timeAgo,
 } from "@/lib/agent-state";
 import { AgentRow, FoldedRow } from "@/components/rows/AgentRow";
-import { DirectoryPicker } from "@/components/DirectoryPicker";
 import {
   Sheet,
-  SheetBody,
   SheetContent,
   SheetDescription,
-  SheetFooter,
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
 import { isNative } from "@/lib/native-bridge";
 import { openPage } from "@/stores/workspacePage";
+import { openNew } from "@/stores/newSurface";
 import type { BackgroundAgent } from "@/lib/claude-background";
 import { AgentCrumb, AgentDetail } from "./AgentDetail";
 
@@ -364,24 +360,6 @@ export function ProjectBackgroundAgents({
   return <BackgroundAgentGroup agents={agents} noId dense />;
 }
 
-/** "New background agent" from a project: its folder filled in */
-export function NewBackgroundAgentSheet({
-  cwd,
-  onClose,
-}: {
-  cwd: string | null;
-  onClose: () => void;
-}) {
-  return (
-    <NewAgentSheet
-      open={cwd !== null}
-      initialCwd={cwd ?? undefined}
-      onClose={onClose}
-      onStarted={poll}
-    />
-  );
-}
-
 /**
  * Claude Code's background agents (`claude --bg`): listed beside the
  * sessions, each with its output, a way into it, and Stop.
@@ -396,7 +374,6 @@ export function BackgroundAgents({
 } = {}) {
   const all = useBackgroundAgents();
   const agents = only ?? all;
-  const [creating, setCreating] = useState(false);
 
   return (
     <section className="space-y-2">
@@ -407,7 +384,7 @@ export function BackgroundAgents({
         </h2>
         <button
           type="button"
-          onClick={() => setCreating(true)}
+          onClick={() => openNew({ runAs: "background" })}
           className="text-primary active:bg-accent -mr-2 flex h-8 items-center gap-1 rounded-full px-2 text-xs font-medium"
         >
           <Plus className="h-3.5 w-3.5" />
@@ -430,11 +407,6 @@ export function BackgroundAgents({
       )}
 
       <AgentSheetHost />
-      <NewAgentSheet
-        open={creating}
-        onClose={() => setCreating(false)}
-        onStarted={poll}
-      />
     </section>
   );
 }
@@ -471,140 +443,5 @@ function AgentSheet() {
         )}
       </SheetContent>
     </Sheet>
-  );
-}
-
-function NewAgentSheet({
-  open,
-  initialCwd,
-  onClose,
-  onStarted,
-}: {
-  open: boolean;
-  initialCwd?: string;
-  onClose: () => void;
-  onStarted: () => void;
-}) {
-  const [cwd, setCwd] = useState(initialCwd ?? "~/workspace");
-  useEffect(() => {
-    if (open && initialCwd) setCwd(initialCwd);
-  }, [open, initialCwd]);
-  const [prompt, setPrompt] = useState("");
-  const [model, setModel] = useState("");
-  const [picking, setPicking] = useState(false);
-  const [starting, setStarting] = useState(false);
-
-  const start = async () => {
-    setStarting(true);
-    try {
-      const res = await fetch("/api/background-agents", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cwd, prompt, model: model || undefined }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-      toast.success("Started in the background");
-      setPrompt("");
-      onStarted();
-      onClose();
-    } catch (error) {
-      toast.error(
-        error instanceof Error && error.message
-          ? error.message
-          : "Couldn't start it"
-      );
-    } finally {
-      setStarting(false);
-    }
-  };
-
-  return (
-    <>
-      <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
-        <SheetContent>
-          <SheetHeader>
-            <SheetTitle>New background agent</SheetTitle>
-            <SheetDescription>
-              Claude works on the task without a terminal. Open it any time.
-            </SheetDescription>
-          </SheetHeader>
-          <SheetBody className="space-y-3">
-            <label className="block space-y-1.5">
-              <span className="text-sm font-medium">Folder</span>
-              <span className="flex gap-2">
-                <input
-                  value={cwd}
-                  onChange={(e) => setCwd(e.target.value)}
-                  autoCapitalize="off"
-                  autoCorrect="off"
-                  spellCheck={false}
-                  className="bg-secondary/70 focus:ring-primary h-11 min-w-0 flex-1 rounded-xl px-3 font-mono text-sm outline-none focus:ring-2"
-                />
-                <button
-                  type="button"
-                  onClick={() => setPicking(true)}
-                  aria-label="Choose a folder"
-                  className="bg-secondary/70 active:bg-accent flex h-11 w-11 shrink-0 items-center justify-center rounded-xl"
-                >
-                  <FolderOpen className="h-4 w-4" />
-                </button>
-              </span>
-            </label>
-            <label className="block space-y-1.5">
-              <span className="text-sm font-medium">Task</span>
-              <textarea
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                rows={4}
-                placeholder="What should it do?"
-                className="bg-secondary/70 focus:ring-primary w-full resize-none rounded-xl px-3 py-2.5 text-base outline-none focus:ring-2"
-              />
-            </label>
-            <div className="space-y-1.5">
-              <span className="text-sm font-medium">Model</span>
-              <div className="flex gap-2">
-                {MODELS.map((m) => (
-                  <button
-                    key={m.id}
-                    type="button"
-                    aria-pressed={model === m.id}
-                    onClick={() => setModel(m.id)}
-                    className={cn(
-                      "h-9 flex-1 rounded-full border text-xs font-medium",
-                      model === m.id
-                        ? "bg-accent text-foreground border-transparent"
-                        : "border-border text-muted-foreground"
-                    )}
-                  >
-                    {m.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </SheetBody>
-          <SheetFooter>
-            <button
-              type="button"
-              onClick={start}
-              disabled={!prompt.trim() || !cwd.trim() || starting}
-              className="bg-primary text-primary-foreground flex h-12 items-center justify-center gap-2 rounded-2xl text-sm font-semibold active:opacity-80 disabled:opacity-50"
-            >
-              {starting && <Loader2 className="h-4 w-4 animate-spin" />}
-              Start
-            </button>
-          </SheetFooter>
-        </SheetContent>
-      </Sheet>
-      <DirectoryPicker
-        open={picking}
-        onClose={() => setPicking(false)}
-        onSelect={(path) => {
-          setCwd(path);
-          setPicking(false);
-        }}
-        initialPath={cwd}
-      />
-    </>
   );
 }

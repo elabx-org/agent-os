@@ -5,7 +5,7 @@ import { useSnapshot } from "valtio";
 import { InboxDialog } from "@/components/Inbox";
 import { SessionList } from "@/components/SessionList";
 import { MissionControl } from "@/components/MissionControl";
-import { NewSessionDialog } from "@/components/NewSessionDialog";
+import { NewSurfaceHost } from "@/components/New/NewSurface";
 import { StartServerDialog } from "@/components/DevServers/StartServerDialog";
 import { PaneLayout } from "@/components/PaneLayout";
 import { QuickSwitcher } from "@/components/QuickSwitcher";
@@ -29,9 +29,6 @@ export function MobileView(props: ViewProps) {
     setSidebarOpen,
     activeSession,
     focusedActiveTab,
-    showNewSessionDialog,
-    setShowNewSessionDialog,
-    newSessionProjectId,
     showQuickSwitcher,
     setShowQuickSwitcher,
     attachToSession,
@@ -195,11 +192,8 @@ export function MobileView(props: ViewProps) {
           setSidebarOpen(false);
         }}
       />
-      <NewSessionDialog
-        open={showNewSessionDialog}
+      <NewSurfaceHost
         projects={projects}
-        selectedProjectId={newSessionProjectId ?? undefined}
-        onClose={() => setShowNewSessionDialog(false)}
         onCreated={handleSessionCreated}
         onCreateProject={handleCreateProject}
       />
