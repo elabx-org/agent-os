@@ -67,6 +67,8 @@ interface TerminalToolbarProps {
   /** One row at full size with ⋯ for the rest, fixed rows too (a page of
       the open Duo, Split or Mirrored) */
   overflow?: boolean;
+  /** Counts the app's File key presses; each opens the snippets sheet */
+  snippetsRequest?: number;
 }
 
 interface Snippet {
@@ -675,9 +677,13 @@ export function TerminalToolbar({
   singleRow = false,
   pages = null,
   overflow = false,
+  snippetsRequest = 0,
 }: TerminalToolbarProps) {
   const [showPasteModal, setShowPasteModal] = useState(false);
   const [showSnippetsModal, setShowSnippetsModal] = useState(false);
+  useEffect(() => {
+    if (snippetsRequest) setShowSnippetsModal(true);
+  }, [snippetsRequest]);
   const [showSettings, setShowSettings] = useState(false);
   const [copyFeedback, setCopyFeedback] = useState(false);
   const { preferences, updatePreferences: persistPreferences } =

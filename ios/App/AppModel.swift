@@ -107,6 +107,16 @@ final class AppModel {
         send(["type": "image"])
     }
 
+    /// The keyboard bar's Copy: the page selects text on the screen
+    func select() {
+        send(["type": "select"])
+    }
+
+    /// The keyboard bar's File: the page opens its snippets sheet
+    func snippets() {
+        send(["type": "snippets"])
+    }
+
     func keyboard(visible: Bool) {
         send(["type": "keyboard", "visible": visible])
     }

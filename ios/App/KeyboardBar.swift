@@ -13,6 +13,10 @@ final class KeyboardBar: UIInputView {
     var onPaste: ((String) -> Void)?
     /// Add image: the page's picker (not in the chat box, which has none)
     var onImage: (() -> Void)?
+    /// Copy: the page's select mode, to pick text on the screen
+    var onSelect: (() -> Void)?
+    /// File: the page's snippets sheet
+    var onSnippets: (() -> Void)?
     var onDismiss: (() -> Void)?
     /// The bar is in a window exactly while the keyboard shows
     var onVisibilityChange: ((Bool) -> Void)?
@@ -49,6 +53,12 @@ final class KeyboardBar: UIInputView {
     private enum Item {
         case key(Key)
         case paste
+        /// A key the page answers with a sheet or a mode
+        case tool(Tool)
+    }
+
+    private enum Tool {
+        case select, image, snippets
     }
 
     /// Groups left of the hinge, then right of it, when the bar is split
@@ -86,7 +96,7 @@ final class KeyboardBar: UIInputView {
 
     /// A page key id (components/Terminal/toolbar-config.ts) as a bar item,
     /// with the web row's group so runs of a kind sit together. Keys the bar
-    /// can't offer (mic, select, image, snippets) are nil and skipped.
+    /// can't offer (mic) are nil and skipped.
     private static func item(for id: String) -> (item: Item, group: String)? {
         switch id {
         // With Tab and ⇧Tab, as the bar's own sets have it
@@ -96,7 +106,10 @@ final class KeyboardBar: UIInputView {
         // The page's cursor key is space on a tap
         case "cursor": return (.key(space), "editing")
         case "backspace": return (.key(backspace), "editing")
-        case "paste": return (.paste, "editing")
+        case "paste": return (.paste, "tools")
+        case "select": return (.tool(.select), "tools")
+        case "image": return (.tool(.image), "tools")
+        case "snippets": return (.tool(.snippets), "tools")
         case "ctrl-c": return (.key(ctrlC), "control")
         case "ctrl-d": return (.key(Key(title: "^D", sequence: "\u{04}", label: "Control D")), "control")
         case "ctrl-z": return (.key(Key(title: "^Z", sequence: "\u{1a}", label: "Control Z")), "control")
@@ -152,20 +165,23 @@ final class KeyboardBar: UIInputView {
         return KeySet(left: Array(all[..<cut]), right: Array(all[cut...]))
     }
 
+    /// Copy, Paste, Photo and File, first in every row
+    private static let tools: [Item] = [.tool(.select), .paste, .tool(.image), .tool(.snippets)]
+
     private static func set(for context: String) -> KeySet {
         switch context {
         case "shell":
             return KeySet(
-                left: [[.key(tab), .key(ctrlR)], arrows],
-                right: [[.key(slash)], [.key(enter), .paste], [.key(ctrlC)]]
+                left: [tools, [.key(tab), .key(ctrlR)]],
+                right: [arrows, [.key(slash), .key(enter)], [.key(ctrlC)]]
             )
         case "chat":
             return KeySet(left: [[.paste]], right: [[.key(newLine)]])
         default:
             // Claude Code with the keyboard up (and "claude", sent while it comes up)
             return KeySet(
-                left: [[.key(esc), .key(shiftTab), .key(tab)], [.key(slash), .key(at)]],
-                right: [arrows, [.key(newLine), .paste], [.key(ctrlC)]]
+                left: [tools, [.key(esc), .key(shiftTab), .key(tab)]],
+                right: [[.key(slash), .key(at)], arrows, [.key(newLine)], [.key(ctrlC)]]
             )
         }
     }
@@ -275,9 +291,10 @@ final class KeyboardBar: UIInputView {
             dismiss.heightAnchor.constraint(equalToConstant: 44),
         ])
 
-        // Add image sits beside the hide-keyboard key, outside the key groups
+        // Add image sits beside the hide-keyboard key, outside the key groups,
+        // when the row has no Photo key of its own (the bar's own rows do)
         var trailing = dismiss.leadingAnchor
-        if context != "chat" {
+        if context != "chat", let ids, !ids.contains("image") {
             let image = UIButton(configuration: .plain())
             image.configuration?.image = UIImage(systemName: "photo.badge.plus")
             image.accessibilityLabel = "Add image"
@@ -381,6 +398,8 @@ final class KeyboardBar: UIInputView {
             control.target = self
             control.widthAnchor.constraint(equalToConstant: compact ? 40 : 44).isActive = true
             return control
+        case .tool(let tool):
+            return toolButton(tool, compact: compact)
         }
     }
 
@@ -430,6 +449,31 @@ final class KeyboardBar: UIInputView {
         } else {
             button.addAction(UIAction { [weak self] _ in self?.press(key) }, for: .touchUpInside)
         }
+        return button
+    }
+
+    private func toolButton(_ tool: Tool, compact: Bool) -> UIButton {
+        let symbol: String, label: String
+        switch tool {
+        case .select: (symbol, label) = ("text.cursor", "Copy")
+        case .image: (symbol, label) = ("photo", "Photo")
+        case .snippets: (symbol, label) = ("doc.text", "File")
+        }
+        var config = UIButton.Configuration.gray()
+        config.cornerStyle = .medium
+        config.image = UIImage(systemName: symbol)
+        let button = UIButton(configuration: config)
+        button.accessibilityLabel = label
+        button.widthAnchor.constraint(equalToConstant: compact ? 40 : 44).isActive = true
+        button.addAction(UIAction { [weak self] _ in
+            guard let self else { return }
+            self.haptics.impactOccurred()
+            switch tool {
+            case .select: self.onSelect?()
+            case .image: self.onImage?()
+            case .snippets: self.onSnippets?()
+            }
+        }, for: .touchUpInside)
         return button
     }
 

@@ -139,6 +139,8 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
     const { theme: currentTheme, resolvedTheme } = useTheme();
     const [showImagePicker, setShowImagePicker] = useState(false);
     const [selectMode, setSelectMode] = useState(false);
+    // The app's File key: counted so each press opens the sheet
+    const [snippetsRequest, setSnippetsRequest] = useState(0);
     const [isUploading, setIsUploading] = useState(false);
     const [copiedFlash, setCopiedFlash] = useState(false);
     const [toolbarVisible, setToolbarVisible] = useState(() => {
@@ -662,10 +664,16 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
           if (event.type === "key") keybarKeyPress(event.key);
           else if (event.type === "paste" && !insertInComposer(event.text))
             xtermRef.current?.paste(event.text);
-          else if (event.type === "image") {
-            // The picker is a sheet the keyboard would cover
+          else if (
+            event.type === "image" ||
+            event.type === "select" ||
+            event.type === "snippets"
+          ) {
+            // Sheets and selecting the keyboard would cover
             (document.activeElement as HTMLElement | null)?.blur();
-            setShowImagePicker(true);
+            if (event.type === "image") setShowImagePicker(true);
+            else if (event.type === "select") setSelectMode(true);
+            else setSnippetsRequest((n) => n + 1);
           }
         }),
       [keybarKeyPress, insertInComposer, xtermRef]
@@ -1212,6 +1220,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
                 onCopy={copySelection}
                 selectMode={selectMode}
                 onSelectModeChange={setSelectMode}
+                snippetsRequest={snippetsRequest}
                 // The deck has no keybar toggle, so its row always shows
                 visible={
                   (toolbarVisible || tabletopBase) &&

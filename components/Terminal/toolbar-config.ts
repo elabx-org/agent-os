@@ -155,17 +155,23 @@ const DEFAULT_ROW1: ToolbarButtonId[] = [
 // Direction D's context rows: one row, chosen by what you're in
 export type KeysContext = "claude" | "shell";
 
+// Every row starts with the tools: Copy (select), Paste, Photo and File
+const TOOLS: ToolbarButtonId[] = ["select", "paste", "image", "snippets"];
+
 const CLAUDE_DOWN: ToolbarButtonId[] = [
+  ...TOOLS,
   "esc", "shift-tab", "tab",
   "arrow-left", "arrow-up", "arrow-down", "arrow-right",
   "cursor", "enter", "ctrl-c",
 ];
 const CLAUDE_UP: ToolbarButtonId[] = [
+  ...TOOLS,
   "esc", "shift-tab", "tab", "char-slash", "char-at",
   "arrow-left", "arrow-up", "arrow-down", "arrow-right",
-  "newline", "paste", "ctrl-c",
+  "newline", "ctrl-c",
 ];
 const SHELL: ToolbarButtonId[] = [
+  ...TOOLS,
   "tab", "ctrl-r",
   "arrow-left", "arrow-up", "arrow-down", "arrow-right",
   "char-slash", "cursor", "enter", "ctrl-c",
