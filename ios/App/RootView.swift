@@ -48,8 +48,12 @@ struct NavToolbar: ToolbarContent {
 
     var body: some ToolbarContent {
         ToolbarItem(placement: .topBarTrailing) {
-            Button { model.nav("new") } label: { Label("New", systemImage: "plus") }
-                .tint(.primary)
+            // Filled while the New page shows; tapped again it closes
+            Button { model.toggleNew() } label: {
+                Label("New", systemImage: model.newOpen ? "plus.circle.fill" : "plus")
+            }
+            .accessibilityAddTraits(model.newOpen ? .isSelected : [])
+            .tint(.primary)
         }
         .barPriority(true)
 
@@ -132,7 +136,8 @@ struct NavToolbar: ToolbarContent {
     private func viewItem(
         _ title: String, symbol: String, view: PaneView, action: String, high: Bool = true, badge: Int = 0
     ) -> some ToolbarContent {
-        let current = model.view == view
+        // With New over the panes no view is showing
+        let current = model.view == view && !model.newOpen
         return ToolbarItem(placement: .topBarTrailing) {
             Button { model.nav(action) } label: {
                 Label(title, systemImage: symbol)

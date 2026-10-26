@@ -29,6 +29,9 @@ final class AppModel {
     var showingServer = false
     /// The web Settings page is showing (the gear fills)
     var settingsOpen = false
+    /// The workspace page over the panes ("new", "project", "inbox"…), if any
+    var page: String?
+    var newOpen: Bool { page == "new" }
     /// Focus mode: the page hides its strip and the column its badges
     var focus = false
     /// Focus is on and something needs you: the amber dot on Focus
@@ -64,6 +67,18 @@ final class AppModel {
     /// Navigation the web NavRail would do in Safari
     func nav(_ action: String) {
         send(["type": "nav", "action": action])
+    }
+
+    /// New, or with New open, back to the session under it: picking the
+    /// view already showing leaves the page without changing the view
+    func toggleNew() {
+        guard newOpen else { return nav("new") }
+        switch view {
+        case .chat: nav("chat")
+        case .git: nav("git")
+        case .files: nav("files")
+        case .terminal, .workers: nav("terminal")
+        }
     }
 
     /// Terminal input from the keyboard bar
@@ -197,6 +212,7 @@ final class AppModel {
         if let count = message["waiting"] as? Int { waiting = count }
         if let count = message["changes"] as? Int { changes = count }
         settingsOpen = message["settings"] as? Bool ?? false
+        page = message["page"] as? String
         focus = message["focus"] as? Bool ?? false
         focusDot = message["focusDot"] as? Bool ?? false
         if let css = message["background"] as? String, let color = Self.color(css: css) {
