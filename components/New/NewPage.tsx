@@ -40,7 +40,7 @@ export function NewPage({ page, view }: PageProps<"new">) {
           form={form}
           projects={view.projects}
           canCreateProject
-          className="mx-auto max-w-xl px-4 pt-4 pb-6"
+          className="mx-auto max-w-xl px-4 pt-4 pb-[max(1.5rem,var(--pane-inset-bottom,env(safe-area-inset-bottom)))]"
         />
       </div>
     </>

@@ -9,8 +9,12 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { Terminal, GitBranch, Clock, Check } from "lucide-react";
+import { Terminal, GitBranch, Clock, Check, Folder } from "lucide-react";
 import type { Session } from "@/lib/db";
+import type { ProjectWithDevServers } from "@/lib/projects";
+import { useProjectsQuery } from "@/data/projects";
+import { useBackgroundAgentsByProject } from "@/components/BackgroundAgents";
+import { openPage } from "@/stores/workspacePage";
 import { CodeSearchResults } from "@/components/CodeSearch/CodeSearchResults";
 import { useRipgrepAvailable } from "@/data/code-search";
 
@@ -44,6 +48,19 @@ export function QuickSwitcher({
 
   // Check if ripgrep is available
   const { data: ripgrepAvailable } = useRipgrepAvailable();
+
+  // Projects match by name, ahead of the sessions, once something is typed
+  const { data: projects = [] } = useProjectsQuery();
+  const q = query.trim().toLowerCase();
+  const filteredProjects = q
+    ? projects.filter(
+        (p) => !p.is_uncategorized && p.name.toLowerCase().includes(q)
+      )
+    : [];
+  const openProject = (projectId: string) => {
+    openPage({ kind: "project", projectId });
+    onOpenChange(false);
+  };
 
   // Filter sessions based on search query
   const filteredSessions = sessions.filter((session) => {
@@ -85,7 +102,10 @@ export function QuickSwitcher({
         case "ArrowDown":
           e.preventDefault();
           setSelectedIndex((prev) =>
-            Math.min(prev + 1, filteredSessions.length - 1)
+            Math.min(
+              prev + 1,
+              filteredProjects.length + filteredSessions.length - 1
+            )
           );
           break;
         case "ArrowUp":
@@ -94,8 +114,14 @@ export function QuickSwitcher({
           break;
         case "Enter":
           e.preventDefault();
-          if (filteredSessions[selectedIndex]) {
-            onSelectSession(filteredSessions[selectedIndex].id);
+          if (filteredProjects[selectedIndex]) {
+            openProject(filteredProjects[selectedIndex].id);
+            break;
+          }
+          const session =
+            filteredSessions[selectedIndex - filteredProjects.length];
+          if (session) {
+            onSelectSession(session.id);
             onOpenChange(false);
           }
           break;
@@ -105,7 +131,13 @@ export function QuickSwitcher({
           break;
       }
     },
-    [filteredSessions, selectedIndex, onSelectSession, onOpenChange]
+    [
+      filteredProjects,
+      filteredSessions,
+      selectedIndex,
+      onSelectSession,
+      onOpenChange,
+    ]
   );
 
   // Format relative time
@@ -185,73 +217,85 @@ export function QuickSwitcher({
         {/* Content */}
         <div className="max-h-[300px] overflow-y-auto py-2">
           {mode === "sessions" ? (
-            filteredSessions.length === 0 ? (
+            filteredSessions.length + filteredProjects.length === 0 ? (
               <div className="text-muted-foreground px-4 py-8 text-center text-sm">
                 No sessions found
               </div>
             ) : (
-              filteredSessions.map((session, index) => {
-                const isCurrent = session.id === currentSessionId;
-                return (
-                  <button
-                    key={session.id}
-                    onClick={() => {
-                      onSelectSession(session.id);
-                      onOpenChange(false);
-                    }}
-                    className={cn(
-                      "flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors",
-                      index === selectedIndex
-                        ? "bg-accent"
-                        : "hover:bg-accent/50",
-                      isCurrent && "bg-primary/10"
-                    )}
-                  >
-                    {/* Icon */}
-                    <div
+              <>
+                {filteredProjects.length > 0 && (
+                  <ProjectRows
+                    projects={filteredProjects}
+                    all={projects}
+                    sessions={sessions}
+                    selectedIndex={selectedIndex}
+                    onSelect={openProject}
+                  />
+                )}
+                {filteredSessions.map((session, i) => {
+                  const index = i + filteredProjects.length;
+                  const isCurrent = session.id === currentSessionId;
+                  return (
+                    <button
+                      key={session.id}
+                      onClick={() => {
+                        onSelectSession(session.id);
+                        onOpenChange(false);
+                      }}
                       className={cn(
-                        "flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md",
-                        session.worktree_path
-                          ? "bg-purple-500/20 text-purple-400"
-                          : "bg-emerald-500/20 text-emerald-400"
+                        "flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors",
+                        index === selectedIndex
+                          ? "bg-accent"
+                          : "hover:bg-accent/50",
+                        isCurrent && "bg-primary/10"
                       )}
                     >
-                      {session.worktree_path ? (
-                        <GitBranch className="h-4 w-4" />
-                      ) : (
-                        <Terminal className="h-4 w-4" />
-                      )}
-                    </div>
-
-                    {/* Content */}
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="truncate font-medium">
-                          {session.name || "Unnamed Session"}
-                        </span>
-                        {isCurrent && (
-                          <Check className="text-primary h-3.5 w-3.5 flex-shrink-0" />
+                      {/* Icon */}
+                      <div
+                        className={cn(
+                          "flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md",
+                          session.worktree_path
+                            ? "bg-purple-500/20 text-purple-400"
+                            : "bg-emerald-500/20 text-emerald-400"
+                        )}
+                      >
+                        {session.worktree_path ? (
+                          <GitBranch className="h-4 w-4" />
+                        ) : (
+                          <Terminal className="h-4 w-4" />
                         )}
                       </div>
-                      <div className="text-muted-foreground flex items-center gap-2 text-xs">
-                        <span className="truncate">
-                          {session.working_directory?.split("/").pop() || "~"}
-                        </span>
-                        <span>•</span>
-                        <span className="capitalize">
-                          {session.agent_type || "claude"}
-                        </span>
-                      </div>
-                    </div>
 
-                    {/* Time */}
-                    <div className="text-muted-foreground flex flex-shrink-0 items-center gap-1 text-xs">
-                      <Clock className="h-3 w-3" />
-                      <span>{formatTime(session.updated_at)}</span>
-                    </div>
-                  </button>
-                );
-              })
+                      {/* Content */}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="truncate font-medium">
+                            {session.name || "Unnamed Session"}
+                          </span>
+                          {isCurrent && (
+                            <Check className="text-primary h-3.5 w-3.5 flex-shrink-0" />
+                          )}
+                        </div>
+                        <div className="text-muted-foreground flex items-center gap-2 text-xs">
+                          <span className="truncate">
+                            {session.working_directory?.split("/").pop() || "~"}
+                          </span>
+                          <span>•</span>
+                          <span className="capitalize">
+                            {session.agent_type || "claude"}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Time */}
+                      <div className="text-muted-foreground flex flex-shrink-0 items-center gap-1 text-xs">
+                        <Clock className="h-3 w-3" />
+                        <span>{formatTime(session.updated_at)}</span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </>
             )
           ) : (
             <CodeSearchResults
@@ -277,4 +321,55 @@ export function QuickSwitcher({
       </DialogContent>
     </Dialog>
   );
+}
+
+/**
+ * "Open · fusionha project · 2 sessions · 4 agents": its page from Find.
+ * Its own component so the agents are only polled while the switcher is open.
+ */
+function ProjectRows({
+  projects,
+  all,
+  sessions,
+  selectedIndex,
+  onSelect,
+}: {
+  projects: ProjectWithDevServers[];
+  all: ProjectWithDevServers[];
+  sessions: Session[];
+  selectedIndex: number;
+  onSelect: (projectId: string) => void;
+}) {
+  const agentsByProject = useBackgroundAgentsByProject(all);
+  return projects.map((project, index) => {
+    // Workers count with their conductor, as on the Projects tab
+    const n = sessions.filter(
+      (s) => s.project_id === project.id && !s.conductor_session_id
+    ).length;
+    const agents = agentsByProject[project.id]?.length ?? 0;
+    return (
+      <button
+        key={project.id}
+        onClick={() => onSelect(project.id)}
+        className={cn(
+          "flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors",
+          index === selectedIndex ? "bg-accent" : "hover:bg-accent/50"
+        )}
+      >
+        <div className="bg-secondary text-muted-foreground flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md">
+          <Folder className="h-4 w-4" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="truncate font-medium">
+            <span className="text-muted-foreground font-normal">Open · </span>
+            {project.name} project
+          </div>
+          <div className="text-muted-foreground truncate text-xs">
+            {n} session{n === 1 ? "" : "s"}
+            {agents > 0 && ` · ${agents} agent${agents === 1 ? "" : "s"}`}
+          </div>
+        </div>
+      </button>
+    );
+  });
 }

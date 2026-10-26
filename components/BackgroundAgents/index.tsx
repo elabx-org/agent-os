@@ -4,10 +4,12 @@ import {
   useEffect,
   useState,
   useSyncExternalStore,
+  type KeyboardEvent,
   type ReactNode,
 } from "react";
 import { Plus } from "lucide-react";
 import { proxy, useSnapshot } from "valtio";
+import { cn } from "@/lib/utils";
 import {
   STATE_TEXT_CLASS,
   STATE_WORD,
@@ -23,7 +25,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { isNative } from "@/lib/native-bridge";
-import { openPage } from "@/stores/workspacePage";
+import { closePage, openPage } from "@/stores/workspacePage";
 import { openNew } from "@/stores/newSurface";
 import type { BackgroundAgent } from "@/lib/claude-background";
 import { AgentCrumb, AgentDetail } from "./AgentDetail";
@@ -119,6 +121,17 @@ export function openBackgroundAgent(agent: BackgroundAgent) {
   }
 }
 
+/**
+ * Its Answer for now: the app runs `claude attach <id>` in the focused
+ * terminal, which a page would cover
+ */
+export function attachBackgroundAgent(id: string) {
+  closePage();
+  window.dispatchEvent(
+    new CustomEvent("agentos-attach-background", { detail: { id } })
+  );
+}
+
 // Every list of agents can host the sheet; the first one mounted does
 const hosts: symbol[] = [];
 const hostListeners = new Set<() => void>();
@@ -193,6 +206,8 @@ interface AgentItemProps {
   projectName?: string;
   noId?: boolean;
   dense?: boolean;
+  /** A button of its own at the end (the row then can't be a button) */
+  trailing?: ReactNode;
   className?: string;
 }
 
@@ -201,10 +216,21 @@ function AgentItem({
   projectName,
   noId,
   dense,
+  trailing,
   className,
 }: AgentItemProps) {
+  const open = () => openBackgroundAgent(agent);
   return (
     <AgentRow
+      {...(trailing && {
+        as: "div" as const,
+        role: "button",
+        tabIndex: 0,
+        onKeyDown: (e: KeyboardEvent) => {
+          if (e.target === e.currentTarget && e.key === "Enter") open();
+        },
+      })}
+      trailing={trailing}
       kind="background"
       state={fromBackgroundState(agent.state)}
       title={agent.name}
@@ -218,7 +244,7 @@ function AgentItem({
       }
       dense={dense}
       className={className}
-      onClick={() => openBackgroundAgent(agent)}
+      onClick={open}
     />
   );
 }
@@ -274,6 +300,7 @@ export function BackgroundAgentGroup({
   looseWaiting = LOOSE_WAITING,
   noId,
   dense,
+  className,
 }: {
   agents: BackgroundAgent[];
   projectName?: string;
@@ -281,6 +308,7 @@ export function BackgroundAgentGroup({
   looseWaiting?: number;
   noId?: boolean;
   dense?: boolean;
+  className?: string;
 }) {
   const [expanded, setExpanded] = useState(false);
 
@@ -312,7 +340,7 @@ export function BackgroundAgentGroup({
   );
 
   return (
-    <div className="space-y-px">
+    <div className={cn("space-y-px", className)}>
       {loose.map((agent) => row(agent))}
       {folded.length > 0 && (
         <FoldedRow

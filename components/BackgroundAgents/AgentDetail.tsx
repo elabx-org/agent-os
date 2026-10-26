@@ -16,10 +16,16 @@ import {
   PageHeader,
   type PageProps,
 } from "@/components/WorkspacePage";
-import { backPage, closePage } from "@/stores/workspacePage";
+import { backPage } from "@/stores/workspacePage";
 import type { BackgroundAgent } from "@/lib/claude-background";
 import type { ChatItem } from "@/lib/claude-transcript";
-import { home, poll, stateWord, useBackgroundAgent } from "./index";
+import {
+  attachBackgroundAgent,
+  home,
+  poll,
+  stateWord,
+  useBackgroundAgent,
+} from "./index";
 
 type Output = { items?: ChatItem[]; logs?: string } | null;
 
@@ -130,14 +136,9 @@ export function AgentDetail({
     }
   };
 
-  // The app runs `claude attach <id>` in the focused terminal, which a page
-  // would cover
   const attach = () => {
-    if (layout === "page") closePage();
-    else onClose();
-    window.dispatchEvent(
-      new CustomEvent("agentos-attach-background", { detail: { id } })
-    );
+    if (layout === "sheet") onClose();
+    attachBackgroundAgent(id);
   };
 
   // What it's waiting on: its last words, as it can't be answered here yet

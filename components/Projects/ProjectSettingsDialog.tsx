@@ -6,8 +6,12 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
+  GLASS_DIALOG,
 } from "@/components/ui/dialog";
+import { useState } from "react";
 import { useSnapshot } from "valtio";
+import { cn } from "@/lib/utils";
+import { useViewport } from "@/hooks/useViewport";
 import { Button } from "@/components/ui/button";
 import { useProjectsQuery } from "@/data/projects";
 import type { ProjectWithRepositories } from "@/lib/projects";
@@ -36,6 +40,7 @@ export function ProjectSettingsDialog({
   onSave,
 }: ProjectSettingsDialogProps) {
   const form = useProjectSettingsForm(project, open);
+  const { isTouch } = useViewport();
 
   const handleClose = () => {
     form.reset();
@@ -56,9 +61,14 @@ export function ProjectSettingsDialog({
         open={open && !form.folderPickerRepoId}
         onOpenChange={(o) => !o && handleClose()}
       >
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+        <DialogContent
+          className={cn(
+            "max-h-[90vh] overflow-y-auto sm:max-w-2xl",
+            !isTouch && GLASS_DIALOG
+          )}
+        >
           <DialogHeader>
-            <DialogTitle>Project Settings</DialogTitle>
+            <DialogTitle>Project settings</DialogTitle>
           </DialogHeader>
 
           <ProjectSettingsForm form={form} onSubmit={handleSubmit}>
@@ -88,11 +98,17 @@ export function ProjectSettingsDialog({
 export function ProjectSettingsHost() {
   const { projectId } = useSnapshot(projectSettingsStore);
   const { data: projects } = useProjectsQuery();
-  const project = projects?.find((p) => p.id === projectId) ?? null;
+  const live = projects?.find((p) => p.id === projectId) ?? null;
+
+  // The project as the dialog opened: a refetch mustn't reset the edits
+  const [snap, setSnap] = useState<ProjectWithRepositories | null>(null);
+  if (!live && snap) setSnap(null);
+  if (live && snap?.id !== live.id) setSnap(live);
+
   return (
     <ProjectSettingsDialog
-      project={project}
-      open={!!project}
+      project={snap}
+      open={!!live && !!snap}
       onClose={closeProjectSettings}
       onSave={closeProjectSettings}
     />

@@ -6,7 +6,11 @@ import { cn } from "@/lib/utils";
 import { AgentRow, SectionHeader } from "@/components/rows/AgentRow";
 import { SessionCard } from "@/components/SessionCard";
 import { InboxItem } from "@/components/Inbox";
-import { BackgroundAgentGroup } from "@/components/BackgroundAgents";
+import {
+  BackgroundAgentGroup,
+  BackgroundAgentRow,
+  attachBackgroundAgent,
+} from "@/components/BackgroundAgents";
 import { DevServerCard } from "@/components/DevServers/DevServerCard";
 import { ServerLogsModal } from "@/components/DevServers";
 import { Button } from "@/components/ui/button";
@@ -81,12 +85,38 @@ export function NeedsYouSection({
           />
         ))}
         {blocked.length > 0 && (
-          <BackgroundAgentGroup
-            agents={blocked}
-            looseWaiting={looseWaiting}
-            noId
-            dense
-          />
+          <>
+            <BackgroundAgentGroup
+              agents={blocked}
+              looseWaiting={looseWaiting}
+              noId
+              dense
+              className="@3xl/page:hidden"
+            />
+            {/* Wide, each gets its Answer (Open in terminal, for now) */}
+            <div className="hidden space-y-px @3xl/page:block">
+              {blocked.map((agent) => (
+                <BackgroundAgentRow
+                  key={agent.id}
+                  agent={agent}
+                  noId
+                  dense
+                  trailing={
+                    <Button
+                      size="sm"
+                      className="h-8 bg-amber-400 font-semibold text-amber-950 hover:bg-amber-400/90"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        attachBackgroundAgent(agent.id);
+                      }}
+                    >
+                      Answer
+                    </Button>
+                  }
+                />
+              ))}
+            </div>
+          </>
         )}
       </div>
     </Section>
@@ -329,12 +359,7 @@ export function DevServerSection({
       title={title}
       detail={detail}
       trailing={
-        <Button
-          variant="secondary"
-          size="sm"
-          className="text-primary h-8"
-          onClick={onSetUp}
-        >
+        <Button variant="secondary" size="sm" className="h-8" onClick={onSetUp}>
           <Play className="h-3.5 w-3.5" />
           Start
         </Button>

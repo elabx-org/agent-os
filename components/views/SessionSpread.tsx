@@ -83,8 +83,8 @@ interface SessionSpreadProps {
  * the chat reads as a book, the terminal takes the right page with Changes on
  * the left, and anything else takes the right page.
  *
- * A workspace page takes the pane's place (the right page half open) and
- * the panes wait under it, hidden.
+ * A workspace page takes the pane's place (on the right page) and the panes
+ * wait under it, hidden.
  *
  * Every slot keeps its place whether shown or not, so the panes never
  * remount (a terminal must not attach twice).
@@ -134,13 +134,14 @@ export function SessionSpread({
   // pages only come with no rail)
   const paneLeft = pages && showRail;
   // Half open nothing may sit in the bend: only the chat lays itself out as
-  // a book, anything else takes the right page
+  // a book, anything else takes the right page. A workspace page takes it
+  // flat too: its centred form would sit across the hinge.
   const paneRight =
-    !!book &&
+    pages &&
     !homeOpen &&
     !changesLeft &&
     !showRail &&
-    (pageOpen || viewMode !== "chat");
+    (pageOpen || (!!book && viewMode !== "chat"));
   // Across the fold: content may cross it, controls move right of it
   const paneWide =
     pages && !homeOpen && !changesLeft && !showRail && !paneRight;

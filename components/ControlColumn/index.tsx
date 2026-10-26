@@ -18,6 +18,8 @@ import { runNav } from "@/lib/nav-actions";
 import { mobileNavStore } from "@/stores/mobileNav";
 import { focusStore } from "@/stores/focus";
 import { settingsPageStore } from "@/stores/settingsPage";
+import { newSurfaceStore } from "@/stores/newSurface";
+import { workspacePageStore } from "@/stores/workspacePage";
 import { isMacLike } from "@/hooks/useViewShortcuts";
 import { ColumnItem, type ColumnItemProps } from "./ColumnItem";
 
@@ -113,8 +115,11 @@ export function ControlColumn({
     inboxOpen,
     homeOpen,
   } = useSnapshot(mobileNavStore);
-  // Over the home no session view is showing
-  const viewMode = homeOpen ? null : paneView;
+  const { open: newDialogOpen } = useSnapshot(newSurfaceStore);
+  const { page } = useSnapshot(workspacePageStore);
+  const newOpen = newDialogOpen || page?.kind === "new";
+  // Over the home, or under New, no session view is showing
+  const viewMode = homeOpen || newOpen ? null : paneView;
   const { on: focus } = useSnapshot(focusStore);
   const { open: settingsOpen } = useSnapshot(settingsPageStore);
   const mod = useModKey();
@@ -162,6 +167,7 @@ export function ControlColumn({
         label: "New",
         shortcut: `${mod}N`,
         ariaLabel: "New session",
+        selected: newOpen,
         onClick: () => runNav("new"),
       },
       {

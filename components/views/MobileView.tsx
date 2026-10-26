@@ -157,7 +157,8 @@ export function MobileView(props: ViewProps) {
       {/* The home: a page of its own rather than a drawer, the same in the
           app and a browser. The column or bar stays beside it */}
       {sidebarOpen && (
-        <div className={layerClass} style={layerStyle}>
+        // Out of reach while a page covers it
+        <div className={layerClass} style={layerStyle} inert={pageOpen}>
           <MissionControl
             sessions={sessions}
             sessionStatuses={sessionStatuses}

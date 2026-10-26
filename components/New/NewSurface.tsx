@@ -6,7 +6,12 @@ import { cn } from "@/lib/utils";
 import type { AgentType } from "@/lib/providers";
 import type { ProjectWithDevServers } from "@/lib/projects";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  GLASS_DIALOG,
+} from "@/components/ui/dialog";
 import { useViewport } from "@/hooks/useViewport";
 import { closeNew, newSurfaceStore } from "@/stores/newSurface";
 import { NewForm } from "./NewForm";
@@ -79,8 +84,7 @@ export function NewSurface({
         className={cn(
           "flex max-h-[85vh] flex-col gap-0 overflow-hidden sm:max-w-[640px]",
           // The sheet keeps its own side padding
-          !isTouch &&
-            "bg-background/80 rounded-2xl p-0 shadow-[inset_0_1px_0_hsl(var(--foreground)/0.08),0_24px_60px_rgb(0_0_0/0.45)] backdrop-blur-xl backdrop-saturate-150"
+          !isTouch && cn(GLASS_DIALOG, "p-0")
         )}
         onOpenAutoFocus={(e) => {
           // Straight to the task with a keyboard; a phone keeps its

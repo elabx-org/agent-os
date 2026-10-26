@@ -71,7 +71,8 @@ function Chip({
       aria-pressed={selected}
       onClick={onClick}
       className={cn(
-        "flex h-8 max-w-full min-w-0 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors",
+        // 44pt to a finger, as New's main input on touch
+        "flex h-8 max-w-full min-w-0 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors [@media(pointer:coarse)]:h-11",
         selected
           ? "bg-accent text-foreground border-transparent"
           : "border-border text-muted-foreground hover:text-foreground",
@@ -139,12 +140,26 @@ export function NewForm({
 
   const background = form.runAs === "background";
 
-  // The chosen project always shows as a chip, ahead of the first few
+  // The chosen project always shows as a chip: first, unless it's already
+  // among the first few, so tapping one doesn't reorder them. A wide form
+  // has room for one more.
   const named = projects.filter((p) => !p.is_uncategorized);
   const selected = named.find((p) => p.id === form.projectId);
-  const chips = named.slice(0, PROJECT_CHIPS);
-  if (selected && !chips.includes(selected))
-    chips.splice(PROJECT_CHIPS - 1, 1, selected);
+  const first = named.slice(0, PROJECT_CHIPS + 1);
+  const chips =
+    selected && !first.slice(0, PROJECT_CHIPS).includes(selected)
+      ? [selected, ...first.filter((p) => p !== selected)].slice(
+          0,
+          PROJECT_CHIPS + 1
+        )
+      : first;
+  // more… only for what neither width shows
+  const moreChip =
+    named.length > PROJECT_CHIPS + 1 || canCreateProject
+      ? ""
+      : named.length > PROJECT_CHIPS
+        ? "@lg:hidden"
+        : null;
 
   const agentChips = AGENT_CHIPS.some((a) => a.value === form.agentType)
     ? AGENT_CHIPS
@@ -179,11 +194,12 @@ export function NewForm({
 
       <Field label="Project">
         <div className="flex flex-wrap gap-1.5">
-          {chips.map((project) => (
+          {chips.map((project, i) => (
             <Chip
               key={project.id}
               selected={project.id === form.projectId}
               onClick={() => form.handleProjectChange(project.id)}
+              className={cn(i >= PROJECT_CHIPS && "hidden @lg:flex")}
             >
               {project.id === form.projectId && (
                 <Folder className="h-3.5 w-3.5 shrink-0" />
@@ -191,10 +207,11 @@ export function NewForm({
               <span className="truncate">{project.name}</span>
             </Chip>
           ))}
-          {(named.length > chips.length || canCreateProject) && (
+          {moreChip !== null && (
             <Chip
               selected={moreProjects}
               onClick={() => setMoreProjects(!moreProjects)}
+              className={moreChip}
             >
               more…
             </Chip>
@@ -231,7 +248,7 @@ export function NewForm({
               aria-selected={form.runAs === id}
               onClick={() => form.setRunAs(id)}
               className={cn(
-                "h-8 min-w-0 flex-1 truncate rounded-md px-2 transition-colors",
+                "h-8 min-w-0 flex-1 truncate rounded-md px-2 transition-colors [@media(pointer:coarse)]:h-11",
                 form.runAs === id
                   ? "bg-background text-foreground shadow-sm"
                   : "text-muted-foreground"

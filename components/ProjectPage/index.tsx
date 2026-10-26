@@ -210,6 +210,8 @@ function ProjectWorkspace({
       variant="ghost"
       size="icon-sm"
       aria-label="Project actions"
+      // 44pt to a finger, as the back button
+      className="relative after:absolute after:-inset-[6px] after:content-['']"
       onClick={() => setSheetOpen(true)}
     >
       <MoreHorizontal className="h-4 w-4" />
@@ -287,7 +289,7 @@ function ProjectWorkspace({
         </PageEmpty>
       ) : (
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-          <div className="grid items-start gap-x-4 px-2 pb-4 @3xl/page:grid-cols-[1.25fr_1fr] @3xl/page:px-6 @3xl/page:pt-4">
+          <div className="grid items-start gap-x-4 px-2 pb-[max(1rem,var(--pane-inset-bottom,env(safe-area-inset-bottom)))] @3xl/page:grid-cols-[1.25fr_1fr] @3xl/page:px-6 @3xl/page:pt-4">
             <div className="min-w-0 @3xl/page:space-y-3">
               <NeedsYouSection
                 waiting={waiting}
