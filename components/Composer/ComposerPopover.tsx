@@ -35,7 +35,8 @@ export function ComposerPopover({ composer }: { composer: ComposerEngine }) {
         onClose={closeHistory}
       />
     );
-  else if (composer.previewChip)
+  // An image's preview is the full-screen viewer (ComposerInput)
+  else if (composer.previewChip?.kind === "paste")
     panel = (
       <PasteChip
         chip={composer.previewChip}

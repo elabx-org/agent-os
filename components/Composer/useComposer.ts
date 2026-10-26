@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useId,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -18,7 +19,8 @@ import {
   type ClaudeCommand,
   type FileSuggestion,
 } from "@/hooks/useComposerData";
-import { uploadFileToTemp } from "@/lib/file-upload";
+import { useQueries } from "@tanstack/react-query";
+import { uploadFilesToTemp, uploadedSize } from "@/lib/file-upload";
 import { clearQuotes, formatWithQuotes, useQuotes } from "@/stores/replyQuotes";
 import {
   MAGIC_WORDS,
@@ -29,6 +31,7 @@ import {
   PASTE_LINES,
   collapse,
   expand,
+  imagePaths,
   keepChipsWhole,
   lineCount,
   pasteToken,
@@ -54,6 +57,8 @@ export type ComposerMode = "bash" | "memory" | null;
 export interface Segment {
   text: string;
   kind: "plain" | "magic" | "chip";
+  /** The pill it draws, for a chip */
+  chip?: Chip;
 }
 
 interface UseComposerOptions {
@@ -182,9 +187,32 @@ export function useComposer({
     setPastesState(saved);
   }, [sessionId]);
 
+  // Image pills show the file's size: known at once for this device's
+  // uploads, looked up once otherwise
+  const images = useMemo(() => imagePaths(value), [value]);
+  const metas = useQueries({
+    queries: images.map((path) => ({
+      queryKey: ["image-meta", path],
+      queryFn: async (): Promise<{ size: number } | null> => {
+        const res = await fetch(
+          `/api/files/image?meta=1&path=${encodeURIComponent(path)}`
+        );
+        return res.ok ? res.json() : null;
+      },
+      enabled: uploadedSize(path) === undefined,
+      staleTime: Infinity,
+      retry: false,
+    })),
+  });
+  const sizes = images.map(
+    (path, i) => uploadedSize(path) ?? metas[i]?.data?.size
+  );
+  const sizesKey = sizes.join(",");
   const { display, chips } = useMemo(
-    () => collapse(value, pastes),
-    [value, pastes]
+    () => collapse(value, pastes, (path) => sizes[images.indexOf(path)]),
+    // sizes is new each render; its key says when it changed
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [value, pastes, images, sizesKey]
   );
   const displayRef = useRef(display);
   displayRef.current = display;
@@ -222,6 +250,33 @@ export function useComposer({
       if (el && document.activeElement === el) el.setSelectionRange(at, at);
     });
   }, []);
+
+  // A pill that grows (an image's size arriving) moves the text after it:
+  // the caret keeps its place in the text instead of jumping to the end
+  const caretRef = useRef(caret);
+  caretRef.current = caret;
+  const shown = useRef({ display, chips });
+  useLayoutEffect(() => {
+    const prev = shown.current;
+    shown.current = { display, chips };
+    if (prev.display === display || prev.chips.length !== chips.length) return;
+    const el = textareaRef.current;
+    if (!el || document.activeElement !== el) return;
+    if (prev.chips.some((c, i) => c.text !== chips[i].text)) return;
+    let at = caretRef.current;
+    let shift = 0;
+    for (const [i, c] of prev.chips.entries()) {
+      if (c.end > at) break;
+      shift += chips[i].token.length - c.token.length;
+    }
+    // Only pills changed, nothing typed
+    const plain = (d: string, cs: Chip[]) =>
+      cs.reduceRight((t, c) => t.slice(0, c.start) + t.slice(c.end), d);
+    if (plain(prev.display, prev.chips) !== plain(display, chips)) return;
+    at += shift;
+    el.setSelectionRange(at, at);
+    setCaret(at);
+  }, [display, chips]);
 
   /** Replace the shown text; the draft gets it with the pills expanded */
   const setDisplay = useCallback(
@@ -452,27 +507,30 @@ export function useComposer({
     [insert, setDisplay, setPastes]
   );
 
-  const [uploading, setUploading] = useState(false);
+  // Images on their way up, for one progress state however many there are
+  const [uploading, setUploading] = useState(0);
+  /** Upload pictures together; each lands as its own pill */
+  const attach = useCallback(
+    async (files: File[]) => {
+      const pictures = files.filter((f) => f.type.startsWith("image/"));
+      if (!pictures.length) return;
+      setUploading((n) => n + pictures.length);
+      try {
+        const paths = await uploadFilesToTemp(pictures);
+        if (paths.length) insert(`${paths.join(" ")} `, true);
+      } finally {
+        setUploading((n) => n - pictures.length);
+      }
+    },
+    [insert]
+  );
+
   const onPaste = useCallback(
     (e: ClipboardEvent<HTMLTextAreaElement>) => {
-      const images = [...e.clipboardData.files].filter((f) =>
-        f.type.startsWith("image/")
-      );
-      if (images.length) {
+      const files = [...e.clipboardData.files];
+      if (files.some((f) => f.type.startsWith("image/"))) {
         e.preventDefault();
-        setUploading(true);
-        void (async () => {
-          try {
-            for (const file of images) {
-              const path = await uploadFileToTemp(file);
-              if (path) insert(`${path} `, true);
-            }
-          } catch (err) {
-            console.error("Failed to upload pasted image:", err);
-          } finally {
-            setUploading(false);
-          }
-        })();
+        void attach(files);
         return;
       }
       const text = e.clipboardData.getData("text/plain");
@@ -481,7 +539,7 @@ export function useComposer({
         pasteText(text);
       }
     },
-    [insert, pasteText]
+    [attach, pasteText]
   );
 
   const onTextChange = useCallback(
@@ -617,8 +675,17 @@ export function useComposer({
   const magicWords: MagicWord[] = MAGIC_WORDS;
   const pattern = useMemo(() => magicWordPattern(magicWords), [magicWords]);
   const { segments, magic } = useMemo(() => {
-    const ranges: { start: number; end: number; kind: Segment["kind"] }[] =
-      chips.map((c) => ({ start: c.start, end: c.end, kind: "chip" }));
+    const ranges: {
+      start: number;
+      end: number;
+      kind: Segment["kind"];
+      chip?: Chip;
+    }[] = chips.map((c) => ({
+      start: c.start,
+      end: c.end,
+      kind: "chip",
+      chip: c,
+    }));
     const found = new Set<string>();
     if (claude && pattern && mode !== "bash") {
       for (const m of display.matchAll(pattern)) {
@@ -635,7 +702,11 @@ export function useComposer({
     for (const r of ranges) {
       if (r.start > last)
         out.push({ text: display.slice(last, r.start), kind: "plain" });
-      out.push({ text: display.slice(r.start, r.end), kind: r.kind });
+      out.push({
+        text: display.slice(r.start, r.end),
+        kind: r.kind,
+        chip: r.chip,
+      });
       last = r.end;
     }
     if (last < display.length)
@@ -695,11 +766,15 @@ export function useComposer({
     recall,
     // pills
     previewChip,
+    openChip: (chip: Chip) => setPreview({ kind: chip.kind, n: chip.n }),
+    /** An image's size in bytes, once known */
+    imageSize: (path: string) => sizes[images.indexOf(path)],
     closePreview: () => setPreview(null),
     removeChip,
     unfoldChip,
     // editing
     insert,
+    attach,
     pasteText,
     onTextChange,
     onPaste,

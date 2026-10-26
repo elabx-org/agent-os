@@ -62,7 +62,7 @@ import { mobileNavStore } from "@/stores/mobileNav";
 import { addQuote } from "@/stores/replyQuotes";
 import { KeyboardDebugOverlay, useKeyboardDebug } from "./KeyboardDebugOverlay";
 import { useFileDrop } from "@/hooks/useFileDrop";
-import { uploadFileToTemp } from "@/lib/file-upload";
+import { uploadFilesToTemp } from "@/lib/file-upload";
 import { ImagePicker } from "@/components/ImagePicker";
 import { joinWrappedUrls, linkify } from "./linkify";
 import {
@@ -209,23 +209,18 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
       [sendInput, focus]
     );
 
-    // Handle file drop - upload and insert path into terminal
+    // Handle file drop - upload them all, paths into the composer or terminal
     const handleFileDrop = useCallback(
-      async (file: File) => {
+      async (_file: File, files: File[]) => {
         setIsUploading(true);
         try {
-          const path = await uploadFileToTemp(file);
-          if (path) {
-            sendInput(path);
-            focus();
-          }
-        } catch (err) {
-          console.error("Failed to upload file:", err);
+          const paths = await uploadFilesToTemp(files);
+          if (paths.length) handleImageSelect(paths.join(" "));
         } finally {
           setIsUploading(false);
         }
       },
-      [sendInput, focus]
+      [handleImageSelect]
     );
 
     // Drag and drop for file uploads
