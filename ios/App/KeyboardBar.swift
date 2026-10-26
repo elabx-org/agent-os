@@ -3,9 +3,10 @@ import UniformTypeIdentifiers
 
 /// The terminal keys Claude Code needs, on the keyboard itself, following
 /// what the page says you're in (its `keys` message): Claude Code with the
-/// keyboard up, a plain shell, or the chat box. ^C and / hold rarer keys
-/// behind a long press. Open flat on iPhone Duo the keys part around the
-/// hinge; a key to put the keyboard away sits at the edge.
+/// keyboard up, a plain shell, or the chat box, in the user's key order when
+/// the page sends one. ^C and / hold rarer keys behind a long press. Open
+/// flat on iPhone Duo the keys part around the hinge; a key to put the
+/// keyboard away sits at the edge.
 final class KeyboardBar: UIInputView {
     var onKey: ((String) -> Void)?
     /// Text from the system Paste button
@@ -15,8 +16,17 @@ final class KeyboardBar: UIInputView {
     var onVisibilityChange: ((Bool) -> Void)?
 
     /// The page's key row context: "claude-up", "claude", "shell" or "chat"
-    var context = "claude-up" {
-        didSet { if context != oldValue { build() } }
+    private(set) var context = "claude-up"
+    /// The page's key order for that context (the user's Keys settings), if
+    /// it sent one; older pages don't, and the bar keeps its own sets
+    private(set) var ids: [String]?
+
+    /// The page's `keys` message; rebuilds once, only when something changed
+    func setKeys(context: String, ids: [String]?) {
+        guard context != self.context || ids != self.ids else { return }
+        self.context = context
+        self.ids = ids
+        build()
     }
 
     private struct Key {
@@ -62,6 +72,79 @@ final class KeyboardBar: UIInputView {
         title: "^C", sequence: "\u{03}", label: "Control C", destructive: true,
         menu: [("^D", "\u{04}"), ("^Z", "\u{1a}"), ("^L", "\u{0c}")]
     )
+
+    private static let space = Key(title: "Space", sequence: " ")
+    private static let backspace = Key(
+        title: "", symbol: "delete.left", sequence: "\u{7f}", label: "Delete", repeats: true
+    )
+
+    /// A page key id (components/Terminal/toolbar-config.ts) as a bar item,
+    /// with the web row's group so runs of a kind sit together. Keys the bar
+    /// can't offer (mic, select, image, snippets) are nil and skipped.
+    private static func item(for id: String) -> (item: Item, group: String)? {
+        switch id {
+        // With Tab and ⇧Tab, as the bar's own sets have it
+        case "esc": return (.key(esc), "control")
+        case "enter": return (.key(enter), "editing")
+        case "newline": return (.key(newLine), "editing")
+        // The page's cursor key is space on a tap
+        case "cursor": return (.key(space), "editing")
+        case "backspace": return (.key(backspace), "editing")
+        case "paste": return (.paste, "editing")
+        case "ctrl-c": return (.key(ctrlC), "control")
+        case "ctrl-d": return (.key(Key(title: "^D", sequence: "\u{04}", label: "Control D")), "control")
+        case "ctrl-z": return (.key(Key(title: "^Z", sequence: "\u{1a}", label: "Control Z")), "control")
+        case "ctrl-l": return (.key(Key(title: "^L", sequence: "\u{0c}", label: "Control L")), "control")
+        case "ctrl-r": return (.key(ctrlR), "control")
+        case "tab": return (.key(tab), "control")
+        case "shift-tab": return (.key(shiftTab), "control")
+        case "arrow-left": return (arrows[0], "nav")
+        case "arrow-up": return (arrows[1], "nav")
+        case "arrow-down": return (arrows[2], "nav")
+        case "arrow-right": return (arrows[3], "nav")
+        case "char-slash": return (.key(slash), "shell")
+        case "char-at": return (.key(at), "shell")
+        case "char-tilde": return (.key(Key(title: "~", sequence: "~", label: "Tilde")), "shell")
+        case "char-pipe": return (.key(Key(title: "|", sequence: "|", label: "Pipe")), "shell")
+        case "char-gt": return (.key(Key(title: ">", sequence: ">", label: "Greater than")), "shell")
+        default: return nil
+        }
+    }
+
+    /// Consecutive keys of the same kind as one group
+    private static func groups(_ entries: [(item: Item, group: String)]) -> [[Item]] {
+        var result: [[Item]] = []
+        var last: String?
+        for entry in entries {
+            if entry.group == last, !result.isEmpty {
+                result[result.count - 1].append(entry.item)
+            } else {
+                result.append([entry.item])
+            }
+            last = entry.group
+        }
+        return result
+    }
+
+    /// The page's order, parted where a group ends nearest the middle (so the
+    /// arrows stay together) when split; nil when it leaves nothing to show
+    private static func set(ids: [String]) -> KeySet? {
+        let all = groups(ids.compactMap(item(for:)))
+        guard !all.isEmpty else { return nil }
+        guard all.count > 1 else {
+            let keys = all[0], half = (keys.count + 1) / 2
+            return KeySet(left: [Array(keys[..<half])], right: half < keys.count ? [Array(keys[half...])] : [])
+        }
+        let total = all.reduce(0) { $0 + $1.count }
+        var cut = 1, before = all[0].count
+        var best = abs(2 * before - total)
+        for index in 1..<all.count - 1 {
+            before += all[index].count
+            let off = abs(2 * before - total)
+            if off < best { best = off; cut = index + 1 }
+        }
+        return KeySet(left: Array(all[..<cut]), right: Array(all[cut...]))
+    }
 
     private static func set(for context: String) -> KeySet {
         switch context {
@@ -161,7 +244,7 @@ final class KeyboardBar: UIInputView {
         leftEnd = nil
         rightStart = nil
 
-        let keys = Self.set(for: context)
+        let keys = ids.flatMap { Self.set(ids: $0) } ?? Self.set(for: context)
         let compact = layout == .row(compact: true)
 
         let dismiss = UIButton(configuration: .plain())
