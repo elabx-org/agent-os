@@ -39,6 +39,11 @@ final class AppModel {
     var pageBackground: Color?
     /// The theme's accent, for the app's own confirm buttons and the Safari sheet
     var accent: UIColor?
+    var accentColor: Color? { accent.map(Color.init(uiColor:)) }
+    /// The app theme's light or dark, which the column, sheets and keyboard follow
+    var scheme: ColorScheme? {
+        didSet { if scheme != oldValue { applyScheme() } }
+    }
     var fold: Fold? {
         didSet { if fold != oldValue { sendFold() } }
     }
@@ -133,6 +138,7 @@ final class AppModel {
 
     /// The page finished loading: deliver what waited for it
     func pageLoaded() {
+        applyScheme()
         sendFold()
         flushPending()
         registerPushToken()
@@ -197,6 +203,17 @@ final class AppModel {
         if let css = message["accent"] as? String, let color = Self.color(css: css) {
             accent = color
         }
+        switch message["scheme"] as? String {
+        case "light": scheme = .light
+        case "dark": scheme = .dark
+        default: break
+        }
+    }
+
+    /// UIKit's part (alerts, the keyboard and its bar) follows the window
+    private func applyScheme() {
+        let style: UIUserInterfaceStyle = scheme == .light ? .light : scheme == .dark ? .dark : .unspecified
+        webView?.window?.overrideUserInterfaceStyle = style
     }
 
     /// "rgb(r, g, b)" or "rgba(r, g, b, a)" from getComputedStyle

@@ -162,7 +162,9 @@ struct AgentWebContainer: UIViewRepresentable {
         ) {
             MainActor.assumeIsolated {
                 let alert = UIAlertController(title: nil, message: message, preferredStyle: .alert)
-                alert.addAction(UIAlertAction(title: "OK", style: .default) { _ in completionHandler() })
+                let ok = UIAlertAction(title: "OK", style: .default) { _ in completionHandler() }
+                alert.addAction(ok)
+                confirm(ok, in: alert)
                 present(alert, from: webView, orElse: completionHandler)
             }
         }
@@ -178,9 +180,11 @@ struct AgentWebContainer: UIViewRepresentable {
                 // Name the button by what it does when the page asks to delete
                 let verb = ["Delete", "Kill", "Remove"].first { message.hasPrefix($0) }
                 alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in completionHandler(false) })
-                alert.addAction(UIAlertAction(title: verb ?? "OK", style: verb == nil ? .default : .destructive) { _ in
+                let ok = UIAlertAction(title: verb ?? "OK", style: verb == nil ? .default : .destructive) { _ in
                     completionHandler(true)
-                })
+                }
+                alert.addAction(ok)
+                confirm(ok, in: alert)
                 present(alert, from: webView) { completionHandler(false) }
             }
         }
@@ -196,11 +200,20 @@ struct AgentWebContainer: UIViewRepresentable {
                 let alert = UIAlertController(title: nil, message: prompt, preferredStyle: .alert)
                 alert.addTextField { $0.text = defaultText }
                 alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in completionHandler(nil) })
-                alert.addAction(UIAlertAction(title: "OK", style: .default) { [weak alert] _ in
+                let ok = UIAlertAction(title: "OK", style: .default) { [weak alert] _ in
                     completionHandler(alert?.textFields?.first?.text ?? "")
-                })
+                }
+                alert.addAction(ok)
+                confirm(ok, in: alert)
                 present(alert, from: webView) { completionHandler(nil) }
             }
+        }
+
+        /// The theme's accent goes on the confirming button only
+        @MainActor
+        private func confirm(_ action: UIAlertAction, in alert: UIAlertController) {
+            alert.preferredAction = action
+            if let accent = model.accent { alert.view.tintColor = accent }
         }
 
         @MainActor

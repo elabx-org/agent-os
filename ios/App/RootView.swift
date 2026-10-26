@@ -26,6 +26,8 @@ struct RootView: View {
         .sheet(isPresented: $model.showingServer) {
             ServerSheet(model: model)
         }
+        // The app's theme, not the phone's: Default light stays light in dark mode
+        .preferredColorScheme(model.scheme)
         .overlay {
             if model.lock.locked || model.lock.covered {
                 LockCover(lock: model.lock)
