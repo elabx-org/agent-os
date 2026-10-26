@@ -29,6 +29,7 @@ import { ScrollToBottomButton } from "./ScrollToBottomButton";
 import { TerminalToolbar } from "./TerminalToolbar";
 import { KeybarToggleButton } from "./KeybarToggleButton";
 import { Composer } from "./Composer";
+import { useSessionDraft } from "@/hooks/useSessionDraft";
 import {
   hasQueued,
   isClaudeBusy,
@@ -82,6 +83,8 @@ interface TerminalProps {
   initialScrollState?: TerminalScrollState;
   /** Show image picker button (default: true) */
   showImageButton?: boolean;
+  /** The session whose unsent composer text is synced (none: not kept) */
+  draftId?: string | null;
 }
 
 export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
@@ -92,6 +95,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
       onBeforeUnmount,
       initialScrollState,
       showImageButton = true,
+      draftId,
     },
     ref
   ) {
@@ -112,7 +116,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
     const [composerEnabled, setComposerEnabled] = useState(() =>
       typeof window === "undefined" ? true : getComposerEnabled()
     );
-    const [composerText, setComposerText] = useState("");
+    const [composerText, setComposerText] = useSessionDraft(draftId);
 
     useEffect(() => {
       const onChange = (e: Event) =>
