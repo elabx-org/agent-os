@@ -388,8 +388,8 @@ export function useComposer({
   );
 
   // ---- History: ↑ in an empty box, ↓ back; a search sheet (Ctrl-R)
-  // Fetched once the box has focus; cached after that
-  const { entries } = useClaudeHistory(claude && focused ? cwd : null);
+  // Cached per project; also wanted unfocused, for the key row's ↑
+  const { entries } = useClaudeHistory(claude ? cwd : null);
   const [hist, setHist] = useState(-1);
   const recalled = hist >= 0 && entries[hist]?.text === value ? hist : -1;
   const [historyOpen, setHistoryOpen] = useState(false);

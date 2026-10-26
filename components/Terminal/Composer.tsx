@@ -13,6 +13,7 @@ import {
 import {
   ClaudeStateBar,
   QueuedMessages,
+  StrayInput,
   RewindSheet,
   useClaudeLive,
   type ClaudeKey,
@@ -44,6 +45,10 @@ interface ComposerProps {
   getQueued?: () => string[];
   onEditQueued?: () => void;
   onCancelQueued?: () => void;
+  /** Text in Claude's own box, which the composer hides */
+  stray?: string | null;
+  onMoveStray?: () => void;
+  onClearStray?: () => void;
   /** Hidden behind another tab or view: Claude's state isn't read */
   active?: boolean;
   /** Claude's state on a slim line above the box, not under it (the open
@@ -73,6 +78,9 @@ export function Composer({
   getQueued,
   onEditQueued,
   onCancelQueued,
+  stray,
+  onMoveStray,
+  onClearStray,
   active = true,
   stateAbove = false,
   pages,
@@ -165,6 +173,9 @@ export function Composer({
         onEdit={onEditQueued}
         onCancel={onCancelQueued}
       />
+      {stray && onMoveStray && onClearStray && (
+        <StrayInput text={stray} onMove={onMoveStray} onClear={onClearStray} />
+      )}
       {/* What's being answered, and the passages quoted to answer */}
       <ReplyContextBar
         composer={composer}

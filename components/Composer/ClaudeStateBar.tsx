@@ -10,6 +10,7 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import {
   Pencil,
+  ArrowDownToLine,
   ShieldQuestion,
   Square,
   SquareTerminal,
@@ -411,6 +412,52 @@ export function QueuedMessages({
           <X className="h-3.5 w-3.5" />
         </button>
       )}
+    </div>
+  );
+}
+
+/**
+ * Text in Claude Code's own box, which the composer hides (recalled from
+ * history there, put back by Esc, typed on another device): into the
+ * composer, or cleared
+ */
+export function StrayInput({
+  text,
+  onMove,
+  onClear,
+}: {
+  text: string;
+  onMove: () => void;
+  onClear: () => void;
+}) {
+  const action =
+    "text-muted-foreground active:bg-accent hover:bg-accent relative flex h-8 shrink-0 items-center justify-center gap-1 rounded-full px-2 after:absolute after:-inset-1.5";
+  return (
+    <div
+      className="border-border text-muted-foreground mb-1.5 ml-12 flex items-center gap-2 rounded-[14px] border border-dashed py-1 pr-1 pl-3 text-[12.5px]"
+      onMouseDown={(e) => e.preventDefault()}
+    >
+      <em className="text-muted-foreground/70 shrink-0 text-[9.5px] tracking-[0.06em] uppercase not-italic">
+        in Claude&apos;s box
+      </em>
+      <span className="min-w-0 flex-1 truncate">{text}</span>
+      <button
+        type="button"
+        onClick={onMove}
+        aria-label="Move into the box"
+        className={action}
+      >
+        <ArrowDownToLine className="h-3.5 w-3.5" />
+        <span className="text-xs">Move here</span>
+      </button>
+      <button
+        type="button"
+        onClick={onClear}
+        aria-label="Clear Claude's box"
+        className={cn(action, "w-8 px-0")}
+      >
+        <X className="h-3.5 w-3.5" />
+      </button>
     </div>
   );
 }
