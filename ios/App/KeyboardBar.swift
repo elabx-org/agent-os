@@ -11,6 +11,8 @@ final class KeyboardBar: UIInputView {
     var onKey: ((String) -> Void)?
     /// Text from the system Paste button
     var onPaste: ((String) -> Void)?
+    /// Add image: the page's picker (not in the chat box, which has none)
+    var onImage: (() -> Void)?
     var onDismiss: (() -> Void)?
     /// The bar is in a window exactly while the keyboard shows
     var onVisibilityChange: ((Bool) -> Void)?
@@ -273,6 +275,25 @@ final class KeyboardBar: UIInputView {
             dismiss.heightAnchor.constraint(equalToConstant: 44),
         ])
 
+        // Add image sits beside the hide-keyboard key, outside the key groups
+        var trailing = dismiss.leadingAnchor
+        if context != "chat" {
+            let image = UIButton(configuration: .plain())
+            image.configuration?.image = UIImage(systemName: "photo.badge.plus")
+            image.accessibilityLabel = "Add image"
+            image.addAction(UIAction { [weak self] _ in self?.onImage?() }, for: .touchUpInside)
+            image.translatesAutoresizingMaskIntoConstraints = false
+            addSubview(image)
+            built.append(image)
+            NSLayoutConstraint.activate([
+                image.trailingAnchor.constraint(equalTo: dismiss.leadingAnchor),
+                image.centerYAnchor.constraint(equalTo: centerYAnchor),
+                image.widthAnchor.constraint(equalToConstant: dismissWidth),
+                image.heightAnchor.constraint(equalToConstant: 44),
+            ])
+            trailing = image.leadingAnchor
+        }
+
         if layout == .split {
             let left = stack(keys.left, compact: false)
             let right = stack(keys.right, compact: false)
@@ -300,7 +321,7 @@ final class KeyboardBar: UIInputView {
                 leftEnd,
                 rightStart,
                 left.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: 8),
-                right.trailingAnchor.constraint(lessThanOrEqualTo: dismiss.leadingAnchor, constant: -8),
+                right.trailingAnchor.constraint(lessThanOrEqualTo: trailing, constant: -8),
                 left.centerYAnchor.constraint(equalTo: centerYAnchor),
                 right.centerYAnchor.constraint(equalTo: centerYAnchor),
                 left.heightAnchor.constraint(equalToConstant: 40),
@@ -324,7 +345,7 @@ final class KeyboardBar: UIInputView {
                 scroll.leadingAnchor.constraint(equalTo: leadingAnchor),
                 scroll.topAnchor.constraint(equalTo: topAnchor),
                 scroll.bottomAnchor.constraint(equalTo: bottomAnchor),
-                scroll.trailingAnchor.constraint(equalTo: dismiss.leadingAnchor),
+                scroll.trailingAnchor.constraint(equalTo: trailing),
 
                 row.leadingAnchor.constraint(equalTo: scroll.contentLayoutGuide.leadingAnchor, constant: inset),
                 row.trailingAnchor.constraint(equalTo: scroll.contentLayoutGuide.trailingAnchor, constant: -inset),
