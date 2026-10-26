@@ -145,8 +145,21 @@ function useNeedsYouList(view: ViewProps) {
     (i) =>
       fresh.has(i.id) && (i.kind === "finished" || i.kind === "agentFinished")
   );
+  // A prompt still waiting is listed above, live, so its alerts aren't
+  // repeated below
+  const waitingIds = new Set<string>([
+    ...needs.waiting.map((s) => s.id),
+    ...needs.blocked.map((a) => a.id),
+  ]);
   const earlier = history
-    .filter((i) => !finished.includes(i))
+    .filter(
+      (i) =>
+        !finished.includes(i) &&
+        !(
+          (i.kind === "needsYou" || i.kind === "agentNeedsYou") &&
+          waitingIds.has(i.sessionId ?? i.agentId ?? "")
+        )
+    )
     .slice(0, EARLIER_MAX);
 
   return {
