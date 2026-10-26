@@ -18,7 +18,8 @@ export type NativeNavAction =
   | "files"
   | "find"
   | "new"
-  | "sessions";
+  | "sessions"
+  | "settings";
 
 export type NativeEvent =
   | { type: "nav"; action: NativeNavAction }
@@ -49,6 +50,8 @@ export interface NativeState {
   changes: number;
   /** The page's background (getComputedStyle), for the edges the app shows around it */
   background?: string;
+  /** The Settings page is showing (older app builds ignore it) */
+  settings?: boolean;
 }
 
 export const NATIVE_EVENT = "agentos-native";
@@ -100,8 +103,13 @@ export type HapticStyle =
   | "warning"
   | "error";
 
+/** Settings → Server: the app's own server and sign-in screen */
+export interface NativeServer {
+  type: "server";
+}
+
 export function postToNative(
-  message: NativeState | NativeKeybar | NativeHaptic
+  message: NativeState | NativeKeybar | NativeHaptic | NativeServer
 ): void {
   window.webkit?.messageHandlers?.agentos?.postMessage(message);
 }

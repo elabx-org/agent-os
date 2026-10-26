@@ -42,6 +42,8 @@ import { getProviderDefinition } from "@/lib/providers/registry";
 import { DesktopView } from "@/components/views/DesktopView";
 import { MobileView } from "@/components/views/MobileView";
 import { getPendingPrompt, clearPendingPrompt } from "@/stores/initialPrompt";
+import { openSettings } from "@/stores/settingsPage";
+import { SettingsPage } from "@/components/Settings/SettingsPage";
 
 function HomeContent() {
   // UI State
@@ -394,12 +396,15 @@ function HomeContent() {
     if (isHydrated) setSidebarOpen(!isMobile);
   }, [isMobile, isHydrated]);
 
-  // Keyboard shortcut: Cmd+K to open quick switcher
+  // Keyboard shortcuts: Cmd+K opens the quick switcher, Cmd+, Settings
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
         e.preventDefault();
         setShowQuickSwitcher(true);
+      } else if ((e.metaKey || e.ctrlKey) && e.key === ",") {
+        e.preventDefault();
+        openSettings();
       }
     };
     window.addEventListener("keydown", handleKeyDown);
@@ -591,11 +596,21 @@ function HomeContent() {
     renderPane,
   };
 
-  if (isMobile) {
-    return <MobileView {...viewProps} />;
-  }
-
-  return <DesktopView {...viewProps} />;
+  return (
+    <>
+      {isMobile ? (
+        <MobileView {...viewProps} />
+      ) : (
+        <DesktopView {...viewProps} />
+      )}
+      <SettingsPage
+        settings={notificationSettings}
+        permissionGranted={permissionGranted}
+        onUpdateSettings={updateSettings}
+        onRequestPermission={requestPermission}
+      />
+    </>
+  );
 }
 
 export default function Home() {
