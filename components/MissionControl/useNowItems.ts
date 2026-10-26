@@ -1,8 +1,6 @@
 import { useMemo } from "react";
-import {
-  useBackgroundAgents,
-  useBackgroundAgentsByProject,
-} from "@/components/BackgroundAgents";
+import { useBackgroundAgentsByProject } from "@/components/BackgroundAgents";
+import { useNeedsYou } from "@/hooks/useNeedsYou";
 import { useRunningSubagents } from "@/hooks/useRunningSubagents";
 import type { SessionSubagent } from "@/hooks/useRunningSubagents";
 import { useSessionTitles } from "@/hooks/useSessionTitles";
@@ -51,19 +49,21 @@ export function useNowItems(
 ): NowItems {
   const projects = useProjectsQuery().data ?? EMPTY_PROJECTS;
   const servers = useDevServersQuery().data ?? EMPTY_SERVERS;
-  const agents = useBackgroundAgents();
+  // What needs you is defined once, so the hero matches the column badge
+  const needs = useNeedsYou(sessions, statuses);
+  const { agents, waiting } = needs;
   const agentsByProject = useBackgroundAgentsByProject(projects);
 
   // Workers show inside their conductor's session, not on their own
-  const { waiting, running } = useMemo(() => {
-    const byRecent = sessions
-      .filter((s) => !s.conductor_session_id)
-      .sort((a, b) => b.updated_at.localeCompare(a.updated_at));
-    return {
-      waiting: byRecent.filter((s) => statuses[s.id]?.status === "waiting"),
-      running: byRecent.filter((s) => statuses[s.id]?.status === "running"),
-    };
-  }, [sessions, statuses]);
+  const running = useMemo(
+    () =>
+      sessions
+        .filter(
+          (s) => !s.conductor_session_id && statuses[s.id]?.status === "running"
+        )
+        .sort((a, b) => b.updated_at.localeCompare(a.updated_at)),
+    [sessions, statuses]
+  );
 
   // Only sessions that are doing something can have subagents running
   const live = useMemo(
@@ -141,9 +141,8 @@ export function useNowItems(
         a.sort_order - b.sort_order
     );
 
-  const blockedCount = blocked.reduce((n, g) => n + g.agents.length, 0);
   return {
-    needsCount: waiting.length + blockedCount,
+    needsCount: needs.count,
     waiting,
     blocked,
     working: {
