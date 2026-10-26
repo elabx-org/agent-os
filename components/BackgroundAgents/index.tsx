@@ -27,7 +27,7 @@ import type { ChatItem } from "@/lib/claude-transcript";
 
 const POLL_MS = 5000;
 
-const MODELS = [
+export const MODELS = [
   { id: "", label: "Default" },
   { id: "sonnet", label: "Sonnet" },
   { id: "opus", label: "Opus" },
@@ -50,7 +50,8 @@ let shared: BackgroundAgent[] = [];
 const listeners = new Set<(agents: BackgroundAgent[]) => void>();
 let timer: ReturnType<typeof setInterval> | undefined;
 
-async function poll() {
+/** Fetches the list now, e.g. right after starting one */
+export async function poll() {
   try {
     const res = await fetch("/api/background-agents");
     const data = await res.json();

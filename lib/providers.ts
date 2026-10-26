@@ -110,6 +110,17 @@ export const claudeProvider: AgentProvider = {
       flags.push(`--settings '${options.settingsFile}'`);
     }
 
+    // "sonnet" is what the server stores when none was chosen, which has
+    // always meant Claude's own default; the pattern keeps it shell-safe
+    if (
+      options.model &&
+      options.model !== "sonnet" &&
+      def.modelFlag &&
+      /^[\w.-]+$/.test(options.model)
+    ) {
+      flags.push(`${def.modelFlag} ${options.model}`);
+    }
+
     // Initial prompt (positional argument for Claude)
     if (options.initialPrompt?.trim() && def.initialPromptFlag !== undefined) {
       const prompt = options.initialPrompt.trim();

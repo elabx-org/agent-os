@@ -74,7 +74,7 @@ export const PROVIDERS: ProviderDefinition[] = [
     supportsFork: true,
     resumeFlag: "--resume",
     continueFlag: "--continue",
-    modelFlag: undefined, // Claude doesn't expose model flag
+    modelFlag: "--model",
     initialPromptFlag: "", // Positional argument
     installCommand: "npm install -g @anthropic-ai/claude-code",
     worktreeFlag: "--worktree",

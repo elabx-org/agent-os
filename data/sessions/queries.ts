@@ -305,6 +305,8 @@ export interface CreateSessionInput {
   continueSession: boolean;
   useTmux: boolean;
   initialPrompt: string | null;
+  /** Left out, the server keeps its default */
+  model?: string;
 }
 
 interface CreateSessionResponse {
