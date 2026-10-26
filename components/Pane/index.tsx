@@ -438,6 +438,7 @@ export const Pane = memo(function Pane({
               >
                 <Terminal
                   ref={getTerminalRef(tab.id)}
+                  draftId={tab.sessionId}
                   onConnected={getTerminalConnectedHandler(tab)}
                   onBeforeUnmount={(scrollState) => {
                     sessionRegistry.saveTerminalState(paneId, tab.id, {
@@ -545,6 +546,7 @@ export const Pane = memo(function Pane({
                       >
                         <Terminal
                           ref={getTerminalRef(tab.id)}
+                          draftId={tab.sessionId}
                           onConnected={getTerminalConnectedHandler(tab)}
                           onBeforeUnmount={(scrollState) => {
                             sessionRegistry.saveTerminalState(paneId, tab.id, {

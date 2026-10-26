@@ -297,6 +297,21 @@ const migrations: Migration[] = [
       db.exec(`ALTER TABLE projects ADD COLUMN hooks TEXT`);
     },
   },
+  {
+    id: 21,
+    name: "add_session_drafts_table",
+    up: (db) => {
+      // What's typed in a session's message box and not sent yet, so it
+      // survives a reload and follows the user to another device
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS session_drafts (
+          session_id TEXT PRIMARY KEY,
+          text TEXT NOT NULL,
+          updated_at INTEGER NOT NULL
+        )
+      `);
+    },
+  },
 ];
 
 export function runMigrations(db: Database.Database): void {

@@ -466,4 +466,18 @@ export const queries = {
       `INSERT INTO preferences (key, value) VALUES (?, ?)
        ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=datetime('now')`
     ),
+
+  // Unsent drafts, one per session; updated_at is the server's ms clock
+  getDraft: (db: Database.Database) =>
+    getStmt(db, `SELECT text, updated_at FROM session_drafts WHERE session_id = ?`),
+
+  upsertDraft: (db: Database.Database) =>
+    getStmt(
+      db,
+      `INSERT INTO session_drafts (session_id, text, updated_at) VALUES (?, ?, ?)
+       ON CONFLICT(session_id) DO UPDATE SET text=excluded.text, updated_at=excluded.updated_at`
+    ),
+
+  deleteDraft: (db: Database.Database) =>
+    getStmt(db, `DELETE FROM session_drafts WHERE session_id = ?`),
 };

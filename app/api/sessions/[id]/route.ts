@@ -144,6 +144,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     // Delete from database immediately for instant UI feedback
     queries.detachForks(db).run(id);
     queries.deleteSession(db).run(id);
+    queries.deleteDraft(db).run(id);
 
     // Clean up worktree in background (non-blocking)
     if (existing.worktree_path && isAgentOSWorktree(existing.worktree_path)) {

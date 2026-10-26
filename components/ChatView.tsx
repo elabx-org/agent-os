@@ -33,6 +33,7 @@ import { Markdown } from "@/components/Markdown";
 import { InboxItem } from "@/components/Inbox";
 import { mobileNavStore } from "@/stores/mobileNav";
 import { isTextKey, onNativeEvent } from "@/lib/native-bridge";
+import { useSessionDraft } from "@/hooks/useSessionDraft";
 import { useFoldDeck } from "@/hooks/useFoldDeck";
 import type { Session } from "@/lib/db";
 import type { ChatItem } from "@/lib/claude-transcript";
@@ -506,7 +507,8 @@ export function ChatView({ session, active, onOpenTerminal }: ChatViewProps) {
     // Again after each page, in case the top is still in view
   }, [truncated, loadEarlier, state, items.length]);
 
-  const [draft, setDraft] = useState("");
+  // Kept on the server: survives a reload, follows to other devices
+  const [draft, setDraft] = useSessionDraft(session.id);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   // Return sends, so touch keyboards get a button for a line break
   const insertText = (text: string) => {
