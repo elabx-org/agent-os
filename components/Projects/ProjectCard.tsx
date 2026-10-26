@@ -1,33 +1,24 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { afterMenuCloses, cn } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import {
   ChevronRight,
   ChevronDown,
   MoreHorizontal,
-  Settings,
-  Plus,
   Server,
   Trash2,
-  Pencil,
-  FolderOpen,
-  Terminal,
   Bot,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
   ContextMenu,
   ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import {
@@ -36,10 +27,11 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import type { Project, DevServer } from "@/lib/db";
-import { ActionSheet, type SheetAction } from "@/components/ui/action-sheet";
+import { ActionSheet } from "@/components/ui/action-sheet";
 import { SwipeRow } from "@/components/ui/swipe-row";
 import { useLongPress } from "@/hooks/useLongPress";
 import { useViewport } from "@/hooks/useViewport";
+import { ProjectActionItems, projectActionGroups } from "./projectActions";
 
 interface ProjectCardProps {
   project: Project;
@@ -140,74 +132,21 @@ export function ProjectCard({
     onToggleExpanded?.(!project.expanded);
   };
 
-  const renderMenuItems = (isContextMenu: boolean) => {
-    const MenuItem = isContextMenu ? ContextMenuItem : DropdownMenuItem;
-    const MenuSeparator = isContextMenu
-      ? ContextMenuSeparator
-      : DropdownMenuSeparator;
-
-    return (
-      <>
-        {onNewSession && (
-          <MenuItem onSelect={() => onNewSession()}>
-            <Plus className="mr-2 h-3 w-3" />
-            New session
-          </MenuItem>
-        )}
-        {onOpenTerminal && (
-          <MenuItem onSelect={() => onOpenTerminal()}>
-            <Terminal className="mr-2 h-3 w-3" />
-            Open terminal
-          </MenuItem>
-        )}
-        {onNewBackgroundAgent && (
-          <MenuItem onSelect={() => onNewBackgroundAgent()}>
-            <Bot className="mr-2 h-3 w-3" />
-            New background agent
-          </MenuItem>
-        )}
-        {onEdit && (
-          <MenuItem onSelect={() => onEdit()}>
-            <Settings className="mr-2 h-3 w-3" />
-            Project settings
-          </MenuItem>
-        )}
-        {onRename && (
-          <MenuItem onSelect={() => setIsEditing(true)}>
-            <Pencil className="mr-2 h-3 w-3" />
-            Rename
-          </MenuItem>
-        )}
-        {onOpenInEditor && (
-          <MenuItem onSelect={() => onOpenInEditor()}>
-            <FolderOpen className="mr-2 h-3 w-3" />
-            Open in editor
-          </MenuItem>
-        )}
-        {onStartDevServer && (
-          <>
-            <MenuSeparator />
-            <MenuItem onSelect={() => onStartDevServer()}>
-              <Server className="mr-2 h-3 w-3" />
-              Start dev server
-            </MenuItem>
-          </>
-        )}
-        {onDelete && (
-          <>
-            <MenuSeparator />
-            <MenuItem
-              onSelect={() => afterMenuCloses(onDelete)}
-              className="text-red-500 focus:text-red-500"
-            >
-              <Trash2 className="mr-2 h-3 w-3" />
-              Delete project
-            </MenuItem>
-          </>
-        )}
-      </>
-    );
+  const handlers = {
+    onNewSession,
+    onNewBackgroundAgent,
+    onOpenTerminal,
+    onEdit,
+    onOpenInEditor,
+    onStartDevServer,
+    onDelete,
   };
+  // The menu renames in place; the sheet asks on a page of its own
+  const menuGroups = projectActionGroups(project, {
+    ...handlers,
+    onStartRename: onRename ? () => setIsEditing(true) : undefined,
+  });
+  const sheetGroups = projectActionGroups(project, { ...handlers, onRename });
 
   // On touch: hold the row (unless it's sortable) for its actions
   useLongPress(
@@ -217,72 +156,6 @@ export function ProjectCard({
   useEffect(() => {
     if (actionsRequest) setSheetOpen(true);
   }, [actionsRequest]);
-
-  const sheetGroups: SheetAction[][] = [
-    [
-      ...(onNewSession
-        ? [{ label: "New session", icon: Plus, onSelect: onNewSession }]
-        : []),
-      ...(onOpenTerminal
-        ? [{ label: "Open terminal", icon: Terminal, onSelect: onOpenTerminal }]
-        : []),
-      ...(onNewBackgroundAgent
-        ? [
-            {
-              label: "New background agent",
-              icon: Bot,
-              onSelect: onNewBackgroundAgent,
-            },
-          ]
-        : []),
-    ],
-    [
-      ...(onRename
-        ? [
-            {
-              label: "Rename",
-              icon: Pencil,
-              prompt: {
-                title: "Rename project",
-                value: project.name,
-                onSubmit: onRename,
-              },
-            },
-          ]
-        : []),
-      ...(onEdit
-        ? [{ label: "Project settings", icon: Settings, onSelect: onEdit }]
-        : []),
-      ...(onOpenInEditor
-        ? [
-            {
-              label: "Open in editor",
-              icon: FolderOpen,
-              onSelect: onOpenInEditor,
-            },
-          ]
-        : []),
-      ...(onStartDevServer
-        ? [
-            {
-              label: "Start dev server",
-              icon: Server,
-              onSelect: onStartDevServer,
-            },
-          ]
-        : []),
-    ],
-    onDelete
-      ? [
-          {
-            label: "Delete project",
-            icon: Trash2,
-            destructive: true,
-            onSelect: onDelete,
-          },
-        ]
-      : [],
-  ];
 
   const cardContent = (
     <div
@@ -405,7 +278,7 @@ export function ProjectCard({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-            {renderMenuItems(false)}
+            <ProjectActionItems groups={menuGroups} />
           </DropdownMenuContent>
         </DropdownMenu>
       )}
@@ -446,7 +319,9 @@ export function ProjectCard({
     return (
       <ContextMenu>
         <ContextMenuTrigger asChild>{cardContent}</ContextMenuTrigger>
-        <ContextMenuContent>{renderMenuItems(true)}</ContextMenuContent>
+        <ContextMenuContent>
+          <ProjectActionItems groups={menuGroups} context />
+        </ContextMenuContent>
       </ContextMenu>
     );
   }
