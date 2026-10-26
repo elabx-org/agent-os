@@ -50,6 +50,10 @@ import { InboxItem } from "@/components/Inbox";
 import { useSessionPrompt } from "@/data/prompts/queries";
 import type { Session } from "@/lib/db";
 import { useFoldDeck } from "@/hooks/useFoldDeck";
+import {
+  useSpreadFold,
+  useSpreadPages,
+} from "@/components/views/SessionSpread";
 import { COMPOSER_EVENT, getComposerEnabled } from "./typing-assist";
 import { useTerminalConnection, useTerminalSearch } from "./hooks";
 import type { TerminalScrollState } from "./hooks";
@@ -679,6 +683,27 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
       return () => observer.disconnect();
     }, [showKeybar]);
 
+    // This pane across both pages of the open Duo: the composer on one page
+    // and the keys on the other (Split, Mirrored), or each row split either
+    // side of the gutter (Two rows), as set in Settings → Keys. Two rows
+    // splits the context row only; a custom row takes the split instead.
+    const spreadFold = useSpreadFold();
+    const duoPages = useSpreadPages(
+      keybarRef,
+      showKeybar && !deck ? spreadFold : null
+    );
+    const duoLayout = !duoPages
+      ? null
+      : keyPrefs.duoLayout === "two-rows" && keyPrefs.mode !== "context"
+        ? "split"
+        : (keyPrefs.duoLayout ?? "split");
+    const sideBySide = duoLayout === "split" || duoLayout === "mirrored";
+    const leftSlot = duoPages
+      ? { width: duoPages.left, flexShrink: 0 }
+      : undefined;
+    const rightSlot = { flex: "1 1 0", minWidth: 0 };
+    const twoRowPages = duoLayout === "two-rows" ? duoPages : null;
+
     // Extract terminal text for select mode overlay
     // Select mode: capture full scrollback via tmux capture-pane
     const [terminalText, setTerminalText] = useState("");
@@ -1053,7 +1078,10 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
           <div
             ref={keybarRef}
             className={cn(
-              "fold-controls bg-background shrink-0",
+              "bg-background shrink-0",
+              // Laid out on both pages here, or kept right of the fold
+              !duoLayout && "fold-controls",
+              sideBySide && "flex items-end",
               laptopKeys ? "contents" : deck && "flex flex-col"
             )}
             style={
@@ -1062,7 +1090,8 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
                 : {
                     height: deck?.deck,
                     order: keybarAtTop ? -1 : undefined,
-                    paddingLeft: "env(safe-area-inset-left)",
+                    // The pages are measured from this edge
+                    paddingLeft: duoLayout ? 0 : "env(safe-area-inset-left)",
                     paddingRight:
                       "var(--safe-right, env(safe-area-inset-right))",
                   }
@@ -1092,7 +1121,13 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
             {/* Ordered rather than moved, so the composer never remounts */}
             <div
               className="bg-background shrink-0"
-              style={{ order: laptopKeys ? 1 : tabletopBase ? 3 : undefined }}
+              style={
+                sideBySide
+                  ? duoLayout === "split"
+                    ? { order: 1, ...leftSlot }
+                    : { order: 3, ...rightSlot }
+                  : { order: laptopKeys ? 1 : tabletopBase ? 3 : undefined }
+              }
             >
               {composerOn && (
                 <Composer
@@ -1109,6 +1144,8 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
                   getQueued={getQueued}
                   onEditQueued={editQueued}
                   onCancelQueued={cancelQueued}
+                  stateAbove={sideBySide}
+                  pages={twoRowPages}
                   extra={
                     !deck && (
                       <KeybarToggleButton
@@ -1121,6 +1158,14 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
                 />
               )}
             </div>
+            {/* Nothing in the fold */}
+            {sideBySide && duoPages && (
+              <div
+                aria-hidden="true"
+                className="shrink-0"
+                style={{ order: 2, width: duoPages.gutter }}
+              />
+            )}
             <div
               className={cn(laptopKeys && "keybar-fill bg-background min-h-0")}
               style={
@@ -1128,7 +1173,15 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
                   ? { order: 3, height: deck.deck }
                   : tabletopBase
                     ? { order: 2 }
-                    : undefined
+                    : sideBySide
+                      ? {
+                          ...(duoLayout === "split"
+                            ? { order: 3, ...rightSlot }
+                            : { order: 1, ...leftSlot }),
+                          // Level with the middle of the box beside it
+                          paddingBottom: 9,
+                        }
+                      : undefined
               }
             >
               <TerminalToolbar
@@ -1147,6 +1200,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
                 context={keysContext}
                 keyboardUp={keyboardUp}
                 singleRow={tabletopBase}
+                pages={twoRowPages}
               />
             </div>
           </div>

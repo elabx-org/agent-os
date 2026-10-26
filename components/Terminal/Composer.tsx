@@ -18,6 +18,7 @@ import {
   type ClaudeKey,
 } from "@/components/Composer/ClaudeStateBar";
 import { ReplyContextBar } from "@/components/ReplyContext";
+import type { SpreadPages } from "@/components/views/SessionSpread";
 import { ComposerPlusMenu } from "./ComposerPlusMenu";
 
 const MAX_ROWS = 5;
@@ -45,6 +46,12 @@ interface ComposerProps {
   onCancelQueued?: () => void;
   /** Hidden behind another tab or view: Claude's state isn't read */
   active?: boolean;
+  /** Claude's state on a slim line above the box, not under it (the open
+      Duo's split row, level with the keys on the other page) */
+  stateAbove?: boolean;
+  /** Across both pages of the open Duo (Two rows): the box on the left
+      page, its buttons and Claude's state on the right one */
+  pages?: SpreadPages | null;
 }
 
 /**
@@ -67,6 +74,8 @@ export function Composer({
   onEditQueued,
   onCancelQueued,
   active = true,
+  stateAbove = false,
+  pages,
 }: ComposerProps) {
   const { data } = useSessionsQuery();
   const session = sessionId
@@ -92,6 +101,8 @@ export function Composer({
   // text gets the whole width. It stays that way until the box is empty, so
   // the wider box fitting the text on one line again doesn't flip it back.
   const [stacked, setStacked] = useState(false);
+  // On a page of its own the box keeps its row
+  const stack = stacked && !pages;
 
   // Grow with content up to MAX_ROWS, then scroll
   useEffect(() => {
@@ -122,12 +133,28 @@ export function Composer({
     composer.sent();
   };
 
+  const sendButton = (
+    <button
+      type="button"
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={send}
+      // The one accent control on screen, also when it just presses Enter
+      className="bg-primary text-primary-foreground flex h-[44px] w-[44px] flex-shrink-0 touch-manipulation items-center justify-center rounded-full active:opacity-80"
+      aria-label={value ? "Send" : "Press Enter"}
+      title={value ? "Send" : "Press Enter"}
+    >
+      <ArrowUp className="h-5 w-5" />
+    </button>
+  );
+
   return (
     // z-10: the capsule's backdrop blur makes it a layer of its own, which
     // otherwise sits under xterm's canvases, so taps on the + menu and the
     // pickers that open above the box went to the terminal
+    // Two rows: the box ends where the left page does (less its margin)
     <div
       className="relative z-10 mx-2.5 my-1.5"
+      style={pages ? { width: pages.left - 10 } : undefined}
       onTouchEnd={(e) => e.stopPropagation()}
     >
       <ComposerPopover composer={composer} />
@@ -145,11 +172,14 @@ export function Composer({
         view="terminal"
       />
       <ComposerChips composer={composer} />
+      {stateAbove && !pages && (
+        <ClaudeStateBar live={live} className="pt-0 pb-1 pl-3" />
+      )}
       <div
         className={cn(
           // Glass-like capsule, as the control column
           "bg-background/70 border-border flex items-end gap-1.5 rounded-[28px] border p-1.5 shadow-[inset_0_1px_0_hsl(var(--foreground)/0.08)] backdrop-blur-xl backdrop-saturate-150",
-          stacked && "flex-wrap"
+          stack && "flex-wrap"
         )}
       >
         <ComposerPlusMenu
@@ -183,23 +213,34 @@ export function Composer({
           enterKeyHint="send"
           placeholder="Type into the terminal"
           autoCapitalize="sentences"
-          className={cn("flex-1", stacked && "order-first basis-full")}
+          className={cn("flex-1", stack && "order-first basis-full")}
         />
-        {stacked && <span className="flex-1" aria-hidden="true" />}
-        {extra}
-        <button
-          type="button"
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={send}
-          // The one accent control on screen, also when it just presses Enter
-          className="bg-primary text-primary-foreground flex h-[44px] w-[44px] flex-shrink-0 touch-manipulation items-center justify-center rounded-full active:opacity-80"
-          aria-label={value ? "Send" : "Press Enter"}
-          title={value ? "Send" : "Press Enter"}
-        >
-          <ArrowUp className="h-5 w-5" />
-        </button>
+        {stack && <span className="flex-1" aria-hidden="true" />}
+        {!pages && extra}
+        {!pages && sendButton}
       </div>
-      <ClaudeStateBar live={live} />
+      {pages ? (
+        // On the right page, level with the box: Claude's state, then the
+        // keybar toggle and send at the far end
+        <div
+          className="absolute bottom-0 flex items-end gap-1.5 py-1.5"
+          style={{
+            left: `calc(100% + ${pages.gutter}px)`,
+            width: pages.right - 10,
+          }}
+        >
+          <ClaudeStateBar
+            live={live}
+            className="min-w-0 flex-1 self-center p-0"
+          />
+          <div className="ml-auto flex shrink-0 items-end gap-1.5">
+            {extra}
+            {sendButton}
+          </div>
+        </div>
+      ) : (
+        !stateAbove && <ClaudeStateBar live={live} />
+      )}
     </div>
   );
 }

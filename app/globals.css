@@ -264,8 +264,10 @@ html[data-fold="vertical"] [data-slot="dialog-content"] {
 }
 
 /* The open iPhone Duo with a pane across both pages (Focus): its content may
-   cross the fold, but the keys, the composer and their buttons sit right of
-   it. Flat, the hinge is the middle (useHinge); half open, the fold's end */
+   cross the fold, but controls sit right of it. Flat, the hinge is the middle
+   (useHinge); half open, the fold's end. The session's composer and keys lay
+   themselves out on both pages instead (Split, Mirrored, Two rows) and only
+   fall back to this when a page would be too narrow. */
 html[data-hinge] [data-spread="wide"] .fold-controls {
   padding-left: calc(
     var(--hinge-x) + var(--fold-clear) - env(safe-area-inset-left)
@@ -291,14 +293,23 @@ html[data-fold="vertical"] [data-spread="wide"] .fold-controls {
 
 /* Keys share the row's width equally: they shrink so a row fits the closed
    screen (no key hidden past the edge), down to 28px, and grow within reason
-   on wider ones. TerminalToolbar moves keys to the second row to match. */
-.keybar-row > button {
+   on wider ones. TerminalToolbar moves keys to the second row to match.
+   Groups either side of the open Duo's gutter (Two rows) do the same. */
+.keybar-row > button,
+.keybar-group > button {
   flex: 1 1 0;
   min-width: 28px;
   max-width: 72px;
   padding-left: 0.25rem;
   padding-right: 0.25rem;
   overflow: hidden;
+}
+
+/* The context row keeps its keys at full size, never shrunk: what doesn't
+   fit goes into ⋯ (TerminalToolbar) */
+.keybar-row.keybar-full > button {
+  flex: 1 0 auto;
+  min-width: 40px;
 }
 
 /* A keybar row too long for the screen scrolls: fade the right edge as a

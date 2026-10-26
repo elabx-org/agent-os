@@ -4,10 +4,12 @@ import {
   createContext,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useState,
   type CSSProperties,
   type ReactNode,
+  type RefObject,
 } from "react";
 import dynamic from "next/dynamic";
 import { useSnapshot } from "valtio";
@@ -84,6 +86,68 @@ export function useSpreadPanes(): SpreadPanes {
  */
 export function useSpreadFold(): SpreadFold | null {
   return useContext(SpreadContext);
+}
+
+/** Narrower pages than this and an element stays one column */
+const PAGE_MIN = 280;
+
+/** An element split into two pages at the fold, in px from its left edge */
+export interface SpreadPages {
+  /** The left page's width */
+  left: number;
+  /** Empty between the pages (only the hinge's clearance while flat) */
+  gutter: number;
+  /** The right page's width */
+  right: number;
+}
+
+/**
+ * How `ref`'s element splits into two pages at the fold, from its left edge
+ * to its right padding (a system column's inset); null if there's no fold or
+ * a page would be too narrow. Flat there's no gutter, but controls on either
+ * page still keep clear of the hinge.
+ */
+export function useSpreadPages(
+  ref: RefObject<HTMLElement | null>,
+  fold: SpreadFold | null
+): SpreadPages | null {
+  const [pages, setPages] = useState<SpreadPages | null>(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el || !fold) {
+      setPages(null);
+      return;
+    }
+    const measure = () => {
+      const rect = el.getBoundingClientRect();
+      const start = rect.left;
+      const end =
+        rect.right - (parseFloat(getComputedStyle(el).paddingRight) || 0);
+      const clear = fold.end > fold.start ? 0 : FOLD_CLEAR;
+      const left = Math.round(fold.start - clear - start);
+      const gutter = Math.round(fold.end - fold.start + clear * 2);
+      const right = Math.round(end - fold.end - clear);
+      const fits = left >= PAGE_MIN && right >= PAGE_MIN;
+      setPages((prev) =>
+        !fits
+          ? null
+          : prev?.left === left &&
+              prev.gutter === gutter &&
+              prev.right === right
+            ? prev
+            : { left, gutter, right }
+      );
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    window.addEventListener("resize", measure);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, [ref, fold]);
+  return pages;
 }
 
 interface SessionSpreadProps {
