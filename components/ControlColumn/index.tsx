@@ -18,6 +18,7 @@ import { runNav } from "@/lib/nav-actions";
 import { mobileNavStore } from "@/stores/mobileNav";
 import { focusStore } from "@/stores/focus";
 import { settingsPageStore } from "@/stores/settingsPage";
+import { isMacLike } from "@/hooks/useViewShortcuts";
 import { ColumnItem, type ColumnItemProps } from "./ColumnItem";
 
 /** Width of the column capsule */
@@ -33,7 +34,7 @@ const KEYBOARD_MIN_HEIGHT = 150;
 function useModKey(): string {
   const [mod, setMod] = useState("⌘");
   useEffect(() => {
-    if (!/Mac|iPhone|iPad/.test(navigator.userAgent)) setMod("Ctrl+");
+    if (!isMacLike()) setMod("Ctrl+");
   }, []);
   return mod;
 }
