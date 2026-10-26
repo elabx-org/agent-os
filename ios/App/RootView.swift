@@ -69,22 +69,22 @@ struct NavToolbar: ToolbarContent {
 
         viewItem("Chat", symbol: "text.bubble", view: .chat, action: "chat")
         viewItem("Terminal", symbol: "apple.terminal", view: .terminal, action: "terminal")
-        viewItem("Changes", symbol: "arrow.triangle.branch", view: .git, action: "git", badge: model.focus ? 0 : model.changes)
-        viewItem("Files", symbol: "folder", view: .files, action: "files")
 
         ToolbarItem(placement: .topBarTrailing) {
-            Button { model.nav("find") } label: { Label("Find", systemImage: "magnifyingglass") }
+            Button { model.nav("sessions") } label: { Label("Sessions", systemImage: "sidebar.left") }
                 .tint(.primary)
         }
         .barPriority(true)
 
         ToolbarItem(placement: .topBarTrailing) {
+            // Live activity beside the session, or hidden (Focus: the badges
+            // go quiet too). Filled while it shows
             Button { model.nav("focus") } label: {
                 Label {
-                    Text("Focus")
+                    Text("Live activity")
                 } icon: {
-                    Image(systemName: "scope")
-                        .symbolVariant(model.focus ? .fill : .none)
+                    Image(systemName: "sidebar.right")
+                        .symbolVariant(model.focus ? .none : .fill)
                         // Something needs you while the badges are hidden
                         .overlay(alignment: .topTrailing) {
                             if model.focus && model.focusDot {
@@ -96,9 +96,18 @@ struct NavToolbar: ToolbarContent {
                         }
                 }
             }
-            .accessibilityAddTraits(model.focus ? .isSelected : [])
-            .accessibilityValue(model.focus && model.focusDot ? "Something needs you" : "")
+            .accessibilityAddTraits(model.focus ? [] : .isSelected)
+            .accessibilityValue(model.focus && model.focusDot ? "Hidden, something needs you" : model.focus ? "Hidden" : "Showing")
             .tint(.primary)
+        }
+        .barPriority(true)
+
+        viewItem("Changes", symbol: "arrow.triangle.branch", view: .git, action: "git", badge: model.focus ? 0 : model.changes)
+        viewItem("Files", symbol: "folder", view: .files, action: "files")
+
+        ToolbarItem(placement: .topBarTrailing) {
+            Button { model.nav("find") } label: { Label("Find", systemImage: "magnifyingglass") }
+                .tint(.primary)
         }
         .barPriority(true)
 
@@ -109,12 +118,6 @@ struct NavToolbar: ToolbarContent {
             }
             .accessibilityAddTraits(model.settingsOpen ? .isSelected : [])
             .tint(.primary)
-        }
-        .barPriority(false)
-
-        ToolbarItem(placement: .topBarTrailing) {
-            Button { model.nav("sessions") } label: { Label("Sessions", systemImage: "sidebar.left") }
-                .tint(.primary)
         }
         .barPriority(false)
 

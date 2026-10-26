@@ -102,6 +102,11 @@ final class AppModel {
         send(["type": "paste", "text": text])
     }
 
+    /// The keyboard bar's Add image: the page opens its picker
+    func image() {
+        send(["type": "image"])
+    }
+
     func keyboard(visible: Bool) {
         send(["type": "keyboard", "visible": visible])
     }
