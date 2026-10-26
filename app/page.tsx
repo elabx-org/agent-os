@@ -31,6 +31,7 @@ import { useNativeBridge } from "@/hooks/useNativeBridge";
 import { useSessionLinks } from "@/hooks/useSessionLinks";
 import { usePresence } from "@/hooks/usePresence";
 import { useFoldPosture } from "@/hooks/useFoldPosture";
+import { useViewShortcuts } from "@/hooks/useViewShortcuts";
 import { useSessions } from "@/hooks/useSessions";
 import { useProjects } from "@/hooks/useProjects";
 import { useDevServersManager } from "@/hooks/useDevServersManager";
@@ -42,7 +43,7 @@ import { getProviderDefinition } from "@/lib/providers/registry";
 import { DesktopView } from "@/components/views/DesktopView";
 import { MobileView } from "@/components/views/MobileView";
 import { getPendingPrompt, clearPendingPrompt } from "@/stores/initialPrompt";
-import { closeSettings, openSettings } from "@/stores/settingsPage";
+import { closeSettings } from "@/stores/settingsPage";
 import { mobileNavStore } from "@/stores/mobileNav";
 import { loadFocus } from "@/stores/focus";
 import { registerNavHandlers } from "@/lib/nav-actions";
@@ -425,20 +426,7 @@ function HomeContent() {
     setSidebarOpen(!isMobile || !onSession);
   }, [isMobile, isHydrated]);
 
-  // Keyboard shortcuts: Cmd+K opens the quick switcher, Cmd+, Settings
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
-        e.preventDefault();
-        setShowQuickSwitcher(true);
-      } else if ((e.metaKey || e.ctrlKey) && e.key === ",") {
-        e.preventDefault();
-        openSettings();
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  useViewShortcuts();
 
   // A restarted session (lib/restart-session.ts) starts again in the terminal
   useEffect(() => {
