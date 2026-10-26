@@ -33,6 +33,8 @@ export type ChatItem =
       name: string;
       summary: string;
       ts: string;
+      /** An AskUserQuestion's first question, for replying with context */
+      ask?: AskQuestion;
     }
   | {
       kind: "result";
@@ -47,6 +49,12 @@ export type ChatItem =
       /** A Workflow call's run, "wf_…" */
       runId?: string;
     };
+
+export interface AskQuestion {
+  question: string;
+  header?: string;
+  options: { label: string; description?: string }[];
+}
 
 export interface TranscriptChunk {
   sessionId: string;
@@ -241,6 +249,31 @@ export function readTranscript(
   };
 }
 
+/**
+ * The items in the last `bytes` of a transcript, oldest first, for a quick
+ * look at the latest turn. No paging: the first (partial) line is dropped.
+ */
+export function readTranscriptTail(
+  file: string,
+  cwd: string,
+  bytes: number
+): { items: ChatItem[]; whole: boolean } {
+  const size = fs.statSync(file).size;
+  const from = Math.max(0, size - bytes);
+  let lines = readRange(file, from, size).split("\n");
+  if (from > 0) lines = lines.slice(1);
+  const items: ChatItem[] = [];
+  for (const line of lines) {
+    if (!line) continue;
+    try {
+      items.push(...toItems(JSON.parse(line), cwd));
+    } catch {
+      // Malformed, or the last line still being written
+    }
+  }
+  return { items, whole: from === 0 };
+}
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
 function toItems(entry: any, cwd: string, subagent = false): ChatItem[] {
   if ((entry.isSidechain && !subagent) || entry.isMeta) return [];
@@ -293,12 +326,32 @@ function toItems(entry: any, cwd: string, subagent = false): ChatItem[] {
           name: part.name,
           summary: summarizeTool(part.name, part.input ?? {}, cwd),
           ts,
+          ...(part.name === "AskUserQuestion" && {
+            ask: askQuestion(part.input),
+          }),
         });
       }
     });
     return out;
   }
   return [];
+}
+
+/** The first of an AskUserQuestion's questions (the one on screen first) */
+function askQuestion(input: any): AskQuestion | undefined {
+  const q = Array.isArray(input?.questions) ? input.questions[0] : null;
+  if (!q || typeof q.question !== "string") return undefined;
+  return {
+    question: q.question,
+    header: typeof q.header === "string" ? q.header : undefined,
+    options: (Array.isArray(q.options) ? q.options : [])
+      .filter((o: any) => typeof o?.label === "string")
+      .map((o: any) => ({
+        label: o.label,
+        description:
+          typeof o.description === "string" ? o.description : undefined,
+      })),
+  };
 }
 
 /** Slash commands arrive wrapped in tags; command output and caveats are noise */

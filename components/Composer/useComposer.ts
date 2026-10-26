@@ -19,6 +19,7 @@ import {
   type FileSuggestion,
 } from "@/hooks/useComposerData";
 import { uploadFileToTemp } from "@/lib/file-upload";
+import { clearQuotes, formatWithQuotes, useQuotes } from "@/stores/replyQuotes";
 import {
   MAGIC_WORDS,
   magicWordPattern,
@@ -645,18 +646,27 @@ export function useComposer({
     };
   }, [display, chips, claude, pattern, mode, magicWords]);
 
-  /** After a send: the pills and the history position start over */
+  // Passages quoted with "Reply to this" go first, as blockquotes
+  const quotes = useQuotes(sessionId);
+  const text = useMemo(
+    () => (quotes.length ? formatWithQuotes(quotes, value) : value),
+    [quotes, value]
+  );
+
+  /** After a send: the pills, quotes and history position start over */
   const sent = useCallback(() => {
     setPastes([]);
     setHist(-1);
     setPreview(null);
     setDismissed(null);
-  }, [setPastes]);
+    if (sessionId) clearQuotes(sessionId);
+  }, [setPastes, sessionId]);
 
   return {
     textareaRef,
-    /** The full text, pills expanded: what to send */
-    text: value,
+    /** The full text, pills expanded and quotes first: what to send */
+    text,
+    quotes,
     display,
     chips,
     segments,
