@@ -40,6 +40,8 @@ interface Script {
 
 /** Never changes once known; reading the transcript for it is costly */
 const scriptCache = new Map<string, Script>();
+/** Finished runs never change: read once, by run directory */
+const finishedCache = new Map<string, WorkflowInfo>();
 /** When a run's script wasn't found, so the transcript is read once a minute */
 const missedAt = new Map<string, number>();
 
@@ -130,6 +132,11 @@ export function listWorkflows(transcriptFile: string): WorkflowInfo[] {
   const out: WorkflowInfo[] = [];
   for (const runId of runIds) {
     const dir = path.join(runsDir, runId);
+    const cached = finishedCache.get(dir);
+    if (cached) {
+      out.push(cached);
+      continue;
+    }
     let summary: Record<string, unknown> | null = null;
     try {
       summary = JSON.parse(
@@ -180,7 +187,7 @@ export function listWorkflows(transcriptFile: string): WorkflowInfo[] {
     }
     if (script) scriptCache.set(runId, script);
 
-    out.push({
+    const info: WorkflowInfo = {
       runId,
       name: script?.name ?? "Workflow",
       status,
@@ -189,7 +196,9 @@ export function listWorkflows(transcriptFile: string): WorkflowInfo[] {
       agents,
       startedAt: new Date(first).toISOString(),
       updatedAt: new Date(last).toISOString(),
-    });
+    };
+    if (summary) finishedCache.set(dir, info);
+    out.push(info);
   }
   return out.sort((a, b) => a.startedAt.localeCompare(b.startedAt));
 }
