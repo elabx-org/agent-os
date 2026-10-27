@@ -88,7 +88,7 @@ export const TOOLBAR_BUTTONS: ToolbarButtonDef[] = [
   { id: "enter", label: "Enter (hold: new line)", group: "editing", renderType: "custom", displayLabel: "\u21B5" },
   { id: "esc", label: "Escape", group: "editing", renderType: "simple-key", key: SPECIAL_KEYS.ESC, displayLabel: "Esc" },
   { id: "newline", label: "Newline", group: "editing", renderType: "simple-key", key: "\n", displayLabel: "\u21E7\u21B5" },
-  { id: "cursor", label: "Cursor / Space", group: "editing", renderType: "custom", displayLabel: "\u2395" },
+  { id: "cursor", label: "Cursor / Space", group: "editing", renderType: "custom", displayLabel: "\u2423" },
   { id: "backspace", label: "Backspace", group: "editing", renderType: "custom", displayLabel: "\u232B" },
   // control
   { id: "ctrl-c", label: "Ctrl+C", group: "control", renderType: "simple-key", key: SPECIAL_KEYS.CTRL_C, displayLabel: "^C", highlight: true },

@@ -23,6 +23,7 @@ import {
   Settings,
   Upload,
   Ellipsis,
+  Space,
   type LucideIcon,
 } from "lucide-react";
 import { createPortal } from "react-dom";
@@ -613,11 +614,15 @@ function CursorTrackpadButton({
       )}
       title="Tap: space | Hold: slide left/right to move cursor"
     >
-      {cursorMoveMode
-        ? cursorMoveMode === "left"
-          ? "\u25C4"
-          : "\u25BA"
-        : "\u2395"}
+      {cursorMoveMode ? (
+        cursorMoveMode === "left" ? (
+          "\u25C4"
+        ) : (
+          "\u25BA"
+        )
+      ) : (
+        <Space className="h-4 w-4" aria-label="Space" />
+      )}
     </button>
   );
 }
