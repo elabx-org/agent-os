@@ -98,9 +98,10 @@ agent-os update    # Update to latest
 
 Claude Code, Codex, Gemini CLI or any MCP client can manage Agent-OS for you: "make a project for ~/code/api, start a session on a new branch to add rate limiting, and tell me when it's done".
 
+Agent-OS registers this with Claude Code, Codex and Gemini CLI itself each time it starts (adding it only where it's missing; `AGENTOS_MCP_REGISTER=0` turns that off). By hand:
+
 ```bash
 claude mcp add -s user agent-os -- agent-os mcp
-codex mcp add agent-os -- agent-os mcp
 ```
 
 Tools: `list_projects`, `create_project`, `list_sessions`, `start_session`, `send_message`, `read_session`, `wait_for_session`, `answer_prompt`, `interrupt_session`, `stop_session`. Sessions started this way run unattended and show up in the app like any other; open one to watch or take over. A session can't message, answer, interrupt or stop itself. The server talks to Agent-OS on `http://localhost:3011` (`AGENTOS_URL` to change), which needs no sign-in from the same machine.

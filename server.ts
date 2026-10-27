@@ -7,6 +7,7 @@ import { exec } from "child_process";
 import { randomBytes } from "crypto";
 import { scheduleStoreSync } from "./lib/store-sync";
 import { startPushWatcher } from "./lib/push/watcher";
+import { registerMcp } from "./lib/register-mcp";
 import {
   authConfig,
   deny,
@@ -301,5 +302,6 @@ app.prepare().then(() => {
     console.log(`> Agent-OS ready on http://${hostname}:${port}`);
     scheduleStoreSync();
     startPushWatcher();
+    registerMcp(port).catch(() => {});
   });
 });
