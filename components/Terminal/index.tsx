@@ -83,6 +83,7 @@ import { KeyboardDebugOverlay, useKeyboardDebug } from "./KeyboardDebugOverlay";
 import { useFileDrop } from "@/hooks/useFileDrop";
 import { uploadFilesToTemp } from "@/lib/file-upload";
 import { ImagePicker } from "@/components/ImagePicker";
+import { addVideos } from "@/stores/videoUploads";
 import { joinWrappedUrls, linkify } from "./linkify";
 import {
   ContextMenu,
@@ -1304,6 +1305,14 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
           <ImagePicker
             initialPath="~"
             onSelect={handleImageSelect}
+            onVideos={
+              composerOn && draftId
+                ? (files) => {
+                    setShowImagePicker(false);
+                    void addVideos(files, draftId);
+                  }
+                : undefined
+            }
             onClose={() => setShowImagePicker(false)}
           />
         )}
