@@ -67,14 +67,32 @@ struct NavToolbar: ToolbarContent {
         }
         .barPriority(true)
 
-        viewItem("Chat", symbol: "text.bubble", view: .chat, action: "chat")
-        viewItem("Terminal", symbol: "apple.terminal", view: .terminal, action: "terminal")
+        // Chat and Terminal share one place: it shows the view it switches to
+        ToolbarItem(placement: .topBarTrailing) {
+            let toChat = model.view == .terminal && !model.newOpen
+            Button { model.nav(toChat ? "chat" : "terminal") } label: {
+                Label(toChat ? "Chat" : "Terminal", systemImage: toChat ? "text.bubble" : "apple.terminal")
+            }
+            .tint(.primary)
+        }
+        .barPriority(true)
 
         ToolbarItem(placement: .topBarTrailing) {
             Button { model.nav("sessions") } label: { Label("Sessions", systemImage: "sidebar.left") }
                 .tint(.primary)
         }
         .barPriority(true)
+
+        // Links minimised (Browser); only while there are any
+        if !model.browser.pages.isEmpty {
+            ToolbarItem(placement: .topBarTrailing) {
+                PagesMenu(browser: model.browser)
+            }
+            .barPriority(true)
+        }
+
+        viewItem("Changes", symbol: "arrow.triangle.branch", view: .git, action: "git", badge: model.focus ? 0 : model.changes)
+        viewItem("Files", symbol: "folder", view: .files, action: "files")
 
         ToolbarItem(placement: .topBarTrailing) {
             // Live activity beside the session, or hidden (Focus: the badges
@@ -102,9 +120,7 @@ struct NavToolbar: ToolbarContent {
         }
         .barPriority(true)
 
-        viewItem("Changes", symbol: "arrow.triangle.branch", view: .git, action: "git", badge: model.focus ? 0 : model.changes)
-        viewItem("Files", symbol: "folder", view: .files, action: "files")
-
+        // Last of the column: the first to go to the overflow when Pages shows
         ToolbarItem(placement: .topBarTrailing) {
             Button { model.nav("find") } label: { Label("Find", systemImage: "magnifyingglass") }
                 .tint(.primary)
@@ -151,6 +167,30 @@ struct NavToolbar: ToolbarContent {
             .tint(.primary)
         }
         .barPriority(high)
+    }
+}
+
+/// The minimised pages: a tap brings one back as it was left
+struct PagesMenu: View {
+    let browser: Browser
+
+    var body: some View {
+        Menu {
+            ForEach(browser.pages, id: \.id) { page in
+                Button(Browser.title(page.url)) { browser.show(page.id) }
+            }
+            Divider()
+            Menu("Close a Page") {
+                ForEach(browser.pages, id: \.id) { page in
+                    Button(Browser.title(page.url), role: .destructive) { browser.close(page.id) }
+                }
+            }
+            Button("Close All", role: .destructive) { browser.closeAll() }
+        } label: {
+            Label("Pages", systemImage: "safari")
+        }
+        .badge(browser.pages.count)
+        .tint(.primary)
     }
 }
 

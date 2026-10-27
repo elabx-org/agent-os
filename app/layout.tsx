@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
-import { Toaster } from "sonner";
+import { AppToaster } from "@/components/AppToaster";
 import { Providers } from "@/components/Providers";
 import { DENSITY_BOOT_SCRIPT } from "@/lib/display-density";
 import { BACKGROUND_BOOT_SCRIPT } from "@/lib/background";
@@ -99,20 +99,7 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} font-sans antialiased`}
       >
         <Providers>{children}</Providers>
-        <Toaster
-          position="top-center"
-          closeButton
-          // Clear of the status strip, and of the iOS app's system column
-          offset={{ top: "max(16px, env(safe-area-inset-top))" }}
-          mobileOffset={{
-            top: "max(12px, env(safe-area-inset-top))",
-            left: "12px",
-            right: "calc(12px + env(safe-area-inset-right))",
-          }}
-          toastOptions={{
-            className: "!bg-card !border-border !text-foreground !shadow-lg",
-          }}
-        />
+        <AppToaster />
       </body>
     </html>
   );

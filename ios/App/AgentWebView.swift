@@ -1,5 +1,4 @@
 import ObjectiveC
-import SafariServices
 import SwiftUI
 import UIKit
 import WebKit
@@ -131,18 +130,10 @@ struct AgentWebContainer: UIViewRepresentable {
             ["about", "data", "blob", "javascript", "file"].contains(url.scheme?.lowercased() ?? "")
         }
 
-        /// Done, Share and Open in Safari come with it; sign-ins made in it
-        /// last between links. A page sheet: UIKit can't place a sheet on
-        /// one page of the open iPhone Duo.
+        /// In a Safari sheet that minimises to a pill (Browser)
         @MainActor
         private func showInSafari(_ url: URL, from webView: WKWebView) {
-            let config = SFSafariViewController.Configuration()
-            config.barCollapsingEnabled = true
-            let safari = SFSafariViewController(url: url, configuration: config)
-            safari.dismissButtonStyle = .done
-            safari.preferredControlTintColor = model.accent
-            safari.modalPresentationStyle = .pageSheet
-            present(safari, from: webView) {}
+            model.browser.open(url)
         }
 
         func webView(

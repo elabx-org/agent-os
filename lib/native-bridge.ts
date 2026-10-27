@@ -32,7 +32,16 @@ export type NativeEvent =
   /** Open a session: a tapped notification or an agentos://session/<id> link */
   | { type: "open"; sessionId: string }
   /** A file shared to the app ("Open in Agent-OS"), for the focused session */
-  | { type: "file"; file: SharedFile };
+  | { type: "file"; file: SharedFile }
+  /** The minimised Safari pages changed; `closed`: one just closed (Undo) */
+  | { type: "browser"; count: number; closed?: BrowserPage };
+
+/** A page opened from a link, kept in the column's Pages menu */
+export interface BrowserPage {
+  id: string;
+  url: string;
+  title: string;
+}
 
 export interface SharedFile {
   name: string;
@@ -139,13 +148,25 @@ export interface NativeKeys {
   ids?: string[];
 }
 
+/** Undo closing a page from the column's Pages menu */
+export interface NativeBrowser {
+  type: "browser";
+  action: "undo";
+}
+
 /** Settings → Server: the app's own server and sign-in screen */
 export interface NativeServer {
   type: "server";
 }
 
 export function postToNative(
-  message: NativeState | NativeKeybar | NativeHaptic | NativeServer | NativeKeys
+  message:
+    | NativeState
+    | NativeKeybar
+    | NativeHaptic
+    | NativeServer
+    | NativeKeys
+    | NativeBrowser
 ): void {
   window.webkit?.messageHandlers?.agentos?.postMessage(message);
 }
