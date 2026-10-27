@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type MutableRefObject } from "react";
+import { useEffect, useRef, useState, type MutableRefObject } from "react";
 import { ArrowUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSessionsQuery } from "@/data/sessions";
@@ -19,6 +19,8 @@ import {
   type ClaudeKey,
 } from "@/components/Composer/ClaudeStateBar";
 import { ReplyContextBar } from "@/components/ReplyContext";
+import { VideoPills } from "@/components/Composer/VideoPills";
+import { sendWithVideos, videosFor } from "@/stores/videoUploads";
 import type { SpreadPages } from "@/components/views/SessionSpread";
 import { ComposerPlusMenu, type ComposerTools } from "./ComposerPlusMenu";
 
@@ -147,11 +149,23 @@ export function Composer({
     composer.insert(text, true);
   };
 
-  const send = () => {
-    // The draft holds the pills' full text: that's what goes
-    onSend(composer.text);
+  // The text as it is when a message waiting on a video's frames goes
+  const textRef = useRef(composer.text);
+  textRef.current = composer.text;
+  const clear = () => {
     onChange("");
     composer.sent();
+  };
+
+  const send = () => {
+    // With a video: its frames first, once they're ready
+    if (sessionId && videosFor(sessionId).length) {
+      sendWithVideos(sessionId, () => textRef.current, onSend, clear);
+      return;
+    }
+    // The draft holds the pills' full text: that's what goes
+    onSend(composer.text);
+    clear();
   };
 
   const sendButton = (
@@ -195,6 +209,7 @@ export function Composer({
         sessionId={sessionId}
         view="terminal"
       />
+      {sessionId && <VideoPills draft={sessionId} />}
       <ComposerChips composer={composer} />
       {stateAbove && !pages && (
         <ClaudeStateBar live={live} className="pt-0 pb-1 pl-3" />

@@ -33,12 +33,15 @@ interface ImagePickerProps {
   initialPath?: string;
   /** The picked image's path; several uploaded at once come space-separated */
   onSelect: (path: string) => void;
+  /** Picked videos, when they can be sent as frames (the composer) */
+  onVideos?: (files: File[]) => void;
   onClose: () => void;
 }
 
 export function ImagePicker({
   initialPath,
   onSelect,
+  onVideos,
   onClose,
 }: ImagePickerProps) {
   const [currentPath, setCurrentPath] = useState(initialPath || "~");
@@ -55,8 +58,13 @@ export function ImagePicker({
   // the others still go
   const handleImageFiles = useCallback(
     async (files: File[]) => {
+      const videos = files.filter((f) => f.type.startsWith("video/"));
+      if (videos.length && onVideos) onVideos(videos);
       const images = files.filter((f) => f.type.startsWith("image/"));
-      if (!images.length) return;
+      if (!images.length) {
+        if (videos.length && onVideos) onClose();
+        return;
+      }
 
       setUploading(images.length);
       try {
@@ -66,7 +74,7 @@ export function ImagePicker({
         setUploading(0);
       }
     },
-    [onSelect]
+    [onSelect, onVideos, onClose]
   );
 
   // Drag and drop using shared hook
@@ -230,7 +238,7 @@ export function ImagePicker({
       <input
         ref={fileInputRef}
         type="file"
-        accept="image/*"
+        accept={onVideos ? "image/*,video/*" : "image/*"}
         multiple
         className="hidden"
         onChange={(e) => {

@@ -9,6 +9,7 @@ import {
   ChevronLeft,
   ChevronRight,
   CircleStop,
+  Film,
   Columns2,
   Globe,
   Settings,
@@ -43,6 +44,7 @@ import { DuoSection } from "./DuoSection";
 import { UsageSection } from "./UsageSection";
 import { ClaudeCodeSection } from "./ClaudeCodeSection";
 import { SessionsSection } from "./SessionsSection";
+import { UploadsSection } from "./UploadsSection";
 import { SettingGroup } from "./SettingGroup";
 
 const SECTION_TITLE: Record<SettingsSection, string> = {
@@ -52,6 +54,7 @@ const SECTION_TITLE: Record<SettingsSection, string> = {
   usage: "Usage",
   claude: "Claude Code",
   sessions: "Sessions",
+  uploads: "Uploads",
   server: "Server",
 };
 
@@ -62,6 +65,7 @@ const SECTION_ICON = {
   usage: Zap,
   claude: SlidersHorizontal,
   sessions: CircleStop,
+  uploads: Film,
   server: Globe,
 } satisfies Record<SettingsSection, unknown>;
 
@@ -128,9 +132,10 @@ function SettingsLayer(props: NotificationsSectionProps) {
         "usage",
         "claude",
         "sessions",
+        "uploads",
         "server",
       ]
-    : ["notifications", "display", "usage", "claude", "sessions"];
+    : ["notifications", "display", "usage", "claude", "sessions", "uploads"];
   const current = sections.includes(section) ? section : "notifications";
 
   const phone = usePhoneSummary(current);
@@ -144,6 +149,7 @@ function SettingsLayer(props: NotificationsSectionProps) {
     usage: <UsageSection />,
     claude: <ClaudeCodeSection />,
     sessions: <SessionsSection />,
+    uploads: <UploadsSection />,
     server: (
       <SettingGroup className="divide-y-0 p-1">
         <ServerRow />
@@ -162,6 +168,7 @@ function SettingsLayer(props: NotificationsSectionProps) {
         : "Plan limits",
     claude: "Claude Config",
     sessions: "Kill all sessions",
+    uploads: "Video frames",
     server: typeof window !== "undefined" ? window.location.host : "",
   };
 
