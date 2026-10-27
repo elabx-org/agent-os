@@ -92,3 +92,58 @@ export function adaptiveIds(state: AdaptiveState, options = 0): string[] {
 export function adaptiveRow(state: AdaptiveState, options = 0): AdaptiveKey[] {
   return adaptiveIds(state, options).map((id) => key(id));
 }
+
+/**
+ * The app's keyboard bar (0.1.47 on): its row for a state, as the bar's
+ * `id/flick/hold` specs (flick: a key id, empty for none; hold: "repeat",
+ * "menu" or empty). Tools lead; ⋯ sits where it's placed. Laid out in the
+ * keyboard bar builder.
+ */
+export function barSpecs(state: AdaptiveState, options = 0): string[] {
+  const tools = ["paste", "snippets", "image"];
+  switch (state) {
+    case "asks": {
+      const digits = Array.from(
+        { length: Math.min(options, MAX_DIGITS) },
+        (_, i) => `digit-${i + 1}`
+      );
+      return [...tools, ...digits, "esc/ctrl-c/", "enter/newline/", "more"];
+    }
+    case "shell":
+      return [
+        ...tools,
+        "tab/shift-tab/",
+        "arrow-up/page-up/repeat",
+        "arrow-down/page-down/repeat",
+        "enter/newline/",
+        "ctrl-c/ctrl-d/menu",
+        "more",
+      ];
+    default:
+      return [
+        ...tools,
+        "char-slash/char-at/",
+        "shift-tab/tab/",
+        "arrow-up/page-up/repeat",
+        "arrow-down/page-down/repeat",
+        "arrow-left//repeat",
+        "arrow-right//repeat",
+        "esc/ctrl-c/",
+        "enter//",
+        "newline//",
+        "more",
+        "ctrl-c//",
+        "ctrl-d//",
+        "ctrl-r//",
+        "ctrl-l//",
+        "ctrl-z//",
+        "page-up",
+        "page-down",
+        "home",
+        "end",
+        "esc-esc",
+        "char-tilde",
+        "char-pipe",
+      ];
+  }
+}

@@ -51,6 +51,8 @@ final class KeyboardBar: UIInputView {
         var menu: [(String, String)] = []
         /// A flick up sends these instead (apart), shown small in the corner
         var flick: (title: String, sequences: [String])?
+        /// Sent after the key, apart (Esc Esc, ^B twice for tmux)
+        var followUp: [String] = []
     }
 
     private enum Item {
@@ -102,13 +104,30 @@ final class KeyboardBar: UIInputView {
     /// A page key id (components/Terminal/toolbar-config.ts) as a bar item,
     /// with the web row's group so runs of a kind sit together. Keys the bar
     /// can't offer (mic) are nil and skipped.
-    private static func item(for id: String) -> (item: Item, group: String)? {
+    /// `id`, or `id/flick/hold` when the page sets them: a flick key's id
+    /// (empty: none) and "repeat" or "menu" (empty: neither)
+    private static func item(for spec: String) -> (item: Item, group: String)? {
+        let parts = spec.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
+        let id = parts[0]
         guard var entry = baseItem(for: id) else { return nil }
-        if case .key(var key) = entry.item, let flick = flicks[id] {
+        guard case .key(var key) = entry.item else { return entry }
+        if parts.count > 1 {
+            key.flick = parts[1].isEmpty ? nil : flick(for: parts[1])
+            let hold = parts.count > 2 ? parts[2] : ""
+            key.repeats = hold == "repeat"
+            if hold != "menu" { key.menu = [] }
+        } else if let flick = flicks[id] {
             key.flick = flick
-            entry.item = .key(key)
         }
+        entry.item = .key(key)
         return entry
+    }
+
+    /// Another key as a flick: its title and what it sends
+    private static func flick(for id: String) -> (title: String, sequences: [String])? {
+        guard case .key(let key)? = baseItem(for: id)?.item else { return nil }
+        let symbols = ["arrow-left": "←", "arrow-up": "↑", "arrow-down": "↓", "arrow-right": "→", "enter": "↵", "backspace": "⌫"]
+        return (key.title.isEmpty ? symbols[id] ?? id : key.title, [key.sequence] + key.followUp)
     }
 
     /// The adaptive row's flicks (lib/adaptive-keys.ts); arrows flick too
@@ -161,9 +180,46 @@ final class KeyboardBar: UIInputView {
         case "char-tilde": return (.key(Key(title: "~", sequence: "~", label: "Tilde")), "shell")
         case "char-pipe": return (.key(Key(title: "|", sequence: "|", label: "Pipe")), "shell")
         case "char-gt": return (.key(Key(title: ">", sequence: ">", label: "Greater than")), "shell")
-        default: return nil
+        case "char-bang": return (.key(Key(title: "!", sequence: "!", label: "Shell mode")), "shell")
+        case "char-question": return (.key(Key(title: "?", sequence: "?", label: "Shortcuts")), "shell")
+        case "page-up": return (.key(Key(title: "PgUp", sequence: "\u{1b}[5~", label: "Page up")), "nav")
+        case "page-down": return (.key(Key(title: "PgDn", sequence: "\u{1b}[6~", label: "Page down")), "nav")
+        case "home": return (.key(Key(title: "Home", sequence: "\u{1b}[H")), "nav")
+        case "end": return (.key(Key(title: "End", sequence: "\u{1b}[F")), "nav")
+        case "esc-esc":
+            return (.key(Key(title: "Esc Esc", sequence: "\u{1b}", label: "Escape twice, rewind", followUp: ["\u{1b}"])), "control")
+        case "more": return (.allKeys, "more")
+        default:
+            guard let extra = claudeKeys[id] ?? editKeys[id] else { return nil }
+            return (.key(extra), claudeKeys[id] != nil ? "claude" : "edit")
         }
     }
+
+    /// Claude Code's own shortcuts (code.claude.com/docs/en/interactive-mode)
+    private static let claudeKeys: [String: Key] = [
+        "ctrl-o": Key(title: "^O", sequence: "\u{0f}", label: "Transcript"),
+        "ctrl-t": Key(title: "^T", sequence: "\u{14}", label: "To-do list"),
+        // tmux takes the first ^B as its prefix
+        "ctrl-b": Key(title: "^B", sequence: "\u{02}", label: "Background task", followUp: ["\u{02}"]),
+        "alt-p": Key(title: "⌥P", sequence: "\u{1b}p", label: "Switch model"),
+        "alt-o": Key(title: "⌥O", sequence: "\u{1b}o", label: "Fast mode"),
+        "ctrl-g": Key(title: "^G", sequence: "\u{07}", label: "Edit in editor"),
+        "ctrl-s": Key(title: "^S", sequence: "\u{13}", label: "Stash prompt"),
+        "send-queued": Key(title: "^X^S", sequence: "\u{18}", label: "Send queued now", followUp: ["\u{13}"]),
+        "ctrl-underscore": Key(title: "^_", sequence: "\u{1f}", label: "Undo edit"),
+    ]
+
+    /// The prompt's line editing
+    private static let editKeys: [String: Key] = [
+        "ctrl-a": Key(title: "^A", sequence: "\u{01}", label: "Line start"),
+        "ctrl-e": Key(title: "^E", sequence: "\u{05}", label: "Line end"),
+        "ctrl-k": Key(title: "^K", sequence: "\u{0b}", label: "Delete to line end"),
+        "ctrl-u": Key(title: "^U", sequence: "\u{15}", label: "Delete to line start"),
+        "ctrl-w": Key(title: "^W", sequence: "\u{17}", label: "Delete word"),
+        "ctrl-y": Key(title: "^Y", sequence: "\u{19}", label: "Paste deleted text"),
+        "alt-b": Key(title: "⌥B", sequence: "\u{1b}b", label: "Word back"),
+        "alt-f": Key(title: "⌥F", sequence: "\u{1b}f", label: "Word forward"),
+    ]
 
     /// Consecutive keys of the same kind as one group
     private static func groups(_ entries: [(item: Item, group: String)]) -> [[Item]] {
@@ -251,6 +307,8 @@ final class KeyboardBar: UIInputView {
 
     /// A tap; ^C knocks harder, a flick bumps, a held key ticks softly as
     /// it repeats, and a flick ticks as it passes the point where it counts
+    /// The theme's accent, for a held key
+    var accent: UIColor?
     private let haptics = UIImpactFeedbackGenerator(style: .light)
     private let knock = UIImpactFeedbackGenerator(style: .rigid)
     private let bump = UIImpactFeedbackGenerator(style: .medium)
@@ -320,7 +378,10 @@ final class KeyboardBar: UIInputView {
         rightStart = nil
 
         var keys = ids.flatMap { Self.set(ids: $0) } ?? Self.set(for: context)
-        if context != "chat" {
+        let placed = (keys.left + keys.right).contains { group in
+            group.contains { if case .allKeys = $0 { return true } else { return false } }
+        }
+        if context != "chat", !placed {
             // ⋯ last: every key, whatever the row leaves out
             var right = keys.right.isEmpty ? keys.left : keys.right
             if right.isEmpty { right = [[]] }
@@ -349,7 +410,7 @@ final class KeyboardBar: UIInputView {
         // Add image sits beside the hide-keyboard key, outside the key groups,
         // when the row has no Photo key of its own (the bar's own rows do)
         var trailing = dismiss.leadingAnchor
-        if context != "chat", let ids, !ids.contains("image") {
+        if context != "chat", let ids, !ids.contains(where: { $0 == "image" || $0.hasPrefix("image/") }) {
             let image = UIButton(configuration: .plain())
             image.configuration?.image = UIImage(systemName: "photo.badge.plus")
             image.accessibilityLabel = "Add image"
@@ -454,18 +515,27 @@ final class KeyboardBar: UIInputView {
         ? UIColor(red: 0.18, green: 0.18, blue: 0.20, alpha: 1)
         : UIColor(red: 0.68, green: 0.70, blue: 0.74, alpha: 1) }
 
+    /// A raised cap, 10 pt round at the group's ends and 3 pt inside it;
+    /// held (or flicked past the point where it counts) it takes the theme's accent
     private func segment(_ view: UIView, first: Bool, last: Bool) {
-        guard let button = view as? UIButton else { return }
-        // Inner corners from the background, outer ones clipped rounder
-        button.configuration?.cornerStyle = .fixed
-        button.configuration?.background.cornerRadius = 3
-        var corners: CACornerMask = []
-        if first { corners.formUnion([.layerMinXMinYCorner, .layerMinXMaxYCorner]) }
-        if last { corners.formUnion([.layerMaxXMinYCorner, .layerMaxXMaxYCorner]) }
-        button.layer.cornerRadius = corners.isEmpty ? 0 : 10
-        button.layer.maskedCorners = corners
-        button.layer.cornerCurve = .continuous
-        button.clipsToBounds = true
+        guard let button = view as? UIButton, var config = button.configuration else { return }
+        let fill = config.baseBackgroundColor ?? Self.keyColor
+        let ink = config.baseForegroundColor ?? .label
+        let cap = KeyCap(fill: fill, leading: first ? 10 : 3, trailing: last ? 10 : 3)
+        config.background.customView = cap
+        config.background.cornerRadius = 0
+        button.configuration = config
+        button.configurationUpdateHandler = { [weak self] button in
+            let lit = button.isHighlighted || (button as? KeyButton)?.armed == true
+            cap.fill = lit ? self?.accent ?? .systemPurple : fill
+            var config = button.configuration
+            config?.baseForegroundColor = lit ? .white : ink
+            if let key = button as? KeyButton, let rest = key.restTitle {
+                config?.attributedTitle = key.armed ? key.flickTitle : rest
+                config?.image = key.armed ? nil : key.restImage
+            }
+            button.configuration = config
+        }
     }
 
     private func itemView(_ item: Item, compact: Bool) -> UIView {
@@ -505,7 +575,15 @@ final class KeyboardBar: UIInputView {
         config.baseBackgroundColor = Self.keyColor
         config.baseForegroundColor = key.destructive ? .systemRed : .label
 
-        let button = UIButton(configuration: config)
+        let button = KeyButton(configuration: config)
+        if let flick = key.flick {
+            // Flicked past the point where it counts, the key shows what it will send
+            var title = AttributedString(flick.title)
+            title.font = .monospacedSystemFont(ofSize: compact ? 14 : 15, weight: .semibold)
+            button.flickTitle = title
+            button.restTitle = config.attributedTitle ?? AttributedString("")
+            button.restImage = config.image
+        }
         // Ready the tap's haptic as the finger lands
         button.addAction(UIAction { [weak self] _ in self?.haptics.prepare() }, for: .touchDown)
         button.accessibilityLabel = key.label ?? key.title
@@ -618,6 +696,20 @@ final class KeyboardBar: UIInputView {
                 ("Home", "\u{1b}[H"), ("End", "\u{1b}[F"), ("Page up", "\u{1b}[5~"), ("Page down", "\u{1b}[6~"),
             ]),
             keys("Symbols", ["/", "@", "~", "|", ">", "-", "_"].map { ($0, $0) }),
+            UIMenu(title: "Claude Code", options: .displayInline, children: [
+                "ctrl-o", "ctrl-t", "ctrl-b", "alt-p", "alt-o", "ctrl-g", "ctrl-s", "send-queued", "ctrl-underscore",
+            ].compactMap { id in
+                Self.claudeKeys[id].map { key in
+                    UIAction(title: "\(key.label ?? key.title)  \(key.title)") { _ in send([key.sequence] + key.followUp) }
+                }
+            }),
+            UIMenu(title: "Editing", options: .displayInline, children: [
+                "ctrl-a", "ctrl-e", "alt-b", "alt-f", "ctrl-w", "ctrl-k", "ctrl-u", "ctrl-y",
+            ].compactMap { id in
+                Self.editKeys[id].map { key in
+                    UIAction(title: "\(key.label ?? key.title)  \(key.title)") { _ in send([key.sequence]) }
+                }
+            }),
             UIMenu(title: "", options: .displayInline, children: [
                 UIAction(title: "Esc Esc") { _ in send(["\u{1b}", "\u{1b}"]) },
             ]),
@@ -683,6 +775,7 @@ final class KeyboardBar: UIInputView {
             // Past the point where it counts: a tick, and the corner key lights
             if armed != pan.armed {
                 pan.armed = armed
+                (pan.view as? KeyButton)?.armed = armed
                 tick.selectionChanged()
                 pan.corner?.textColor = armed ? .label : .secondaryLabel
                 pan.corner?.font = .systemFont(ofSize: 9, weight: armed ? .bold : .regular)
@@ -692,17 +785,12 @@ final class KeyboardBar: UIInputView {
         }
         guard pan.state == .ended || pan.state == .cancelled || pan.state == .failed else { return }
         pan.armed = false
+        (pan.view as? KeyButton)?.armed = false
         pan.corner?.textColor = .secondaryLabel
         pan.corner?.font = .systemFont(ofSize: 9)
         guard pan.state == .ended, armed else { return }
         bump.impactOccurred()
-        for (index, sequence) in pan.sequences.enumerated() {
-            if index == 0 { onKey?(sequence) } else {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.08 * Double(index)) { [weak self] in
-                    self?.onKey?(sequence)
-                }
-            }
-        }
+        send(pan.sequences)
     }
 
     override func paste(itemProviders: [NSItemProvider]) {
@@ -715,7 +803,18 @@ final class KeyboardBar: UIInputView {
 
     private func press(_ key: Key) {
         if key.destructive { knock.impactOccurred() } else { haptics.impactOccurred() }
-        onKey?(key.sequence)
+        send([key.sequence] + key.followUp)
+    }
+
+    /// Sequences apart, 80 ms between (two Escs in one chunk read as Alt+Esc)
+    private func send(_ sequences: [String]) {
+        for (index, sequence) in sequences.enumerated() {
+            if index == 0 { onKey?(sequence) } else {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.08 * Double(index)) { [weak self] in
+                    self?.onKey?(sequence)
+                }
+            }
+        }
     }
 
     /// Held: the key again every 80 ms, each with a soft tick
@@ -749,5 +848,76 @@ private final class FlickGesture: UIPanGestureRecognizer {
         guard state == .began || state == .possible, let view else { return }
         let t = translation(in: view)
         if t.y > 6 || abs(t.x) > abs(t.y) + 8 { state = .failed }
+    }
+}
+
+/// A key that can show its flick in place of its own title
+private final class KeyButton: UIButton {
+    var armed = false {
+        didSet { if armed != oldValue { setNeedsUpdateConfiguration() } }
+    }
+    var restTitle: AttributedString?
+    var restImage: UIImage?
+    var flickTitle: AttributedString?
+}
+
+/// A key's raised face: its fill, a lit top edge and a hard 1 pt drop edge,
+/// with its own corners either side (round at a group's ends)
+private final class KeyCap: UIView {
+    private let face = UIView()
+    private let shine = UIView()
+    private let shape = CAShapeLayer()
+    private let leading: CGFloat
+    private let trailing: CGFloat
+
+    var fill: UIColor {
+        didSet { face.backgroundColor = fill }
+    }
+
+    init(fill: UIColor, leading: CGFloat, trailing: CGFloat) {
+        self.fill = fill
+        self.leading = leading
+        self.trailing = trailing
+        super.init(frame: .zero)
+        isUserInteractionEnabled = false
+        face.backgroundColor = fill
+        face.layer.mask = shape
+        shine.backgroundColor = UIColor { $0.userInterfaceStyle == .dark
+            ? UIColor(white: 1, alpha: 0.07) : UIColor(white: 1, alpha: 0.9) }
+        face.addSubview(shine)
+        addSubview(face)
+        layer.shadowColor = UIColor.black.cgColor
+        layer.shadowOffset = CGSize(width: 0, height: 1)
+        layer.shadowRadius = 0
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        face.frame = bounds
+        shine.frame = CGRect(x: 0, y: 0, width: bounds.width, height: 1)
+        let path = Self.path(bounds, leading: leading, trailing: trailing)
+        shape.path = path
+        layer.shadowPath = path
+        layer.shadowOpacity = traitCollection.userInterfaceStyle == .dark ? 0.55 : 0.3
+    }
+
+    /// A rect with one corner radius on the left and another on the right
+    private static func path(_ rect: CGRect, leading: CGFloat, trailing: CGFloat) -> CGPath {
+        let path = CGMutablePath()
+        let l = min(leading, rect.height / 2), r = min(trailing, rect.height / 2)
+        path.move(to: CGPoint(x: rect.minX + l, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX - r, y: rect.minY))
+        path.addArc(tangent1End: CGPoint(x: rect.maxX, y: rect.minY), tangent2End: CGPoint(x: rect.maxX, y: rect.minY + r), radius: r)
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY - r))
+        path.addArc(tangent1End: CGPoint(x: rect.maxX, y: rect.maxY), tangent2End: CGPoint(x: rect.maxX - r, y: rect.maxY), radius: r)
+        path.addLine(to: CGPoint(x: rect.minX + l, y: rect.maxY))
+        path.addArc(tangent1End: CGPoint(x: rect.minX, y: rect.maxY), tangent2End: CGPoint(x: rect.minX, y: rect.maxY - l), radius: l)
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.minY + l))
+        path.addArc(tangent1End: CGPoint(x: rect.minX, y: rect.minY), tangent2End: CGPoint(x: rect.minX + l, y: rect.minY), radius: l)
+        path.closeSubpath()
+        return path
     }
 }
