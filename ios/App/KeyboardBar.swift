@@ -493,10 +493,13 @@ final class KeyboardBar: UIInputView {
     }
 
     /// Keys at their own widths: with one edge pinned (the hinge) and the
-    /// other only bounded, a half could fill its page by stretching a key
+    /// other only bounded, a half filled its page by stretching a key. Held
+    /// at its measured width, above any key's hugging but under its
+    /// compression resistance, so a label is never cut to fit
     private func hug(_ stack: UIView) {
-        let snug = stack.widthAnchor.constraint(equalToConstant: 0)
-        snug.priority = UILayoutPriority(1)
+        let width = stack.systemLayoutSizeFitting(UIView.layoutFittingCompressedSize).width
+        let snug = stack.widthAnchor.constraint(equalToConstant: width)
+        snug.priority = .defaultHigh - 1
         snug.isActive = true
     }
 
