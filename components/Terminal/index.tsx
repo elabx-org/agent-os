@@ -965,8 +965,9 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
     }, [draftId, selectedText]);
 
     // A narrow screen in portrait (the closed Duo, phones): one key row
-    // above the composer (on the keyboard while it is up), leading with the tools. The
-    // composer's + folds into the row's ⋯, and the app's keyboard bar hides.
+    // above the composer, leading with the tools. The composer's + folds
+    // into the row's ⋯. With the keyboard up the row rides on it, or in the
+    // app the app's keyboard bar takes its place, in the band on the keyboard.
     const rowAbove =
       composerOn &&
       narrow &&
@@ -983,9 +984,8 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
       rowAbove ||
       (composerOn && portrait && !deck && !sideBySide && !keyboardUp);
 
-    // On the deck the page's key rows replace the app's keyboard bar; above
-    // the composer the row does
-    const nativeBarHidden = (!!deck || (rowAbove && active)) && isNative();
+    // On the deck the page's key rows replace the app's keyboard bar
+    const nativeBarHidden = !!deck && isNative();
     useEffect(() => {
       if (!nativeBarHidden) return;
       postToNative({ type: "keybar", hidden: true });
@@ -1429,9 +1429,10 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
                   toolsRef={composerToolsRef}
                   extra={
                     rowAbove ? (
-                      // The app's bar, with its own, hides: the keyboard's
-                      // way down is beside Send while it's up
-                      keyboardUp && (
+                      // No app bar (a browser): the keyboard's way down is
+                      // beside Send while it's up
+                      keyboardUp &&
+                      !isNative() && (
                         <button
                           type="button"
                           aria-label="Hide keyboard"
@@ -1501,7 +1502,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
                 // The deck has no keybar toggle, so its row always shows
                 visible={
                   (toolbarVisible || tabletopBase) &&
-                  (!nativeKeyboard || laptopKeys || rowAbove)
+                  (!nativeKeyboard || laptopKeys)
                 }
                 keepRows={laptopKeys}
                 context={keysContext}
