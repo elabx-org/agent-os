@@ -492,7 +492,6 @@ final class KeyboardBar: UIInputView {
         built.forEach { $0.isHidden = collapsed }
     }
 
-    /// Groups side by side, set apart from each other
     /// Keys at their own widths: with one edge pinned (the hinge) and the
     /// other only bounded, a half could fill its page by stretching a key
     private func hug(_ stack: UIView) {
@@ -501,6 +500,7 @@ final class KeyboardBar: UIInputView {
         snug.isActive = true
     }
 
+    /// Groups side by side, set apart from each other
     /// Each group one segmented control: its keys 2 pt apart, round only
     /// at the group's ends
     private func stack(_ groups: [[Item]], compact: Bool) -> UIStackView {
