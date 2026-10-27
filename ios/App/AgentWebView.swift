@@ -62,7 +62,7 @@ struct AgentWebContainer: UIViewRepresentable {
     /// Runs before the page: tells it it's inside the app (lib/native-bridge.ts)
     private static var bootScript: String {
         """
-        window.agentosNative = { platform: 'ios', version: '\(Bundle.main.shortVersion)' };
+        window.agentosNative = { platform: 'ios', version: '\(Bundle.main.shortVersion)', keySpecs: true };
         document.documentElement.dataset.native = 'ios';
         """
     }

@@ -76,6 +76,8 @@ declare global {
     agentosNative?: {
       platform: string;
       version: string;
+      /** The keyboard bar takes `id/flick/hold` key specs */
+      keySpecs?: boolean;
       fold?: Fold | null;
       /** Running on an iPhone Duo (app builds that say; else guessed by size) */
       duo?: boolean;
@@ -92,18 +94,6 @@ declare global {
 
 export function isNative(): boolean {
   return typeof window !== "undefined" && !!window.agentosNative;
-}
-
-/** The iOS app is this version or newer (x.y.z) */
-export function nativeAtLeast(version: string): boolean {
-  const have = window.agentosNative?.version?.split(".").map(Number);
-  if (!have) return false;
-  const want = version.split(".").map(Number);
-  for (let i = 0; i < want.length; i++) {
-    const a = have[i] ?? 0;
-    if (a !== want[i]) return a > want[i];
-  }
-  return true;
 }
 
 /**

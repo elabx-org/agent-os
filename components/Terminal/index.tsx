@@ -78,7 +78,6 @@ import { useSnapshot } from "valtio";
 import {
   isNative,
   isTextKey,
-  nativeAtLeast,
   onNativeEvent,
   postToNative,
 } from "@/lib/native-bridge";
@@ -470,10 +469,12 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
     // On a narrow screen the bar shows the adaptive row too, after the
     // tools the page row leads with (Paste, File, Photo)
     const narrow = useNarrowScreen();
-    // From 0.1.47 the bar takes the builder's rows, closed and open, with
-    // each key's flick and hold
+    // An app whose bar takes key specs gets the builder's rows, closed and
+    // open, with each key's flick and hold
     const nativeIds =
-      keyPrefs.adaptive !== false && isNative() && nativeAtLeast("0.1.47")
+      keyPrefs.adaptive !== false &&
+      typeof window !== "undefined" &&
+      window.agentosNative?.keySpecs
         ? barSpecs(adaptiveState, promptOptions).join()
         : narrow && keyPrefs.adaptive !== false
         ? ["paste", "snippets", "image"]
