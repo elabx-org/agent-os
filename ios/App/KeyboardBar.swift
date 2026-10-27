@@ -446,7 +446,6 @@ final class KeyboardBar: UIInputView {
                 view.translatesAutoresizingMaskIntoConstraints = false
                 addSubview(view)
                 built.append(view)
-                hug(view)
             }
             // Updated to the hinge in layoutSubviews
             let leftEnd = left.trailingAnchor.constraint(equalTo: leadingAnchor, constant: bounds.midX - 20)
@@ -470,7 +469,6 @@ final class KeyboardBar: UIInputView {
             scroll.alwaysBounceHorizontal = false
             scroll.addSubview(row)
             for view in [scroll, row] { view.translatesAutoresizingMaskIntoConstraints = false }
-            hug(row)
             addSubview(scroll)
             built.append(scroll)
             let inset: CGFloat = compact ? 4 : 8
@@ -492,17 +490,6 @@ final class KeyboardBar: UIInputView {
         built.forEach { $0.isHidden = collapsed }
     }
 
-    /// Keys at their own widths: with one edge pinned (the hinge) and the
-    /// other only bounded, a half filled its page by stretching a key. Held
-    /// at its measured width, above any key's hugging but under its
-    /// compression resistance, so a label is never cut to fit
-    private func hug(_ stack: UIView) {
-        let width = stack.systemLayoutSizeFitting(UIView.layoutFittingCompressedSize).width
-        let snug = stack.widthAnchor.constraint(equalToConstant: width)
-        snug.priority = .defaultHigh - 1
-        snug.isActive = true
-    }
-
     /// Groups side by side, set apart from each other
     /// Each group one segmented control: its keys 2 pt apart, round only
     /// at the group's ends
@@ -511,6 +498,10 @@ final class KeyboardBar: UIInputView {
             let views = group.map { itemView($0, compact: compact) }
             for (index, view) in views.enumerated() {
                 segment(view, first: index == 0, last: index == views.count - 1)
+                // Above the stacks' own text-width guesses (950), which cap each
+                // group at an eighth of the row: the widest group then drove
+                // the row to 8x its width and the spare went into keys
+                view.setContentHuggingPriority(.required - 1, for: .horizontal)
             }
             let row = UIStackView(arrangedSubviews: views)
             row.spacing = 2
@@ -588,6 +579,10 @@ final class KeyboardBar: UIInputView {
         config.baseBackgroundColor = Self.keyColor
         config.baseForegroundColor = key.destructive ? .systemRed : .label
 
+        // One line: a key never wraps its title (Ho/me)
+        config.titleLineBreakMode = .byClipping
+        // Clear of its flick's corner label, as the keyboard's own keys
+        if key.flick != nil { config.contentInsets.top = 8 }
         let button = KeyButton(configuration: config)
         if let flick = key.flick {
             // Flicked past the point where it counts, the key shows what it will send
