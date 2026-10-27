@@ -270,10 +270,15 @@ export function Composer({
     </div>
   );
 
-  if (!growUp) return box;
+  // The same elements either way: growUp flips with the layout (the
+  // keyboard coming up can change it), and a remounted box loses focus,
+  // which takes the keyboard down again
   return (
-    <div className="relative" style={{ height: ONE_LINE_PX }}>
-      <div className="absolute inset-x-0 bottom-0">{box}</div>
+    <div
+      className={cn(growUp && "relative")}
+      style={growUp ? { height: ONE_LINE_PX } : undefined}
+    >
+      <div className={cn(growUp && "absolute inset-x-0 bottom-0")}>{box}</div>
     </div>
   );
 }
