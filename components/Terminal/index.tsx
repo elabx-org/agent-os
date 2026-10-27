@@ -1423,7 +1423,6 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
                   stray={strayInput}
                   onMoveStray={moveStray}
                   onClearStray={clearStray}
-                  stateAbove={sideBySide}
                   pages={twoRowPages}
                   growUp={sideBySide}
                   noPlus={rowAbove}
