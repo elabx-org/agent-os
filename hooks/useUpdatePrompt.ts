@@ -5,11 +5,18 @@ import { toast } from "sonner";
 
 const POLL_MS = 60_000;
 
-async function fetchBuild(): Promise<string | null> {
+export interface Build {
+  id: string;
+  /** The release (0.5.3), or package.json's with the commit (0.5.0+1a2b3c4) */
+  version?: string;
+}
+
+export async function fetchBuild(): Promise<Build | null> {
   try {
     const res = await fetch("/api/build", { cache: "no-store" });
     if (!res.ok) return null;
-    return ((await res.json()) as { id?: string }).id ?? null;
+    const build = (await res.json()) as Partial<Build>;
+    return build.id ? (build as Build) : null;
   } catch {
     return null;
   }
@@ -25,14 +32,16 @@ export function useUpdatePrompt() {
     let shown = false;
     const check = async () => {
       if (shown) return;
-      const id = await fetchBuild();
-      if (!id) return;
-      if (!loaded) loaded = id;
-      else if (id !== loaded) {
+      const build = await fetchBuild();
+      if (!build) return;
+      if (!loaded) loaded = build.id;
+      else if (build.id !== loaded) {
         shown = true;
         toast("Agent-OS updated", {
           id: "update",
-          description: "Reload to use the new version.",
+          description: build.version
+            ? `Reload to use v${build.version}.`
+            : "Reload to use the new version.",
           duration: Infinity,
           classNames: {
             actionButton: "!bg-primary !text-primary-foreground",
