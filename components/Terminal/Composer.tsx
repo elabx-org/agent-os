@@ -11,7 +11,6 @@ import {
   useComposer,
 } from "@/components/Composer";
 import {
-  ClaudeStateBar,
   QueuedMessages,
   StrayInput,
   RewindSheet,
@@ -56,11 +55,8 @@ interface ComposerProps {
   onClearStray?: () => void;
   /** Hidden behind another tab or view: Claude's state isn't read */
   active?: boolean;
-  /** Claude's state on a slim line above the box, not under it (the open
-      Duo's split row, level with the keys on the other page) */
-  stateAbove?: boolean;
   /** Across both pages of the open Duo (Two rows): the box on the left
-      page, its buttons and Claude's state on the right one */
+      page, its buttons on the right one */
   pages?: SpreadPages | null;
   /** Its row stays one line tall and a longer box grows up over the
       terminal (the open Duo's Split and Mirrored: the other page keeps the
@@ -94,7 +90,6 @@ export function Composer({
   onMoveStray,
   onClearStray,
   active = true,
-  stateAbove = false,
   pages,
   growUp = false,
   noPlus = false,
@@ -112,7 +107,7 @@ export function Composer({
     claude: session?.agent_type === "claude",
   });
   const { textareaRef, display } = composer;
-  // Claude's mode, spinner and status line, mirrored under the box
+  // Claude's state: the queue, rewind and the box's keys follow it
   const live = useClaudeLive({
     sessionId,
     claude: composer.claude,
@@ -211,9 +206,6 @@ export function Composer({
       />
       {sessionId && <VideoPills draft={sessionId} />}
       <ComposerChips composer={composer} />
-      {stateAbove && !pages && (
-        <ClaudeStateBar live={live} className="pt-0 pb-1 pl-3" />
-      )}
       <div
         className={cn(
           // Glass-like capsule, as the control column
@@ -261,9 +253,11 @@ export function Composer({
         {!pages && extra}
         {!pages && sendButton}
       </div>
-      {pages ? (
-        // On the right page, level with the box: Claude's state, then the
-        // keybar toggle and send at the far end
+      {/* No copy of Claude's state line here: the terminal shows Claude's
+          own, and the keys have Shift+Tab and Esc (Chat view keeps it) */}
+      {pages && (
+        // On the right page, level with the box: the keybar toggle and send
+        // at the far end
         <div
           className="absolute bottom-0 flex items-end gap-1.5 py-1.5"
           style={{
@@ -271,17 +265,11 @@ export function Composer({
             width: pages.right - 10,
           }}
         >
-          <ClaudeStateBar
-            live={live}
-            className="min-w-0 flex-1 self-center p-0"
-          />
           <div className="ml-auto flex shrink-0 items-end gap-1.5">
             {extra}
             {sendButton}
           </div>
         </div>
-      ) : (
-        !stateAbove && <ClaudeStateBar live={live} />
       )}
     </div>
   );
