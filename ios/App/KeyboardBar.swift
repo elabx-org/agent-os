@@ -305,15 +305,17 @@ final class KeyboardBar: UIInputView {
     private var leftEnd: NSLayoutConstraint?
     private var rightStart: NSLayoutConstraint?
 
-    /// A tap; ^C knocks harder, a flick bumps, a held key ticks softly as
-    /// it repeats, and a flick ticks as it passes the point where it counts
     /// The theme's accent, for a held key
     var accent: UIColor?
-    private let haptics = UIImpactFeedbackGenerator(style: .light)
-    private let knock = UIImpactFeedbackGenerator(style: .rigid)
-    private let bump = UIImpactFeedbackGenerator(style: .medium)
-    private let tick = UISelectionFeedbackGenerator()
-    private let repeatTick = UIImpactFeedbackGenerator(style: .soft)
+    /// A tap; ^C knocks harder, a flick bumps, a held key ticks softly as
+    /// it repeats, and a flick ticks as it passes the point where it counts.
+    /// Tied to the bar: it lives in the keyboard's window, not the app's,
+    /// and a generator with no view may not play there
+    private lazy var haptics = UIImpactFeedbackGenerator(style: .light, view: self)
+    private lazy var knock = UIImpactFeedbackGenerator(style: .rigid, view: self)
+    private lazy var bump = UIImpactFeedbackGenerator(style: .medium, view: self)
+    private lazy var tick = UISelectionFeedbackGenerator(view: self)
+    private lazy var repeatTick = UIImpactFeedbackGenerator(style: .soft, view: self)
     private var repeatTimer: Timer?
     /// The held key started repeating, so letting go sends nothing more
     private var repeated = false
