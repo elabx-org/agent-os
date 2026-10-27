@@ -76,6 +76,8 @@ declare global {
     agentosNative?: {
       platform: string;
       version: string;
+      /** The keyboard bar takes `id/flick/hold` key specs */
+      keySpecs?: boolean;
       fold?: Fold | null;
       /** Running on an iPhone Duo (app builds that say; else guessed by size) */
       duo?: boolean;

@@ -58,7 +58,11 @@ import { InboxItem } from "@/components/Inbox";
 import { useSessionPrompt } from "@/data/prompts/queries";
 import { useNarrowScreen } from "@/hooks/useNarrowScreen";
 import { usePortrait } from "@/hooks/usePortrait";
-import { adaptiveIds, type AdaptiveState } from "@/lib/adaptive-keys";
+import {
+  adaptiveIds,
+  barSpecs,
+  type AdaptiveState,
+} from "@/lib/adaptive-keys";
 import type { Session } from "@/lib/db";
 import { useFoldDeck } from "@/hooks/useFoldDeck";
 import {
@@ -465,8 +469,14 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
     // On a narrow screen the bar shows the adaptive row too, after the
     // tools the page row leads with (Paste, File, Photo)
     const narrow = useNarrowScreen();
+    // An app whose bar takes key specs gets the builder's rows, closed and
+    // open, with each key's flick and hold
     const nativeIds =
-      narrow && keyPrefs.adaptive !== false
+      keyPrefs.adaptive !== false &&
+      typeof window !== "undefined" &&
+      window.agentosNative?.keySpecs
+        ? barSpecs(adaptiveState, promptOptions).join()
+        : narrow && keyPrefs.adaptive !== false
         ? ["paste", "snippets", "image"]
             .concat(adaptiveIds(adaptiveState, promptOptions))
             .join()

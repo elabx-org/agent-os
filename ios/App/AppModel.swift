@@ -291,6 +291,7 @@ final class AppModel {
         }
         if let css = message["accent"] as? String, let color = Self.color(css: css) {
             accent = color
+            (webView as? AgentWebView)?.keyboardBar.accent = color
         }
         switch message["scheme"] as? String {
         case "light": scheme = .light
