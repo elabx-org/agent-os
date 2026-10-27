@@ -57,6 +57,7 @@ import { DeckContext } from "@/components/ReplyContext/ContextPanel";
 import { InboxItem } from "@/components/Inbox";
 import { useSessionPrompt } from "@/data/prompts/queries";
 import { useNarrowScreen } from "@/hooks/useNarrowScreen";
+import { usePortrait } from "@/hooks/usePortrait";
 import { adaptiveIds, type AdaptiveState } from "@/lib/adaptive-keys";
 import type { Session } from "@/lib/db";
 import { useFoldDeck } from "@/hooks/useFoldDeck";
@@ -947,7 +948,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
     }, [draftId, selectedText]);
 
     // A narrow screen in portrait (the closed Duo, phones): one key row
-    // above the composer, keyboard up or down, leading with the tools. The
+    // above the composer (on the keyboard while it is up), leading with the tools. The
     // composer's + folds into the row's ⋯, and the app's keyboard bar hides.
     const rowAbove =
       composerOn &&
@@ -956,6 +957,14 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
       toolbarVisible &&
       !deck &&
       !sideBySide;
+
+    // Upright, the rows sit above the composer too, away from the bottom
+    // edge (the open Duo turned upright: its rows hide with the keyboard up,
+    // for the app's bar)
+    const portrait = usePortrait();
+    const keysAbove =
+      rowAbove ||
+      (composerOn && portrait && !deck && !sideBySide && !keyboardUp);
 
     // On the deck the page's key rows replace the app's keyboard bar; above
     // the composer the row does
@@ -1320,7 +1329,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
               // Laid out on both pages here, or kept right of the fold
               !duoLayout && "fold-controls",
               sideBySide && "flex items-end",
-              rowAbove && "flex flex-col",
+              keysAbove && "flex flex-col",
               laptopKeys ? "contents" : deck && "flex flex-col"
             )}
             style={
@@ -1368,7 +1377,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
                   : {
                       // Above the composer: the key row goes first
                       order:
-                        laptopKeys || rowAbove
+                        laptopKeys || keysAbove
                           ? 1
                           : tabletopBase
                             ? 3
