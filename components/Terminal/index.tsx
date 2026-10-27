@@ -1442,7 +1442,9 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
               style={
                 laptopKeys
                   ? { order: 3, height: deck.deck }
-                  : tabletopBase
+                  : // Under the composer: on the deck, and the row from
+                    // above the composer onto the keyboard while it's up
+                    tabletopBase || (rowAbove && keyboardUp)
                     ? { order: 2 }
                     : sideBySide
                       ? {
