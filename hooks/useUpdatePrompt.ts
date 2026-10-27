@@ -34,10 +34,6 @@ export function useUpdatePrompt() {
           id: "update",
           description: "Reload to use the new version.",
           duration: Infinity,
-          // On the open Duo, on the right page instead of across the fold
-          position: document.documentElement.hasAttribute("data-hinge")
-            ? "top-right"
-            : undefined,
           classNames: {
             actionButton: "!bg-primary !text-primary-foreground",
           },

@@ -59,6 +59,8 @@ final class AppModel {
     }
 
     @ObservationIgnored weak var webView: WKWebView?
+    /// Links to other sites, in Safari sheets that minimise to pills
+    let browser = Browser()
     /// A session to open once the page has loaded (a notification or link launched the app)
     @ObservationIgnored private var pendingSession: String?
     /// A column action to run once the page is listening (a tapped agent notification)
@@ -73,6 +75,15 @@ final class AppModel {
     init() {
         let saved = UserDefaults.standard.string(forKey: Self.serverKey).flatMap(URL.init(string:))
         server = saved ?? Self.defaultServer
+        browser.accent = { [weak self] in self?.accent }
+        browser.onChange = { [weak self] closed in self?.sendBrowser(closed: closed) }
+    }
+
+    /// The minimised pages for the page's pills, and one just closed (Undo)
+    private func sendBrowser(closed: Browser.Page? = nil) {
+        var event: [String: Any] = ["type": "browser", "count": browser.pages.count]
+        if let closed { event["closed"] = browser.json(closed) }
+        send(event)
     }
 
     /// Navigation the web NavRail would do in Safari
@@ -249,6 +260,11 @@ final class AppModel {
                 let ids = (message["ids"] as? [Any])?.compactMap { $0 as? String }
                 (webView as? AgentWebView)?.keyboardBar.setKeys(context: context, ids: ids)
             }
+            return
+        }
+        if message["type"] as? String == "browser" {
+            // The Undo on the page's "Closed …" toast
+            if message["action"] as? String == "undo" { browser.undo() }
             return
         }
         if message["type"] as? String == "haptic" {
