@@ -104,23 +104,27 @@ final class KeyboardBar: UIInputView {
     /// can't offer (mic) are nil and skipped.
     private static func item(for id: String) -> (item: Item, group: String)? {
         guard var entry = baseItem(for: id) else { return nil }
-        if case .key(var key) = entry.item, !key.repeats, let flick = flicks[id] {
+        if case .key(var key) = entry.item, let flick = flicks[id] {
             key.flick = flick
             entry.item = .key(key)
         }
         return entry
     }
 
-    /// The adaptive row's flicks (lib/adaptive-keys.ts); arrows repeat when
-    /// held instead
+    /// The adaptive row's flicks (lib/adaptive-keys.ts); arrows flick too
+    /// and repeat when held
     private static let flicks: [String: (title: String, sequences: [String])] = [
-        "esc": ("Esc Esc", ["\u{1b}", "\u{1b}"]),
+        "esc": ("^C", ["\u{03}"]),
         "tab": ("⇧Tab", ["\u{1b}[Z"]),
         "shift-tab": ("Tab", ["\t"]),
         "enter": ("⇧↵", ["\n"]),
         "ctrl-c": ("^D", ["\u{04}"]),
         "char-slash": ("@", ["@"]),
         "ctrl-r": ("^L", ["\u{0c}"]),
+        "arrow-up": ("PgUp", ["\u{1b}[5~"]),
+        "arrow-down": ("PgDn", ["\u{1b}[6~"]),
+        "arrow-left": ("Home", ["\u{1b}[H"]),
+        "arrow-right": ("End", ["\u{1b}[F"]),
     ]
 
     private static func baseItem(for id: String) -> (item: Item, group: String)? {
@@ -136,7 +140,8 @@ final class KeyboardBar: UIInputView {
         // The page's cursor key is space on a tap
         case "cursor": return (.key(space), "editing")
         case "backspace": return (.key(backspace), "editing")
-        case "paste": return (.paste, "tools")
+        // The system Paste button keeps its own corners, so it stands alone
+        case "paste": return (.paste, "paste")
         case "select": return (.tool(.select), "tools")
         case "image": return (.tool(.image), "tools")
         case "snippets": return (.tool(.snippets), "tools")
@@ -244,8 +249,16 @@ final class KeyboardBar: UIInputView {
     private var leftEnd: NSLayoutConstraint?
     private var rightStart: NSLayoutConstraint?
 
+    /// A tap; ^C knocks harder, a flick bumps, a held key ticks softly as
+    /// it repeats, and a flick ticks as it passes the point where it counts
     private let haptics = UIImpactFeedbackGenerator(style: .light)
+    private let knock = UIImpactFeedbackGenerator(style: .rigid)
+    private let bump = UIImpactFeedbackGenerator(style: .medium)
+    private let tick = UISelectionFeedbackGenerator()
+    private let repeatTick = UIImpactFeedbackGenerator(style: .soft)
     private var repeatTimer: Timer?
+    /// The held key started repeating, so letting go sends nothing more
+    private var repeated = false
 
     init() {
         super.init(frame: CGRect(x: 0, y: 0, width: 0, height: 52), inputViewStyle: .keyboard)
@@ -311,7 +324,7 @@ final class KeyboardBar: UIInputView {
             // ⋯ last: every key, whatever the row leaves out
             var right = keys.right.isEmpty ? keys.left : keys.right
             if right.isEmpty { right = [[]] }
-            right[right.count - 1].append(.allKeys)
+            right.append([.allKeys])
             keys = keys.right.isEmpty
                 ? KeySet(left: right, right: [])
                 : KeySet(left: keys.left, right: right)
@@ -417,15 +430,42 @@ final class KeyboardBar: UIInputView {
     }
 
     /// Groups side by side, set apart from each other
+    /// Each group one segmented control: its keys 2 pt apart, round only
+    /// at the group's ends
     private func stack(_ groups: [[Item]], compact: Bool) -> UIStackView {
         let rows = groups.map { group in
-            let row = UIStackView(arrangedSubviews: group.map { itemView($0, compact: compact) })
-            row.spacing = compact ? 3 : 6
+            let views = group.map { itemView($0, compact: compact) }
+            for (index, view) in views.enumerated() {
+                segment(view, first: index == 0, last: index == views.count - 1)
+            }
+            let row = UIStackView(arrangedSubviews: views)
+            row.spacing = 2
             return row
         }
         let stack = UIStackView(arrangedSubviews: rows)
-        stack.spacing = compact ? 6 : 16
+        stack.spacing = compact ? 7 : 16
         return stack
+    }
+
+    /// Keys and tools a shade apart, as the keyboard's letter and function keys
+    private static let keyColor = UIColor { $0.userInterfaceStyle == .dark
+        ? UIColor(red: 0.24, green: 0.24, blue: 0.26, alpha: 1) : .white }
+    private static let toolColor = UIColor { $0.userInterfaceStyle == .dark
+        ? UIColor(red: 0.18, green: 0.18, blue: 0.20, alpha: 1)
+        : UIColor(red: 0.68, green: 0.70, blue: 0.74, alpha: 1) }
+
+    private func segment(_ view: UIView, first: Bool, last: Bool) {
+        guard let button = view as? UIButton else { return }
+        // Inner corners from the background, outer ones clipped rounder
+        button.configuration?.cornerStyle = .fixed
+        button.configuration?.background.cornerRadius = 3
+        var corners: CACornerMask = []
+        if first { corners.formUnion([.layerMinXMinYCorner, .layerMinXMaxYCorner]) }
+        if last { corners.formUnion([.layerMaxXMinYCorner, .layerMaxXMaxYCorner]) }
+        button.layer.cornerRadius = corners.isEmpty ? 0 : 10
+        button.layer.maskedCorners = corners
+        button.layer.cornerCurve = .continuous
+        button.clipsToBounds = true
     }
 
     private func itemView(_ item: Item, compact: Bool) -> UIView {
@@ -435,7 +475,10 @@ final class KeyboardBar: UIInputView {
         case .paste:
             var paste = UIPasteControl.Configuration()
             paste.displayMode = .iconOnly
-            paste.cornerStyle = .medium
+            paste.cornerStyle = .fixed
+            paste.cornerRadius = 10
+            paste.baseBackgroundColor = Self.toolColor
+            paste.baseForegroundColor = .label
             let control = UIPasteControl(configuration: paste)
             control.target = self
             control.widthAnchor.constraint(equalToConstant: compact ? 40 : 44).isActive = true
@@ -459,9 +502,12 @@ final class KeyboardBar: UIInputView {
             title.font = .monospacedSystemFont(ofSize: compact ? 14 : 15, weight: .medium)
             config.attributedTitle = title
         }
-        if key.destructive { config.baseForegroundColor = .systemRed }
+        config.baseBackgroundColor = Self.keyColor
+        config.baseForegroundColor = key.destructive ? .systemRed : .label
 
         let button = UIButton(configuration: config)
+        // Ready the tap's haptic as the finger lands
+        button.addAction(UIAction { [weak self] _ in self?.haptics.prepare() }, for: .touchDown)
         button.accessibilityLabel = key.label ?? key.title
         if let flick = key.flick {
             button.accessibilityHint = "Flick up for \(flick.title)"
@@ -478,16 +524,40 @@ final class KeyboardBar: UIInputView {
             })
             button.showsMenuAsPrimaryAction = false
         }
-        if key.repeats {
+        if key.repeats, key.flick != nil {
+            // Not at once, so a flick sends only its own key: held a moment
+            // it presses and repeats, let go before that it presses once
+            button.addAction(UIAction { [weak self] _ in
+                guard let self else { return }
+                self.repeated = false
+                self.repeatTimer?.invalidate()
+                self.repeatTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: false) { [weak self] _ in
+                    guard let self else { return }
+                    self.repeated = true
+                    self.press(key)
+                    self.startRepeating(key)
+                }
+            }, for: .touchDown)
+            button.addAction(UIAction { [weak self] _ in
+                guard let self else { return }
+                self.repeatTimer?.invalidate()
+                self.repeatTimer = nil
+                if !self.repeated { self.press(key) }
+                self.repeated = false
+            }, for: .touchUpInside)
+            button.addAction(UIAction { [weak self] _ in
+                self?.repeatTimer?.invalidate()
+                self?.repeatTimer = nil
+                self?.repeated = false
+            }, for: [.touchUpOutside, .touchCancel])
+        } else if key.repeats {
             // Fires on touch down, then again after a pause while held
             button.addAction(UIAction { [weak self] _ in
                 guard let self else { return }
                 self.press(key)
                 self.repeatTimer?.invalidate()
                 self.repeatTimer = Timer.scheduledTimer(withTimeInterval: 0.4, repeats: false) { [weak self] _ in
-                    self?.repeatTimer = Timer.scheduledTimer(withTimeInterval: 0.08, repeats: true) { [weak self] _ in
-                        self?.onKey?(key.sequence)
-                    }
+                    self?.startRepeating(key)
                 }
             }, for: .touchDown)
             button.addAction(UIAction { [weak self] _ in
@@ -505,6 +575,8 @@ final class KeyboardBar: UIInputView {
         var config = UIButton.Configuration.gray()
         config.cornerStyle = .medium
         config.image = UIImage(systemName: "ellipsis")
+        config.baseBackgroundColor = Self.toolColor
+        config.baseForegroundColor = .label
         let button = UIButton(configuration: config)
         button.accessibilityLabel = "All keys"
         button.widthAnchor.constraint(equalToConstant: compact ? 40 : 44).isActive = true
@@ -564,6 +636,8 @@ final class KeyboardBar: UIInputView {
         var config = UIButton.Configuration.gray()
         config.cornerStyle = .medium
         config.image = UIImage(systemName: symbol)
+        config.baseBackgroundColor = Self.toolColor
+        config.baseForegroundColor = .label
         let button = UIButton(configuration: config)
         button.accessibilityLabel = label
         button.widthAnchor.constraint(equalToConstant: compact ? 40 : 44).isActive = true
@@ -595,12 +669,33 @@ final class KeyboardBar: UIInputView {
         ])
         let pan = FlickGesture(target: self, action: #selector(flicked(_:)))
         pan.sequences = flick.sequences
+        pan.corner = corner
         button.addGestureRecognizer(pan)
     }
 
     @objc private func flicked(_ pan: FlickGesture) {
-        guard pan.state == .ended, pan.translation(in: pan.view).y < -18 else { return }
-        haptics.impactOccurred()
+        let armed = pan.translation(in: pan.view).y < -18
+        switch pan.state {
+        case .began:
+            tick.prepare()
+            bump.prepare()
+        case .changed:
+            // Past the point where it counts: a tick, and the corner key lights
+            if armed != pan.armed {
+                pan.armed = armed
+                tick.selectionChanged()
+                pan.corner?.textColor = armed ? .label : .secondaryLabel
+                pan.corner?.font = .systemFont(ofSize: 9, weight: armed ? .bold : .regular)
+            }
+        default:
+            break
+        }
+        guard pan.state == .ended || pan.state == .cancelled || pan.state == .failed else { return }
+        pan.armed = false
+        pan.corner?.textColor = .secondaryLabel
+        pan.corner?.font = .systemFont(ofSize: 9)
+        guard pan.state == .ended, armed else { return }
+        bump.impactOccurred()
         for (index, sequence) in pan.sequences.enumerated() {
             if index == 0 { onKey?(sequence) } else {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.08 * Double(index)) { [weak self] in
@@ -619,8 +714,17 @@ final class KeyboardBar: UIInputView {
     }
 
     private func press(_ key: Key) {
-        haptics.impactOccurred()
+        if key.destructive { knock.impactOccurred() } else { haptics.impactOccurred() }
         onKey?(key.sequence)
+    }
+
+    /// Held: the key again every 80 ms, each with a soft tick
+    private func startRepeating(_ key: Key) {
+        repeatTick.prepare()
+        repeatTimer = Timer.scheduledTimer(withTimeInterval: 0.08, repeats: true) { [weak self] _ in
+            self?.repeatTick.impactOccurred(intensity: 0.5)
+            self?.onKey?(key.sequence)
+        }
     }
 
     override func willMove(toWindow newWindow: UIWindow?) {
@@ -635,6 +739,10 @@ final class KeyboardBar: UIInputView {
 /// A flick up on a key: only a mostly vertical, upward pan
 private final class FlickGesture: UIPanGestureRecognizer {
     var sequences: [String] = []
+    /// The key's corner label, lit while the flick would send it
+    weak var corner: UILabel?
+    /// Past the flick point
+    var armed = false
 
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent) {
         super.touchesMoved(touches, with: event)

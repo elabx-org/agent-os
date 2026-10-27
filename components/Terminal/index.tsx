@@ -462,11 +462,14 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
     // already gets the typing row
     const { preferences: keyPrefs } = useToolbarPreferences();
     const nativeRow = rowIdFor(keysContext, true);
-    // On a narrow screen the bar shows the adaptive row too
+    // On a narrow screen the bar shows the adaptive row too, after the
+    // tools the page row leads with (Paste, File, Photo)
     const narrow = useNarrowScreen();
     const nativeIds =
       narrow && keyPrefs.adaptive !== false
-        ? adaptiveIds(adaptiveState, promptOptions).join()
+        ? ["paste", "snippets", "image"]
+            .concat(adaptiveIds(adaptiveState, promptOptions))
+            .join()
         : keyPrefs.contextRows?.[nativeRow] || keyPrefs.pinCtrlC === false
           ? savedContextRow(nativeRow, keyPrefs).join()
           : "";
