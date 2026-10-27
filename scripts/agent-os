@@ -75,6 +75,8 @@ case "${1:-}" in
     run)              cmd_run ;;
     status)           cmd_status ;;
     logs)             cmd_logs ;;
+    # Agent-OS as tools for AI agents (stdio MCP server); nothing may print first
+    mcp)              exec node "$SCRIPT_DIR/agentos-mcp.mjs" ;;
     update)           cmd_update ;;
     deploy)           cmd_deploy "${2:-}" ;;
     enable)           cmd_enable ;;

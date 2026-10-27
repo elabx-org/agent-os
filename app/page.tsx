@@ -179,7 +179,8 @@ function HomeContent() {
     return undefined;
   }, [focusedPaneId, getActiveTab]);
 
-  // Build tmux command for a session
+  // Build tmux command for a session (lib/session-launch.ts does the same for
+  // sessions started without a page, so keep the two in step)
   const buildSessionCommand = useCallback(
     async (
       session: Session
@@ -192,11 +193,6 @@ function HomeContent() {
       if (provider.id === "shell") {
         return { sessionName, cwd, command: "" };
       }
-
-      // TODO: Add explicit "Enable Orchestration" toggle that creates .mcp.json
-      // for conductor sessions. Removed auto-creation because it pollutes projects
-      // with .mcp.json files that aren't in their .gitignore.
-      // See: /api/sessions/[id]/mcp-config, lib/mcp-config.ts
 
       // Get parent session ID for forking
       let parentSessionId: string | null = null;

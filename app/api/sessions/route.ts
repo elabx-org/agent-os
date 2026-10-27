@@ -9,6 +9,7 @@ import { setupWorktree, type SetupResult } from "@/lib/env-setup";
 import { findAvailablePort } from "@/lib/ports";
 import { runInBackground } from "@/lib/async-operations";
 import { getProject } from "@/lib/projects";
+import { launchSession } from "@/lib/session-launch";
 
 // GET /api/sessions - List all sessions and groups
 export async function GET() {
@@ -76,6 +77,8 @@ export async function POST(request: NextRequest) {
       continueSession = false,
       // Initial prompt to send when session starts
       initialPrompt = null,
+      // Start it now, with nobody watching (agents driving Agent-OS)
+      launch = false,
     } = body;
 
     // Validate agent type
@@ -242,7 +245,18 @@ export async function POST(request: NextRequest) {
     if (setupResult) {
       response.setup = setupResult;
     }
-    if (combinedPrompt) {
+    if (launch && useTmux) {
+      try {
+        await launchSession(session, combinedPrompt);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Unknown error";
+        return NextResponse.json(
+          { session, error: `Created but failed to start: ${message}` },
+          { status: 500 }
+        );
+      }
+    } else if (combinedPrompt) {
+      // The page sends it when it starts the session
       response.initialPrompt = combinedPrompt;
     }
 

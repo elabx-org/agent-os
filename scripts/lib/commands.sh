@@ -570,6 +570,7 @@ cmd_help() {
     echo "  restart     Restart the server"
     echo "  status      Show server status and URLs"
     echo "  logs        Tail server logs"
+    echo "  mcp         Run the MCP server that lets AI agents drive Agent-OS"
     echo "  update      Pull latest from git and rebuild"
     echo "  deploy      Deploy from local dev repo (rsync + build + restart)"
     echo "  enable      Enable auto-start on boot"
