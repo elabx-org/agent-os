@@ -35,6 +35,7 @@ import {
   type SettingsSection,
 } from "@/stores/settingsPage";
 import { cn } from "@/lib/utils";
+import { fetchBuild } from "@/hooks/useUpdatePrompt";
 import {
   NotificationsSection,
   type NotificationsSectionProps,
@@ -74,6 +75,25 @@ const SECTION_ICON = {
  * a section list beside the chosen section when wide (the open iPhone Duo's
  * two pages, either side of the fold in book pose).
  */
+/** What runs: the server's release, and the app's when in it */
+function VersionLine({ className }: { className?: string }) {
+  const { data } = useQuery({
+    queryKey: ["build"],
+    queryFn: fetchBuild,
+    staleTime: 60_000,
+  });
+  const app =
+    typeof window !== "undefined" ? window.agentosNative?.version : undefined;
+  if (!data?.version && !app) return null;
+  return (
+    <p className={cn("text-muted-foreground text-xs", className)}>
+      {data?.version && `Agent-OS v${data.version}`}
+      {data?.version && app && " · "}
+      {app && `iOS app ${app}`}
+    </p>
+  );
+}
+
 export function SettingsPage(props: NotificationsSectionProps) {
   const { open } = useSnapshot(settingsPageStore);
   if (!open) return null;
@@ -220,6 +240,7 @@ function SettingsLayer(props: NotificationsSectionProps) {
               {body[s]}
             </section>
           ))}
+          <VersionLine className="px-5 pt-6" />
         </div>
       </div>
     );
@@ -278,6 +299,7 @@ function SettingsLayer(props: NotificationsSectionProps) {
               }
             />
           ))}
+          <VersionLine className="px-3 pt-4" />
         </nav>
       </aside>
       {book && (

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
+import { VERSION } from "@/lib/version";
 
 export const dynamic = "force-dynamic";
 
@@ -15,10 +16,11 @@ const BUILD_ID = (() => {
   }
 })();
 
-// GET /api/build - { id }, so an open page can tell a deploy happened
+// GET /api/build - { id, version }, so an open page can tell a deploy
+// happened and say what it runs
 export async function GET() {
   return NextResponse.json(
-    { id: BUILD_ID },
+    { id: BUILD_ID, version: VERSION },
     { headers: { "Cache-Control": "no-store" } }
   );
 }
