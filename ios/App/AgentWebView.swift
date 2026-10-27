@@ -258,8 +258,9 @@ private final class WeakMessageHandler: NSObject, WKScriptMessageHandler {
 final class AgentWebView: WKWebView {
     let keyboardBar = KeyboardBar()
 
-    /// The bar collapsed or came back: the keyboard only re-measures its
-    /// accessory when asked, so without this it keeps the old height, empty
+    /// The bar collapsed or came back: the keyboard asks for its accessory
+    /// again (none while collapsed: a bar with no height still kept its 52 pt,
+    /// an empty band above the keyboard)
     func reloadKeyboardBar() {
         scrollView.subviews.first {
             let name = NSStringFromClass(type(of: $0))
@@ -270,6 +271,19 @@ final class AgentWebView: WKWebView {
     override init(frame: CGRect, configuration: WKWebViewConfiguration) {
         super.init(frame: frame, configuration: configuration)
         installKeyboardBar()
+        // The bar moving onto the screen tells the page the keyboard is up;
+        // collapsed, no bar goes up with the keyboard, so the keyboard's own
+        // notifications tell it instead
+        let center = NotificationCenter.default
+        for (name, visible) in [
+            (UIResponder.keyboardWillShowNotification, true),
+            (UIResponder.keyboardWillHideNotification, false),
+        ] {
+            center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                guard let self, self.keyboardBar.collapsed else { return }
+                self.keyboardBar.onVisibilityChange?(visible)
+            }
+        }
     }
 
     @available(*, unavailable)
@@ -290,7 +304,9 @@ final class AgentWebView: WKWebView {
         let accessory: @convention(block) (AnyObject) -> UIView? = { this in
             var view = this as? UIView
             while let current = view {
-                if let web = current as? AgentWebView { return web.keyboardBar }
+                if let web = current as? AgentWebView {
+                    return web.keyboardBar.collapsed ? nil : web.keyboardBar
+                }
                 view = current.superview
             }
             return nil

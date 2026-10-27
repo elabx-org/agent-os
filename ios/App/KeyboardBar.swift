@@ -216,8 +216,8 @@ final class KeyboardBar: UIInputView {
         }
     }
 
-    /// No keys and no height: the page shows its own rows above the keyboard
-    /// (AgentWebView.reloadKeyboardBar makes the keyboard take the new height)
+    /// No bar: the page shows its own rows above the keyboard
+    /// (AgentWebView answers no accessory and reloads the keyboard's)
     var collapsed = false {
         didSet {
             guard collapsed != oldValue else { return }
@@ -264,7 +264,9 @@ final class KeyboardBar: UIInputView {
 
     override func didMoveToWindow() {
         super.didMoveToWindow()
-        onVisibilityChange?(window != nil)
+        // Collapsed, it leaves with the keyboard still up: the keyboard's
+        // notifications report instead (AgentWebView)
+        if !collapsed { onVisibilityChange?(window != nil) }
         setNeedsLayout()
     }
 
