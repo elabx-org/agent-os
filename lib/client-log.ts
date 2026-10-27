@@ -69,10 +69,18 @@ export function startClientLog(): () => void {
   const onNative = (e: Event) => {
     const detail = (e as CustomEvent).detail ?? {};
     if (detail.type !== "key") add(`native ${JSON.stringify(detail)}`);
+    // What the keyboard left the page, once it has settled: a gap above
+    // the keyboard shows as a viewport shorter than the page's own rows
+    if (detail.type === "keyboard")
+      setTimeout(
+        () =>
+          add(`viewport ${Math.round(window.visualViewport?.height ?? -1)}`),
+        700
+      );
   };
   const onError = (e: ErrorEvent) => add(`error ${e.message}`);
 
-  add("start");
+  add(`start app ${window.agentosNative?.version ?? "web"}`);
   document.addEventListener("touchstart", onTouch, true);
   document.addEventListener("touchend", onTouchEnd);
   document.addEventListener("touchcancel", onTouchCancel, true);
