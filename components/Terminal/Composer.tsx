@@ -278,7 +278,13 @@ export function Composer({
       className={cn(growUp && "relative")}
       style={growUp ? { height: ONE_LINE_PX } : undefined}
     >
-      <div className={cn(growUp && "absolute inset-x-0 bottom-0")}>{box}</div>
+      {/* Opaque: what grows up (the box, the queue, Claude's state) covers
+          the terminal rather than mixing with its lines */}
+      <div
+        className={cn(growUp && "bg-background absolute inset-x-0 bottom-0")}
+      >
+        {box}
+      </div>
     </div>
   );
 }
