@@ -446,6 +446,7 @@ final class KeyboardBar: UIInputView {
                 view.translatesAutoresizingMaskIntoConstraints = false
                 addSubview(view)
                 built.append(view)
+                hug(view)
             }
             // Updated to the hinge in layoutSubviews
             let leftEnd = left.trailingAnchor.constraint(equalTo: leadingAnchor, constant: bounds.midX - 20)
@@ -469,6 +470,7 @@ final class KeyboardBar: UIInputView {
             scroll.alwaysBounceHorizontal = false
             scroll.addSubview(row)
             for view in [scroll, row] { view.translatesAutoresizingMaskIntoConstraints = false }
+            hug(row)
             addSubview(scroll)
             built.append(scroll)
             let inset: CGFloat = compact ? 4 : 8
@@ -491,6 +493,14 @@ final class KeyboardBar: UIInputView {
     }
 
     /// Groups side by side, set apart from each other
+    /// Keys at their own widths: with one edge pinned (the hinge) and the
+    /// other only bounded, a half could fill its page by stretching a key
+    private func hug(_ stack: UIView) {
+        let snug = stack.widthAnchor.constraint(equalToConstant: 0)
+        snug.priority = UILayoutPriority(1)
+        snug.isActive = true
+    }
+
     /// Each group one segmented control: its keys 2 pt apart, round only
     /// at the group's ends
     private func stack(_ groups: [[Item]], compact: Bool) -> UIStackView {

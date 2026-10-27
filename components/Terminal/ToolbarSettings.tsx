@@ -16,6 +16,7 @@ import {
   MousePointer2,
   ImagePlus,
   FileText,
+  Space,
 } from "lucide-react";
 import {
   DndContext,
@@ -265,6 +266,7 @@ const TOOL_ICONS: Partial<Record<ToolbarButtonId, typeof Mic>> = {
   select: MousePointer2,
   image: ImagePlus,
   snippets: FileText,
+  cursor: Space,
 };
 
 /** A key as the row shows it, small */
