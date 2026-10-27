@@ -83,7 +83,7 @@ import { KeyboardDebugOverlay, useKeyboardDebug } from "./KeyboardDebugOverlay";
 import { useFileDrop } from "@/hooks/useFileDrop";
 import { uploadFilesToTemp } from "@/lib/file-upload";
 import { ImagePicker } from "@/components/ImagePicker";
-import { addVideos } from "@/stores/videoUploads";
+import { takeVideos } from "@/stores/videoUploads";
 import { joinWrappedUrls, linkify } from "./linkify";
 import {
   ContextMenu,
@@ -237,15 +237,18 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
     // Handle file drop - upload them all, paths into the composer or terminal
     const handleFileDrop = useCallback(
       async (_file: File, files: File[]) => {
+        // Videos become frames, beside the box
+        const rest = takeVideos(files, draftId);
+        if (!rest.length) return;
         setIsUploading(true);
         try {
-          const paths = await uploadFilesToTemp(files);
+          const paths = await uploadFilesToTemp(rest);
           if (paths.length) handleImageSelect(paths.join(" "));
         } finally {
           setIsUploading(false);
         }
       },
-      [handleImageSelect]
+      [handleImageSelect, draftId]
     );
 
     // Drag and drop for file uploads
@@ -1306,12 +1309,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
             initialPath="~"
             onSelect={handleImageSelect}
             onVideos={
-              composerOn && draftId
-                ? (files) => {
-                    setShowImagePicker(false);
-                    void addVideos(files, draftId);
-                  }
-                : undefined
+              draftId ? (files) => takeVideos(files, draftId) : undefined
             }
             onClose={() => setShowImagePicker(false)}
           />

@@ -198,6 +198,30 @@ export async function addVideos(files: File[], draft: string) {
   }
 }
 
+/**
+ * Picked, dropped or pasted files: the videos become frames for the draft,
+ * the rest come back to be uploaded as before
+ */
+export function takeVideos(files: File[], draft?: string | null): File[] {
+  const videos = files.filter(
+    (f) => f.type.startsWith("video/") || /\.(mov|mp4|m4v|webm)$/i.test(f.name)
+  );
+  // Which kinds came, for the iOS app's log (a picker that hid videos)
+  if (files.length && document.documentElement.dataset.native)
+    void fetch("/api/client-log", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        lines: [
+          `${new Date().toISOString()} picked ${files.map((f) => f.type || "?").join(", ")}`,
+        ],
+      }),
+    }).catch(() => {});
+  if (!draft || !videos.length) return files;
+  void addVideos(videos, draft);
+  return files.filter((f) => !videos.includes(f));
+}
+
 async function upload(key: string) {
   const v = find(key);
   if (!v?.file) return;

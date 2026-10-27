@@ -21,6 +21,7 @@ import {
 } from "@/hooks/useComposerData";
 import { useQueries } from "@tanstack/react-query";
 import { uploadFilesToTemp, uploadedSize } from "@/lib/file-upload";
+import { takeVideos } from "@/stores/videoUploads";
 import { clearQuotes, formatWithQuotes, useQuotes } from "@/stores/replyQuotes";
 import {
   MAGIC_WORDS,
@@ -512,7 +513,10 @@ export function useComposer({
   /** Upload pictures together; each lands as its own pill */
   const attach = useCallback(
     async (files: File[]) => {
-      const pictures = files.filter((f) => f.type.startsWith("image/"));
+      // Videos become frames, beside the box
+      const pictures = takeVideos(files, sessionId).filter((f) =>
+        f.type.startsWith("image/")
+      );
       if (!pictures.length) return;
       setUploading((n) => n + pictures.length);
       try {
@@ -522,13 +526,17 @@ export function useComposer({
         setUploading((n) => n - pictures.length);
       }
     },
-    [insert]
+    [insert, sessionId]
   );
 
   const onPaste = useCallback(
     (e: ClipboardEvent<HTMLTextAreaElement>) => {
       const files = [...e.clipboardData.files];
-      if (files.some((f) => f.type.startsWith("image/"))) {
+      if (
+        files.some(
+          (f) => f.type.startsWith("image/") || f.type.startsWith("video/")
+        )
+      ) {
         e.preventDefault();
         void attach(files);
         return;
