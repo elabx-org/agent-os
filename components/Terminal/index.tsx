@@ -1396,6 +1396,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
                   onClearStray={clearStray}
                   stateAbove={sideBySide}
                   pages={twoRowPages}
+                  growUp={sideBySide}
                   noPlus={rowAbove}
                   toolsRef={composerToolsRef}
                   extra={

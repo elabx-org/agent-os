@@ -23,6 +23,9 @@ import type { SpreadPages } from "@/components/views/SessionSpread";
 import { ComposerPlusMenu, type ComposerTools } from "./ComposerPlusMenu";
 
 const MAX_ROWS = 5;
+/** A one-line box: the 44px buttons, the capsule's padding and border, and
+    its margin. Growing up, the box keeps this much room in the row. */
+const ONE_LINE_PX = 70;
 
 interface ComposerProps {
   value: string;
@@ -57,6 +60,10 @@ interface ComposerProps {
   /** Across both pages of the open Duo (Two rows): the box on the left
       page, its buttons and Claude's state on the right one */
   pages?: SpreadPages | null;
+  /** Its row stays one line tall and a longer box grows up over the
+      terminal (the open Duo's Split and Mirrored: the other page keeps the
+      terminal down to its keys, not an empty band beside the box) */
+  growUp?: boolean;
   /** The key row above has the tools: no +, its actions through `toolsRef` */
   noPlus?: boolean;
   toolsRef?: MutableRefObject<ComposerTools | null>;
@@ -87,6 +94,7 @@ export function Composer({
   active = true,
   stateAbove = false,
   pages,
+  growUp = false,
   noPlus = false,
   toolsRef,
 }: ComposerProps) {
@@ -160,7 +168,7 @@ export function Composer({
     </button>
   );
 
-  return (
+  const box = (
     // z-10: the capsule's backdrop blur makes it a layer of its own, which
     // otherwise sits under xterm's canvases, so taps on the + menu and the
     // pickers that open above the box went to the terminal
@@ -259,6 +267,13 @@ export function Composer({
       ) : (
         !stateAbove && <ClaudeStateBar live={live} />
       )}
+    </div>
+  );
+
+  if (!growUp) return box;
+  return (
+    <div className="relative" style={{ height: ONE_LINE_PX }}>
+      <div className="absolute inset-x-0 bottom-0">{box}</div>
     </div>
   );
 }
