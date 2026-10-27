@@ -310,7 +310,7 @@ final class KeyboardBar: UIInputView {
     /// A tap; ^C knocks harder, a flick bumps, a held key ticks softly as
     /// it repeats, and a flick ticks as it passes the point where it counts.
     /// Tied to the bar: it lives in the keyboard's window, not the app's,
-    /// and generators with no view stayed silent there
+    /// and a generator with no view may not play there
     private lazy var haptics = UIImpactFeedbackGenerator(style: .light, view: self)
     private lazy var knock = UIImpactFeedbackGenerator(style: .rigid, view: self)
     private lazy var bump = UIImpactFeedbackGenerator(style: .medium, view: self)
