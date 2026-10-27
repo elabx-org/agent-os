@@ -223,6 +223,7 @@ export function Composer({
       >
         <ComposerPlusMenu
           onPhoto={onPhoto}
+          videoDraft={sessionId}
           onInsert={insert}
           onSelectText={onSelectText}
           onTypeInTerminal={onTypeInTerminal}

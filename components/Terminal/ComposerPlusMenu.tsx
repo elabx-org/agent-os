@@ -24,11 +24,14 @@ import {
 import { cn } from "@/lib/utils";
 import { haptic } from "@/lib/haptics";
 import { uploadFilesToTemp } from "@/lib/file-upload";
+import { takeVideos } from "@/stores/videoUploads";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { SnippetsModal } from "./TerminalToolbar";
 
 interface ComposerPlusMenuProps {
   onPhoto: () => void;
+  /** The draft a picked video's frames join (the session) */
+  videoDraft?: string | null;
   /** Text for the composer: a snippet, an uploaded file's path, dictation */
   onInsert: (text: string) => void;
   onSelectText: () => void;
@@ -67,6 +70,7 @@ interface Item {
  */
 export function ComposerPlusMenu({
   onPhoto,
+  videoDraft,
   onInsert,
   onSelectText,
   onTypeInTerminal,
@@ -153,7 +157,11 @@ export function ComposerPlusMenu({
   };
 
   // Several files at once: uploaded together, their paths in one go
-  const pickFiles = useCallback(async (files: File[]) => {
+  const videoDraftRef = useRef(videoDraft);
+  videoDraftRef.current = videoDraft;
+  const pickFiles = useCallback(async (picked: File[]) => {
+    // Videos become frames, beside the box
+    const files = takeVideos(picked, videoDraftRef.current);
     if (!files.length) return;
     setUploading(true);
     try {

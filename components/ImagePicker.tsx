@@ -11,6 +11,7 @@ import {
   ChevronRight,
   Upload,
   Clipboard,
+  Film,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -33,8 +34,8 @@ interface ImagePickerProps {
   initialPath?: string;
   /** The picked image's path; several uploaded at once come space-separated */
   onSelect: (path: string) => void;
-  /** Picked videos, when they can be sent as frames (the composer) */
-  onVideos?: (files: File[]) => void;
+  /** Takes the videos picked (to send as frames) and returns the rest */
+  onVideos?: (files: File[]) => File[];
   onClose: () => void;
 }
 
@@ -52,17 +53,18 @@ export function ImagePicker({
   const [uploading, setUploading] = useState(0);
   const dropZoneRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Videos only: iOS lists them for certain this way
+  const videoInputRef = useRef<HTMLInputElement>(null);
 
   // Picked, dropped or pasted images: uploaded together, then handed over
   // in one go so each lands as its own pill. One that fails is reported and
   // the others still go
   const handleImageFiles = useCallback(
     async (files: File[]) => {
-      const videos = files.filter((f) => f.type.startsWith("video/"));
-      if (videos.length && onVideos) onVideos(videos);
-      const images = files.filter((f) => f.type.startsWith("image/"));
+      const rest = onVideos ? onVideos(files) : files;
+      const images = rest.filter((f) => f.type.startsWith("image/"));
       if (!images.length) {
-        if (videos.length && onVideos) onClose();
+        if (rest.length < files.length) onClose();
         return;
       }
 
@@ -248,6 +250,20 @@ export function ImagePicker({
         }}
       />
 
+      {onVideos && (
+        <input
+          ref={videoInputRef}
+          type="file"
+          accept="video/*"
+          className="hidden"
+          onChange={(e) => {
+            const files = Array.from(e.target.files ?? []);
+            e.target.value = "";
+            handleImageFiles(files);
+          }}
+        />
+      )}
+
       {/* Upload Zone */}
       <div
         ref={dropZoneRef}
@@ -283,6 +299,16 @@ export function ImagePicker({
               <Upload className="mr-2 h-4 w-4" />
               Upload from device
             </Button>
+            {onVideos && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => videoInputRef.current?.click()}
+              >
+                <Film className="mr-2 h-4 w-4" />
+                Upload a video
+              </Button>
+            )}
             <div className="text-muted-foreground flex items-center gap-1 text-xs">
               <Clipboard className="h-3 w-3" />
               <span>or drag & drop / paste (⌘V)</span>
