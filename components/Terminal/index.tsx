@@ -536,6 +536,19 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
         if (text.includes("\n")) sendPaste(text);
         else if (text) sendInput(text);
         setTimeout(() => sendInput("\r"), text ? 80 : 0);
+        // A long paste (an image's in it) can still be arriving when the
+        // Enter does, and Claude takes the Enter in with it: the text then
+        // sits in Claude's box, unsent. Still there with Claude idle, Enter
+        // again (an Enter on an empty box does nothing)
+        if (!text || !term) return;
+        let tries = 0;
+        const confirm = () => {
+          if (isClaudeBusy(term) || !readClaudeInput(term)) return;
+          lastSendRef.current = Date.now();
+          sendInput("\r");
+          if (++tries < 2) setTimeout(confirm, 900);
+        };
+        setTimeout(confirm, 900);
       },
       [sendInput, sendPaste, xtermRef]
     );
