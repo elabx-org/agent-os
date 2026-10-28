@@ -110,28 +110,50 @@ export function ActivityStrip({
         <ChevronRight aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
       </button>
 
-      <Sheet open={open} onOpenChange={setOpen}>
-        <SheetContent>
-          <SheetHeader>
-            <SheetTitle>Live activity</SheetTitle>
-            <SheetDescription className="sr-only">
-              What this session is doing, its changes and agents
-            </SheetDescription>
-          </SheetHeader>
-          <SheetBody className="px-2">
-            {/* Mounted only while open: the rail looks up the PR too */}
-            {open && (
-              <ActivityRail
-                session={session}
-                active={active}
-                compact
-                onNavigate={() => setOpen(false)}
-              />
-            )}
-          </SheetBody>
-        </SheetContent>
-      </Sheet>
+      <LiveActivitySheet
+        session={session}
+        active={active}
+        open={open}
+        onOpenChange={setOpen}
+      />
     </div>
+  );
+}
+
+/** The live activity rail as a sheet, for screens with no room beside the pane */
+export function LiveActivitySheet({
+  session,
+  active,
+  open,
+  onOpenChange,
+}: {
+  session: Session;
+  active: boolean;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent>
+        <SheetHeader>
+          <SheetTitle>Live activity</SheetTitle>
+          <SheetDescription className="sr-only">
+            What this session is doing, its changes and agents
+          </SheetDescription>
+        </SheetHeader>
+        <SheetBody className="px-2">
+          {/* Mounted only while open: the rail looks up the PR too */}
+          {open && (
+            <ActivityRail
+              session={session}
+              active={active}
+              compact
+              onNavigate={() => onOpenChange(false)}
+            />
+          )}
+        </SheetBody>
+      </SheetContent>
+    </Sheet>
   );
 }
 
