@@ -173,7 +173,17 @@ const tool = (fn) => async (args) => {
   }
 };
 
-const server = new McpServer({ name: "agent-os", version: "1.0.0" });
+const server = new McpServer(
+  { name: "agent-os", version: "1.0.0" },
+  {
+    instructions: [
+      "Agent-OS runs the coding sessions on this machine (Claude Code, Codex, Gemini), each in its own tmux terminal, and the user watches and answers them from the Agent-OS app on their phone.",
+      "Use these tools when the user asks you to start, hand work to, check on, answer or stop another session, or to work across projects in parallel.",
+      "A typical run: list_projects (or create_project), start_session with a task, then wait_for_session and read_session; when it is asking a question or waiting for permission, answer_prompt.",
+      "You can't control your own session. Don't stop, interrupt or answer prompts in sessions you didn't start unless the user asks.",
+    ].join("\n"),
+  }
+);
 
 server.registerTool(
   "list_projects",
