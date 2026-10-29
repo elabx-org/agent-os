@@ -51,6 +51,8 @@ import type { ProjectRepository } from "@/lib/db";
 import { confirmAction } from "@/components/ui/confirm";
 
 interface GitPanelProps {
+  /** The session it shows: "Review in chat" quotes the PR to it (M2b) */
+  sessionId?: string;
   workingDirectory: string;
   projectId?: string;
   repositories?: ProjectRepository[];

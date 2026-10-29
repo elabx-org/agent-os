@@ -409,6 +409,7 @@ export function SessionSpread({
           style={{ width: leftPage }}
         >
           <GitPanel
+            sessionId={session?.id}
             workingDirectory={folder}
             projectId={session?.project_id ?? undefined}
             repositories={repositories}

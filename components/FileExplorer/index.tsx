@@ -35,6 +35,8 @@ import type { OpenFile } from "@/hooks/useFileEditor";
 import { cn } from "@/lib/utils";
 
 interface FileExplorerProps {
+  /** The session it shows: "Ask Claude about this file" quotes to it (M2b) */
+  sessionId?: string;
   workingDirectory: string;
   fileEditor: UseFileEditorReturn;
 }

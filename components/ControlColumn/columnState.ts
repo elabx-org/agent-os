@@ -32,6 +32,7 @@ interface ColumnSources {
   liveOpen: boolean;
   working: boolean;
   sheet: ColumnContext["sheet"];
+  changesOpen: boolean;
   native: boolean;
 }
 
@@ -49,6 +50,7 @@ function contextFrom(s: ColumnSources): ColumnContext {
     liveOpen: s.liveOpen,
     working: s.working,
     sheet: s.sheet,
+    changesOpen: s.changesOpen,
   };
 }
 
@@ -77,6 +79,7 @@ export function useColumn(
     liveOpen: nav.liveOpen,
     working: nav.working,
     sheet: nav.sheet,
+    changesOpen: nav.changesOpen,
     native,
   });
   return { surface, mode, items: columnFor(surface, mode, ctx) };
@@ -113,6 +116,7 @@ export function nativeColumn(): {
       liveOpen: mobileNavStore.liveOpen,
       working: mobileNavStore.working,
       sheet: mobileNavStore.sheet,
+      changesOpen: mobileNavStore.changesOpen,
       native: true,
     })
   );

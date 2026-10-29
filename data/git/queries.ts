@@ -5,16 +5,17 @@ import { useSharedPoll } from "@/hooks/useSharedPoll";
 // Re-export for convenience
 export { gitKeys };
 import type { CommitSummary, CommitDetail } from "@/lib/git-history";
-import type { GitStatus, StashEntry } from "@/lib/git-status";
+import type { StashEntry } from "@/lib/git-status";
+import type {
+  CommitMessageResponse,
+  GitStatusResponse,
+  PRSummary,
+  PullResponse,
+} from "@/lib/git-types";
 import type { MultiRepoGitStatus } from "@/lib/multi-repo-git";
 import type { ProjectRepository } from "@/lib/db";
 
-export interface PRInfo {
-  number: number;
-  url: string;
-  state: string;
-  title: string;
-}
+export type PRInfo = PRSummary;
 
 export interface PRData {
   branch: string;
@@ -27,7 +28,9 @@ export interface PRData {
 
 // --- Git Status ---
 
-async function fetchGitStatus(workingDir: string): Promise<GitStatus> {
+async function fetchGitStatus(
+  workingDir: string
+): Promise<GitStatusResponse> {
   const res = await fetch(
     `/api/git/status?path=${encodeURIComponent(workingDir)}`
   );
@@ -212,10 +215,12 @@ export function useCommitAndPush(workingDir: string) {
 
 async function fetchCommitHistory(
   workingDir: string,
-  limit: number = 30
+  limit: number = 30,
+  ref?: string
 ): Promise<CommitSummary[]> {
+  const refParam = ref ? `&ref=${encodeURIComponent(ref)}` : "";
   const res = await fetch(
-    `/api/git/history?path=${encodeURIComponent(workingDir)}&limit=${limit}`
+    `/api/git/history?path=${encodeURIComponent(workingDir)}&limit=${limit}${refParam}`
   );
   if (!res.ok) throw new Error("Failed to fetch commit history");
   const data = await res.json();
@@ -247,10 +252,15 @@ async function fetchCommitFileDiff(
   return data.diff || "";
 }
 
-export function useCommitHistory(workingDir: string, limit: number = 30) {
+/** `ref`: another branch's history (D-Git's main); HEAD's without one */
+export function useCommitHistory(
+  workingDir: string,
+  limit: number = 30,
+  ref?: string
+) {
   return useQuery({
-    queryKey: gitKeys.history(workingDir),
-    queryFn: () => fetchCommitHistory(workingDir, limit),
+    queryKey: gitKeys.history(workingDir, ref ?? ""),
+    queryFn: () => fetchCommitHistory(workingDir, limit, ref),
     staleTime: 30000,
     enabled: !!workingDir,
   });
@@ -679,6 +689,56 @@ export function useAddPRComment(workingDir: string, prNumber: number) {
         queryKey: gitKeys.prComments(workingDir, prNumber),
       });
     },
+  });
+}
+
+// --- Pull, push, commit message (M2b) ---
+
+async function postGit<T>(url: string, body: object): Promise<T> {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data.error) throw new Error(data.error || res.statusText);
+  return data as T;
+}
+
+/** E-Git's column Pull: fast-forward only */
+export function usePull(workingDir: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      postGit<PullResponse>("/api/git/pull", { path: workingDir }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: gitKeys.status(workingDir) });
+      queryClient.invalidateQueries({ queryKey: gitKeys.history(workingDir) });
+    },
+  });
+}
+
+/** E-Git's column Push (sets the upstream the first time) */
+export function usePush(workingDir: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => postGit<unknown>("/api/git/push", { path: workingDir }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: gitKeys.status(workingDir) });
+      queryClient.invalidateQueries({ queryKey: gitKeys.pr(workingDir) });
+    },
+  });
+}
+
+/** D-Git's "Write with Claude": the message, for the field to show */
+export function useGenerateCommitMessage(workingDir: string) {
+  return useMutation({
+    mutationFn: async () =>
+      (
+        await postGit<CommitMessageResponse>("/api/git/commit-message", {
+          path: workingDir,
+        })
+      ).message,
   });
 }
 

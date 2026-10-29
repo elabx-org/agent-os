@@ -6,6 +6,8 @@ import {
   getUntrackedFileDiff,
   expandPath,
 } from "@/lib/git-status";
+import { getBranchInfo } from "@/lib/git-branch-info";
+import type { GitStatusResponse } from "@/lib/git-types";
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
@@ -36,8 +38,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ diff });
     }
 
-    // Otherwise return full status
-    const status = getGitStatus(path);
+    // Otherwise the full status, with the branch against its base
+    const status: GitStatusResponse = {
+      ...getGitStatus(path),
+      ...(await getBranchInfo(path)),
+    };
     return NextResponse.json(status);
   } catch (error) {
     return NextResponse.json(
