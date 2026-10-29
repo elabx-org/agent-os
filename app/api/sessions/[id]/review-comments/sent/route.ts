@@ -1,7 +1,41 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { getDb, queries, type Session } from "@/lib/db";
+import { requireUser } from "@/lib/user-proof";
+import { reviewStore } from "@/lib/review-comments";
+import type { MarkSentResult } from "@/lib/review-types";
 
 // POST /api/sessions/[id]/review-comments/sent (user only) MarkSentRequest -
-// MarkSentResult: after the combined message went through the queue
-// M12 contract stub: U12.1 implements
-export const POST = () =>
-  NextResponse.json({ error: "Not implemented" }, { status: 501 });
+// MarkSentResult: after the combined message went through the queue. Only
+// the session's pending ones among ids flip; the rest are left out
+const MAX_IDS = 500;
+
+export async function POST(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const proof = requireUser(request);
+  if (!proof.ok) {
+    return NextResponse.json(
+      { error: "user_only", reason: proof.reason },
+      { status: 403 }
+    );
+  }
+  const { id } = await params;
+  const session = queries.getSession(getDb()).get(id) as Session | undefined;
+  if (!session) {
+    return NextResponse.json({ error: "Session not found" }, { status: 404 });
+  }
+  const body = await request.json().catch(() => null);
+  const ids: unknown = body?.ids;
+  if (
+    !Array.isArray(ids) ||
+    ids.length > MAX_IDS ||
+    ids.some((n) => !Number.isInteger(n) || n < 1)
+  ) {
+    return NextResponse.json({ error: "ids required" }, { status: 400 });
+  }
+  const result: MarkSentResult = {
+    comments: reviewStore().markSent(id, ids as number[]),
+  };
+  return NextResponse.json(result);
+}
