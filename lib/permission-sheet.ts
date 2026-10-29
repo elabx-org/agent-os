@@ -11,12 +11,21 @@ import {
   type SetPermissionModeResult,
 } from "@/lib/permission-mode";
 
-/** The row the sheet starts on: a change still waiting for the turn, else the mode */
+/**
+ * The row the sheet starts on, as the chip shows it: a change still waiting
+ * for the turn, else what Claude reports running (Shift+Tab in its
+ * terminal changes it without us), else the stored mode
+ */
 export function initialChoice(
   state: PermissionModeState | undefined
 ): Mode | null {
   if (!state) return null;
-  return state.pending ?? state.mode;
+  return state.pending ?? state.live ?? state.mode;
+}
+
+/** The pending change is a different mode from the one running now */
+export function isWaiting(state: PermissionModeState | undefined): boolean {
+  return !!state?.pending && state.pending !== (state.live ?? state.mode);
 }
 
 /** Done with the row it opened on changes nothing, so it only closes */

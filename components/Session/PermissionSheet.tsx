@@ -19,6 +19,7 @@ import {
 import {
   fullAccessConfirm,
   initialChoice,
+  isWaiting,
   modeToast,
   needsPost,
   RESTART_BUSY,
@@ -193,7 +194,7 @@ export function PermissionSheet({ session, onClose }: PermissionSheetProps) {
     };
   }, [close]);
 
-  const waiting = !!state?.pending && choice === state.pending;
+  const waiting = isWaiting(state) && choice === state?.pending;
 
   return createPortal(
     <div className="fixed inset-0 z-50" style={{ right: railWidth }}>

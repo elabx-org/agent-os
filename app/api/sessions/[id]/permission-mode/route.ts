@@ -8,7 +8,12 @@ import {
   userOnly,
 } from "@/lib/permission-guard";
 import { getFlag } from "@/lib/flags";
-import { decideApply, forgetModeMiss } from "@/lib/permission-apply";
+import {
+  decideApply,
+  forgetModeMiss,
+  noteModeMiss,
+  retryPendingSoon,
+} from "@/lib/permission-apply";
 import { isRunning } from "@/lib/session-launch";
 import { readiness } from "@/lib/session-ready";
 import {
@@ -153,9 +158,12 @@ export async function POST(
   });
   let appliesAt = decision.appliesAt;
   if (decision.action === "live") {
-    appliedNow = (await applyModeLive(session, mode)).applied;
+    const outcome = await applyModeLive(session, mode);
+    appliedNow = outcome.applied;
     // Claude resumes its conversation, so it can take it at a restart
     if (!appliedNow) {
+      // The cycle came round without it: the idle edge needn't try again
+      if (outcome.live !== null) noteModeMiss(id, mode);
       pending = mode;
       needsRestart = true;
       appliesAt = "restart";
@@ -163,6 +171,7 @@ export async function POST(
   } else if (decision.action === "pending") {
     pending = mode;
     needsRestart = decision.appliesAt === "restart";
+    if (decision.appliesAt === "nextTurn") retryPendingSoon(id);
   } else {
     // Others take it when they're next started
     needsRestart = running;

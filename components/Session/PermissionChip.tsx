@@ -65,7 +65,23 @@ export function usePermissionChip(session: Session): ChipModel | null {
       queryKey: permissionModeKeys.session(session.id),
     });
   }, [enabled, liveMode, status, queryClient, session.id]);
-  return chipModel(state, session.agent_type);
+  const chip = chipModel(state, session.agent_type);
+  // The applier presses a waiting mode in just after the turn's end, which
+  // changes neither of those (Shift+Tab fires no hook): look again until
+  // it's in
+  const waiting = !!chip?.pending;
+  useEffect(() => {
+    if (!waiting) return;
+    const timer = setInterval(
+      () =>
+        queryClient.invalidateQueries({
+          queryKey: permissionModeKeys.session(session.id),
+        }),
+      4000
+    );
+    return () => clearInterval(timer);
+  }, [waiting, queryClient, session.id]);
+  return chip;
 }
 
 /**

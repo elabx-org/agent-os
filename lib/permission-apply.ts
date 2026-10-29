@@ -76,6 +76,14 @@ export function forgetModeMiss(sessionId: string): void {
 }
 
 /**
+ * Remembers that the session's cycle doesn't have `mode` (the route's own
+ * live try missed it), so its idle edge doesn't press through it again
+ */
+export function noteModeMiss(sessionId: string, mode: Mode): void {
+  applyState().missed.set(sessionId, mode);
+}
+
+/**
  * Applies `session.permission_pending` now if the session is idle and the
  * mode is in its Shift+Tab cycle; clears it when applied. A mode the cycle
  * doesn't have (full access without the Labs cap, or one this Claude
@@ -129,6 +137,27 @@ export async function applyPendingMode(
   if (outcome.live === null) return { mode, applied: false, reason: "failed" };
   missed.set(session.id, mode);
   return { mode, applied: false, reason: "not_in_cycle" };
+}
+
+/** After a pick that waits: the route's readiness read may be a moment old */
+const RETRY_MS = [2500, 8000];
+
+/**
+ * A couple of later looks at a pick that waits for the turn: the turn may
+ * already be over (readiness holds for a moment after Claude's Stop), and
+ * an idle session has no further edge to apply it at. Each look is the
+ * applier's own: two readiness reads, no keys unless idle
+ */
+export function retryPendingSoon(sessionId: string): void {
+  if (tickersDisabled()) return;
+  for (const ms of RETRY_MS) {
+    setTimeout(() => {
+      if (!getFlag("modeAtIdle")) return;
+      applyPendingAtIdle(sessionId).catch((error) =>
+        console.error("[mode] retry:", error)
+      );
+    }, ms).unref?.();
+  }
 }
 
 export interface ApplyDecisionInput {

@@ -5,6 +5,7 @@ import {
   canRestartHere,
   fullAccessConfirm,
   initialChoice,
+  isWaiting,
   modeToast,
   needsPost,
 } from "../../lib/permission-sheet";
@@ -22,6 +23,20 @@ test("starts on the mode, or the change waiting for the turn", () => {
   assert.equal(initialChoice(undefined), null);
   assert.equal(initialChoice(STATE), "acceptEdits");
   assert.equal(initialChoice({ ...STATE, pending: "auto" }), "auto");
+  // What Claude runs beats the stored mode, as on the chip
+  assert.equal(initialChoice({ ...STATE, live: "manual" }), "manual");
+  assert.equal(initialChoice({ ...STATE, live: null }), "acceptEdits");
+});
+
+test("waiting only while the pending mode differs from the one running", () => {
+  assert.equal(isWaiting(undefined), false);
+  assert.equal(isWaiting(STATE), false);
+  assert.equal(isWaiting({ ...STATE, pending: "auto" }), true);
+  assert.equal(isWaiting({ ...STATE, pending: "acceptEdits" }), false);
+  assert.equal(
+    isWaiting({ ...STATE, live: null, mode: "manual", pending: "auto" }),
+    true
+  );
 });
 
 test("Done with the row it opened on only closes", () => {

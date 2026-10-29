@@ -164,6 +164,21 @@ describe("applyPendingMode", () => {
     assert.ok(presses(third.log) > 0);
   });
 
+  test("a miss the route saw is not pressed again at the edge", async () => {
+    const s = session();
+    apply.noteModeMiss(s.id, "auto");
+    const f = fakes();
+    const r = await apply.applyPendingMode(s, f.deps);
+    assert.equal(r.reason, "not_in_cycle");
+    assert.deepEqual(f.log, []);
+    // Another pending mode is tried
+    const other = await apply.applyPendingMode(
+      { ...s, permission_pending: "acceptEdits" } as Session,
+      fakes().deps
+    );
+    assert.equal(other.applied, true);
+  });
+
   test("never more than 6 presses even if the footer never matches", async () => {
     const cycle = Array.from({ length: 20 }, (_, i) => `m${i}`);
     const f = fakes({ cycle, start: "m0" });
