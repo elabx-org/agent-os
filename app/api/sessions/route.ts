@@ -10,6 +10,7 @@ import { findAvailablePort } from "@/lib/ports";
 import { runInBackground } from "@/lib/async-operations";
 import { getProject } from "@/lib/projects";
 import { launchSession } from "@/lib/session-launch";
+import { isAgentOrigin } from "@/lib/agent-origin";
 
 // GET /api/sessions - List all sessions and groups
 export async function GET() {
@@ -64,7 +65,7 @@ export async function POST(request: NextRequest) {
       groupPath = "sessions",
       claudeSessionId = null,
       agentType: rawAgentType = "claude",
-      autoApprove = false,
+      autoApprove: requestedAutoApprove = false,
       projectId = "uncategorized",
       // Worktree options
       useWorktree = false,
@@ -80,6 +81,9 @@ export async function POST(request: NextRequest) {
       // Start it now, with nobody watching (agents driving Agent-OS)
       launch = false,
     } = body;
+
+    // Skipping permission prompts is the user's call, never an agent's
+    const autoApprove = !!requestedAutoApprove && !isAgentOrigin(request);
 
     // Validate agent type
     const agentType: AgentType = isValidAgentType(rawAgentType)

@@ -7,6 +7,10 @@
  *
  * Talks to the running server over loopback (AGENTOS_URL, default
  * http://localhost:3011), which needs no sign-in from inside the machine.
+ *
+ * Permission decisions stay with the user: every request is marked as an
+ * agent's (x-agentos-origin: agent), and the server refuses an agent's
+ * answer to a permission request and its auto-approve.
  */
 
 import { execFileSync } from "node:child_process";
@@ -18,10 +22,17 @@ import { z } from "zod";
 
 const BASE = process.env.AGENTOS_URL || "http://localhost:3011";
 
+const PERMISSION_USER_ONLY =
+  "Permission requests can only be answered by the user in Agent-OS. Ask the user.";
+
 async function api(path, options = {}) {
   const res = await fetch(`${BASE}${path}`, {
     ...options,
-    headers: { "Content-Type": "application/json", ...options.headers },
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+      "X-AgentOS-Origin": "agent",
+    },
     body: options.body === undefined ? undefined : JSON.stringify(options.body),
   });
   const text = await res.text();
@@ -132,9 +143,11 @@ async function inspect(session, live) {
     get(`/api/sessions/${session.id}/prompt`),
   ]);
   if (prompt && (!context || context.kind === "working")) {
-    // Before its first turn (folder trust) or mid-turn: the screen knows
+    // Before its first turn (folder trust) or mid-turn: the screen knows,
+    // and it isn't a question (that would be an ask), so it's the user's
     return {
-      state: "waiting at a prompt",
+      state: "waiting for permission",
+      user_only: true,
       context,
       question: prompt.question || prompt.title || undefined,
       options: prompt.options.map((o) => ({ index: o.index, label: o.label })),
@@ -143,6 +156,7 @@ async function inspect(session, live) {
   if (!context) return { state: "starting" };
   return {
     state: KINDS[context.kind] ?? context.kind,
+    user_only: context.kind === "permission" || undefined,
     context,
     question: context.question ?? undefined,
     options: context.options?.length
@@ -179,7 +193,8 @@ const server = new McpServer(
     instructions: [
       "Agent-OS runs the coding sessions on this machine (Claude Code, Codex, Gemini), each in its own tmux terminal, and the user watches and answers them from the Agent-OS app on their phone.",
       "Use these tools when the user asks you to start, hand work to, check on, answer or stop another session, or to work across projects in parallel.",
-      "A typical run: list_projects (or create_project), start_session with a task, then wait_for_session and read_session; when it is asking a question or waiting for permission, answer_prompt.",
+      "A typical run: list_projects (or create_project), start_session with a task, then wait_for_session and read_session; when it is asking a question, answer_prompt.",
+      "Permission requests are the user's: you can't answer them (answer_prompt and send_message refuse) or start sessions that skip them. When a session is waiting for permission, tell the user and let them answer it in Agent-OS.",
       "You can't control your own session. Don't stop, interrupt or answer prompts in sessions you didn't start unless the user asks.",
     ].join("\n"),
   }
@@ -290,7 +305,7 @@ server.registerTool(
   "start_session",
   {
     description:
-      "Start a new Agent-OS session (it appears in the Agent-OS app) and give it a task. Runs without anyone watching; check on it with read_session or wait_for_session.",
+      "Start a new Agent-OS session (it appears in the Agent-OS app) and give it a task. Runs without anyone watching; check on it with read_session or wait_for_session. It always asks for permission as usual; only the user can approve its requests or turn on auto-approve, in Agent-OS.",
     inputSchema: {
       task: z
         .string()
@@ -321,60 +336,45 @@ server.registerTool(
         .describe(
           "Work on a new branch in its own worktree, so it doesn't disturb the checkout"
         ),
-      auto_approve: z
-        .boolean()
-        .optional()
-        .describe("Skip permission prompts (default false)"),
     },
   },
-  tool(
-    async ({
-      task,
-      project,
-      directory,
-      name,
-      agent,
-      model,
-      branch,
-      auto_approve,
-    }) => {
-      const p = project ? findProject(await projects(), project) : null;
-      const cwd = (directory || p?.working_directory || "~").replace(
-        /^~(?=$|\/)/,
-        os.homedir()
-      );
-      const { session, error } = await api("/api/sessions", {
-        method: "POST",
-        body: {
-          name,
-          workingDirectory: cwd,
-          projectId: p?.id ?? "uncategorized",
-          agentType: agent || p?.agent_type || "claude",
-          model: model || p?.default_model || undefined,
-          autoApprove: !!auto_approve,
-          useWorktree: !!branch,
-          featureName: branch || null,
-          initialPrompt: task || null,
-          launch: true,
-        },
-      });
-      if (error) throw new Error(error);
-      return {
-        id: session.id,
-        name: session.name,
-        directory: session.worktree_path || session.working_directory,
-        branch: session.branch_name || undefined,
-        started: true,
-      };
-    }
-  )
+  tool(async ({ task, project, directory, name, agent, model, branch }) => {
+    const p = project ? findProject(await projects(), project) : null;
+    const cwd = (directory || p?.working_directory || "~").replace(
+      /^~(?=$|\/)/,
+      os.homedir()
+    );
+    const { session, error } = await api("/api/sessions", {
+      method: "POST",
+      body: {
+        name,
+        workingDirectory: cwd,
+        projectId: p?.id ?? "uncategorized",
+        agentType: agent || p?.agent_type || "claude",
+        model: model || p?.default_model || undefined,
+        autoApprove: false,
+        useWorktree: !!branch,
+        featureName: branch || null,
+        initialPrompt: task || null,
+        launch: true,
+      },
+    });
+    if (error) throw new Error(error);
+    return {
+      id: session.id,
+      name: session.name,
+      directory: session.worktree_path || session.working_directory,
+      branch: session.branch_name || undefined,
+      started: true,
+    };
+  })
 );
 
 server.registerTool(
   "send_message",
   {
     description:
-      "Type a message into a running session and press Enter, as if you sent it from Agent-OS.",
+      "Type a message into a running session and press Enter, as if you sent it from Agent-OS. Refused while the session is waiting for permission: only the user can answer that.",
     inputSchema: {
       session: z.string().describe("Session id, id prefix or name"),
       text: z.string().describe("The message"),
@@ -410,7 +410,10 @@ server.registerTool(
   tool(async ({ session, terminal_lines = 20 }) => {
     const s = await findSession(session);
     const live = await running();
-    const { state, context, question, options } = await inspect(s, live);
+    const { state, user_only, context, question, options } = await inspect(
+      s,
+      live
+    );
     const preview =
       live.has(tmuxOf(s)) && terminal_lines > 0
         ? ((await get(`/api/sessions/${s.id}/preview`)).lines ?? [])
@@ -418,6 +421,7 @@ server.registerTool(
     return {
       name: s.name,
       state,
+      note: user_only ? PERMISSION_USER_ONLY : undefined,
       question,
       options,
       last_message: context?.text ?? undefined,
@@ -430,7 +434,7 @@ server.registerTool(
   "wait_for_session",
   {
     description:
-      "Wait until a session stops working (finished, asking a question or waiting for permission), then return what read_session would.",
+      "Wait until a session stops working (finished, asking a question or waiting for permission), then return what read_session would. A permission request is for the user to answer, not you.",
     inputSchema: {
       session: z.string().describe("Session id, id prefix or name"),
       timeout_seconds: z
@@ -449,7 +453,7 @@ server.registerTool(
     // A turn just sent may not show as working for a moment
     await new Promise((r) => setTimeout(r, 4000));
     for (;;) {
-      const { state, context, question, options } = await inspect(
+      const { state, user_only, context, question, options } = await inspect(
         s,
         await running()
       );
@@ -458,6 +462,7 @@ server.registerTool(
           name: s.name,
           state,
           timed_out: busy(state) || undefined,
+          note: user_only ? PERMISSION_USER_ONLY : undefined,
           question,
           options,
           last_message: context?.text ?? undefined,
@@ -472,7 +477,7 @@ server.registerTool(
   "answer_prompt",
   {
     description:
-      "Pick an option on the selection prompt a session's Claude is showing (a permission request or a question), by its index and label from read_session.",
+      "Answer a question a session's Claude is asking (AskUserQuestion) by picking an option, by its index and label from read_session. Permission requests can't be answered here: only the user can, in Agent-OS.",
     inputSchema: {
       session: z.string().describe("Session id, id prefix or name"),
       index: z
@@ -487,6 +492,10 @@ server.registerTool(
   tool(async ({ session, index, label }) => {
     const s = await findSession(session);
     notSelf(s, "answer");
+    // Only a question: anything else, or unclear, is a permission request
+    const { user_only, context } = await inspect(s, await running());
+    if (user_only || context?.kind !== "ask")
+      throw new Error(PERMISSION_USER_ONLY);
     const { prompt } = await api(`/api/sessions/${s.id}/prompt`);
     const option = prompt?.options.find((o) => o.label === label);
     if (!option)
