@@ -25,6 +25,8 @@ export interface PushConfig {
     limited: boolean;
     /** A limited session was resumed at its reset (M6) */
     resumed: boolean;
+    /** A session settled by itself when its PR merged (M8) */
+    settled: boolean;
   };
   /** Where notification links open, e.g. https://agent.example.com */
   publicUrl: string;
@@ -55,6 +57,7 @@ function defaults(): PushConfig {
       backgroundFinished: false,
       limited: true,
       resumed: true,
+      settled: true,
     },
     publicUrl: "",
     ntfy: {

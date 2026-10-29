@@ -497,6 +497,19 @@ const migrations: Migration[] = [
       addColumnIfMissing(db, "sessions", "resume_text", "TEXT");
     }),
   },
+  {
+    id: 30,
+    name: "add_settle_to_sessions",
+    up: atomic((db) => {
+      // M8: a settled session's tmux ended, its row and transcript stay
+      // (lib/settle.ts); the PR poller keeps the branch's PR on the row
+      addColumnIfMissing(db, "sessions", "settled_at", "INTEGER");
+      addColumnIfMissing(db, "sessions", "settled_reason", "TEXT");
+      addColumnIfMissing(db, "sessions", "pr_checks", "TEXT");
+      addColumnIfMissing(db, "sessions", "pr_title", "TEXT");
+      addColumnIfMissing(db, "sessions", "pr_merged_at", "INTEGER");
+    }),
+  },
 ];
 
 export function runMigrations(db: Database.Database): void {

@@ -13,6 +13,7 @@ import {
 import { startLimitWatch } from "./limits/watch";
 import { startResumeTicker } from "./limits/resume";
 import { startModeApplier } from "./permission-apply";
+import { startPrPoller } from "./pr-poller";
 import { startDispatcher } from "./queue/dispatcher";
 import { onEdge, startSessionWatch, wantWatch } from "./session-watch";
 import { onIdleEdge } from "./turns";
@@ -38,6 +39,8 @@ export function startTickers(): void {
   startLimitWatch();
   startResumeTicker();
   startModeApplier();
+  // PR checks and auto-settle (M8): checks flags prPoller and autoSettle
+  startPrPoller();
 
   // The end of a turn: Codex/Gemini post snapshots, Claude's turn journal
   onEdge((edge) => {

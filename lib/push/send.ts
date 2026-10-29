@@ -10,6 +10,7 @@ export interface PushMessage {
     | "agentFinished"
     | "limited"
     | "resumed"
+    | "settled"
     | "test";
   title: string;
   body: string;
