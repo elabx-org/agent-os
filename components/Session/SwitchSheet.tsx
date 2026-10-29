@@ -81,11 +81,18 @@ export function SwitchSheet({
       <SheetContent
         className={cn(
           "sheet-surface bg-[var(--sheet)]",
+          // Half folded (tabletop): on the base, below the hinge
+          "[html[data-fold=horizontal]_&]:top-[calc(var(--fold-end)+0.5rem)] [html[data-fold=horizontal]_&]:max-h-none",
           // The open Duo lying flat: on the right page, clear of the hinge
-          "[html[data-hinge]_&]:left-[calc(var(--hinge-x)+var(--fold-clear))] [html[data-hinge]_&]:mx-0 [html[data-hinge]_&]:max-w-none"
+          "[html[data-hinge]_&]:right-0 [html[data-hinge]_&]:left-[calc(var(--hinge-x)+var(--fold-clear))] [html[data-hinge]_&]:mx-0 [html[data-hinge]_&]:w-auto [html[data-hinge]_&]:max-w-none"
         )}
         data-beside-column={beside ? "" : undefined}
-        style={beside ? { right: railWidth, maxWidth: "none" } : undefined}
+        // left 0 + right at the column: w-full would win over right
+        style={
+          beside
+            ? { right: railWidth, width: "auto", maxWidth: "none" }
+            : undefined
+        }
         onPointerDownOutside={(e) => {
           const target = e.target as Element | null;
           if (target?.closest?.("[data-control-column]")) e.preventDefault();

@@ -380,6 +380,15 @@ export function SessionTitleBar({
             {shellDrawerOpen ? "Hide shell drawer" : "Shell drawer"}
           </DropdownMenuItem>
         )}
+        {/* The phone's classic header has no chip; a narrow desktop bar hides it */}
+        {session &&
+          switchable &&
+          (variant === "classic" || variant === "desktop") && (
+            <DropdownMenuItem onSelect={() => setSwitchOpen(true)}>
+              <ArrowRightLeft className="h-4 w-4" />
+              Agent and model
+            </DropdownMenuItem>
+          )}
         {session && (
           <DropdownMenuItem
             onSelect={async () => {
