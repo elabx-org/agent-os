@@ -61,6 +61,11 @@ function harness(
     hookAt?: () => number | null;
     /** The pending permission mode hook (lib/permission-apply) */
     applyPendingMode?: (session: Session) => Promise<unknown>;
+    /** Runs a claimed move item (M5) */
+    runMove?: (
+      session: Session,
+      item: import("../../lib/queue/types").QueueItem
+    ) => Promise<void>;
   } = {}
 ) {
   const pasting = opts.pasting ?? new Set<string>();
@@ -107,6 +112,7 @@ function harness(
       ...(opts.applyPendingMode && {
         applyPendingMode: opts.applyPendingMode,
       }),
+      ...(opts.runMove && { runMove: opts.runMove }),
     },
     opts.state
   );
@@ -531,6 +537,127 @@ describe("two dispatchers on one DB", () => {
       texts
     );
     assert.deepEqual(overlaps, [], "one paste at a time per session");
+  });
+});
+
+describe("dispatcher: scheduled moves (M5)", () => {
+  const schedule = (id = "s1") =>
+    store.queueStore().scheduleMove(id, '{"v":1}')!;
+
+  test("a move is run, never typed in, ahead of queued messages", async () => {
+    const moved: number[] = [];
+    let pending = 0;
+    const h = harness({
+      runMove: async (_s, item) => {
+        moved.push(item.id);
+        pending =
+          store.queueStore().getItem("s1", item.id)!.status === "sending"
+            ? 1
+            : 0;
+      },
+    });
+    add("s1", "after the move");
+    const move = schedule();
+    // Hidden from the composer's list, but ahead of a send now
+    assert.deepEqual(
+      store.listQueue("s1").map((i) => [i.text, i.position]),
+      [["after the move", 1]]
+    );
+    assert.equal(store.queueStore().hasActive("s1"), true);
+    assert.equal(store.queueStore().head("s1")?.id, move.id);
+    store
+      .queueStore()
+      .setUndoNotice("s1", "[AgentOS: the user undid turn 1; a is back.]");
+
+    await h.d.service("s1");
+    assert.deepEqual(moved, [move.id]);
+    assert.equal(pending, 1, "claimed (sending) while it runs");
+    assert.deepEqual(h.sent, [], "nothing typed for the move");
+    assert.ok(!h.calls.some((c) => c.startsWith("snapshot:")));
+    assert.equal(store.queueStore().getItem("s1", move.id)?.status, "sent");
+    assert.ok(store.getUndoNotice("s1"), "the undo notice waits for a message");
+
+    await h.d.service("s1");
+    const sent = h.sent as { id: string; text: string }[];
+    assert.equal(sent.length, 1);
+    assert.match(sent[0].text, /after the move$/);
+  });
+
+  test("goes with the queue flag off; messages behind it still wait", async () => {
+    const moved: number[] = [];
+    const h = harness({
+      runMove: async (_s, item) => {
+        moved.push(item.id);
+      },
+    });
+    h.queueOff.add("s1");
+    add("s1", "queued");
+    const move = schedule();
+    await h.d.service("s1");
+    await h.d.service("s1");
+    assert.deepEqual(moved, [move.id]);
+    assert.deepEqual(h.sent, []);
+  });
+
+  test("only after two ready reads", async () => {
+    const moved: number[] = [];
+    const h = harness({ runMove: async (_s, i) => void moved.push(i.id) });
+    schedule();
+    h.script("s1", READY, hold("busy"));
+    await h.d.service("s1");
+    assert.deepEqual(moved, []);
+  });
+
+  test("waits when there is no runner", async () => {
+    const h = harness();
+    const move = schedule();
+    add("s1", "behind");
+    await h.d.service("s1");
+    assert.equal(store.queueStore().getItem("s1", move.id)?.status, "pending");
+    assert.deepEqual(h.sent, []);
+  });
+
+  test("a failed move is marked failed, with why, and kept out of the composer", async () => {
+    const h = harness({
+      runMove: async () => {
+        throw new Error("The worktree doesn't match the changes");
+      },
+    });
+    const move = schedule();
+    const errors = console.error;
+    console.error = () => {};
+    try {
+      await h.d.service("s1");
+    } finally {
+      console.error = errors;
+    }
+    const item = store.queueStore().getItem("s1", move.id)!;
+    assert.equal(item.status, "failed");
+    assert.equal(item.error, "The worktree doesn't match the changes");
+    assert.deepEqual(h.sent, []);
+    assert.deepEqual(store.queueStore().listFailed("s1", 0), []);
+    assert.equal(store.queueStore().hasActive("s1"), false);
+  });
+
+  test("one move per session; a restart fails a running move on its own", () => {
+    const q = store.queueStore();
+    const move = schedule();
+    assert.equal(q.scheduleMove("s1", "{}"), null);
+    assert.equal(q.startMove("s1", "{}"), null);
+    assert.deepEqual(
+      q.pendingMoves().map((i) => i.id),
+      [move.id]
+    );
+    q.claimNext("s1");
+    add("s1", "typed");
+    assert.equal(q.claimNext("s1"), null, "nothing else while it runs");
+    assert.equal(q.failInterrupted(), 0, "left to failInterruptedMoves");
+    const cut = q.failInterruptedMoves();
+    assert.deepEqual(
+      cut.map((i) => [i.id, i.status]),
+      [[move.id, "failed"]]
+    );
+    assert.equal(q.getItem("s1", move.id)?.status, "failed");
   });
 });
 
