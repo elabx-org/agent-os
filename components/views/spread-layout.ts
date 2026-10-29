@@ -80,13 +80,15 @@ export function spreadLayout(i: SpreadInput): SpreadLayout {
   const conversation = i.viewMode === "terminal" || i.viewMode === "chat";
   const pageWide = i.pages && i.pageOpen && i.pageSpread;
   const twoPages = i.pages && i.paneCount > 1 && !i.pageOpen;
-  // Typing beside an open review keeps the review on the right page
+  // Typing beside an open review keeps the review on the right page. The
+  // terminal shows the turn itself, so it keeps both pages while typing
   const replyLeft =
     i.pages &&
     i.hasSession &&
     !i.pageOpen &&
     !twoPages &&
     i.replying &&
+    i.viewMode !== "terminal" &&
     !(i.reviewOpen && i.viewMode === "chat");
   // O-Diff, D-Diff: the review takes the right page or the desktop's room
   // beside the chat (two panes on the pages keep theirs; the chat draws it

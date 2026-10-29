@@ -216,3 +216,14 @@ test("diff review (M12): beside the chat on the desktop and the open Duo (D-Diff
     assert.equal(l.reviewBeside, false);
   }
 });
+
+test("typing in the terminal keeps it on both pages: no last turn beside it", () => {
+  const terminal = spreadLayout({
+    ...OPEN,
+    viewMode: "terminal",
+    replying: true,
+  });
+  assert.equal(terminal.replyLeft, false);
+  assert.equal(terminal.paneRight, false);
+  assert.equal(spreadLayout({ ...OPEN, replying: true }).replyLeft, true);
+});
