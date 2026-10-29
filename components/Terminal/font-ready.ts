@@ -1,15 +1,15 @@
 "use client";
 
 import type { Terminal as XTerm } from "@xterm/xterm";
+import { terminalFontSpec, terminalFontStore } from "@/lib/terminal-font";
 
 /**
  * xterm measures its cells when it opens, and again only when the font
- * family or size changes. Opened before JetBrains Mono (next/font, in
- * app/layout.tsx) has loaded, it would keep the fallback's widths and
+ * family or size changes. Opened before its font (Settings → Display, loaded
+ * by next/font in app/layout.tsx) has loaded, it would keep the fallback's widths and
  * misplace every glyph. So the terminal waits for the font, at most
  * FONT_WAIT_MS, and if it gave up re-measures once every font is in.
  */
-export const TERMINAL_FONT = '13px "JetBrains Mono"';
 export const FONT_WAIT_MS = 1500;
 
 /** True once the terminal font is ready, false if the wait timed out */
@@ -17,9 +17,10 @@ export function terminalFontReady(): Promise<boolean> {
   if (typeof document === "undefined" || !document.fonts) {
     return Promise.resolve(true);
   }
-  if (document.fonts.check(TERMINAL_FONT)) return Promise.resolve(true);
+  const spec = terminalFontSpec(terminalFontStore.font);
+  if (document.fonts.check(spec)) return Promise.resolve(true);
   return Promise.race([
-    document.fonts.load(TERMINAL_FONT).then(
+    document.fonts.load(spec).then(
       (faces) => faces.length > 0,
       () => false
     ),

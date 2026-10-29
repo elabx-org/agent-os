@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Inter, JetBrains_Mono } from "next/font/google";
+import { IBM_Plex_Mono, Inter, JetBrains_Mono } from "next/font/google";
 import { AppToaster } from "@/components/AppToaster";
 import { Providers } from "@/components/Providers";
 import { DENSITY_BOOT_SCRIPT } from "@/lib/display-density";
@@ -20,6 +20,14 @@ const geistMono = JetBrains_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
   weight: ["400", "500"],
+});
+
+// The terminal's other font (Settings → Display), fetched only when chosen
+const plexMono = IBM_Plex_Mono({
+  variable: "--font-plex-mono",
+  subsets: ["latin"],
+  weight: ["400", "600"],
+  preload: false,
 });
 
 export const metadata: Metadata = {
@@ -61,7 +69,7 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: BACKGROUND_BOOT_SCRIPT }} />
       </head>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} font-sans antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} ${plexMono.variable} font-sans antialiased`}
       >
         <Providers>{children}</Providers>
         <AppToaster />
