@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -10,31 +11,34 @@ import {
   type RefObject,
 } from "react";
 import { useSnapshot } from "valtio";
-import { Bell, ChevronLeft, Inbox as InboxIcon } from "lucide-react";
+import { toast } from "sonner";
+import { Bell, ChevronLeft, Loader2, Trash2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { askLabel, InboxItem } from "@/components/Inbox";
-import { useSessionPrompt } from "@/data/prompts/queries";
+import { confirmAction } from "@/components/ui/confirm";
+import { Avatar, agentAvatar, agentName } from "@/components/a/Avatar";
+import { GroupCard, GroupRow } from "@/components/a/GroupCard";
+import { InboxItem } from "@/components/Inbox";
+import { PermissionCard } from "@/components/Composer/PermissionCard";
+import { shortAge } from "@/components/MissionControl/now-summary";
 import {
-  AgentRow,
-  SectionHeader,
-  type RowKind,
-} from "@/components/rows/AgentRow";
+  PROMPT_POLL_SLOW_MS,
+  useAnswerPrompt,
+  useSessionPrompt,
+} from "@/data/prompts/queries";
 import {
-  BackgroundAgentRow,
   home,
-  openBackgroundAgent,
   useBackgroundAgentsByProject,
 } from "@/components/BackgroundAgents";
 import {
   AgentCrumb,
   AgentDetail,
 } from "@/components/BackgroundAgents/AgentDetail";
-import { PageHeader, type PageProps } from "@/components/WorkspacePage";
+import type { PageProps } from "@/components/WorkspacePage";
 import { FoldSplit } from "@/components/FoldSplit";
 import {
   useSpreadFold,
@@ -44,13 +48,26 @@ import type { ViewProps } from "@/components/views/types";
 import { useNeedsYou, type NotificationEntry } from "@/hooks/useNeedsYou";
 import { displayTitle, useListTitles } from "@/hooks/useSessionTitles";
 import { FOLD_CLEAR } from "@/hooks/useHinge";
-import { timeAgo, type AgentState } from "@/lib/agent-state";
+import { useIsNative } from "@/hooks/useIsNative";
+import { useLayoutMode, type LayoutMode } from "@/hooks/useLayoutMode";
+import { useReplyContextState } from "@/hooks/useReplyContext";
+import { STATE_TEXT_CLASS } from "@/lib/agent-state";
+import { nativeCaps } from "@/lib/native-bridge";
+import { registerNavHandlers, runNav } from "@/lib/nav-actions";
+import {
+  isAnswerableQuestion,
+  shortLabel,
+  splitOptions,
+} from "@/lib/permission-card";
 import { cn } from "@/lib/utils";
 import { mobileNavActions, mobileNavStore } from "@/stores/mobileNav";
 import { openSettings } from "@/stores/settingsPage";
 import { backPage, openPage, workspacePageStore } from "@/stores/workspacePage";
 import type { BackgroundAgent } from "@/lib/claude-background";
 import type { Session } from "@/lib/db";
+import type { PermissionPrompt } from "@/lib/permission-prompt";
+import { HistoryCard } from "./HistoryCard";
+import { askLine, historyDays } from "./history-rows";
 
 /** Opening the page marks what it shows as read, once it has been seen */
 const MARK_READ_MS = 2000;
@@ -59,7 +76,22 @@ const EARLIER_MAX = 50;
 /** Narrower than this a page lists everything in one column */
 const SPLIT_MIN_WIDTH = 720;
 
-type Picked = { kind: "session" | "agent"; id: string };
+/** The mocks' page padding per posture (E-NeedsYou, E-iPhone, Open-Now) */
+const PAD: Record<LayoutMode, string> = {
+  phone: "px-4 pt-[15px]",
+  "duo-closed": "pt-[18px] pr-2 pl-5",
+  tabletop: "px-4 pt-4",
+  "duo-open": "pt-5 pr-5 pl-6",
+  book: "pt-5 pr-5 pl-6",
+  desktop: "pt-5 pr-5 pl-6",
+};
+
+type Picked = {
+  kind: "session" | "agent";
+  id: string;
+  /** The history row it was picked from, shown selected */
+  entryId?: string;
+};
 
 interface Group {
   key: string;
@@ -68,22 +100,27 @@ interface Group {
   agents: BackgroundAgent[];
 }
 
+/** One thing waiting on you, with the project it's in */
+type Waiting =
+  | { kind: "session"; session: Session; projectName: string }
+  | { kind: "agent"; agent: BackgroundAgent; projectName: string };
+
 /** The last folder of a path, for things outside every project */
 function folderName(dir: string): string {
   return home(dir).replace(/\/+$/, "").split("/").pop() || dir;
 }
 
 /**
- * What the page lists: waiting sessions and blocked agents grouped by
- * project, the history split into what finished since you last looked and
- * the rest, and whether it has been seen (marked read after a moment).
+ * What the page lists: waiting sessions and blocked agents by project, the
+ * history split into what finished since you last looked and the rest,
+ * and whether it has been seen (marked read after a moment).
  */
 function useNeedsYouList(view: ViewProps) {
   const { sessions, sessionStatuses, projects } = view;
   const needs = useNeedsYou(sessions, sessionStatuses);
   const titles = useListTitles(needs.waiting);
   const agentsByProject = useBackgroundAgentsByProject(projects);
-  const { history, unread, markRead } = needs;
+  const { history, unread, markRead, clearHistory } = needs;
 
   const groups = useMemo(() => {
     const named = new Map(
@@ -123,6 +160,24 @@ function useNeedsYouList(view: ViewProps) {
     }
     return [...byKey.values()];
   }, [projects, agentsByProject, needs.waiting, needs.blocked]);
+
+  // One list, a project's items together; the card names the project
+  const waiting = useMemo<Waiting[]>(
+    () =>
+      groups.flatMap((g) => [
+        ...g.sessions.map(
+          (session): Waiting => ({
+            kind: "session",
+            session,
+            projectName: g.name,
+          })
+        ),
+        ...g.agents.map(
+          (agent): Waiting => ({ kind: "agent", agent, projectName: g.name })
+        ),
+      ]),
+    [groups]
+  );
 
   // What was new when it showed stays under Finished for this visit, after
   // it has been marked read
@@ -165,11 +220,13 @@ function useNeedsYouList(view: ViewProps) {
 
   return {
     count: needs.count,
-    groups,
+    waiting,
     titles,
     agents: needs.agents,
     finished,
     earlier,
+    hasHistory: history.length > 0,
+    clearHistory,
   };
 }
 
@@ -186,109 +243,112 @@ function usePageVisible(): boolean {
 
 type NeedsYouList = ReturnType<typeof useNeedsYouList>;
 
-// "fusionha · 4 background agents"
-function groupLabel(group: Group): string {
-  const n = group.agents.length;
-  return n
-    ? `${group.name} · ${n} background agent${n === 1 ? "" : "s"}`
-    : group.name;
+/**
+ * Clear history, the column's trash (and the in-page one): asks first, and
+ * leaves what still waits, which is the sessions' live state
+ */
+function useClearHistory(list: NeedsYouList) {
+  const { hasHistory, clearHistory } = list;
+  const clear = useCallback(async () => {
+    if (!hasHistory) {
+      toast("Nothing to clear");
+      return;
+    }
+    const ok = await confirmAction({
+      title: "Clear notification history?",
+      message: "What still needs you stays here.",
+      confirmLabel: "Clear history",
+      destructive: true,
+    });
+    if (ok) clearHistory();
+  }, [hasHistory, clearHistory]);
+  useEffect(() => registerNavHandlers({ clearHistory: clear }), [clear]);
+  return clear;
 }
 
-/** "ntfy · sent", from what each channel did */
-function channels(entry: NotificationEntry): string | null {
-  const { ntfy, apns } = entry.delivered ?? {};
-  const parts = [
-    ntfy && `ntfy · ${ntfy === "sent" ? "sent" : "failed"}`,
-    apns && `Apple push · ${/\bsent\b/.test(apns) ? "sent" : "failed"}`,
-  ].filter(Boolean);
-  return parts.length ? parts.join(" · ") : null;
+/**
+ * Bell and trash on the page itself, only where no column or bar has them:
+ * the phone's tab bar, the iOS app before it takes the column, the dialog
+ */
+function useInPageControls(dialog?: boolean) {
+  const mode = useLayoutMode();
+  const native = useIsNative();
+  if (dialog) return { controls: true, back: false };
+  const column = native ? nativeCaps().column : mode !== "phone";
+  return { controls: !column, back: native && !column };
 }
 
-const ENTRY_STATE: Record<NotificationEntry["kind"], AgentState> = {
-  needsYou: "needs",
-  agentNeedsYou: "needs",
-  finished: "done",
-  agentFinished: "done",
-  test: "idle",
-};
-
-/** One line of history: what happened, when, and where it was sent */
-function HistoryRow({
-  entry,
-  onOpen,
+function HeaderButton({
+  label,
+  onClick,
+  children,
 }: {
-  entry: NotificationEntry;
-  /** Left out when what it was about is gone */
-  onOpen?: () => void;
+  label: string;
+  onClick: () => void;
+  children: ReactNode;
 }) {
-  const kind: RowKind = entry.agentId
-    ? "background"
-    : entry.sessionId
-      ? "session"
-      : "setting";
   return (
-    <AgentRow
-      as={onOpen ? "button" : "div"}
-      kind={kind}
-      icon={kind === "setting" ? Bell : undefined}
-      state={ENTRY_STATE[entry.kind] ?? "idle"}
-      title={entry.title}
-      subtitle={[entry.body, timeAgo(entry.at), channels(entry)]
-        .filter(Boolean)
-        .join(" · ")}
-      dense
-      onClick={onOpen}
-    />
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      title={label}
+      className="text-muted-foreground active:bg-accent hover:bg-accent grid h-11 w-11 shrink-0 place-items-center rounded-full"
+    >
+      {children}
+    </button>
   );
 }
 
-function History({
-  list,
-  sessions,
-  onOpenSession,
-  onOpenAgent,
+/** The large title, with back, bell and trash where nothing else has them */
+function Title({
+  dialog,
+  onSettings,
+  onClear,
 }: {
-  list: NeedsYouList;
-  sessions: Session[];
-  onOpenSession: (session: Session) => void;
-  onOpenAgent: (agent: BackgroundAgent) => void;
+  dialog?: boolean;
+  onSettings: () => void;
+  onClear: () => void;
 }) {
-  const open = (entry: NotificationEntry) => {
-    if (entry.agentId) {
-      const agent = list.agents.find((a) => a.id === entry.agentId);
-      return agent && (() => onOpenAgent(agent));
-    }
-    const session = sessions.find((s) => s.id === entry.sessionId);
-    return session && (() => onOpenSession(session));
-  };
+  const { controls, back } = useInPageControls(dialog);
+  const title = <h1 className="t-large min-w-0 truncate">Needs you</h1>;
   return (
-    <>
-      {list.finished.length > 0 && (
-        <section>
-          <SectionHeader count={list.finished.length}>Finished</SectionHeader>
-          {list.finished.map((entry) => (
-            <HistoryRow key={entry.id} entry={entry} onOpen={open(entry)} />
-          ))}
-        </section>
+    <div className="flex flex-col">
+      {back && (
+        <button
+          type="button"
+          onClick={() => runNav("back")}
+          aria-label="Back"
+          className="text-muted-foreground active:bg-accent -ml-2 flex h-11 w-11 items-center justify-center rounded-full"
+        >
+          <ChevronLeft className="h-5 w-5" />
+        </button>
       )}
-      {list.earlier.length > 0 && (
-        <section>
-          <SectionHeader>Earlier</SectionHeader>
-          {list.earlier.map((entry) => (
-            <HistoryRow key={entry.id} entry={entry} onOpen={open(entry)} />
-          ))}
-        </section>
-      )}
-    </>
+      <header className="flex items-center gap-1">
+        <div className="min-w-0 flex-1">
+          {dialog ? <DialogTitle asChild>{title}</DialogTitle> : title}
+        </div>
+        {controls && (
+          <>
+            <HeaderButton label="Notification settings" onClick={onSettings}>
+              <Bell className="h-5 w-5" />
+            </HeaderButton>
+            <HeaderButton label="Clear history" onClick={onClear}>
+              <Trash2 className="h-5 w-5" />
+            </HeaderButton>
+          </>
+        )}
+      </header>
+    </div>
   );
 }
 
 /** With nothing waiting: never a lone "All clear", the history follows */
 function NothingNeedsYou({ quiet }: { quiet: boolean }) {
   return (
-    <div className="px-2 pt-4 pb-2">
-      <p className="text-sm font-medium">Nothing needs you</p>
-      <p className="text-muted-foreground text-[12.5px]">
+    <div className="px-1 py-2">
+      <p className="font-medium">Nothing needs you</p>
+      <p className="text-muted-foreground text-sm">
         {quiet
           ? "Sessions waiting on you, and background agents that ask or finish, show up here."
           : "What happened lately is below."}
@@ -297,16 +357,269 @@ function NothingNeedsYou({ quiet }: { quiet: boolean }) {
   );
 }
 
-function SettingsLink({ onClick }: { onClick: () => void }) {
+/** The question as one line: a command set in mono ("Run `…`?") */
+function AskText({
+  prompt,
+}: {
+  prompt: Pick<PermissionPrompt, "title" | "detail" | "question">;
+}) {
+  const { text, code, after } = askLine(prompt);
   return (
-    <button
-      type="button"
+    <>
+      {text}
+      {code && <span className="font-mono text-[13px]">{code}</span>}
+      {after}
+    </>
+  );
+}
+
+/** The card's header: the agent's tile, "<title> · <project>", the age */
+function CardHeader({
+  agentType,
+  label,
+  age,
+}: {
+  agentType: string | null | undefined;
+  label: string;
+  age?: string;
+}) {
+  return (
+    <span className="text-muted-foreground flex w-full min-w-0 items-center gap-2 text-[13px]">
+      <Avatar
+        {...agentAvatar(agentType)}
+        size="sm"
+        className="h-5 w-5 rounded-[6px] text-[10px]"
+      />
+      <span className="min-w-0 flex-1 truncate">{label}</span>
+      {age && <span className="shrink-0">{age}</span>}
+    </span>
+  );
+}
+
+// Taps on the header and question open the session; the answers don't
+const OPEN_TARGET =
+  "relative flex min-w-0 flex-col gap-1.5 text-left after:absolute after:inset-x-0 after:-top-3.5 after:-bottom-1 after:content-['']";
+
+/**
+ * A waiting session as E-NeedsYou's card: who and where, the question,
+ * then its answers as pills. Permission requests answer through M0's
+ * PermissionCard (the user's alone); questions as the Inbox card does
+ */
+function AskCard({
+  session,
+  title,
+  projectName,
+  pollMs,
+  onOpen,
+}: {
+  session: Session;
+  title: string;
+  projectName?: string;
+  pollMs?: number;
+  onOpen: () => void;
+}) {
+  const { data: prompt, isLoading: promptLoading } = useSessionPrompt(
+    session.id,
+    { pollMs }
+  );
+  const { answer, answering, error } = useAnswerPrompt(session.id);
+  // Classified as the server's guard does: unclear means permission. Until
+  // the context is in, it's neither card
+  const { context, loading: contextLoading } = useReplyContextState(
+    session.id,
+    !!prompt
+  );
+  const loading = promptLoading || (!!prompt && contextLoading);
+  const question =
+    !!prompt && !contextLoading && isAnswerableQuestion(context, prompt);
+  const permission =
+    prompt && !contextLoading && !question ? { tool: null, prompt } : null;
+  const split = question && prompt ? splitOptions(prompt.options) : null;
+
+  return (
+    <div className="ask-card gap-1.5">
+      <button type="button" onClick={onOpen} className={OPEN_TARGET}>
+        <CardHeader
+          agentType={session.agent_type}
+          label={[title, projectName].filter(Boolean).join(" · ")}
+          age={shortAge(session.updated_at)}
+        />
+        {loading ? (
+          <span className="text-muted-foreground flex items-center gap-2 text-[16px]">
+            <Loader2 className="h-4 w-4 animate-spin" /> Reading the session…
+          </span>
+        ) : (
+          // Until PermissionCard has its "ask" variant, "now" shows the
+          // command beside its answers
+          !permission && (
+            <span className="w-full text-[16px] font-medium break-words">
+              {prompt ? <AskText prompt={prompt} /> : "Needs a typed reply"}
+            </span>
+          )
+        )}
+      </button>
+
+      {permission && (
+        <PermissionCard
+          session={session}
+          permission={permission}
+          variant="now"
+          onOpen={onOpen}
+        />
+      )}
+
+      {(split || (!loading && !prompt)) && (
+        <div className="mt-1 flex gap-2">
+          {split?.main.map((option, i) => (
+            <button
+              key={`${option.index}-${option.label}`}
+              type="button"
+              title={option.label}
+              disabled={answering !== null}
+              onClick={() => answer(option)}
+              className={cn(
+                "pill pill-sm min-w-0 flex-1 touch-manipulation disabled:opacity-60",
+                // The first answer is the one that lets it go on
+                i === 0
+                  ? "pill-primary active:opacity-80"
+                  : "pill-secondary active:bg-accent"
+              )}
+            >
+              {answering === option.index && (
+                <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+              )}
+              <span className="truncate">{shortLabel(option)}</span>
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={onOpen}
+            aria-label={`Open ${title}`}
+            className={cn(
+              "pill pill-sm shrink-0 touch-manipulation",
+              split
+                ? "pill-secondary active:bg-accent"
+                : "pill-primary active:opacity-80"
+            )}
+          >
+            Open
+          </button>
+        </div>
+      )}
+
+      {error && <p className="text-xs text-red-400">{error}</p>}
+    </div>
+  );
+}
+
+/** A background agent stopped to ask: it answers on its own page */
+function BlockedCard({
+  agent,
+  projectName,
+  onOpen,
+}: {
+  agent: BackgroundAgent;
+  projectName: string;
+  onOpen: () => void;
+}) {
+  return (
+    <div className="ask-card gap-1.5">
+      <button type="button" onClick={onOpen} className={OPEN_TARGET}>
+        <CardHeader
+          agentType="claude"
+          label={`${agent.name} · ${projectName}`}
+          // 0 means the state file didn't say
+          age={agent.startedAt ? shortAge(agent.startedAt) : undefined}
+        />
+        <span className="w-full text-[16px] font-medium">
+          A background agent is waiting for you
+        </span>
+      </button>
+      <div className="mt-1 flex gap-2">
+        <button
+          type="button"
+          onClick={onOpen}
+          className="pill pill-sm pill-primary flex-1 touch-manipulation active:opacity-80"
+        >
+          Open to answer
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** A waiting session as a row to pick (open Duo, table): what it asks */
+function WaitingRow({
+  session,
+  title,
+  pollMs,
+  selected,
+  onClick,
+}: {
+  session: Session;
+  title: string;
+  pollMs?: number;
+  selected: boolean;
+  onClick: () => void;
+}) {
+  const { data: prompt } = useSessionPrompt(session.id, { pollMs });
+  return (
+    <GroupRow
+      leading={<Avatar {...agentAvatar(session.agent_type)} />}
+      title={title}
+      subtitle={prompt ? <AskText prompt={prompt} /> : "Your turn"}
+      trailing={shortAge(session.updated_at)}
+      selected={selected}
       onClick={onClick}
-      className="text-muted-foreground hover:text-foreground mx-2 mt-4 mb-2 flex min-h-[44px] items-center gap-2 text-[13px]"
-    >
-      <Bell className="h-4 w-4" aria-hidden="true" />
-      Notification settings
-    </button>
+    />
+  );
+}
+
+/** The first waiting prompt is reread every 2s, the rest less often: each
+    read is a tmux capture on the server */
+const pollFor = (index: number) =>
+  index === 0 ? undefined : PROMPT_POLL_SLOW_MS;
+
+/** "Finished" (new since you looked), then the history by day */
+function History({
+  list,
+  sessions,
+  selectedId,
+  onOpenSession,
+  onOpenAgent,
+}: {
+  list: NeedsYouList;
+  sessions: Session[];
+  selectedId?: string;
+  onOpenSession: (session: Session) => void;
+  onOpenAgent: (agent: BackgroundAgent, entry: NotificationEntry) => void;
+}) {
+  const openFor = (entry: NotificationEntry) => {
+    if (entry.agentId) {
+      const agent = list.agents.find((a) => a.id === entry.agentId);
+      return agent && (() => onOpenAgent(agent, entry));
+    }
+    const session = sessions.find((s) => s.id === entry.sessionId);
+    return session && (() => onOpenSession(session));
+  };
+  return (
+    <>
+      <HistoryCard
+        title="Finished"
+        entries={list.finished}
+        openFor={openFor}
+        selectedId={selectedId}
+      />
+      {historyDays(list.earlier).map((day) => (
+        <HistoryCard
+          key={day.title}
+          title={day.title}
+          entries={day.entries}
+          openFor={openFor}
+          selectedId={selectedId}
+        />
+      ))}
+    </>
   );
 }
 
@@ -374,16 +687,15 @@ function NeedsYou({ view, onOpenSession, dialog, onClose }: NeedsYouProps) {
   const list = useNeedsYouList(view);
   const ref = useRef<HTMLDivElement>(null);
   const split = useSplit(ref, useSpreadFold(), !!dialog);
+  const onClear = useClearHistory(list);
 
   const onSettings = () => {
     onClose();
     openSettings("notifications");
   };
   const quiet = !list.count && !list.finished.length && !list.earlier.length;
-  const count = list.count > 0 && (
-    <span className="text-muted-foreground text-[12.5px] tabular-nums">
-      {list.count}
-    </span>
+  const title = (
+    <Title dialog={dialog} onSettings={onSettings} onClear={onClear} />
   );
 
   // One root whatever the layout, so the split keeps measuring it
@@ -395,39 +707,21 @@ function NeedsYou({ view, onOpenSession, dialog, onClose }: NeedsYouProps) {
           view={view}
           split={split}
           dialog={dialog}
-          count={count}
+          title={title}
           quiet={quiet}
           onOpenSession={onOpenSession}
-          onClose={onClose}
-          onSettings={onSettings}
         />
       ) : (
         <OneColumn
           pageRef={ref}
           list={list}
           view={view}
-          count={count}
+          title={title}
           quiet={quiet}
           onOpenSession={onOpenSession}
-          onSettings={onSettings}
         />
       )}
     </div>
-  );
-}
-
-function Title({ dialog }: { dialog?: boolean }) {
-  return (
-    <span className="flex items-center gap-2">
-      <InboxIcon className="h-[17px] w-[17px] shrink-0" aria-hidden="true" />
-      {dialog ? (
-        <DialogTitle asChild>
-          <span>Needs you</span>
-        </DialogTitle>
-      ) : (
-        "Needs you"
-      )}
-    </span>
   );
 }
 
@@ -439,22 +733,23 @@ function usePicked(list: NeedsYouList, view: ViewProps) {
   const [picked, setPicked] = useState<Picked | null>(null);
   const isItem = (p: Picked) =>
     p.kind === "session"
-      ? list.groups.some((g) => g.sessions.some((s) => s.id === p.id))
+      ? list.waiting.some((w) => w.kind === "session" && w.session.id === p.id)
       : // An agent may be picked from the history while it exists
         list.agents.some((a) => a.id === p.id);
-  const first = list.groups[0];
+  const first = list.waiting[0];
   const current: Picked | null =
     picked && isItem(picked)
       ? picked
-      : first?.sessions[0]
-        ? { kind: "session", id: first.sessions[0].id }
-        : first?.agents[0]
-          ? { kind: "agent", id: first.agents[0].id }
+      : first?.kind === "session"
+        ? { kind: "session", id: first.session.id }
+        : first?.kind === "agent"
+          ? { kind: "agent", id: first.agent.id }
           : null;
 
   return {
     isPicked: (kind: Picked["kind"], id: string) =>
-      current?.kind === kind && current.id === id,
+      current?.kind === kind && current.id === id && !current.entryId,
+    entryId: current?.entryId,
     pick: setPicked,
     session:
       current?.kind === "session"
@@ -469,123 +764,105 @@ function usePicked(list: NeedsYouList, view: ViewProps) {
 
 type PickedItem = ReturnType<typeof usePicked>;
 
-/** The list as rows to pick from: the detail shows the picked one */
+/** The list as rows to pick from (Open-Now): the detail shows the picked one */
 function PickList({
   list,
   view,
   picked,
+  title,
   quiet,
   onOpenSession,
-  onSettings,
   className,
 }: {
   list: NeedsYouList;
   view: ViewProps;
   picked: PickedItem;
+  title: ReactNode;
   quiet: boolean;
   onOpenSession: (session: Session) => void;
-  onSettings: () => void;
   className?: string;
 }) {
   return (
     <nav
       aria-label="Needs you"
       className={cn(
-        "min-h-0 flex-1 overflow-y-auto overscroll-contain",
+        "flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-contain",
         className
       )}
     >
-      {list.groups.length === 0 && <NothingNeedsYou quiet={quiet} />}
-      {list.groups.map((group) => (
-        <section key={group.key}>
-          <SectionHeader>{groupLabel(group)}</SectionHeader>
-          {group.sessions.map((s) => {
-            const { title, idLabel } = displayTitle(s, list.titles);
-            return (
-              <AgentRow
-                key={s.id}
-                kind="session"
-                state="needs"
-                title={title}
-                idLabel={idLabel}
-                detail={timeAgo(s.updated_at)}
-                selected={picked.isPicked("session", s.id)}
-                onClick={() => picked.pick({ kind: "session", id: s.id })}
+      {title}
+      {list.waiting.length === 0 ? (
+        <NothingNeedsYou quiet={quiet} />
+      ) : (
+        <GroupCard aria-label="Waiting on you">
+          {list.waiting.map((w, i) =>
+            w.kind === "session" ? (
+              <WaitingRow
+                key={w.session.id}
+                session={w.session}
+                title={displayTitle(w.session, list.titles).title}
+                pollMs={pollFor(i)}
+                selected={picked.isPicked("session", w.session.id)}
+                onClick={() =>
+                  picked.pick({ kind: "session", id: w.session.id })
+                }
               />
-            );
-          })}
-          {group.agents.map((a) => (
-            <AgentRow
-              key={a.id}
-              kind="background"
-              state="needs"
-              title={a.name}
-              // 0 means the state file didn't say
-              detail={
-                a.startedAt
-                  ? `started ${timeAgo(a.startedAt, { dateAfterDays: Infinity })}`
-                  : undefined
-              }
-              dense
-              selected={picked.isPicked("agent", a.id)}
-              onClick={() => picked.pick({ kind: "agent", id: a.id })}
-            />
-          ))}
-        </section>
-      ))}
+            ) : (
+              <GroupRow
+                key={w.agent.id}
+                leading={<Avatar {...agentAvatar("claude")} />}
+                title={w.agent.name}
+                subtitle={`${w.projectName} · Background agent waiting`}
+                trailing={
+                  w.agent.startedAt ? shortAge(w.agent.startedAt) : null
+                }
+                selected={picked.isPicked("agent", w.agent.id)}
+                onClick={() => picked.pick({ kind: "agent", id: w.agent.id })}
+              />
+            )
+          )}
+        </GroupCard>
+      )}
       <History
         list={list}
         sessions={view.sessions}
+        selectedId={picked.entryId}
         onOpenSession={onOpenSession}
-        onOpenAgent={(a) => picked.pick({ kind: "agent", id: a.id })}
+        onOpenAgent={(a, entry) =>
+          picked.pick({ kind: "agent", id: a.id, entryId: entry.id })
+        }
       />
-      <SettingsLink onClick={onSettings} />
     </nav>
   );
 }
 
-/** A picked session's prompt as a page: its header, then the answers */
-function PickedSession({
-  session,
+/** The detail page's header: "project · Claude · Needs you", the title */
+function DetailHeader({
+  crumb,
   title,
-  projectName,
   dialog,
-  onOpen,
 }: {
-  session: Session;
+  crumb: ReactNode;
   title: string;
-  projectName?: string;
   dialog?: boolean;
-  onOpen: () => void;
 }) {
-  const { data: prompt } = useSessionPrompt(session.id);
   return (
-    <>
-      <header
-        className={cn(
-          "border-border flex min-h-[50px] shrink-0 flex-col justify-center border-b px-4 pt-2 pb-2",
-          // Clear of the dialog's close button
-          dialog && "pr-14"
-        )}
-      >
-        <h2 className="truncate text-[15px] font-semibold">{title}</h2>
-        <p className="text-muted-foreground truncate text-xs">
-          {[
-            projectName,
-            // The title may be the name already
-            session.name !== title && session.name,
-            prompt ? askLabel(prompt.title) : "Your turn",
-          ]
-            .filter(Boolean)
-            .join(" · ")}
-        </p>
-      </header>
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
-        <InboxItem as="div" variant="page" session={session} onOpen={onOpen} />
-      </div>
-    </>
+    <header
+      className={cn(
+        "flex shrink-0 flex-col gap-1 px-6 pt-5 pb-3",
+        // Clear of the dialog's close button
+        dialog && "pr-14"
+      )}
+    >
+      <p className="text-muted-foreground truncate text-[15px]">{crumb}</p>
+      <h2 className="t-title truncate">{title}</h2>
+    </header>
   );
 }
+
+const NeedsWord = () => (
+  <span className={STATE_TEXT_CLASS.needs}>Needs you</span>
+);
 
 /** The picked prompt, answerable in place, or the picked agent */
 function PickedDetail({
@@ -600,34 +877,56 @@ function PickedDetail({
   onOpenSession: (session: Session) => void;
 }) {
   const { session, agent } = picked;
-  if (session)
+  if (session) {
+    const projectName = list.waiting.find(
+      (w) => w.kind === "session" && w.session.id === session.id
+    )?.projectName;
     return (
-      <PickedSession
-        key={session.id}
-        session={session}
-        title={displayTitle(session, list.titles).title}
-        projectName={
-          list.groups.find((g) => g.sessions.includes(session))?.name
-        }
-        dialog={dialog}
-        onOpen={() => onOpenSession(session)}
-      />
+      <>
+        <DetailHeader
+          dialog={dialog}
+          title={displayTitle(session, list.titles).title}
+          crumb={
+            <>
+              {[projectName, agentName(session.agent_type)]
+                .filter(Boolean)
+                .join(" · ")}
+              {" · "}
+              <NeedsWord />
+            </>
+          }
+        />
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 pt-1 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+          <InboxItem
+            key={session.id}
+            as="div"
+            variant="page"
+            session={session}
+            onOpen={() => onOpenSession(session)}
+          />
+        </div>
+      </>
     );
+  }
   if (agent)
     return (
       <>
-        <header
-          className={cn(
-            "border-border flex min-h-[50px] shrink-0 flex-col justify-center border-b px-4 pt-2 pb-2",
-            // Clear of the dialog's close button
-            dialog && "pr-14"
-          )}
-        >
-          <h2 className="truncate text-[15px] font-semibold">{agent.name}</h2>
-          <p className="text-muted-foreground truncate font-mono text-[11px]">
-            <AgentCrumb agent={agent} />
-          </p>
-        </header>
+        <DetailHeader
+          dialog={dialog}
+          title={agent.name}
+          crumb={
+            agent.state === "blocked" ? (
+              <>
+                Background agent · <NeedsWord />
+              </>
+            ) : (
+              "Background agent"
+            )
+          }
+        />
+        <p className="text-muted-foreground -mt-2 truncate px-6 pb-2 font-mono text-[11px]">
+          <AgentCrumb agent={agent} />
+        </p>
         <AgentDetail
           key={agent.id}
           agent={agent}
@@ -643,27 +942,23 @@ function PickedDetail({
   );
 }
 
-/** The list on the left (page), the picked prompt or agent on the right */
+/** The list on the left page, the picked prompt or agent on the right */
 function SplitLayout({
   list,
   view,
   split,
   dialog,
-  count,
+  title,
   quiet,
   onOpenSession,
-  onClose,
-  onSettings,
 }: {
   list: NeedsYouList;
   view: ViewProps;
   split: Split;
   dialog?: boolean;
-  count: ReactNode;
+  title: ReactNode;
   quiet: boolean;
   onOpenSession: (session: Session) => void;
-  onClose: () => void;
-  onSettings: () => void;
 }) {
   const picked = usePicked(list, view);
 
@@ -676,22 +971,6 @@ function SplitLayout({
         )}
         style={{ width: split.left }}
       >
-        <header className="flex min-h-[50px] shrink-0 items-center gap-2 px-3 pt-2 pb-2">
-          {!dialog && (
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="Back"
-              className="text-muted-foreground active:bg-accent hover:bg-accent relative grid h-[34px] w-[34px] shrink-0 place-items-center rounded-lg after:absolute after:-inset-[5px] after:content-['']"
-            >
-              <ChevronLeft className="h-5 w-5" />
-            </button>
-          )}
-          <div className="min-w-0 flex-1 truncate text-[15px] font-semibold">
-            <Title dialog={dialog} />
-          </div>
-          {count}
-        </header>
         {dialog && (
           <DialogDescription className="sr-only">
             {list.count ? `${list.count} waiting on you` : "Nothing needs you"}
@@ -701,10 +980,13 @@ function SplitLayout({
           list={list}
           view={view}
           picked={picked}
+          title={title}
           quiet={quiet}
           onOpenSession={onOpenSession}
-          onSettings={onSettings}
-          className="px-2 pb-[calc(1rem+env(safe-area-inset-bottom))]"
+          className={cn(
+            PAD["duo-open"],
+            "pb-[calc(1rem+env(safe-area-inset-bottom))]"
+          )}
         />
       </aside>
       {split.gutter > 0 && (
@@ -723,91 +1005,113 @@ function SplitLayout({
 }
 
 /**
- * One column, prompts answered in place. On a table it splits around the
- * fold where it crosses the page: the list above, the picked prompt or agent
- * on the base, where its buttons are in reach and clear of the fold.
+ * One column, prompts answered in place (E-NeedsYou). On a table it
+ * splits around the fold where it crosses the page: the list above, the
+ * picked prompt or agent on the base, where its buttons are in reach and
+ * clear of the fold.
  */
 function OneColumn({
   pageRef,
   list,
   view,
-  count,
+  title,
   quiet,
   onOpenSession,
-  onSettings,
 }: {
   pageRef: RefObject<HTMLElement | null>;
   list: NeedsYouList;
   view: ViewProps;
-  count: ReactNode;
+  title: ReactNode;
   quiet: boolean;
   onOpenSession: (session: Session) => void;
-  onSettings: () => void;
 }) {
+  const mode = useLayoutMode();
   const picked = usePicked(list, view);
+  // A page on any width: the phone's sheet needs a list of agents to host
+  // it, which this may not have
+  const openAgent = (agent: BackgroundAgent) =>
+    openPage({ kind: "agent", agentId: agent.id });
 
   return (
     <FoldSplit
       el={pageRef}
       className="flex-1"
       top={
-        <>
-          <PageHeader title={<Title />} actions={count} />
-          <PickList
-            list={list}
-            view={view}
-            picked={picked}
-            quiet={quiet}
-            onOpenSession={onOpenSession}
-            onSettings={onSettings}
-            className="px-3 pb-2"
-          />
-        </>
+        <PickList
+          list={list}
+          view={view}
+          picked={picked}
+          title={title}
+          quiet={quiet}
+          onOpenSession={onOpenSession}
+          className={cn(PAD.tabletop, "pb-2")}
+        />
       }
       base={
-        <div className="border-border flex min-h-0 flex-1 flex-col border-t">
-          <PickedDetail
-            list={list}
-            picked={picked}
-            onOpenSession={onOpenSession}
-          />
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 pt-2 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
+          <div className="mt-auto">
+            {picked.session ? (
+              <AskCard
+                key={picked.session.id}
+                session={picked.session}
+                title={displayTitle(picked.session, list.titles).title}
+                projectName={
+                  list.waiting.find(
+                    (w) =>
+                      w.kind === "session" &&
+                      w.session.id === picked.session!.id
+                  )?.projectName
+                }
+                onOpen={() => onOpenSession(picked.session!)}
+              />
+            ) : picked.agent ? (
+              <BlockedCard
+                agent={picked.agent}
+                projectName={
+                  list.waiting.find(
+                    (w) => w.kind === "agent" && w.agent.id === picked.agent!.id
+                  )?.projectName ?? folderName(picked.agent.cwd)
+                }
+                onOpen={() => openAgent(picked.agent!)}
+              />
+            ) : null}
+          </div>
         </div>
       }
     >
-      <PageHeader title={<Title />} actions={count} />
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-[calc(1rem+env(safe-area-inset-bottom))]">
-        {list.groups.length === 0 && <NothingNeedsYou quiet={quiet} />}
-        {list.groups.map((group) => (
-          <section key={group.key}>
-            <SectionHeader>{groupLabel(group)}</SectionHeader>
-            {group.sessions.length > 0 && (
-              <ul className="mb-2 space-y-2.5">
-                {group.sessions.map((session) => (
-                  <InboxItem
-                    key={session.id}
-                    session={session}
-                    title={displayTitle(session, list.titles).title}
-                    onOpen={() => onOpenSession(session)}
-                  />
-                ))}
-              </ul>
-            )}
-            {group.agents.map((agent) => (
-              <BackgroundAgentRow key={agent.id} agent={agent} noId dense />
-            ))}
-          </section>
-        ))}
+      <div
+        className={cn(
+          "flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-contain pb-[calc(1.5rem+var(--home-pad-b,0px)+env(safe-area-inset-bottom))]",
+          PAD[mode]
+        )}
+      >
+        {title}
+        {list.waiting.length === 0 && <NothingNeedsYou quiet={quiet} />}
+        {list.waiting.map((w, i) =>
+          w.kind === "session" ? (
+            <AskCard
+              key={w.session.id}
+              session={w.session}
+              title={displayTitle(w.session, list.titles).title}
+              projectName={w.projectName}
+              pollMs={pollFor(i)}
+              onOpen={() => onOpenSession(w.session)}
+            />
+          ) : (
+            <BlockedCard
+              key={w.agent.id}
+              agent={w.agent}
+              projectName={w.projectName}
+              onOpen={() => openAgent(w.agent)}
+            />
+          )
+        )}
         <History
           list={list}
           sessions={view.sessions}
           onOpenSession={onOpenSession}
-          // A page on any width: the phone's sheet needs a list of
-          // agents to host it, which this may not have
-          onOpenAgent={(agent) =>
-            openPage({ kind: "agent", agentId: agent.id })
-          }
+          onOpenAgent={openAgent}
         />
-        <SettingsLink onClick={onSettings} />
       </div>
     </FoldSplit>
   );
@@ -842,7 +1146,7 @@ export function NeedsYouDialog({
 
   return (
     <Dialog open={inboxOpen} onOpenChange={mobileNavActions.setInboxOpen}>
-      <DialogContent className="flex h-[min(85dvh,760px)] flex-col gap-0 overflow-hidden p-0 sm:max-w-4xl">
+      <DialogContent className="flex h-[min(85dvh,760px)] flex-col gap-0 overflow-hidden rounded-[22px] p-0 sm:max-w-4xl">
         {inboxOpen && (
           <NeedsYou
             view={view}

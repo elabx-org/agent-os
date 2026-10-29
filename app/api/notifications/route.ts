@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { listNotifications, markNotificationsRead } from "@/lib/push/history";
+import {
+  clearNotifications,
+  listNotifications,
+  markNotificationsRead,
+} from "@/lib/push/history";
+import { userOnly } from "@/lib/permission-guard";
+import { requireUser } from "@/lib/user-proof";
 
 // GET /api/notifications?since=<ms> - what needed you or happened lately,
 // newest first, with the unread count
@@ -33,7 +39,11 @@ export async function POST(request: NextRequest) {
 }
 
 // DELETE /api/notifications - clears the history (Needs you → Clear
-// history), returns the empty list. M1b U1b.2 implements it.
-export async function DELETE() {
-  return NextResponse.json({ error: "Not implemented" }, { status: 501 });
+// history), returns the empty list. The user's alone: it holds "Full
+// access switched on", which an agent mustn't be able to wipe
+export async function DELETE(request: NextRequest) {
+  const proof = requireUser(request);
+  if (!proof.ok) return userOnly(proof.reason);
+  clearNotifications();
+  return NextResponse.json(listNotifications());
 }
