@@ -29,6 +29,7 @@ import { cn } from "@/lib/utils";
 import { mobileNavStore } from "@/stores/mobileNav";
 import { openProjectSettings } from "@/stores/projectSettings";
 import { closeScripts, useScriptsSheet } from "@/stores/scriptsSheet";
+import { registerNavHandlers } from "@/lib/nav-actions";
 import { requestTerminalRun } from "@/stores/scriptTerminal";
 import { LogTail, RoundButton, ScriptRow, useNow } from "./ScriptParts";
 import { ScriptIcon } from "./ScriptIcon";
@@ -491,6 +492,22 @@ export function ScriptsSheetHost() {
   useEffect(() => {
     if (projectId) setShown({ projectId, sessionId });
   }, [projectId, sessionId]);
+  // The closed Duo's column: × closes it, the gear edits the scripts
+  useEffect(() => {
+    if (!projectId) return;
+    mobileNavStore.sheet = "scripts";
+    const unregister = registerNavHandlers({
+      closeSheet: closeScripts,
+      openProjectSettings: () => {
+        closeScripts();
+        openProjectSettings(projectId);
+      },
+    });
+    return () => {
+      unregister();
+      if (mobileNavStore.sheet === "scripts") mobileNavStore.sheet = null;
+    };
+  }, [projectId]);
   if (!shown) return null;
   return (
     <ScriptsSheet

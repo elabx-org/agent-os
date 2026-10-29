@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { registerNavHandlers } from "@/lib/nav-actions";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ChevronRight,
   GitBranch,
@@ -171,6 +172,11 @@ export function ProjectConfigEditor({
 }) {
   const { status, res, file, scripts, save, notice } = editor;
   const [picker, setPicker] = useState<Picker>(null);
+  // The column's <> (N-Config) shows the file
+  useEffect(
+    () => registerNavHandlers({ viewConfig: () => setPicker("file") }),
+    []
+  );
 
   if (status === "loading")
     return (

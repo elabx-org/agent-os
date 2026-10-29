@@ -46,8 +46,11 @@ export interface ColumnContext {
   liveOpen?: boolean;
   /** The session in view is working: closed, Stop ends its column (N-Queue) */
   working?: boolean;
-  /** A sheet over the session other than Live activity (N-Undo's undo) */
-  sheet?: "undo" | null;
+  /** A sheet over the session other than Live activity (N-Undo's undo,
+      N-Scripts) */
+  sheet?: "undo" | "scripts" | null;
+  /** The project surface shows the project's settings (N-Config, M3) */
+  projectSettings?: boolean;
 }
 
 type Base = Pick<ColumnItem, "id" | "symbol" | "icon" | "label">;
@@ -173,6 +176,18 @@ const BASE = {
     icon: "Ellipsis",
     label: "Project actions",
   },
+  scripts: {
+    id: "scripts",
+    symbol: "play",
+    icon: "Play",
+    label: "Run a script",
+  },
+  viewConfig: {
+    id: "viewConfig",
+    symbol: "chevron.left.forwardslash.chevron.right",
+    icon: "Code",
+    label: "View .agent-os.json",
+  },
 } satisfies Record<string, Base & { id: NavAction }>;
 
 function item(base: Base, extra: Partial<ColumnItem> = {}): ColumnItem {
@@ -219,6 +234,7 @@ function otherView(ctx: ColumnContext, extra: Partial<ColumnItem> = {}) {
  * sheet is up
  */
 function sheetColumn(ctx: ColumnContext): ColumnItem[] | null {
+  if (ctx.sheet === "scripts") return scriptsColumn();
   if (ctx.sheet === "undo")
     return [item(BASE.closeSheet), changes(ctx, { selected: false, ...sep })];
   if (ctx.liveOpen)
@@ -227,6 +243,19 @@ function sheetColumn(ctx: ColumnContext): ColumnItem[] | null {
       ...(ctx.working ? [item(BASE.stop, { danger: true, ...sep })] : []),
     ];
   return null;
+}
+
+/** N-Scripts: close | the project's settings, where the scripts are edited */
+function scriptsColumn(): ColumnItem[] {
+  return [
+    item(BASE.closeSheet),
+    item(BASE.projectSettings, {
+      symbol: "gearshape",
+      icon: "Settings",
+      label: "Edit scripts",
+      sep: true,
+    }),
+  ];
 }
 
 /** Closed-Chat / Open-Changes: back | the other view, Changes, Files, Live | More */
@@ -339,6 +368,9 @@ export function columnFor(
   const inSession = surface === "session" || surface === "beside";
   // The phone's tab bar holds the home's places; in a session the phone
   // gets the tabletop's bar of views
+  // N-Scripts over a project page too (over a session, sessionColumn has it)
+  if (mode === "duo-closed" && !inSession && ctx.sheet === "scripts")
+    return scriptsColumn();
   if (mode === "phone" && !inSession) return tabs(surface, ctx);
   if ((mode === "phone" || mode === "tabletop") && inSession)
     return sessionBar(ctx);
@@ -387,6 +419,13 @@ export function columnFor(
         item(BASE.sort),
       ];
     case "project":
+      // N-Config: back | run a script, the file
+      if (ctx.projectSettings)
+        return [
+          item(BASE.back, { label: "Back" }),
+          item(BASE.scripts, sep),
+          item(BASE.viewConfig),
+        ];
       return [
         item(BASE.back, { label: "Back" }),
         item(BASE.new, { prominent: true, sep: true }),

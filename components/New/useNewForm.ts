@@ -7,6 +7,7 @@ import { registerNavHandlers } from "@/lib/nav-actions";
 import { agentName } from "@/components/a/Avatar";
 import { useNewSessionForm } from "@/components/NewSessionDialog/hooks/useNewSessionForm";
 import { poll as refreshBackgroundAgents } from "@/components/BackgroundAgents";
+import { useEnsureTrusted } from "@/components/Projects/TrustConfigPrompt";
 
 export type RunAs = "session" | "background";
 
@@ -139,10 +140,14 @@ export function useNewForm({
     }
   };
 
-  const submit = () => {
+  // A new worktree runs the project's setup steps: an unapproved
+  // .agent-os.json asks first (M3)
+  const trust = useEnsureTrusted(session.projectId);
+  const submit = async () => {
     if (!canSubmit) return;
-    if (background) startBackground();
-    else session.handleSubmit({ featureName });
+    if (background) return startBackground();
+    if (worktree && !(await trust.ensure())) return;
+    session.handleSubmit({ featureName });
   };
 
   // The column's ✓ (E-New) starts what the form holds while it shows
@@ -150,7 +155,7 @@ export function useNewForm({
   submitRef.current = submit;
   useEffect(() => {
     if (!open) return;
-    return registerNavHandlers({ startNew: () => submitRef.current() });
+    return registerNavHandlers({ startNew: () => void submitRef.current() });
   }, [open]);
 
   // Background agents are Claude Code, so the model applies to them always;
@@ -198,6 +203,7 @@ export function useNewForm({
     projectName,
     submit,
     canSubmit,
+    trustPrompt: trust.prompt,
     busy,
     error: background ? startError : session.error,
     handleClose: () => {

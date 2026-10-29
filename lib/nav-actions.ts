@@ -18,6 +18,7 @@ import {
 } from "@/stores/workspacePage";
 import { closeNew, newSurfaceStore } from "@/stores/newSurface";
 import { openProjectSettings } from "@/stores/projectSettings";
+import { openScripts } from "@/stores/scriptsSheet";
 import { surfaceStore } from "@/stores/surface";
 import { isNative, postToNative } from "@/lib/native-bridge";
 
@@ -51,6 +52,8 @@ export const NAV_ACTIONS = [
   "start",
   "stop",
   "closeSheet",
+  "scripts",
+  "viewConfig",
 ] as const;
 
 /**
@@ -109,8 +112,13 @@ interface NavHandlers {
   startNew: () => void;
   /** Interrupt the session in view (N-Queue's Stop); the pane registers it */
   stopSession: () => void;
-  /** Close the sheet over the session (E-Live, N-Undo) */
+  /** Close the sheet over the session (E-Live, N-Undo, N-Scripts) */
   closeSheet: () => void;
+  /** The project's Scripts sheet (N-Config's ▷, M3) */
+  openScripts: () => void;
+  /** Project settings' .agent-os.json (N-Config's <>, M3); the page
+      registers it */
+  viewConfig: () => void;
 }
 
 /**
@@ -166,6 +174,12 @@ export const navStore: NavHandlers = {
     mobileNavStore.liveOpen = false;
     mobileNavStore.sheet = null;
   },
+  openScripts: () => {
+    const page = workspacePageStore.page;
+    if (page?.kind === "project" || page?.kind === "projectSettings")
+      openScripts(page.projectId);
+  },
+  viewConfig: () => {},
 };
 
 /**
@@ -258,6 +272,8 @@ export const NAV_ROUTES: Record<NavAction, (leftPage: boolean) => void> = {
   start: () => navStore.startNew(),
   stop: () => navStore.stopSession(),
   closeSheet: () => navStore.closeSheet(),
+  scripts: () => navStore.openScripts(),
+  viewConfig: () => navStore.viewConfig(),
 };
 
 /** Actions on or beside Settings: it stays up for them */
