@@ -44,6 +44,7 @@ import {
   useSpreadPages,
 } from "@/components/views/SessionSpread";
 import { agentOpenStore, consumeSubagent } from "@/stores/agentOpen";
+import { bgSendStore } from "@/stores/bgSend";
 import type { Session } from "@/lib/db";
 import { WorkflowPanel, workflowAgentInfo } from "@/components/WorkflowPhases";
 import {
@@ -62,6 +63,8 @@ import { SubagentPanel } from "./SubagentPanel";
 import { SubagentRow } from "./ToolCard";
 import { TurnDiff } from "./TurnDiff";
 import { UndoSheet } from "./UndoSheet";
+import { FreshSessionHint } from "./FreshSessionHint";
+import { SentToast } from "./SentToast";
 import { useSeam } from "./useSeam";
 import { useTranscript } from "./useTranscript";
 import type { DirectSendOptions } from "@/lib/session-attach-types";
@@ -96,11 +99,13 @@ export function ChatView({
   const empty =
     settledFor === transcriptBase &&
     (state === "missing" || (state === "ready" && !items.length));
+  // A fresh session (M10) stays in the chat while it's still empty
+  const fresh = session.id in useSnapshot(bgSendStore).fresh;
   useEffect(() => {
-    if (!empty || !onEmpty) return;
+    if (!empty || !onEmpty || fresh) return;
     const timer = setTimeout(onEmpty, 800);
     return () => clearTimeout(timer);
-  }, [empty, onEmpty]);
+  }, [empty, onEmpty, fresh]);
   const { statuses, nativeKeyboard } = useSnapshot(mobileNavStore);
   const status = statuses[session.id]?.status;
   // Handed off to another agent: its tmux ended, the chat stays readable
@@ -529,6 +534,19 @@ export function ChatView({
             )}
           </div>
         )}
+        {/* N-BgSend: "Sent to <name>" floats over the top of the chat */}
+        <div className="relative z-20 h-0 shrink-0">
+          <div
+            className={cn(
+              "pointer-events-none absolute inset-x-0 top-2",
+              inset
+            )}
+          >
+            <div className={cn("pointer-events-auto mx-auto", column)}>
+              <SentToast sessionId={session.id} />
+            </div>
+          </div>
+        </div>
         <div
           ref={scrollRef}
           {...quoteMenu.handlers}
@@ -557,7 +575,12 @@ export function ChatView({
                   No Claude Code conversation was found for this session.
                 </div>
               ))}
-            {state === "missing" && !paused && (
+            {fresh &&
+              !paused &&
+              (state === "missing" || (state === "ready" && !items.length)) && (
+                <FreshSessionHint session={session} />
+              )}
+            {state === "missing" && !paused && !fresh && (
               <div className="text-muted-foreground py-8 text-sm">
                 No Claude Code conversation found for this session.{" "}
                 <button
