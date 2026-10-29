@@ -3,6 +3,12 @@ import { exec } from "child_process";
 import { promisify } from "util";
 import { getDb, queries, type Session } from "@/lib/db";
 import { appendFileSync } from "fs";
+import {
+  agentMayAnswer,
+  isAgentOrigin,
+  PERMISSION_USER_ONLY,
+  readScreenPrompt,
+} from "@/lib/agent-origin";
 
 const execAsync = promisify(exec);
 
@@ -56,6 +62,19 @@ export async function POST(
         { error: "Tmux session not running" },
         { status: 400 }
       );
+    }
+
+    // Typing into a permission dialog would pick an option: from an agent,
+    // only a question's prompt (or none) may be typed into
+    if (isAgentOrigin(request)) {
+      const prompt = await readScreenPrompt(tmuxSessionName).catch(() => null);
+      if (prompt && !(await agentMayAnswer(session, prompt))) {
+        log("REFUSED: agent message at a permission prompt");
+        return NextResponse.json(
+          { error: PERMISSION_USER_ONLY, permission: true },
+          { status: 403 }
+        );
+      }
     }
 
     // Write text to a temp file

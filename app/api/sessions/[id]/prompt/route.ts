@@ -2,31 +2,22 @@ import { NextRequest, NextResponse } from "next/server";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import { queries, getDb, type Session } from "@/lib/db";
+import type { PermissionPrompt } from "@/lib/permission-prompt";
 import {
-  parsePermissionPrompt,
-  type PermissionPrompt,
-} from "@/lib/permission-prompt";
+  agentMayAnswer,
+  isAgentOrigin,
+  PERMISSION_USER_ONLY,
+  readScreenPrompt as readPrompt,
+} from "@/lib/agent-origin";
 
 const execFileAsync = promisify(execFile);
 
-function tmuxName(id: string): string | null {
-  const session = queries.getSession(getDb()).get(id) as Session | undefined;
-  if (!session) return null;
-  return session.tmux_name || `${session.agent_type || "claude"}-${id}`;
+function getSession(id: string): Session | null {
+  return (queries.getSession(getDb()).get(id) as Session | undefined) ?? null;
 }
 
-async function readPrompt(target: string): Promise<PermissionPrompt | null> {
-  const [{ stdout: pane }, { stdout: width }] = await Promise.all([
-    execFileAsync("tmux", ["capture-pane", "-t", target, "-p"]),
-    execFileAsync("tmux", [
-      "display-message",
-      "-t",
-      target,
-      "-p",
-      "#{pane_width}",
-    ]),
-  ]);
-  return parsePermissionPrompt(pane.split("\n"), Number(width) || 80);
+function tmuxName(session: Session): string {
+  return session.tmux_name || `${session.agent_type || "claude"}-${session.id}`;
 }
 
 // GET /api/sessions/[id]/prompt - The selection prompt Claude Code is showing, if any
@@ -35,10 +26,11 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const target = tmuxName(id);
-  if (!target) {
+  const session = getSession(id);
+  if (!session) {
     return NextResponse.json({ error: "Session not found" }, { status: 404 });
   }
+  const target = tmuxName(session);
   try {
     return NextResponse.json({ prompt: await readPrompt(target) });
   } catch {
@@ -48,7 +40,9 @@ export async function GET(
 }
 
 // POST /api/sessions/[id]/prompt - Answer it: { index, label }
-// The label must still match, so a stale tap can't answer a different prompt
+// The label must still match, so a stale tap can't answer a different prompt.
+// From an agent (x-agentos-origin: agent) only a question can be answered:
+// permission requests are the user's.
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -58,10 +52,11 @@ export async function POST(
     index?: number;
     label?: string;
   };
-  const target = tmuxName(id);
-  if (!target) {
+  const session = getSession(id);
+  if (!session) {
     return NextResponse.json({ error: "Session not found" }, { status: 404 });
   }
+  const target = tmuxName(session);
 
   let prompt: PermissionPrompt | null;
   try {
@@ -74,6 +69,14 @@ export async function POST(
     return NextResponse.json(
       { error: "The prompt changed; check the session", prompt },
       { status: 409 }
+    );
+  }
+
+  // Classified as the Needs you card does; can't tell means permission
+  if (isAgentOrigin(request) && !(await agentMayAnswer(session, prompt))) {
+    return NextResponse.json(
+      { error: PERMISSION_USER_ONLY, permission: true },
+      { status: 403 }
     );
   }
 
