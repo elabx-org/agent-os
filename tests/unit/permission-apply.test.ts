@@ -342,3 +342,73 @@ describe("modeEdgeHandler", () => {
     }
   });
 });
+
+describe("pendingAppliesAt", () => {
+  test("nothing pending: null", () => {
+    assert.equal(
+      apply.pendingAppliesAt(session({ permission_pending: null }), true),
+      null
+    );
+  });
+
+  test("Claude in its cycle with the flag: the turn's end", () => {
+    const s = session({ permission_pending: "auto" });
+    assert.equal(apply.pendingAppliesAt(s, true), "nextTurn");
+    // Without the flag nothing presses it in: only a restart does
+    assert.equal(apply.pendingAppliesAt(s, false), "restart");
+  });
+
+  test("full access needs the Labs cap to be in the cycle", () => {
+    const off = session({ permission_pending: "bypassPermissions" });
+    assert.equal(apply.pendingAppliesAt(off, true), "restart");
+    const on = session({
+      permission_pending: "bypassPermissions",
+      launch_caps: JSON.stringify({ allowBypassCycle: true }),
+    });
+    assert.equal(apply.pendingAppliesAt(on, true), "nextTurn");
+  });
+
+  test("a mode the cycle missed, and other agents: a restart", () => {
+    const s = session({ permission_pending: "auto" });
+    apply.noteModeMiss(s.id, "auto");
+    assert.equal(apply.pendingAppliesAt(s, true), "restart");
+    apply.forgetModeMiss(s.id);
+    assert.equal(apply.pendingAppliesAt(s, true), "nextTurn");
+    const codex = session({ agent_type: "codex", permission_pending: "auto" });
+    assert.equal(apply.pendingAppliesAt(codex, true), "restart");
+  });
+});
+
+describe("confirmReady", () => {
+  const deps = (reads: (Readiness | Error)[]) => {
+    let i = 0;
+    return {
+      readiness: async () => {
+        const r = reads[i++];
+        if (r instanceof Error) throw r;
+        return r;
+      },
+      sleep: async () => {},
+    };
+  };
+
+  test("two ready reads in a row", async () => {
+    assert.equal(
+      await apply.confirmReady(session(), deps([READY, READY])),
+      true
+    );
+  });
+
+  test("busy on either read, or a read that throws: not ready", async () => {
+    const busy = hold("busy");
+    assert.equal(await apply.confirmReady(session(), deps([busy])), false);
+    assert.equal(
+      await apply.confirmReady(session(), deps([READY, busy])),
+      false
+    );
+    assert.equal(
+      await apply.confirmReady(session(), deps([new Error("tmux")])),
+      false
+    );
+  });
+});

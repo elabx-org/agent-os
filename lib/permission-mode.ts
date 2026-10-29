@@ -56,6 +56,14 @@ export interface PermissionModeState {
   live: Mode | null;
   canApplyLive: boolean;
   agentType: AgentType;
+  /**
+   * When `pending` takes effect: at the end of the turn (the idle applier,
+   * flag modeAtIdle) or only at a restart (full access without the Labs
+   * cycle, a mode this Claude's cycle lacks, Codex, Gemini)
+   */
+  pendingAppliesAt?: "nextTurn" | "restart" | null;
+  /** Flag modeAtIdle: a pick made mid-turn waits for the turn's end */
+  atIdle?: boolean;
 }
 
 /** POST /api/sessions/[id]/permission-mode body */

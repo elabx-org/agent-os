@@ -195,7 +195,15 @@ function ModeItems({ form }: { form: NewFormState }) {
         <DropdownMenuRadioItem key={m} value={m}>
           <span className="flex min-w-0 flex-col">
             <span>{MODE_LABELS[m]}</span>
-            <span className="text-muted-foreground text-xs">
+            <span
+              className={cn(
+                "text-xs",
+                // Red as in the session's Permissions sheet (N-PermMode)
+                m === "bypassPermissions"
+                  ? "text-[var(--del)]"
+                  : "text-muted-foreground"
+              )}
+            >
               {MODE_HINTS[m]}
             </span>
           </span>

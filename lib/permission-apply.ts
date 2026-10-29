@@ -84,6 +84,42 @@ export function noteModeMiss(sessionId: string, mode: Mode): void {
 }
 
 /**
+ * When a session's pending mode takes effect: at the turn's end where the
+ * idle applier will press it in (flag on, Claude, in its cycle), else only
+ * at a restart. Null with nothing pending
+ */
+export function pendingAppliesAt(
+  session: Session,
+  flagOn: boolean
+): "nextTurn" | "restart" | null {
+  const mode = normalizeMode(session.permission_pending);
+  if (!mode) return null;
+  const inCycle =
+    session.agent_type === "claude" &&
+    (mode !== "bypassPermissions" ||
+      parseLaunchCaps(session.launch_caps).allowBypassCycle) &&
+    applyState().missed.get(session.id) !== mode;
+  return flagOn && inCycle ? "nextTurn" : "restart";
+}
+
+/**
+ * Two readiness reads in a row, right before keys are pressed: a key never
+ * lands while it works or in a dialog. Any doubt is "not ready"
+ */
+export async function confirmReady(
+  session: Session,
+  deps: Pick<ApplyPendingDeps, "readiness" | "sleep"> = liveDeps
+): Promise<boolean> {
+  try {
+    if (!(await deps.readiness(session)).ready) return false;
+    await deps.sleep(CONFIRM_MS);
+    return (await deps.readiness(session)).ready;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Applies `session.permission_pending` now if the session is idle and the
  * mode is in its Shift+Tab cycle; clears it when applied. A mode the cycle
  * doesn't have (full access without the Labs cap, or one this Claude
@@ -108,17 +144,7 @@ export async function applyPendingMode(
     return { mode, applied: false, reason: "not_in_cycle" };
   }
 
-  // Two reads in a row, right before the presses: a key never lands while
-  // it works or in a dialog. Any doubt is "not ready"
-  try {
-    if (!(await deps.readiness(session)).ready) {
-      return { mode, applied: false, reason: "not_ready" };
-    }
-    await deps.sleep(CONFIRM_MS);
-    if (!(await deps.readiness(session)).ready) {
-      return { mode, applied: false, reason: "not_ready" };
-    }
-  } catch {
+  if (!(await confirmReady(session, deps))) {
     return { mode, applied: false, reason: "not_ready" };
   }
 

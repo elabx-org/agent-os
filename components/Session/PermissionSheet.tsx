@@ -1,6 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from "react";
 import { createPortal } from "react-dom";
 import { useSnapshot } from "valtio";
 import { toast } from "sonner";
@@ -9,6 +15,8 @@ import { confirmAction } from "@/components/ui/confirm";
 import { usePermissionMode } from "@/hooks/usePermissionMode";
 import { fetchAsUser, refusalText } from "@/lib/client/user-fetch";
 import { haptic } from "@/lib/haptics";
+import { isNative, nativeCaps } from "@/lib/native-bridge";
+import { useLayoutMode } from "@/hooks/useLayoutMode";
 import { registerNavHandlers } from "@/lib/nav-actions";
 import {
   MODE_HINTS,
@@ -19,10 +27,11 @@ import {
 import {
   fullAccessConfirm,
   initialChoice,
-  isWaiting,
   modeToast,
   needsPost,
   RESTART_BUSY,
+  sheetNote,
+  waitingText,
 } from "@/lib/permission-sheet";
 import { cn } from "@/lib/utils";
 import type { Session } from "@/lib/db";
@@ -70,21 +79,27 @@ function ModeRow({
   waiting,
   disabled,
   onPick,
+  onKeyDown,
 }: {
   mode: Mode;
   selected: boolean;
-  /** This choice waits for the turn in progress to end */
-  waiting: boolean;
+  /** This choice waits: for the turn in progress to end, or a restart */
+  waiting: string | null;
   disabled: boolean;
   onPick: () => void;
+  onKeyDown: (e: ReactKeyboardEvent<HTMLButtonElement>) => void;
 }) {
   return (
     <button
       type="button"
       role="radio"
       aria-checked={selected}
+      // Roving: the group is one Tab stop, the arrows move in it
+      tabIndex={selected ? 0 : -1}
+      data-mode={mode}
       disabled={disabled}
       onClick={onPick}
+      onKeyDown={onKeyDown}
       className={cn(
         "row min-h-[60px] w-full touch-manipulation !items-start text-left disabled:opacity-60",
         selected && "sel"
@@ -116,7 +131,7 @@ function ModeRow({
         {waiting && (
           <span className="text-muted-foreground mt-0.5 flex items-center gap-1.5 text-xs">
             <Clock className="h-3 w-3 shrink-0" />
-            Waiting for this turn to end
+            {waiting}
           </span>
         )}
       </span>
@@ -136,6 +151,14 @@ function ModeRow({
 export function PermissionSheet({ session, onClose }: PermissionSheetProps) {
   const { state, setMode, setting, error } = usePermissionMode(session.id);
   const { railWidth } = useSnapshot(mobileNavStore);
+  const layoutMode = useLayoutMode();
+  // The column carries × and ✓: the web column, or the app's on the closed
+  // Duo (its sheet column, lib/column-spec); app builds without the column,
+  // phones, tabletop, the open Duo and the desktop get the sheet's own
+  const columnCarries =
+    railWidth > 0 ||
+    (isNative() && nativeCaps().column === true && layoutMode === "duo-closed");
+  const sheetRef = useRef<HTMLElement>(null);
   const [picked, setPicked] = useState<Mode | null>(null);
   const [confirming, setConfirming] = useState(false);
   const opened = initialChoice(state);
@@ -200,7 +223,63 @@ export function PermissionSheet({ session, onClose }: PermissionSheetProps) {
     };
   }, [close]);
 
-  const waiting = isWaiting(state) && choice === state?.pending;
+  const waiting = choice === state?.pending ? waitingText(state) : null;
+
+  // Focus into the dialog once the rows are up, on the selected one, unless
+  // a text box has it (opened from the composer: the keyboard stays up)
+  const loaded = !!state;
+  useEffect(() => {
+    if (!loaded) return;
+    const active = document.activeElement;
+    if (
+      active instanceof HTMLTextAreaElement ||
+      active instanceof HTMLInputElement ||
+      (active instanceof HTMLElement && active.isContentEditable)
+    )
+      return;
+    sheetRef.current
+      ?.querySelector<HTMLElement>('[role="radio"][tabindex="0"]')
+      ?.focus({ preventScroll: true });
+  }, [loaded]);
+
+  // The radiogroup's arrows: move and select, as the pattern expects
+  const onRowKey = (e: ReactKeyboardEvent<HTMLButtonElement>) => {
+    const step =
+      e.key === "ArrowDown" || e.key === "ArrowRight"
+        ? 1
+        : e.key === "ArrowUp" || e.key === "ArrowLeft"
+          ? -1
+          : 0;
+    if (!step || busy) return;
+    e.preventDefault();
+    const at = MODES.indexOf((e.currentTarget.dataset.mode as Mode) ?? "");
+    const next = MODES[(at + step + MODES.length) % MODES.length];
+    setPicked(next);
+    sheetRef.current
+      ?.querySelector<HTMLElement>(`[data-mode="${next}"]`)
+      ?.focus();
+  };
+
+  // Tab stays in the dialog
+  const onSheetKey = (e: ReactKeyboardEvent<HTMLElement>) => {
+    if (e.key !== "Tab" || !sheetRef.current) return;
+    const stops = Array.from(
+      sheetRef.current.querySelectorAll<HTMLElement>(
+        'button:not([disabled]):not([tabindex="-1"])'
+      )
+    );
+    if (!stops.length) return;
+    const first = stops[0];
+    const last = stops[stops.length - 1];
+    const inside = sheetRef.current.contains(document.activeElement);
+    if (e.shiftKey && (document.activeElement === first || !inside)) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && (document.activeElement === last || !inside)) {
+      e.preventDefault();
+      first.focus();
+    }
+  };
 
   return createPortal(
     <div className="fixed inset-0 z-50" style={{ right: railWidth }}>
@@ -210,9 +289,12 @@ export function PermissionSheet({ session, onClose }: PermissionSheetProps) {
         className="absolute inset-0 bg-black/55"
       />
       <section
+        ref={sheetRef}
         role="dialog"
         aria-modal="true"
         aria-label="Permissions"
+        tabIndex={-1}
+        onKeyDown={onSheetKey}
         className={cn(
           "sheet-surface absolute inset-x-0 bottom-0 mx-auto flex max-h-[85%] max-w-lg flex-col gap-3 overflow-x-hidden overflow-y-auto px-4 pb-[calc(1.25rem+env(safe-area-inset-bottom))]",
           // The open Duo: the right page, clear of the fold
@@ -248,9 +330,10 @@ export function PermissionSheet({ session, onClose }: PermissionSheetProps) {
                 key={mode}
                 mode={mode}
                 selected={mode === choice}
-                waiting={waiting && mode === choice}
+                waiting={mode === choice ? waiting : null}
                 disabled={busy}
                 onPick={() => setPicked(mode)}
+                onKeyDown={onRowKey}
               />
             ))}
           </div>
@@ -258,15 +341,12 @@ export function PermissionSheet({ session, onClose }: PermissionSheetProps) {
 
         <p className="text-muted-foreground flex items-start gap-2 px-1 text-[13px]">
           <Info className="mt-px h-4 w-4 shrink-0" />
-          <span>
-            Applies from the next turn. Codex and Gemini use their closest
-            matching setting.
-          </span>
+          <span>{sheetNote(state)}</span>
         </p>
         {error && <p className="px-1 text-sm text-[var(--del)]">{error}</p>}
 
-        {/* No column to carry × and ✓ (desktop, phones, the open Duo, Safari) */}
-        {railWidth === 0 && (
+        {/* No column to carry × and ✓ (desktop, phones, tabletop, the open Duo) */}
+        {!columnCarries && (
           <div className="mt-0.5 flex gap-2.5">
             <button
               type="button"

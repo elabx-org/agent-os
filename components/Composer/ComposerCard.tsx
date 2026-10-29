@@ -33,7 +33,6 @@ import {
 } from "./queue-model";
 import type { UseQueue } from "@/hooks/useQueue";
 import { permissionModeKeys } from "@/hooks/usePermissionMode";
-import { openPermissionSheet } from "@/stores/permissionSheet";
 import { PermissionChip } from "@/components/Session/PermissionChip";
 import type { Session } from "@/lib/db";
 import type { EnqueueResult, QueueItem } from "@/lib/queue/types";
@@ -64,7 +63,7 @@ export interface ComposerCardProps {
   above?: ReactNode;
   className?: string;
   style?: CSSProperties;
-  /** Claude's live state: the mode pill (a tap opens the Permissions sheet),
+  /** Claude's live state: the mode pill (a tap cycles it, as Shift+Tab),
       the lines its own TUI holds, Shift+Tab and Esc in the box */
   live?: ClaudeLive;
   /** The bottom row's history button; default: Claude with a folder */
@@ -511,11 +510,9 @@ export function ComposerCard({
               <button
                 type="button"
                 onMouseDown={keep}
-                // The Permissions sheet (N-PermMode); Shift+Tab still cycles
-                onClick={() => openPermissionSheet(sessionId)}
+                onClick={live?.cycleMode}
                 title="Shift+Tab to cycle"
-                aria-haspopup="dialog"
-                aria-label={`Permissions: ${modeName}`}
+                aria-label={`Mode: ${modeName}, tap to change`}
                 className={cn("mode-pill flex-none", tone.className)}
               >
                 {tone.icon}

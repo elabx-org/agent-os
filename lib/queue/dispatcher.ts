@@ -257,7 +257,14 @@ export function createDispatcher(
     );
   }
 
-  return { service, sendOrQueue, handleEdge, recheck, applyPending };
+  return {
+    service,
+    sendOrQueue,
+    handleEdge,
+    recheck,
+    applyPending,
+    withLock,
+  };
 }
 
 export type Dispatcher = ReturnType<typeof createDispatcher>;
@@ -339,4 +346,16 @@ export async function sendOrQueue(
  */
 export async function applyPendingAtIdle(sessionId: string): Promise<unknown> {
   return live().applyPending(sessionId);
+}
+
+/**
+ * Runs `fn` under the session's dispatcher lock, after any send or look
+ * holding it: POST /permission-mode's Shift+Tab presses never interleave
+ * with a queued paste or the idle applier's own presses
+ */
+export async function withSessionLock<T>(
+  sessionId: string,
+  fn: () => Promise<T>
+): Promise<T> {
+  return live().withLock(sessionId, fn);
 }

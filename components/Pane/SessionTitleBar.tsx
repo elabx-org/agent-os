@@ -459,8 +459,8 @@ export function SessionTitleBar({
               <PermissionChip
                 session={info.session}
                 variant="header"
-                // A narrow bar keeps the shield alone
-                className="h-9 rounded-full @max-[560px]/bar:px-2.5 @max-[560px]/bar:[&>[data-chip-label]]:hidden"
+                // A crowded bar keeps the shield alone, so the subtitle keeps the state
+                className="h-9 rounded-full @max-[900px]/bar:px-2.5 @max-[900px]/bar:[&>[data-chip-label]]:hidden"
               />
               <DesktopLiveButton />
               {besideMenu}

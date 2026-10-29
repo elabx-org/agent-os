@@ -17,8 +17,13 @@ export interface ChipModel {
   /** The mode named on the chip: the one waiting, else the one in force */
   mode: Mode;
   label: string;
-  /** Picked mid-turn, applies from the next one (the dot) */
+  /** A picked mode that isn't in force yet */
   pending: boolean;
+  /**
+   * When it will be: the turn's end (the dot; the chip looks again until
+   * it's in) or only a restart; null when nothing waits
+   */
+  waitsFor: "nextTurn" | "restart" | null;
   tone: "set" | "danger";
   ariaLabel: string;
   title: string | undefined;
@@ -38,14 +43,27 @@ export function chipModel(
   const pending = !!state.pending && state.pending !== current;
   const mode = pending ? state.pending! : current;
   const label = MODE_LABELS[mode];
+  // An older server leaves out the reason: the turn's end, as it was
+  const waitsFor = pending
+    ? state.pendingAppliesAt === "restart"
+      ? "restart"
+      : "nextTurn"
+    : null;
+  const when =
+    waitsFor === "restart"
+      ? "after a restart"
+      : waitsFor === "nextTurn"
+        ? "from the next turn"
+        : null;
   return {
     mode,
     label,
     pending,
+    waitsFor,
     tone: mode === "bypassPermissions" ? "danger" : "set",
-    ariaLabel: pending
-      ? `Permissions: ${label}, from the next turn`
+    ariaLabel: when
+      ? `Permissions: ${label}, ${when}`
       : `Permissions: ${label}`,
-    title: pending ? "From the next turn" : undefined,
+    title: when ? when[0].toUpperCase() + when.slice(1) : undefined,
   };
 }

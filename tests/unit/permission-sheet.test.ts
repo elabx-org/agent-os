@@ -8,6 +8,8 @@ import {
   isWaiting,
   modeToast,
   needsPost,
+  sheetNote,
+  waitingText,
 } from "../../lib/permission-sheet";
 import type { PermissionModeState } from "../../lib/permission-mode";
 
@@ -94,4 +96,34 @@ test("full access confirm names the session", () => {
   assert.equal(c.title, "Switch Signing profiles to full access?");
   assert.equal(c.message, "It will never ask, even to delete files.");
   assert.equal(c.destructive, true);
+});
+
+test("the waiting row says what it waits for", () => {
+  assert.equal(waitingText(STATE), null);
+  assert.equal(
+    waitingText({ ...STATE, pending: "auto", pendingAppliesAt: "nextTurn" }),
+    "Waiting for this turn to end"
+  );
+  assert.equal(
+    waitingText({
+      ...STATE,
+      pending: "bypassPermissions",
+      pendingAppliesAt: "restart",
+    }),
+    "Waiting for a restart"
+  );
+  // An older server leaves the reason out: the turn's end
+  assert.equal(
+    waitingText({ ...STATE, pending: "auto" }),
+    "Waiting for this turn to end"
+  );
+});
+
+test("the note says the next turn only while picks wait for it", () => {
+  const mock =
+    "Applies from the next turn. Codex and Gemini use their closest matching setting.";
+  assert.equal(sheetNote(undefined), mock);
+  assert.equal(sheetNote({ ...STATE, atIdle: true }), mock);
+  assert.equal(sheetNote(STATE), mock);
+  assert.match(sheetNote({ ...STATE, atIdle: false }), /^Applies right away/);
 });

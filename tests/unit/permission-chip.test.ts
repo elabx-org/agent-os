@@ -74,3 +74,23 @@ test("full access is red, stored or pending", () => {
   assert.equal(pending.tone, "danger");
   assert.equal(pending.label, "Full access");
 });
+
+test("a mode that waits for a restart says so, with no dot", () => {
+  const chip = chipModel(
+    state({ pending: "bypassPermissions", pendingAppliesAt: "restart" }),
+    "claude"
+  )!;
+  assert.equal(chip.pending, true);
+  assert.equal(chip.waitsFor, "restart");
+  assert.equal(chip.title, "After a restart");
+  assert.equal(chip.ariaLabel, "Permissions: Full access, after a restart");
+});
+
+test("a mode that waits for the turn's end polls (waitsFor nextTurn)", () => {
+  const chip = chipModel(
+    state({ pending: "auto", pendingAppliesAt: "nextTurn" }),
+    "claude"
+  )!;
+  assert.equal(chip.waitsFor, "nextTurn");
+  assert.equal(chipModel(state(), "claude")!.waitsFor, null);
+});

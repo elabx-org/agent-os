@@ -68,8 +68,8 @@ export function usePermissionChip(session: Session): ChipModel | null {
   const chip = chipModel(state, session.agent_type);
   // The applier presses a waiting mode in just after the turn's end, which
   // changes neither of those (Shift+Tab fires no hook): look again until
-  // it's in
-  const waiting = !!chip?.pending;
+  // it's in. One that waits for a restart isn't looked for
+  const waiting = chip?.waitsFor === "nextTurn";
   useEffect(() => {
     if (!waiting) return;
     const timer = setInterval(
@@ -124,7 +124,7 @@ export function PermissionChip({
         strokeWidth={2}
       />
       <span data-chip-label>{chip.label}</span>
-      {chip.pending && (
+      {chip.waitsFor === "nextTurn" && (
         <span
           aria-hidden
           className="h-1.5 w-1.5 shrink-0 rounded-full bg-current"
@@ -155,7 +155,7 @@ export function PermissionMenuItem({
           )}
         />
         <span className="flex-1">Permissions: {chip.label}</span>
-        {chip.pending && (
+        {chip.waitsFor === "nextTurn" && (
           <span
             aria-hidden
             title={chip.title}

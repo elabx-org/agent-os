@@ -28,6 +28,29 @@ export function isWaiting(state: PermissionModeState | undefined): boolean {
   return !!state?.pending && state.pending !== (state.live ?? state.mode);
 }
 
+/** The waiting row's line: the turn's end, or a restart it needs first */
+export function waitingText(
+  state: PermissionModeState | undefined
+): string | null {
+  if (!isWaiting(state)) return null;
+  return state!.pendingAppliesAt === "restart"
+    ? "Waiting for a restart"
+    : "Waiting for this turn to end";
+}
+
+const NOTE_AGENTS = "Codex and Gemini use their closest matching setting.";
+
+/**
+ * The note under the rows (N-PermMode's words while picks wait for the
+ * turn, flag modeAtIdle). With the flag off a pick goes in at once, mid-turn
+ * too, so the note says so instead
+ */
+export function sheetNote(state: PermissionModeState | undefined): string {
+  return state?.atIdle === false
+    ? `Applies right away where it can, else after a restart. ${NOTE_AGENTS}`
+    : `Applies from the next turn. ${NOTE_AGENTS}`;
+}
+
 /** Done with the row it opened on changes nothing, so it only closes */
 export function needsPost(
   choice: Mode | null,
