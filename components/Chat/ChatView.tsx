@@ -33,7 +33,6 @@ import {
   useClaudeLive,
 } from "@/components/Composer/ClaudeStateBar";
 import { StopPill } from "@/components/Session/StopPill";
-import { StateDot } from "@/components/a/StateDot";
 import { useFoldDeck } from "@/hooks/useFoldDeck";
 import { useLayoutMode } from "@/hooks/useLayoutMode";
 import { useQueue } from "@/hooks/useQueue";
@@ -366,6 +365,8 @@ export function ChatView({
           session={session}
           variant="inline"
           onOpenTerminal={onOpenTerminal}
+          // On the deck, the state line above names who asks
+          noHead={!!deckControls}
         />
       )}
       <LimitedCardSlot session={session} />
@@ -542,13 +543,6 @@ export function ChatView({
                   quotable
                   turns={turnActions}
                 />
-              </div>
-            )}
-            {/* The state line above says so on a table */}
-            {status === "running" && !deckControls && (
-              <div className="text-muted-foreground flex items-center gap-2 px-1 text-[13px]">
-                <StateDot state="work" className="animate-pulse" />
-                Claude is working
               </div>
             )}
             {!deckControls && needsYouCard}

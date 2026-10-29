@@ -33,6 +33,8 @@ export interface NeedsYouCardProps {
   onOpenTerminal?: () => void;
   onAnswered?: () => void;
   className?: string;
+  /** No "Claude is asking" title: the fold deck's state line above says it */
+  noHead?: boolean;
 }
 
 /** m:ss since `since`, ticking */
@@ -68,6 +70,7 @@ function Head({ text, since }: { text: string; since?: number | null }) {
 export function NeedsYouCard({
   session,
   variant,
+  noHead,
   onOpenTerminal,
   onAnswered,
   className,
@@ -142,18 +145,20 @@ export function NeedsYouCard({
 
   return (
     <div className={cn("ask-card", sheet && "bg-[var(--block)]", className)}>
-      <Head
-        text={
-          sheet
-            ? "Waiting for your answer"
-            : permission
-              ? pending
-                ? `${name} wants to use ${pending.tool_name}`
-                : `${name} needs permission`
-              : `${name} is asking`
-        }
-        since={sheet ? since : null}
-      />
+      {!noHead && (
+        <Head
+          text={
+            sheet
+              ? "Waiting for your answer"
+              : permission
+                ? pending
+                  ? `${name} wants to use ${pending.tool_name}`
+                  : `${name} needs permission`
+                : `${name} is asking`
+          }
+          since={sheet ? since : null}
+        />
+      )}
 
       {sheet && promptLoading && (
         <div className="text-muted-foreground flex items-center gap-2 text-[13px]">
