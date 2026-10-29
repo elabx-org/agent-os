@@ -142,6 +142,12 @@ const BASE = {
     icon: "Trash",
     label: "Clear history",
   },
+  start: {
+    id: "start",
+    symbol: "checkmark",
+    icon: "Check",
+    label: "Start",
+  },
   newProject: {
     id: "newProject",
     symbol: "plus",
@@ -339,8 +345,11 @@ export function columnFor(
         item(BASE.clearHistory),
       ];
     case "new":
-      // E-New's Start belongs to the form (M1b)
-      return [item(BASE.back, { symbol: "xmark", icon: "X", label: "Cancel" })];
+      // E-New: Cancel | Start (the form registers startNew)
+      return [
+        item(BASE.back, { symbol: "xmark", icon: "X", label: "Cancel" }),
+        item(BASE.start, { prominent: true, sep: true }),
+      ];
     case "search":
       return [item(BASE.back)];
   }

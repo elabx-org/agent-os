@@ -48,6 +48,7 @@ export const NAV_ACTIONS = [
   "closeSettings",
   "projectSettings",
   "newProject",
+  "start",
 ] as const;
 
 /**
@@ -102,6 +103,8 @@ interface NavHandlers {
   openProjectSettings: () => void;
   /** Projects' + (E-Projects): a new project, not a session (M1b) */
   openNewProject: () => void;
+  /** New's ✓ (E-New): start what the form holds; the form registers it */
+  startNew: () => void;
 }
 
 /**
@@ -151,6 +154,7 @@ export const navStore: NavHandlers = {
     if (page?.kind === "project") openProjectSettings(page.projectId);
   },
   openNewProject: () => navStore.openNewSession(),
+  startNew: () => {},
 };
 
 /**
@@ -240,6 +244,7 @@ export const NAV_ROUTES: Record<NavAction, (leftPage: boolean) => void> = {
   closeSettings: () => closeSettings(),
   projectSettings: () => navStore.openProjectSettings(),
   newProject: () => navStore.openNewProject(),
+  start: () => navStore.startNew(),
 };
 
 /** Actions on or beside Settings: it stays up for them */
