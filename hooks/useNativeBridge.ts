@@ -138,6 +138,7 @@ export function useNativeBridge({ waitingCount }: NativeBridgeOptions) {
             subscribeKey(surfaceStore, "home", report),
             subscribeKey(surfaceStore, "paneCount", report),
             subscribeKey(surfaceStore, "searchOpen", report),
+            subscribeKey(surfaceStore, "behind", report),
             subscribeKey(settingsPageStore, "detail", report),
             subscribeKey(layoutStore, "mode", report),
             subscribe(columnOrderStore, report),

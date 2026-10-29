@@ -41,6 +41,7 @@ interface ColumnSources {
   sheet: ColumnContext["sheet"];
   sheetAction: ColumnContext["sheetAction"];
   changesOpen: boolean;
+  behind: boolean;
   native: boolean;
   order: ColumnOrder;
   agents: number;
@@ -71,6 +72,7 @@ function contextFrom(s: ColumnSources): ColumnContext {
     agentDetail: s.agentDetail,
     projectSettings: s.projectSettings,
     changesOpen: s.changesOpen,
+    behind: s.behind,
     order: s.order,
   };
 }
@@ -83,7 +85,7 @@ export function useColumn(
   const nav = useSnapshot(mobileNavStore);
   const { open: newOpen } = useSnapshot(newSurfaceStore);
   const { on: focus } = useSnapshot(focusStore);
-  const { paneCount } = useSnapshot(surfaceStore);
+  const { paneCount, behind } = useSnapshot(surfaceStore);
   const { detail: settingsDetail } = useSnapshot(settingsPageStore);
   const { mode } = useSnapshot(layoutStore);
   const tree = useSnapshot(agentTreeStore);
@@ -105,6 +107,7 @@ export function useColumn(
     sheet: nav.sheet,
     sheetAction: nav.sheetAction,
     changesOpen: nav.changesOpen,
+    behind,
     native,
     order: order as ColumnOrder,
     agents: nav.agentCount,
@@ -153,6 +156,7 @@ export function nativeColumn(): {
       sheet: mobileNavStore.sheet,
       sheetAction: mobileNavStore.sheetAction,
       changesOpen: mobileNavStore.changesOpen,
+      behind: surfaceStore.behind,
       native: true,
       order: columnOrderStore.order,
       agents: mobileNavStore.agentCount,

@@ -60,6 +60,7 @@ export const NAV_ACTIONS = [
   "agents",
   "showFinished",
   "collapseAll",
+  "resume",
   "pull",
   "push",
   "newPr",
@@ -100,6 +101,8 @@ interface NavHandlers {
   openNow: () => void;
   /** The column's back past every layer: Now, unless the page knows better */
   goBack: () => void;
+  /** From Now back to the session behind it (the closed Duo, phones) */
+  resume: () => void;
   openProjects: () => void;
   /** The live activity sheet (the session's activity rail) */
   openLive: () => void;
@@ -170,6 +173,7 @@ export const navStore: NavHandlers = {
   openSettings: () => openSettings(),
   openNow: showNow,
   goBack: () => navStore.openNow(),
+  resume: () => {},
   // Projects is Now's other half until it has a page of its own (M1b)
   openProjects: () => navStore.openNow(),
   openLive: () => {
@@ -286,6 +290,7 @@ export const NAV_ROUTES: Record<NavAction, (leftPage: boolean) => void> = {
   settings: () => navStore.openSettings(),
   sessions: () => navStore.openSessions(),
   back: () => goBack(),
+  resume: () => navStore.resume(),
   now: () => {
     leaveForHome("now");
     navStore.openNow();
