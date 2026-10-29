@@ -54,7 +54,6 @@ import type { ClaudeKey } from "@/components/Composer/ClaudeStateBar";
 import { DeckActions, DeckAnswers } from "@/components/DeckActions";
 import { NeedsYouCard } from "@/components/Chat/NeedsYouCard";
 import { DeckStateLine } from "@/components/DeckStateLine";
-import { DeckContext } from "@/components/ReplyContext/ContextPanel";
 import { useSessionPrompt } from "@/data/prompts/queries";
 import { useQueue } from "@/hooks/useQueue";
 import { useNarrowScreen } from "@/hooks/useNarrowScreen";
@@ -1225,17 +1224,6 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
             </ContextMenuItem>
           </ContextMenuContent>
         </ContextMenu>
-
-        {/* On a table while typing: Claude's last turn over the output,
-            laid over it so xterm keeps its scrollback */}
-        {composerOn && (
-          <DeckContext
-            sessionId={draftId}
-            view="terminal"
-            on={!!deck && !!session && active}
-            cover={terminalRef}
-          />
-        )}
 
         {/* Copied to clipboard flash */}
         {copiedFlash && (
