@@ -70,6 +70,14 @@ export interface TranscriptChunk {
   truncated: boolean;
 }
 
+/**
+ * The folder under <CLAUDE_CONFIG_DIR>/projects that holds a cwd's
+ * transcripts: every character but a letter or digit becomes "-"
+ */
+export function projectDirFor(cwd: string): string {
+  return cwd.replace(/[^a-zA-Z0-9]/g, "-");
+}
+
 function claudeDir(): string {
   return process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), ".claude");
 }

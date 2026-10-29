@@ -38,6 +38,12 @@ export interface Session {
   permission_pending: string | null;
   // JSON LaunchCaps recorded at launch
   launch_caps: string | null;
+  // M4 handoff (migration 28): ms when handed off and its tmux ended; the
+  // session it came from / went to; Claude effort for the next launch
+  paused_at: number | null;
+  handoff_from_session_id: string | null;
+  handoff_to_session_id: string | null;
+  effort: string | null;
 }
 
 /** What an agent tried on a session's permissions (lib/agent-actions.ts) */

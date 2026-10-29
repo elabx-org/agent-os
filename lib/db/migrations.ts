@@ -436,6 +436,18 @@ const migrations: Migration[] = [
       `);
     }),
   },
+  {
+    id: 28,
+    name: "add_handoff_to_sessions",
+    up: atomic((db) => {
+      // M4: a session handed off to another agent stays listed, paused
+      // (tmux ended, transcript kept); effort is applied on the next launch
+      addColumnIfMissing(db, "sessions", "paused_at", "INTEGER");
+      addColumnIfMissing(db, "sessions", "handoff_from_session_id", "TEXT");
+      addColumnIfMissing(db, "sessions", "handoff_to_session_id", "TEXT");
+      addColumnIfMissing(db, "sessions", "effort", "TEXT");
+    }),
+  },
 ];
 
 export function runMigrations(db: Database.Database): void {

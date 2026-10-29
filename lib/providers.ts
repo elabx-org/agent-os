@@ -53,6 +53,7 @@ export interface BuildFlagsOptions {
   allowBypassCycle?: boolean; // Full access joins Claude's Shift+Tab cycle (Labs)
   continueSession?: boolean; // Continue last session in working directory
   model?: string;
+  effort?: string | null; // Claude --effort (sessions.effort, lib/handoff-types.ts EffortLevel)
   initialPrompt?: string; // Initial prompt to send to agent
   worktreeName?: string; // If set, use provider's native worktree flag with this name
   systemPromptFile?: string; // Appended to the system prompt (the project note)
