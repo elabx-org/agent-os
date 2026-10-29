@@ -24,7 +24,19 @@ import { useIsNative } from "@/hooks/useIsNative";
 import type { Session } from "@/lib/db";
 import { SessionSpread } from "./SessionSpread";
 import { WorkspacePage } from "@/components/WorkspacePage";
-import { workspacePageStore } from "@/stores/workspacePage";
+import { closePage, workspacePageStore } from "@/stores/workspacePage";
+import { useLayoutMode } from "@/hooks/useLayoutMode";
+import { usePanes } from "@/contexts/PaneContext";
+import { getAllPaneIds } from "@/lib/panes";
+import { runNav } from "@/lib/nav-actions";
+import {
+  AVATAR_RAIL_WIDTH,
+  AvatarRail,
+  DESKTOP_PROJECTS_WIDTH,
+  DESKTOP_SIDEBAR_WIDTH,
+  DesktopSidebar,
+  SessionPill,
+} from "@/components/Sidebar";
 
 export function DesktopView(props: ViewProps) {
   const {
@@ -52,6 +64,14 @@ export function DesktopView(props: ViewProps) {
   const { page } = useSnapshot(workspacePageStore);
   const pageOpen = !!page;
   const native = useIsNative();
+  // The desktop shell: gated on the posture, never on width (the open Duo
+  // in a browser is as wide and keeps its column and Now)
+  const desktop = useLayoutMode() === "desktop" && !native;
+  const { homeTab } = useSnapshot(mobileNavStore);
+  const { state: paneState, focusPane, getActiveTab } = usePanes();
+  const paneIds = getAllPaneIds(paneState.layout);
+  const paneSessions = paneIds.map((id) => getActiveTab(id)?.sessionId ?? null);
+  const shownIds = paneSessions.filter((id): id is string => !!id);
   // Needs you: a page across the open Duo, a dialog on the web
   useNeedsYouPage(native);
 
@@ -111,6 +131,39 @@ export function DesktopView(props: ViewProps) {
     if (isNative()) setSidebarOpen(false);
   };
 
+  // Already in a pane, it takes focus there; else it opens in the focused one
+  const openOnDesktop = (session: Session) => {
+    const showing = paneIds[paneSessions.indexOf(session.id)];
+    if (!showing) return attachToSession(session);
+    closePage();
+    focusPane(showing);
+  };
+
+  // Open-Beside: each page's pill picks what that page shows
+  const pickFor = (paneId: string) => () => {
+    focusPane(paneId);
+    setShowQuickSwitcher(true);
+  };
+  const paneTop = (paneId: string) => {
+    const id = paneSessions[paneIds.indexOf(paneId)];
+    const session = id ? sessions.find((s) => s.id === id) : undefined;
+    return (
+      session && (
+        <SessionPill
+          session={session}
+          status={sessionStatuses[session.id]}
+          onPick={pickFor(paneId)}
+        />
+      )
+    );
+  };
+
+  // Two or more panes on the desktop: the sidebar steps down to the rail
+  // and the panes become cards (Desk-Beside)
+  const beside = desktop && paneIds.length > 1;
+  const projectsShown = desktop && homeTab === "projects";
+  const rail = beside && !pageOpen && !projectsShown;
+
   // The Projects tab: a project opens its page beside the home; the old
   // tree stays one row away for managing sessions
   const projectList = (
@@ -156,6 +209,15 @@ export function DesktopView(props: ViewProps) {
         session={activeSession}
         projects={projects}
         homeOpen={sidebarOpen}
+        homeWidth={
+          !desktop
+            ? undefined
+            : rail
+              ? AVATAR_RAIL_WIDTH
+              : projectsShown
+                ? DESKTOP_PROJECTS_WIDTH
+                : DESKTOP_SIDEBAR_WIDTH
+        }
         pageSpread={page?.kind === "inbox"}
         page={
           pageOpen && (
@@ -163,17 +225,34 @@ export function DesktopView(props: ViewProps) {
           )
         }
         home={
-          <MissionControl
-            sessions={sessions}
-            sessionStatuses={sessionStatuses}
-            projectNames={projectNames}
-            activeSessionId={focusedActiveTab?.sessionId || undefined}
-            onOpenSession={openFromHome}
-            projectsView={projectList}
-          />
+          !desktop ? (
+            <MissionControl
+              sessions={sessions}
+              sessionStatuses={sessionStatuses}
+              projectNames={projectNames}
+              activeSessionId={focusedActiveTab?.sessionId || undefined}
+              onOpenSession={openFromHome}
+              projectsView={projectList}
+            />
+          ) : rail ? (
+            <AvatarRail
+              sessions={sessions}
+              sessionStatuses={sessionStatuses}
+              shownIds={shownIds}
+              onOpenSession={openOnDesktop}
+              onNewSession={() => runNav("new")}
+            />
+          ) : (
+            <DesktopSidebar
+              view={props}
+              activeSessionId={focusedActiveTab?.sessionId || undefined}
+              onOpenSession={openOnDesktop}
+              projectsView={projectList}
+            />
+          )
         }
       >
-        <PaneLayout renderPane={renderPane} />
+        <PaneLayout renderPane={renderPane} paneTop={paneTop} cards={beside} />
       </SessionSpread>
 
       {/* Dialogs */}
