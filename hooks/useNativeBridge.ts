@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect } from "react";
+import { subscribe } from "valtio";
 import { subscribeKey } from "valtio/utils";
+import { columnOrderStore } from "@/stores/columnOrder";
 import {
   isNative,
   nativeCaps,
@@ -126,6 +128,7 @@ export function useNativeBridge({ waitingCount }: NativeBridgeOptions) {
             subscribeKey(surfaceStore, "searchOpen", report),
             subscribeKey(settingsPageStore, "detail", report),
             subscribeKey(layoutStore, "mode", report),
+            subscribe(columnOrderStore, report),
           ]
         : []),
     ];
