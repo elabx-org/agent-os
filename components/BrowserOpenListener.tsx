@@ -6,12 +6,14 @@ import { useProxyConfig } from "@/hooks/useProxyConfig";
 import { proxyUrlFor } from "@/lib/proxy-url";
 import type { BrowserOpenEvent } from "@/lib/browser-open";
 
+const POLL_MS = 3000;
 const MAX_BACKOFF_MS = 30_000;
 
 /**
  * Shows the links CLIs in sessions ask to open (sign-in pages, OAuth
- * callbacks on localhost) as toasts, via a long poll on /api/browser-open.
- * Polls only while the tab is visible.
+ * callbacks on localhost) as toasts, polling /api/browser-open every 3s
+ * while the tab is visible. Not a long poll: on plain HTTP/1.1 a held
+ * request would take one of the browser's six connections per tab.
  */
 export function BrowserOpenListener() {
   const config = useProxyConfig();
@@ -22,7 +24,7 @@ export function BrowserOpenListener() {
     let stopped = false;
     let controller: AbortController | null = null;
     let seq: number | null = null;
-    let backoff = 1000;
+    let backoff = POLL_MS;
     let running = false;
 
     const show = (event: BrowserOpenEvent) => {
@@ -78,7 +80,8 @@ export function BrowserOpenListener() {
           };
           if (seq !== null) data.events.forEach(show);
           seq = data.seq;
-          backoff = 1000;
+          backoff = POLL_MS;
+          await new Promise((r) => setTimeout(r, POLL_MS));
         } catch {
           if (stopped) break;
           await new Promise((r) => setTimeout(r, backoff));

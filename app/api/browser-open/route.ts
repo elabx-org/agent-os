@@ -14,7 +14,8 @@ import { proxyUrlFor } from "@/lib/proxy-url";
 
 export const dynamic = "force-dynamic";
 
-const LONG_POLL_MS = 25_000;
+/** Longest a GET may wait for a link (?wait=<seconds>) */
+const MAX_WAIT_S = 25;
 
 /** Where the user opens Agent-OS, for links the helper prints */
 function publicBase(): string | null {
@@ -73,8 +74,9 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({ ok: true, seq: event.seq, open });
 }
 
-// GET /api/browser-open?after=<seq> - the page's long poll for new links;
-// without `after` it only learns the current seq
+// GET /api/browser-open?after=<seq>[&wait=<seconds>] - links newer than
+// seq; without `after` only the current seq. The page polls without wait:
+// a held request would take one of HTTP/1.1's six connections per tab
 export async function GET(request: NextRequest) {
   const host =
     request.headers.get("x-forwarded-host")?.split(",")[0].trim() ||
@@ -88,9 +90,14 @@ export async function GET(request: NextRequest) {
   const afterParam = request.nextUrl.searchParams.get("after");
   const after =
     afterParam !== null && /^\d+$/.test(afterParam) ? Number(afterParam) : null;
+  const waitParam = Number(request.nextUrl.searchParams.get("wait") ?? 0);
+  const waitMs =
+    Number.isFinite(waitParam) && waitParam > 0
+      ? Math.min(waitParam, MAX_WAIT_S) * 1000
+      : 0;
   const result = await waitForEvents(
     after,
-    LONG_POLL_MS,
+    waitMs,
     sharedState(),
     request.signal
   );

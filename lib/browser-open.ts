@@ -175,7 +175,7 @@ export function waitForEvents(
   signal?: AbortSignal
 ): Promise<{ events: BrowserOpenEvent[]; seq: number }> {
   const ready = eventsAfter(after, state);
-  if (ready.length || after === null || signal?.aborted) {
+  if (ready.length || after === null || timeoutMs <= 0 || signal?.aborted) {
     return Promise.resolve({ events: ready, seq: state.seq });
   }
   return new Promise((resolve) => {
