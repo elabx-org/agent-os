@@ -19,11 +19,7 @@ struct AgentWebContainer: UIViewRepresentable {
         config.applicationNameForUserAgent = "Mobile/15E148 AgentOSiOS/\(Bundle.main.shortVersion)"
 
         let controller = config.userContentController
-        controller.addUserScript(WKUserScript(
-            source: Self.bootScript,
-            injectionTime: .atDocumentStart,
-            forMainFrameOnly: true
-        ))
+        controller.addUserScript(Self.bootScript(duo: model.duo))
         controller.add(WeakMessageHandler(context.coordinator), name: "agentos")
 
         let view = AgentWebView(frame: .zero, configuration: config)
@@ -59,12 +55,16 @@ struct AgentWebContainer: UIViewRepresentable {
 
     func updateUIView(_ view: AgentWebView, context: Context) {}
 
-    /// Runs before the page: tells it it's inside the app (lib/native-bridge.ts)
-    private static var bootScript: String {
-        """
-        window.agentosNative = { platform: 'ios', version: '\(Bundle.main.shortVersion)', keySpecs: true };
-        document.documentElement.dataset.native = 'ios';
-        """
+    /// Runs before the page: tells it it's inside the app (lib/native-bridge.ts).
+    /// `column`: the app draws NativeState.column. `duo` only once the
+    /// system has said whether there's a hinge; the page guesses until then
+    static func bootScript(duo: Bool?) -> WKUserScript {
+        let duoFlag = duo.map { ", duo: \($0)" } ?? ""
+        let source = """
+            window.agentosNative = { platform: 'ios', version: '\(Bundle.main.shortVersion)', keySpecs: true, column: 1\(duoFlag) };
+            document.documentElement.dataset.native = 'ios';
+            """
+        return WKUserScript(source: source, injectionTime: .atDocumentStart, forMainFrameOnly: true)
     }
 
     final class Coordinator: NSObject, WKScriptMessageHandler, WKNavigationDelegate, WKUIDelegate, UIScrollViewDelegate {
@@ -257,6 +257,13 @@ final class AgentWebView: WKWebView {
             let name = NSStringFromClass(type(of: $0))
             return name.hasPrefix("WKContent") || name.hasPrefix("AgentOS_WKContent")
         }?.reloadInputViews()
+    }
+
+    /// The next document starts with this `duo` (the boot script is the only user script)
+    func setBootScript(duo: Bool?) {
+        let controller = configuration.userContentController
+        controller.removeAllUserScripts()
+        controller.addUserScript(AgentWebContainer.bootScript(duo: duo))
     }
 
     override init(frame: CGRect, configuration: WKWebViewConfiguration) {

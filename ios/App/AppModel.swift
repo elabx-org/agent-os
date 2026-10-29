@@ -11,6 +11,52 @@ enum PaneView: String {
     case chat, terminal, git, files, workers
 }
 
+/// One item of the column the page asks for (NativeState.column, from
+/// lib/column-spec.ts): sent back as a nav action when tapped
+struct ColumnEntry: Equatable {
+    let id: String
+    /// SF Symbol name; ColumnEntry.symbolName checks it exists
+    let symbol: String
+    let label: String
+    let badge: Int
+    /// Needs you's amber count; otherwise a plain system badge
+    let amber: Bool
+    /// The filled accent circle (New)
+    let prominent: Bool
+    let selected: Bool
+    /// A gap before this item
+    let sep: Bool
+
+    init?(_ raw: Any) {
+        guard let dict = raw as? [String: Any], let id = dict["id"] as? String, !id.isEmpty else { return nil }
+        self.id = id
+        symbol = dict["symbol"] as? String ?? ""
+        label = dict["label"] as? String ?? id
+        badge = max(0, dict["badge"] as? Int ?? 0)
+        amber = dict["badgeTone"] as? String == "amber"
+        prominent = dict["prominent"] as? Bool ?? false
+        selected = dict["selected"] as? Bool ?? false
+        sep = dict["sep"] as? Bool ?? false
+    }
+
+    /// The page's symbol when this iOS has it, else the fixed list's own
+    var symbolName: String {
+        if !symbol.isEmpty, UIImage(systemName: symbol) != nil { return symbol }
+        return Self.fallback[id] ?? "circle"
+    }
+
+    private static let fallback: [String: String] = [
+        "new": "plus", "inbox": "tray", "chat": "text.bubble", "terminal": "apple.terminal",
+        "git": "arrow.triangle.branch", "files": "folder", "find": "magnifyingglass",
+        "search": "magnifyingglass", "focus": "sidebar.right", "live": "sidebar.right",
+        "settings": "gearshape", "sessions": "sidebar.left", "now": "sidebar.left",
+        "back": "chevron.left", "closeSettings": "xmark", "server": "server.rack",
+        "more": "ellipsis", "projects": "folder", "beside": "rectangle.split.2x1",
+        "swap": "arrow.left.arrow.right", "sort": "arrow.up.arrow.down", "notifSettings": "bell",
+        "clearHistory": "trash", "projectSettings": "ellipsis",
+    ]
+}
+
 /// What the bar shows, mirrored from the page, and the way back to it.
 @Observable
 @MainActor
@@ -43,6 +89,17 @@ final class AppModel {
     var focus = false
     /// Focus is on and something needs you: the amber dot on Focus
     var focusDot = false
+    /// The column the page draws through the app (pages that know
+    /// agentosNative.column). nil: the fixed list, as before; empty: the
+    /// page draws its own bar, so the app's is hidden
+    var column: [ColumnEntry]?
+    var columnHidden: Bool { column?.isEmpty == true }
+    /// What fills the page ("now", "session"…), for the column's More menu
+    var surface: String?
+    /// Running on an iPhone Duo: seen a hinge (nil until the system says),
+    /// kept for the next launch's boot script
+    private(set) var duo: Bool? = UserDefaults.standard.object(forKey: AppModel.duoKey) as? Bool
+    private static let duoKey = "isDuo"
     /// Face ID / Touch ID in front of the app (off unless turned on)
     let lock = AppLock()
     /// The page's background colour, for the edges it doesn't cover
@@ -168,6 +225,18 @@ final class AppModel {
     /// A new document: its listeners aren't up until it reports its state
     func pageStarted() {
         pageReady = false
+        // Its column comes with its first state; the fixed list until then
+        column = nil
+        surface = nil
+    }
+
+    /// The system reported the device's hinge, or that it has none
+    func hinge(present: Bool) {
+        guard duo != present else { return }
+        duo = present
+        UserDefaults.standard.set(present, forKey: Self.duoKey)
+        (webView as? AgentWebView)?.setBootScript(duo: present)
+        webView?.evaluateJavaScript("if (window.agentosNative) window.agentosNative.duo = \(present);")
     }
 
     func openSession(_ id: String) {
@@ -286,6 +355,15 @@ final class AppModel {
         page = message["page"] as? String
         focus = message["focus"] as? Bool ?? false
         focusDot = message["focusDot"] as? Bool ?? false
+        surface = message["surface"] as? String
+        // Absent or null (today's web, older pages): the fixed list. A list
+        // with nothing readable in it is taken as absent, never as "hide"
+        if let raw = message["column"] as? [Any] {
+            let items = raw.compactMap(ColumnEntry.init)
+            column = raw.isEmpty || !items.isEmpty ? items : nil
+        } else {
+            column = nil
+        }
         if let css = message["background"] as? String, let color = Self.color(css: css) {
             pageBackground = Color(uiColor: color)
         }
