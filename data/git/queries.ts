@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { gitKeys } from "./keys";
+import { sessionKeys } from "../sessions/keys";
 import { useSharedPoll } from "@/hooks/useSharedPoll";
 
 // Re-export for convenience
@@ -559,6 +560,8 @@ export function useMergePR(workingDir: string, prNumber: number) {
         queryKey: gitKeys.prDetail(workingDir, prNumber),
       });
       queryClient.invalidateQueries({ queryKey: gitKeys.status(workingDir) });
+      // The merge settles the PR's session (M8)
+      queryClient.invalidateQueries({ queryKey: sessionKeys.list() });
     },
   });
 }

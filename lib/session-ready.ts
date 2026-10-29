@@ -304,6 +304,8 @@ export async function readiness(
 ): Promise<Readiness> {
   // Handed off (M4): its tmux ended, nothing goes in until it is resumed
   if (session.paused_at) return hold("paused");
+  // Settled (M8): its tmux ended too, nothing goes in until Undo or Resume
+  if (session.settled_at) return hold("settled");
   // Being handed off: no new turn until it is done (or given up)
   if (!options.duringHandoff && isHandingOff(session.id))
     return hold("handing_off");

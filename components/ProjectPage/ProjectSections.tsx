@@ -28,6 +28,7 @@ import {
   type AgentState,
 } from "@/lib/agent-state";
 import { handedOffLine, sessionState } from "@/lib/paused";
+import { isEnded, settledLine } from "@/lib/settle-types";
 import type { BackgroundAgent } from "@/lib/claude-background";
 import type { DevServer, Session } from "@/lib/db";
 import type { GitFile, GitStatus } from "@/lib/git-status";
@@ -148,7 +149,7 @@ export function SessionsSection({
               leading={
                 <Avatar
                   {...agentAvatar(session.agent_type)}
-                  className={state === "paused" ? "opacity-60" : undefined}
+                  className={isEnded(session) ? "opacity-60" : undefined}
                 />
               }
               title={title}
@@ -158,7 +159,9 @@ export function SessionsSection({
                   word={
                     state === "paused"
                       ? handedOffLine(session, all, agentName)
-                      : undefined
+                      : state === "settled"
+                        ? settledLine(session)
+                        : undefined
                   }
                   age={shortAge(session.updated_at)}
                 />

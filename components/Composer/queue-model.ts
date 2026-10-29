@@ -139,6 +139,8 @@ export function holdCaption(
       return `Held: ${agentName} hit its usage limit. These go when it resets.`;
     case "paused":
       return "Held while the session is paused";
+    case "settled":
+      return "Held while the session is settled";
     case "handing_off":
       return `Held while ${agentName} hands off to another session`;
     default:

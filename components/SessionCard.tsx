@@ -55,6 +55,7 @@ import {
 import { AgentRow } from "./rows/AgentRow";
 import { STATE_WORD, timeAgo as formatTimeAgo } from "@/lib/agent-state";
 import { handedOffLine, sessionState } from "@/lib/paused";
+import { isEnded, settledLine } from "@/lib/settle-types";
 import { agentName } from "@/components/a/Avatar";
 import { useSessionsQuery } from "@/data/sessions/queries";
 import type { Session, Group } from "@/lib/db";
@@ -171,7 +172,9 @@ export function SessionCard({
   const detail =
     state === "paused"
       ? handedOffLine(session, listed?.sessions ?? [], agentName)
-      : timeAgo;
+      : state === "settled"
+        ? settledLine(session)
+        : timeAgo;
   const name = title ?? session.name;
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState(session.name);
@@ -368,7 +371,7 @@ export function SessionCard({
       ...(onFork && session.agent_type === "claude"
         ? [{ label: "Fork session", icon: Copy, onSelect: onFork }]
         : []),
-      ...(session.agent_type === "claude" && state !== "paused"
+      ...(session.agent_type === "claude" && !isEnded(session)
         ? [
             {
               label: "Restart",
@@ -524,7 +527,7 @@ export function SessionCard({
             Fork session
           </MenuItem>
         )}
-        {session.agent_type === "claude" && state !== "paused" && (
+        {session.agent_type === "claude" && !isEnded(session) && (
           <MenuItem
             onSelect={() => afterMenuCloses(() => restartSession(session))}
           >

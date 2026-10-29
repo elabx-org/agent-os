@@ -24,8 +24,8 @@ export type QueueStatus =
  * Why a session isn't taking a message now (lib/session-ready.ts).
  * busy: working. asking: a question, plan approval, trust screen or picker.
  * permission: a permission prompt. typing: text half-typed in its input
- * line. unknown: a screen it can't classify (fail closed). limited, paused:
- * M6 / M4
+ * line. unknown: a screen it can't classify (fail closed). limited, paused,
+ * settled: M6 / M4 / M8
  */
 export type HoldReason =
   | "busy"
@@ -35,6 +35,7 @@ export type HoldReason =
   | "unknown"
   | "limited"
   | "paused"
+  | "settled"
   | "handing_off";
 
 export interface QueueItem {
