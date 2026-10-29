@@ -573,7 +573,8 @@ export function ComposerCard({
             {!collapsed && !tone && session && (
               <PermissionChip session={session} variant="composer" />
             )}
-            {!collapsed && showHistory && (
+            {/* With sessions attached their footer takes the room (N-Attach) */}
+            {!collapsed && showHistory && !composer.attached.length && (
               <button
                 type="button"
                 onMouseDown={keep}
@@ -585,7 +586,9 @@ export function ComposerCard({
                 <History className="h-5 w-5" />
               </button>
             )}
-            {!collapsed && <span className="flex-1" aria-hidden="true" />}
+            {!collapsed && !composer.attached.length && (
+              <span className="flex-1" aria-hidden="true" />
+            )}
             {!collapsed && !pages && sendButton}
           </div>
         </div>
