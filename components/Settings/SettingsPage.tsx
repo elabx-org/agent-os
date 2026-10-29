@@ -409,7 +409,17 @@ function SettingsLayer(props: NotificationsSectionProps) {
       {book && (
         <div aria-hidden="true" style={{ width: book.end - book.start }} />
       )}
-      <main className={cn(scroll, "min-w-0", rightInset)}>
+      <main
+        className={cn(scroll, "min-w-0", rightInset)}
+        // Flat open Duo: the section's cards keep clear of the fold
+        style={
+          layout === "duo-open" && !book
+            ? ({
+                "--settings-gutter-l": "calc(20px + var(--fold-clear, 0px))",
+              } as CSSProperties)
+            : undefined
+        }
+      >
         <div className="mx-auto max-w-2xl">
           <h2 className={title}>{SECTION_TITLE[current]}</h2>
           <div className="pt-4">{body[current]}</div>
