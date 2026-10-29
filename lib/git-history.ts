@@ -1,5 +1,6 @@
 import { execSync } from "child_process";
 import { expandPath } from "./git-status";
+import { git } from "./turns-git";
 
 export interface CommitSummary {
   hash: string;
@@ -49,21 +50,55 @@ function getRelativeTime(timestamp: number): string {
 }
 
 /**
- * Get commit history
+ * The ref a history request names, as git should read it: the local branch,
+ * else origin's copy of it (D-Git's "main" in a worktree that never checked
+ * it out). Null when it isn't a commit; never an option.
  */
-export function getCommitHistory(
+export async function resolveHistoryRef(
   workingDir: string,
-  limit: number = 30
-): CommitSummary[] {
+  ref: string
+): Promise<string | null> {
+  if (!ref || ref.startsWith("-") || /[\s\0]/.test(ref)) return null;
+  const cwd = expandPath(workingDir);
+  const isCommit = (name: string) =>
+    git(["rev-parse", "--verify", "--quiet", `${name}^{commit}`], {
+      cwd,
+      timeoutMs: 5_000,
+    }).then(
+      () => true,
+      () => false
+    );
+  if (await isCommit(`refs/heads/${ref}`)) return `refs/heads/${ref}`;
+  if (await isCommit(`refs/remotes/origin/${ref}`))
+    return `refs/remotes/origin/${ref}`;
+  return (await isCommit(ref)) ? ref : null;
+}
+
+/**
+ * Get commit history: HEAD's, or `ref`'s (pass it through resolveHistoryRef)
+ */
+export async function getCommitHistory(
+  workingDir: string,
+  limit: number = 30,
+  ref?: string
+): Promise<CommitSummary[]> {
   const cwd = expandPath(workingDir);
 
   try {
     // Format: hash|shortHash|subject|body|author|email|timestamp
     // Using %x00 as separator to handle commit messages with |
     const format = "%H%x00%h%x00%s%x00%b%x00%an%x00%ae%x00%at";
-    const output = execSync(
-      `git log --format="${format}" -n ${limit} --shortstat`,
-      { cwd, encoding: "utf-8", maxBuffer: 10 * 1024 * 1024 }
+    const output = await git(
+      [
+        "log",
+        `--format=${format}`,
+        "-n",
+        String(limit),
+        "--shortstat",
+        ref || "HEAD",
+        "--",
+      ],
+      { cwd, timeoutMs: 15_000 }
     );
 
     const commits: CommitSummary[] = [];
