@@ -65,6 +65,8 @@ import { isPaused } from "@/lib/handoff-types";
 import { SettingsPage } from "@/components/Settings/SettingsPage";
 import { ScriptsSheetHost } from "@/components/Projects/ScriptsSheet";
 import { useScriptShortcuts } from "@/hooks/useScriptShortcuts";
+import { useFreshSessionCleanup } from "@/hooks/useFreshSessionCleanup";
+import { OPEN_SESSION_EVENT, type OpenSessionDetail } from "@/lib/bg-send";
 
 function HomeContent() {
   // UI State
@@ -594,6 +596,18 @@ function HomeContent() {
       window.removeEventListener("agentos-session-restarted", onRestarted);
   }, [attachToSession, isMobile]);
 
+  // A session opened from inside one (background send, M10: the fresh one,
+  // or the toast's Open)
+  useEffect(() => {
+    const onOpen = (e: Event) => {
+      const { session } = (e as CustomEvent<OpenSessionDetail>).detail;
+      attachToSession(session);
+      if (isMobile) setSidebarOpen(false);
+    };
+    window.addEventListener(OPEN_SESSION_EVENT, onOpen);
+    return () => window.removeEventListener(OPEN_SESSION_EVENT, onOpen);
+  }, [attachToSession, isMobile]);
+
   // A background agent (components/BackgroundAgents) opens in the terminal
   useEffect(() => {
     const onAttach = (e: Event) => {
@@ -729,6 +743,7 @@ function HomeContent() {
     (s) => s.id === focusedActiveTab?.sessionId
   );
   useScriptShortcuts(activeSession?.project_id, activeSession?.id);
+  useFreshSessionCleanup(focusedActiveTab?.sessionId ?? undefined);
   const startDevServerProject = startDevServerProjectId
     ? (projects.find((p) => p.id === startDevServerProjectId) ?? null)
     : null;
