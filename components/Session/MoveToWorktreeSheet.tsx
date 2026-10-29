@@ -1,6 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { useSnapshot } from "valtio";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
@@ -10,6 +16,7 @@ import { haptic } from "@/lib/haptics";
 import { registerNavHandlers } from "@/lib/nav-actions";
 import { changesCaption } from "@/lib/worktree-move-types";
 import { mobileNavStore } from "@/stores/mobileNav";
+import { useLayoutMode } from "@/hooks/useLayoutMode";
 import { closeMoveSheet, moveSheetStore } from "@/stores/moveSheet";
 import { workspacePageStore } from "@/stores/workspacePage";
 import { useWorktreeMove, useWorktreeMoves } from "@/hooks/useWorktreeMove";
@@ -55,7 +62,29 @@ export function MoveToWorktreeSheet({
 }: MoveToWorktreeSheetProps) {
   // The closed Duo's web column stays beside it, its × in reach
   const { railWidth } = useSnapshot(mobileNavStore);
-  const beside = railWidth > 0;
+  // The open Duo's web column sits in the page (SessionSpread): the sheet
+  // stops at its left edge, so × | Move session stay in reach (NewSurface)
+  const mode = useLayoutMode();
+  const [columnRight, setColumnRight] = useState(0);
+  useEffect(() => {
+    if (!open || mode !== "duo-open") {
+      setColumnRight(0);
+      return;
+    }
+    const measure = () => {
+      const column = document.querySelector("[data-control-column]");
+      setColumnRight(
+        column
+          ? Math.max(0, window.innerWidth - column.getBoundingClientRect().left)
+          : 0
+      );
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [open, mode]);
+  const besideRight = railWidth > 0 ? railWidth : columnRight;
+  const beside = besideRight > 0;
   const close = useCallback(() => onOpenChange(false), [onOpenChange]);
 
   // The body's Move, for the column's ✓ (latest form via the ref)
@@ -83,6 +112,7 @@ export function MoveToWorktreeSheet({
       unregister();
       window.removeEventListener("keydown", onKey, true);
       if (mobileNavStore.sheet === SHEET_ID) mobileNavStore.sheet = null;
+      mobileNavStore.sheetAction = "move";
     };
   }, [open, close]);
 
@@ -102,7 +132,7 @@ export function MoveToWorktreeSheet({
         // left 0 + right at the column: w-full would win over right
         style={
           beside
-            ? { right: railWidth, width: "auto", maxWidth: "none" }
+            ? { right: besideRight, width: "auto", maxWidth: "none" }
             : undefined
         }
         onPointerDownOutside={(e) => {
@@ -138,6 +168,7 @@ function Field({
   disabled,
   ariaLabel,
   invalid,
+  keepEnd,
 }: {
   label: string;
   value: string;
@@ -145,11 +176,33 @@ function Field({
   disabled: boolean;
   ariaLabel: string;
   invalid?: boolean;
+  /**
+   * Not being edited, a long value shows its end (a folder's last part is
+   * what differs), its start faded out
+   */
+  keepEnd?: boolean;
 }) {
+  const ref = useRef<HTMLInputElement>(null);
+  const [focused, setFocused] = useState(false);
+  const [cut, setCut] = useState(false);
+  useLayoutEffect(() => {
+    const input = ref.current;
+    if (!keepEnd || !input || focused) return;
+    const show = () => {
+      input.scrollLeft = input.scrollWidth;
+      setCut(input.scrollWidth > input.clientWidth + 1);
+    };
+    show();
+    const observer = new ResizeObserver(show);
+    observer.observe(input);
+    return () => observer.disconnect();
+  }, [keepEnd, focused, value]);
+  const faded = keepEnd && cut && !focused;
   return (
     <label className="flex min-h-[62px] flex-col justify-center gap-1 px-3.5 py-2.5">
       <span className="text-muted-foreground text-[13px]">{label}</span>
       <input
+        ref={ref}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         disabled={disabled}
@@ -161,7 +214,9 @@ function Field({
         autoComplete="off"
         enterKeyHint="done"
         // Scrolled into view above the keyboard (the sheet's body scrolls)
+        onBlur={() => setFocused(false)}
         onFocus={(e) => {
+          setFocused(true);
           const input = e.currentTarget;
           window.setTimeout(
             () => input.scrollIntoView({ block: "nearest" }),
@@ -169,7 +224,10 @@ function Field({
           );
         }}
         className={cn(
-          "w-full min-w-0 truncate border-0 bg-transparent p-0 font-mono text-[14px] outline-none disabled:opacity-60",
+          "w-full min-w-0 border-0 bg-transparent p-0 font-mono text-[14px] outline-none disabled:opacity-60",
+          !keepEnd && "truncate",
+          faded &&
+            "[mask-image:linear-gradient(to_right,transparent,black_20px)]",
           invalid && "text-[var(--del)]"
         )}
       />
@@ -191,7 +249,12 @@ function MoveBody({
   confirmRef: React.MutableRefObject<(() => void) | null>;
   sendingRef: React.MutableRefObject<boolean>;
 }) {
-  const { preview, move, cancel } = useWorktreeMove(session.id, true);
+  const {
+    preview,
+    error: previewError,
+    move,
+    cancel,
+  } = useWorktreeMove(session.id, true);
   const moves = useWorktreeMoves();
   const titles = useListTitles([session]);
   const { title } = displayTitle(session, titles);
@@ -228,6 +291,8 @@ function MoveBody({
     : null;
   const count = uncommittedLabel(changes);
 
+  // The branch of a move this sheet saw waiting or running
+  const sawPending = useRef<string | null>(null);
   const run = async () => {
     if (view.action === "none" || sending) return;
     setSending(true);
@@ -236,6 +301,7 @@ function MoveBody({
     try {
       if (view.action === "cancel") {
         await cancel();
+        sawPending.current = null;
         haptic("success");
         toast("Move cancelled");
         return;
@@ -266,17 +332,41 @@ function MoveBody({
       sendingRef.current = false;
     }
   };
-  // The column's ✓ moves; it never cancels a scheduled move
+  // The column's second item does what the button does: Move session, or
+  // Cancel move once it waits for the turn (sheetAction picks which shows)
   const runRef = useRef(run);
   runRef.current = run;
+  const action = sending ? "none" : view.action;
   useEffect(() => {
+    mobileNavStore.sheetAction = action;
     confirmRef.current = () => {
-      if (view.action === "move") void runRef.current();
+      if (action !== "none") void runRef.current();
     };
     return () => {
       confirmRef.current = null;
     };
-  }, [confirmRef, view.action]);
+  }, [confirmRef, action]);
+
+  // A move this sheet saw waiting or running is done when the session
+  // reads as already in a worktree: say so and close
+  useEffect(() => {
+    if (pending?.phase === "scheduled" || pending?.phase === "moving") {
+      sawPending.current = pending.branch;
+      return;
+    }
+    if (pending?.phase === "failed") sawPending.current = null;
+    if (
+      sawPending.current &&
+      !pending &&
+      preview?.refusal?.reason === "already_worktree"
+    ) {
+      const branchName = sawPending.current;
+      sawPending.current = null;
+      haptic("success");
+      toast(`Moved to ${branchName}`);
+      onClose();
+    }
+  }, [pending, preview, onClose]);
 
   const note = error ?? view.note;
   const noteError = !!error || view.noteError;
@@ -307,10 +397,10 @@ function MoveBody({
             )}
           </span>
           {count && (
-            <span className="text-needs flex items-center gap-[5px]">
+            <span className="dark:text-needs flex items-center gap-[5px] text-amber-600">
               <span
                 aria-hidden="true"
-                className="bg-needs h-1.5 w-1.5 shrink-0 rounded-full"
+                className="dark:bg-needs h-1.5 w-1.5 shrink-0 rounded-full bg-amber-600"
               />
               {count}
             </span>
@@ -318,7 +408,11 @@ function MoveBody({
         </div>
       </div>
 
-      {!preview ? (
+      {!preview && previewError ? (
+        <p role="alert" className="py-4 text-sm text-[var(--del)]">
+          {previewError}
+        </p>
+      ) : !preview ? (
         <div className="text-muted-foreground flex items-center gap-2 py-4 text-sm">
           <Loader2 aria-hidden className="h-4 w-4 animate-spin" /> Reading the
           checkout…
@@ -339,6 +433,7 @@ function MoveBody({
             onChange={setFolderEdit}
             disabled={!editable}
             ariaLabel="Worktree folder path"
+            keepEnd
           />
           {changes > 0 && (
             <div className="row">
@@ -359,7 +454,17 @@ function MoveBody({
         </div>
       )}
 
-      {/* Half folded the footnote and the button say enough */}
+      {/* Half folded: the current agent's note alone, on one line */}
+      {notes[0] && (
+        <div className="hidden min-w-0 items-center gap-2.5 px-1 text-sm text-[var(--say)] [html[data-fold=horizontal]_&]:flex">
+          <Avatar
+            {...agentAvatar(notes[0].agentType)}
+            size="sm"
+            className="h-6 w-6 shrink-0 rounded-[7px] text-[11px]"
+          />
+          <span className="min-w-0 truncate">{notes[0].text}</span>
+        </div>
+      )}
       <div className="flex shrink-0 flex-col gap-2.5 rounded-[20px] bg-[var(--sheet-fill)] px-3.5 py-3 [html[data-fold=horizontal]_&]:hidden">
         {notes.map((n, i) => (
           <div

@@ -261,6 +261,22 @@ test("columnFor: a sheet over the closed session (E-Live, N-Undo)", () => {
     columnFor("session", "duo-closed", move)[1].label,
     "Move session"
   );
+  // On the open Duo too (the sheet stops at the web column)
+  assert.equal(
+    fmt(columnFor("session", "duo-open", move)),
+    "closeSheet | done*"
+  );
+  // Waiting for the turn: Cancel move, not prominent; nothing to do: × alone
+  const waiting = columnFor("session", "duo-closed", {
+    ...move,
+    sheetAction: "cancel",
+  });
+  assert.equal(fmt(waiting), "closeSheet | done");
+  assert.equal(waiting[1].label, "Cancel move");
+  assert.equal(
+    fmt(columnFor("session", "duo-closed", { ...move, sheetAction: "none" })),
+    "closeSheet"
+  );
   // The open Duo shows Live activity as its rail: no sheet column
   assert.equal(
     fmt(columnFor("session", "duo-open", { ...CTX, liveOpen: true })),

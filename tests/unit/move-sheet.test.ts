@@ -215,10 +215,6 @@ test("moveRefusalText", () => {
     moveRefusalText({ error: "user_only", reason: "no_proof" }),
     "Reload to confirm it's you"
   );
-  assert.equal(
-    moveRefusalText({ error: "Not implemented" }),
-    "Moving isn't available yet"
-  );
   assert.equal(moveRefusalText(null), "Something went wrong");
 });
 

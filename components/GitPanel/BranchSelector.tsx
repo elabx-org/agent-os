@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { Check, Loader2, AlertTriangle } from "lucide-react";
+import { Check, GitBranchPlus, Loader2, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -15,6 +15,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useBranches, useCheckoutBranch } from "@/data/git/queries";
@@ -26,6 +27,8 @@ interface BranchSelectorProps {
   onBranchChanged: () => void;
   /** The control that opens the list (E-Git's branch card); it gets `disabled` while switching */
   children: (switching: boolean) => ReactNode;
+  /** N-Worktree (M5): "Move to a new worktree" under the branches */
+  onMove?: () => void;
 }
 
 export function BranchSelector({
@@ -34,6 +37,7 @@ export function BranchSelector({
   hasChanges,
   onBranchChanged,
   children,
+  onMove,
 }: BranchSelectorProps) {
   const [open, setOpen] = useState(false);
   const [pendingBranch, setPendingBranch] = useState<string | null>(null);
@@ -111,6 +115,15 @@ export function BranchSelector({
                 )}
               </DropdownMenuItem>
             ))
+          )}
+          {onMove && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={onMove} className="cursor-pointer">
+                <GitBranchPlus className="h-4 w-4" />
+                Move to a new worktree…
+              </DropdownMenuItem>
+            </>
           )}
         </DropdownMenuContent>
       </DropdownMenu>

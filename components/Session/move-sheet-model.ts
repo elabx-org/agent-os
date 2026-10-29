@@ -190,7 +190,6 @@ export function moveRefusalText(
 ): string {
   if (!body) return "Something went wrong";
   if (body.reason === "staged") return "Unstage or commit first";
-  if (body.error === "Not implemented") return "Moving isn't available yet";
   return refusalText(body);
 }
 

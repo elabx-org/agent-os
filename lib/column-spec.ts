@@ -49,6 +49,11 @@ export interface ColumnContext {
   /** A sheet over the session other than Live activity (N-Undo,
       N-Switch, N-PermMode, N-Scripts) */
   sheet?: "undo" | "switch" | "permissions" | "scripts" | "move" | null;
+  /**
+   * What the move sheet (N-Worktree) can do now: move, cancel the
+   * scheduled move, or nothing (loading, refused, running). Absent: move
+   */
+  sheetAction?: "move" | "cancel" | "none";
   /** The project surface shows the project's settings (N-Config, M3) */
   projectSettings?: boolean;
   /** Agents the session started (its tree's total): the Agents item shows (O-Tree) */
@@ -161,6 +166,12 @@ const BASE = {
     symbol: "arrow.triangle.branch",
     icon: "GitBranch",
     label: "Move session",
+  },
+  cancelMove: {
+    id: "done",
+    symbol: "arrow.uturn.backward",
+    icon: "Undo2",
+    label: "Cancel move",
   },
   sort: {
     id: "sort",
@@ -314,12 +325,18 @@ function sheetColumn(ctx: ColumnContext): ColumnItem[] | null {
       item(BASE.closeSheet),
       item(BASE.done, { prominent: true, ...sep }),
     ];
-  // N-Worktree: close | Move session
-  if (ctx.sheet === "move")
+  // N-Worktree: close | Move session; close | Cancel move once it waits
+  // for the turn; the close alone while there is nothing to do
+  if (ctx.sheet === "move") {
+    const action = ctx.sheetAction ?? "move";
+    if (action === "none") return [item(BASE.closeSheet)];
     return [
       item(BASE.closeSheet),
-      item(BASE.moveSession, { prominent: true, ...sep }),
+      action === "cancel"
+        ? item(BASE.cancelMove, sep)
+        : item(BASE.moveSession, { prominent: true, ...sep }),
     ];
+  }
   if (ctx.liveOpen)
     return [
       item(BASE.closeSheet),
@@ -520,8 +537,12 @@ export function columnFor(
   // N-Scripts over a project page too (over a session, sessionColumn has it)
   if (mode === "duo-closed" && !inSession && ctx.sheet === "scripts")
     return scriptsColumn();
-  // N-Worktree from a project page's row: × | Move session there too
-  if (mode === "duo-closed" && !inSession && ctx.sheet === "move")
+  // N-Worktree from a project page's row: × | Move session there too; on
+  // the open Duo the sheet stops at the column, which offers the same
+  if (
+    ctx.sheet === "move" &&
+    ((mode === "duo-closed" && !inSession) || mode === "duo-open")
+  )
     return sheetColumn(ctx) ?? [];
   if (mode === "phone" && !inSession) return tabs(surface, ctx);
   if ((mode === "phone" || mode === "tabletop") && inSession)

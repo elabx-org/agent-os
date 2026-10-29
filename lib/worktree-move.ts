@@ -487,7 +487,12 @@ export function createWorktreeMove(deps: WorktreeMoveDeps) {
         .suggestBranch(wt.toplevel, session.name)
         .catch(() => "");
       if (suggestedBranch) {
-        folder = git.suggestFolder(repoName, suggestedBranch);
+        try {
+          folder = git.suggestFolder(repoName, suggestedBranch);
+        } catch {
+          // 50 taken: the user names one
+          folder = "";
+        }
       }
     }
     return {

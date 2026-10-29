@@ -35,6 +35,7 @@ interface ColumnSources {
   liveOpen: boolean;
   working: boolean;
   sheet: ColumnContext["sheet"];
+  sheetAction: ColumnContext["sheetAction"];
   changesOpen: boolean;
   native: boolean;
   agents: number;
@@ -58,6 +59,7 @@ function contextFrom(s: ColumnSources): ColumnContext {
     liveOpen: s.liveOpen,
     working: s.working,
     sheet: s.sheet,
+    sheetAction: s.sheetAction,
     agents: s.agents,
     showFinished: s.showFinished,
     allCollapsed: s.allCollapsed,
@@ -94,6 +96,7 @@ export function useColumn(
     liveOpen: nav.liveOpen,
     working: nav.working,
     sheet: nav.sheet,
+    sheetAction: nav.sheetAction,
     changesOpen: nav.changesOpen,
     native,
     agents: nav.agentCount,
@@ -139,6 +142,7 @@ export function nativeColumn(): {
       liveOpen: mobileNavStore.liveOpen,
       working: mobileNavStore.working,
       sheet: mobileNavStore.sheet,
+      sheetAction: mobileNavStore.sheetAction,
       changesOpen: mobileNavStore.changesOpen,
       native: true,
       agents: mobileNavStore.agentCount,

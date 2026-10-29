@@ -51,17 +51,25 @@ export interface UseWorktreeMove {
   /** GET move-to-worktree/preview while `open`; null until loaded */
   preview: MovePreview | null;
   loading: boolean;
+  /** Why the preview couldn't be read (while there is none) */
+  error: string | null;
   move: (request: MoveRequest) => Promise<MoveResult>;
   /** Cancels the scheduled move */
   cancel: () => Promise<CancelMoveResult>;
 }
 
-async function fetchPreview(sessionId: string): Promise<MovePreview | null> {
+async function fetchPreview(sessionId: string): Promise<MovePreview> {
   const res = await fetch(
     `/api/sessions/${sessionId}/move-to-worktree/preview`
-  );
-  // Not there yet (501) or gone: the sheet keeps loading
-  if (!res.ok) return null;
+  ).catch(() => {
+    throw new Error("Couldn't reach the server");
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new Error(
+      res.status === 404 ? "This session is gone" : moveRefusalText(body)
+    );
+  }
   return (await res.json()) as MovePreview;
 }
 
@@ -78,7 +86,7 @@ export function useWorktreeMove(
 ): UseWorktreeMove {
   const queryClient = useQueryClient();
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, error } = useQuery({
     queryKey: moveKeys.preview(sessionId),
     queryFn: () => fetchPreview(sessionId),
     enabled: open,
@@ -141,6 +149,7 @@ export function useWorktreeMove(
   return {
     preview: (open && data) || null,
     loading: open && isLoading,
+    error: open && error ? error.message : null,
     move,
     cancel,
   };
@@ -182,7 +191,7 @@ async function fetchIsGit(dir: string): Promise<boolean> {
 
 /**
  * Whether the move can be offered for `session` (canOfferMove): a git
- * folder, checked once per folder and kept for minutes; null while unknown
+ * folder, checked once per folder and kept for minutes; false until known
  */
 export function useCanOfferMove(session: Session | null | undefined): boolean {
   const dir = session?.working_directory ?? "";
