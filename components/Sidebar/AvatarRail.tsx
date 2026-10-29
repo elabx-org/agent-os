@@ -1,7 +1,19 @@
 "use client";
 
+import { useMemo } from "react";
+import { Plus, Sun } from "lucide-react";
 import type { Session } from "@/lib/db";
 import type { SessionStatus } from "@/components/views/types";
+import { Avatar, agentAvatar } from "@/components/a/Avatar";
+import {
+  STATE_DOT_CLASS,
+  STATE_WORD,
+  fromSessionStatus,
+} from "@/lib/agent-state";
+import { displayTitle, useListTitles } from "@/hooks/useSessionTitles";
+import { runNav } from "@/lib/nav-actions";
+import { cn } from "@/lib/utils";
+import { railSessions } from "./model";
 
 export interface AvatarRailProps {
   sessions: Session[];
@@ -17,10 +29,78 @@ export const AVATAR_RAIL_WIDTH = 72;
 
 /**
  * Desk-Beside: the sidebar collapsed while two panes are open. New on
- * top, one agent tile per live session with its state dot, Settings at
- * the bottom. M1b U1b.4.
+ * top, one agent tile per live session with its state dot (the ones on
+ * screen ringed), Settings at the bottom.
  */
-export function AvatarRail(props: AvatarRailProps) {
-  void props;
-  return null;
+export function AvatarRail({
+  sessions,
+  sessionStatuses,
+  shownIds,
+  onOpenSession,
+  onNewSession,
+}: AvatarRailProps) {
+  const live = useMemo(
+    () => railSessions(sessions, sessionStatuses, shownIds),
+    [sessions, sessionStatuses, shownIds]
+  );
+  const titles = useListTitles(live);
+
+  return (
+    <nav
+      aria-label="Sessions"
+      className="bg-page flex h-full flex-col items-center gap-3 border-r border-[var(--hair)] py-[18px]"
+    >
+      <button
+        type="button"
+        onClick={onNewSession}
+        aria-label="New session"
+        className="bg-primary flex h-10 w-10 flex-none items-center justify-center rounded-xl text-white active:opacity-80"
+      >
+        <Plus className="h-5 w-5" />
+      </button>
+      <div aria-hidden className="bg-foreground/10 h-px w-7 flex-none" />
+
+      <div className="-my-1 flex min-h-0 w-full flex-1 flex-col items-center gap-3 overflow-y-auto py-1">
+        {live.map((s) => {
+          const state = fromSessionStatus(sessionStatuses[s.id]?.status ?? "");
+          const { title } = displayTitle(s, titles);
+          const dot = state === "needs" || state === "work";
+          return (
+            <button
+              key={s.id}
+              type="button"
+              onClick={() => onOpenSession(s)}
+              aria-label={`${title}, ${STATE_WORD[state].toLowerCase()}`}
+              title={title}
+              className={cn(
+                "relative flex-none rounded-xl active:opacity-80",
+                shownIds.includes(s.id) &&
+                  "shadow-[0_0_0_2px_hsl(var(--primary))]"
+              )}
+            >
+              <Avatar {...agentAvatar(s.agent_type)} />
+              {dot && (
+                <span
+                  aria-hidden
+                  className={cn(
+                    "border-page absolute -right-0.5 -bottom-0.5 h-3 w-3 rounded-full border-2",
+                    STATE_DOT_CLASS[state]
+                  )}
+                />
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      <button
+        type="button"
+        onClick={() => runNav("settings")}
+        aria-label="Settings"
+        className="hover:bg-accent flex h-11 w-11 flex-none items-center justify-center rounded-full"
+      >
+        <Sun className="h-5 w-5" />
+      </button>
+    </nav>
+  );
 }
