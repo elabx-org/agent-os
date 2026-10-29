@@ -99,6 +99,21 @@ export interface SessionTurnRow {
   undone_at: number | null; // ms
 }
 
+/** A line comment on a session's diff (migration 33, lib/review-comments.ts) */
+export interface ReviewCommentRow {
+  id: number;
+  session_id: string;
+  scope: string; // lib/turn-types.ts DiffScope
+  path: string;
+  side: string; // lib/review-types.ts ReviewSide
+  start_line: number;
+  end_line: number;
+  quote: string;
+  body: string;
+  created_at: number; // ms
+  sent_at: number | null; // ms
+}
+
 export interface Group {
   path: string;
   name: string;

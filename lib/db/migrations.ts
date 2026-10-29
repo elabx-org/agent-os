@@ -482,6 +482,33 @@ const migrations: Migration[] = [
       addColumnIfMissing(db, "sessions", "resume_text", "TEXT");
     }),
   },
+  {
+    id: 33,
+    name: "add_review_comments_table",
+    up: atomic((db) => {
+      // Line comments on a session's diff (lib/review-comments.ts): the
+      // desktop tray's until sent, the Duo's once sent; side old|new picks
+      // which numbers start_line/end_line are; times in epoch ms
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS review_comments (
+          id INTEGER PRIMARY KEY,
+          session_id TEXT NOT NULL,
+          scope TEXT NOT NULL,
+          path TEXT NOT NULL,
+          side TEXT NOT NULL DEFAULT 'new',
+          start_line INTEGER NOT NULL,
+          end_line INTEGER NOT NULL,
+          quote TEXT NOT NULL,
+          body TEXT NOT NULL,
+          created_at INTEGER NOT NULL,
+          sent_at INTEGER
+        )
+      `);
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_review_comments_session ON review_comments(session_id, sent_at, created_at)`
+      );
+    }),
+  },
 ];
 
 export function runMigrations(db: Database.Database): void {
