@@ -310,7 +310,7 @@ function SettingsLayer(props: NotificationsSectionProps) {
     : "pr-[var(--safe-right,env(safe-area-inset-right))]";
   const layerStyle = railWidth ? { right: railWidth } : undefined;
   const scroll =
-    "min-h-0 flex-1 overflow-y-auto overscroll-contain pt-[18px] pb-[calc(1.5rem+env(safe-area-inset-bottom))]";
+    "min-h-0 flex-1 overflow-y-auto overscroll-contain pt-[18px] pb-[calc(1.5rem+max(env(safe-area-inset-bottom),var(--control-bar-h,0px)))]";
   const title = "t-large px-[var(--settings-gutter-l,20px)]";
 
   if (!split) {

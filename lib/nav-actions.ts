@@ -7,6 +7,7 @@ import { mobileNavActions, mobileNavStore } from "@/stores/mobileNav";
 import {
   closeSettings,
   openSettings,
+  settingsBack,
   settingsPageStore,
 } from "@/stores/settingsPage";
 import { toggleFocus } from "@/stores/focus";
@@ -168,8 +169,7 @@ export function registerNavHandlers(
 /** One level up: a Settings section, Settings, New, a page, else Now */
 function goBack() {
   if (settingsPageStore.open) {
-    if (surfaceStore.settingsDetail) surfaceStore.settingsDetail = false;
-    else closeSettings();
+    if (!settingsBack()) closeSettings();
     return;
   }
   if (newSurfaceStore.open) return closeNew();

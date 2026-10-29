@@ -27,7 +27,7 @@ function spyHandlers() {
 
 function reset() {
   settingsPageStore.open = false;
-  surfaceStore.settingsDetail = false;
+  settingsPageStore.detail = false;
   workspacePageStore.page = null;
   workspacePageStore.previous = null;
   mobileNavStore.inboxOpen = false;
@@ -116,9 +116,9 @@ test("runNav: back goes one level up", () => {
     // A Settings section, then Settings
     reset();
     settingsPageStore.open = true;
-    surfaceStore.settingsDetail = true;
+    settingsPageStore.detail = true;
     runNav("back");
-    assert.equal(surfaceStore.settingsDetail, false);
+    assert.equal(settingsPageStore.detail, false);
     assert.equal(settingsPageStore.open, true);
     runNav("back");
     assert.equal(settingsPageStore.open, false);

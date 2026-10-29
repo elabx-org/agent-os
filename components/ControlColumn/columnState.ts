@@ -11,6 +11,7 @@ import { layoutStore, type LayoutMode } from "@/hooks/useLayoutMode";
 import { mobileNavStore } from "@/stores/mobileNav";
 import { newSurfaceStore } from "@/stores/newSurface";
 import { focusStore } from "@/stores/focus";
+import { settingsPageStore } from "@/stores/settingsPage";
 import {
   currentSurface,
   surfaceStore,
@@ -55,7 +56,8 @@ export function useColumn(
   const nav = useSnapshot(mobileNavStore);
   const { open: newOpen } = useSnapshot(newSurfaceStore);
   const { on: focus } = useSnapshot(focusStore);
-  const { paneCount, settingsDetail } = useSnapshot(surfaceStore);
+  const { paneCount } = useSnapshot(surfaceStore);
+  const { detail: settingsDetail } = useSnapshot(settingsPageStore);
   const { mode } = useSnapshot(layoutStore);
   const surface = useSurface();
   const ctx = contextFrom({
@@ -101,7 +103,7 @@ export function nativeColumn(): {
       focus: focusStore.on,
       keyboardUp: mobileNavStore.nativeKeyboard,
       paneCount: surfaceStore.paneCount,
-      settingsDetail: surfaceStore.settingsDetail,
+      settingsDetail: settingsPageStore.detail,
       liveOpen: mobileNavStore.liveOpen,
       native: true,
     })

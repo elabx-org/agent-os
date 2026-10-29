@@ -66,13 +66,10 @@ export const surfaceStore = proxy<{
   /** The home (Now) is up: the phone's home layer, the Duo's left page or
       the web's sidebar (MobileView / SessionSpread) */
   home: boolean;
-  /** A Settings section is drilled into (closed Duo): back shows the list */
-  settingsDetail: boolean;
 }>({
   paneCount: 1,
   searchOpen: false,
   home: false,
-  settingsDetail: false,
 });
 
 /** Called once from app/page.tsx with its own state */

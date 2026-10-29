@@ -8,7 +8,9 @@ import { UsagePill, type UsagePillVariant } from "@/components/UsagePill";
 import { BackgroundAgents } from "@/components/BackgroundAgents";
 import { useLayoutMode, type LayoutMode } from "@/hooks/useLayoutMode";
 import { displayTitle } from "@/hooks/useSessionTitles";
+import { useSnapshot } from "valtio";
 import { openNew } from "@/stores/newSurface";
+import { mobileNavStore } from "@/stores/mobileNav";
 import type { SessionStatus } from "@/components/views/types";
 import type { Session } from "@/lib/db";
 import { cn } from "@/lib/utils";
@@ -54,7 +56,7 @@ interface MissionControlProps {
   onOpenSession: (session: Session) => void;
   /** Back to the session underneath, where nothing else leads there */
   onClose?: () => void;
-  /** No longer shown: Projects is the column's item (M1b drops the prop) */
+  /** Projects, the column's item: the session list until M1b's page */
   projectsView?: ReactNode;
 }
 
@@ -71,8 +73,10 @@ export function MissionControl({
   selectedId = activeSessionId,
   onOpenSession,
   onClose,
+  projectsView,
 }: MissionControlProps) {
   const mode = useLayoutMode();
+  const { homeTab } = useSnapshot(mobileNavStore);
   const wide = isWide(mode);
   const now = useNowItems(sessions, sessionStatuses);
   const first = now.waiting[0];
@@ -141,6 +145,19 @@ export function MissionControl({
       </div>
     </div>
   );
+
+  if (homeTab === "projects" && projectsView)
+    return (
+      <div
+        className={cn(
+          "flex h-full min-h-0 flex-col",
+          wide ? "bg-page" : "bg-background"
+        )}
+      >
+        <h1 className={cn("t-large shrink-0 pb-2", PAD[mode])}>Projects</h1>
+        <div className="min-h-0 flex-1">{projectsView}</div>
+      </div>
+    );
 
   return (
     <div

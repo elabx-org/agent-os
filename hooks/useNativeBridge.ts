@@ -124,7 +124,7 @@ export function useNativeBridge({ waitingCount }: NativeBridgeOptions) {
             subscribeKey(surfaceStore, "home", report),
             subscribeKey(surfaceStore, "paneCount", report),
             subscribeKey(surfaceStore, "searchOpen", report),
-            subscribeKey(surfaceStore, "settingsDetail", report),
+            subscribeKey(settingsPageStore, "detail", report),
             subscribeKey(layoutStore, "mode", report),
           ]
         : []),
@@ -133,7 +133,7 @@ export function useNativeBridge({ waitingCount }: NativeBridgeOptions) {
     const themes = new MutationObserver(report);
     themes.observe(document.documentElement, {
       attributes: true,
-      attributeFilter: ["class", "data-theme", "data-theme-variant", "style"],
+      attributeFilter: ["class", "data-theme", "data-accent", "style"],
     });
     return () => {
       stops.forEach((stop) => stop());

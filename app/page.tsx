@@ -40,7 +40,7 @@ import { usePresence } from "@/hooks/usePresence";
 import { useFoldPosture } from "@/hooks/useFoldPosture";
 import { useViewShortcuts } from "@/hooks/useViewShortcuts";
 import { useLayoutModeSource } from "@/hooks/useLayoutMode";
-import { useSurfaceSource } from "@/stores/surface";
+import { surfaceStore, useSurfaceSource } from "@/stores/surface";
 import { useSessions } from "@/hooks/useSessions";
 import { useProjects } from "@/hooks/useProjects";
 import { useDevServersManager } from "@/hooks/useDevServersManager";
@@ -488,8 +488,28 @@ function HomeContent() {
             : setSidebarOpen((open) => !open),
         openFind: () => setShowQuickSwitcher(true),
         openNewSession: () => openNew(),
+        // Now, never toggled: what covers the home closes
+        openNow: () => {
+          closePage();
+          setSidebarOpen(true);
+        },
+        // Past every layer: Find closes, else Now
+        goBack: () => {
+          if (surfaceStore.searchOpen) return setShowQuickSwitcher(false);
+          closePage();
+          setSidebarOpen(true);
+        },
+        // The most recent other session beside the focused one
+        openBeside: () => {
+          const current = focusedActiveTab?.sessionId;
+          const next = sessions
+            .filter((s) => s.id !== current)
+            .sort((a, b) => b.updated_at.localeCompare(a.updated_at))[0];
+          if (next) openSessionBeside(next);
+          setSidebarOpen(false);
+        },
       }),
-    [isMobile]
+    [isMobile, sessions, focusedActiveTab?.sessionId, openSessionBeside]
   );
 
   // One count for the column badge, the iOS app and the Now hero: waiting
