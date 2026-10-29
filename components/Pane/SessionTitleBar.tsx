@@ -544,7 +544,7 @@ export function SessionTitleBar({
                       ? () => void settle(info.session, info.title)
                       : undefined
                   }
-                  className="shrink-0 self-center @max-[760px]/bar:hidden"
+                  className="shrink-0 self-center @max-[900px]/bar:hidden"
                 />
               )}
               {/* Handed off or settled: no running agent to set a mode on */}

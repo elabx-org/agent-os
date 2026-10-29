@@ -15,8 +15,12 @@ import { getFlags } from "./flags";
 import { isWatching } from "./push/config";
 import { queueStore } from "./queue/store";
 import { isRunning, tmuxNameOf } from "./session-launch";
-import { latest } from "./session-watch";
-import { SettleRefused, settleSession, type SettleOptions } from "./settle";
+import {
+  SettleRefused,
+  settleSession,
+  settleStatus,
+  type SettleOptions,
+} from "./settle";
 import {
   AUTO_SETTLE_QUIET_MS,
   AUTO_SETTLE_RECENT_MERGE_MS,
@@ -122,8 +126,8 @@ export interface AutoSettleDeps {
 }
 
 async function watchedStatus(session: Session): Promise<string | null> {
-  const seen = latest(session.id);
-  if (seen) return seen.status;
+  const seen = settleStatus(session.id);
+  if (seen) return seen;
   // Not in the poll: its tmux ended (or the poll hasn't seen it yet)
   return (await isRunning(session)) ? null : "dead";
 }

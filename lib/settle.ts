@@ -8,6 +8,7 @@
 import { execFile } from "child_process";
 import { promisify } from "util";
 import type Database from "better-sqlite3";
+import { readClaudeState } from "./claude-state";
 import { gitCommonDir } from "./git-common-dir";
 import { getDb, queries, type Project, type Session } from "./db";
 import { isPaused } from "./handoff-types";
@@ -100,6 +101,18 @@ function busy(deps: SettleDeps, session: Session): boolean {
   const status = deps.status(session.id);
   if (status === "running" || status === "waiting") return true;
   return deps.listQueue(session.id).length > 0;
+}
+
+/**
+ * session-watch's status for settling. Its "waiting" stays on after any
+ * turn until someone looks (status-detector's acknowledged); a Claude
+ * session whose hooks say the turn ended with nothing to answer is idle
+ */
+export function settleStatus(sessionId: string): string | null {
+  const status = latest(sessionId)?.status ?? null;
+  if (status !== "waiting") return status;
+  const hooks = readClaudeState(sessionId);
+  return hooks.busy === false && !hooks.pendingPermission ? "idle" : status;
 }
 
 export function createSettle(deps: SettleDeps) {
@@ -273,7 +286,7 @@ function announceSettled(session: Session): void {
 const liveDeps = (): SettleDeps => ({
   db: getDb(),
   now: Date.now,
-  status: (id) => latest(id)?.status ?? null,
+  status: settleStatus,
   listQueue,
   isRunning,
   rememberTranscript: async (session) => {
