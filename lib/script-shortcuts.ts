@@ -127,13 +127,19 @@ export function matchesShortcut(
   );
 }
 
-/** useViewShortcuts' ⌘ keys, without Shift or Alt */
-const RESERVED_MOD = new Set(["1", "2", "3", "4", ".", "K", "I", "N", ","]);
+/**
+ * ⌘ (Ctrl) alone: useViewShortcuts' keys, and the editing and browser keys
+ * a repo file must not take over (copy, paste, undo, find, save, close tab…)
+ */
+const RESERVED_MOD = new Set([..."1234.KIN,", ..."CVXAZYFSWTRLQP"]);
+/** ⌘⇧ (Ctrl+Shift): the terminal's copy, paste and search, and redo */
+const RESERVED_MOD_SHIFT = new Set([..."CVFZ"]);
 
-/** Taken by the app (useViewShortcuts' ⌘1–4 . K I N , and Alt+N), so a script can't have it */
+/** Taken by the app, the editor, the terminal or the browser, so a script can't have it */
 export function isReservedShortcut(spec: ShortcutSpec): boolean {
   const key = spec.key.toUpperCase();
   if (spec.mod && !spec.shift && !spec.alt) return RESERVED_MOD.has(key);
+  if (spec.mod && spec.shift && !spec.alt) return RESERVED_MOD_SHIFT.has(key);
   // Alt+N is New where the browser keeps ⌘N
   return spec.alt && !spec.mod && !spec.shift && key === "N";
 }

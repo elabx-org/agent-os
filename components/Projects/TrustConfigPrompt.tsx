@@ -19,19 +19,26 @@ import { useViewport } from "@/hooks/useViewport";
 import { refusalText } from "@/lib/client/user-fetch";
 import {
   CONFIG_FILE,
+  looserDefaultMode,
   type AgentOsConfig,
   type ProjectConfigResponse,
 } from "@/lib/project-config-types";
+import { MODE_LABELS, type Mode } from "@/lib/permission-mode";
 import { cn } from "@/lib/utils";
 import { StepList } from "./ProjectConfigParts";
 import { listScripts } from "./ProjectConfigText";
 
-/** What in a config would run: its setup steps and scripts */
+/** What needs approval in a config (canRun): setup steps, scripts, a looser default mode */
 function commandsOf(config: AgentOsConfig) {
   const setup = Array.isArray(config.setup)
     ? config.setup.filter((s) => typeof s === "string" && s.trim())
     : [];
-  return { setup, scripts: listScripts(config) };
+  const mode = looserDefaultMode(config);
+  return {
+    setup,
+    scripts: listScripts(config),
+    mode: mode ? (MODE_LABELS[mode as Mode] ?? mode) : null,
+  };
 }
 
 /**
@@ -56,7 +63,7 @@ export function TrustConfigPrompt({
   const { isTouch } = useViewport();
   const trust = useTrustProjectConfig(projectId);
   const [error, setError] = useState<string | null>(null);
-  const { setup, scripts } = commandsOf(config);
+  const { setup, scripts, mode } = commandsOf(config);
 
   const allow = async () => {
     setError(null);
@@ -127,6 +134,15 @@ export function TrustConfigPrompt({
                 </li>
               ))}
             </ul>
+          </section>
+        )}
+
+        {mode && (
+          <section className="flex flex-col gap-1.5">
+            <h3 className="t-sec">New sessions</h3>
+            <p className="group-card px-4 py-2.5 text-[15px]">
+              Start in <span className="font-semibold">{mode}</span>
+            </p>
           </section>
         )}
 
@@ -202,9 +218,8 @@ export function useEnsureTrusted(projectId: string | null | undefined): {
     } catch {
       return true;
     }
-    const { setup, scripts } = commandsOf(data.config);
-    if (data.trusted || !data.hash || (!setup.length && !scripts.length))
-      return true;
+    // The server's verdict (canRun, shared with the prompt's list)
+    if (data.trusted || !data.hash) return true;
     // One question at a time: a second ask answers the first "not now"
     resolver.current?.(false);
     return new Promise<boolean>((resolve) => {

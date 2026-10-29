@@ -52,6 +52,26 @@ export interface ProjectScript {
   onWorktree?: boolean;
 }
 
+/** A default permission mode looser than asking first, if the file sets one */
+export function looserDefaultMode(config: AgentOsConfig): string | undefined {
+  const mode = config.defaults?.permissionMode;
+  return typeof mode === "string" && mode !== "manual" ? mode : undefined;
+}
+
+/**
+ * Whether the files hold anything that needs the user's approval: setup
+ * steps and scripts run, and a default permission mode lets new sessions
+ * act unasked. Server (trust) and client (the prompt) share this rule.
+ */
+export function canRun(config: AgentOsConfig): boolean {
+  return (
+    (Array.isArray(config.setup) &&
+      config.setup.some((s) => typeof s === "string" && s.trim())) ||
+    (Array.isArray(config.scripts) && config.scripts.length > 0) ||
+    looserDefaultMode(config) !== undefined
+  );
+}
+
 export interface AgentOsConfig {
   scripts?: ProjectScript[];
   previewUrl?: string;
@@ -103,9 +123,10 @@ export interface PutProjectConfigBody {
   allowFullAccess?: boolean;
 }
 
-/** PUT 200; the saved file is trusted (the user wrote it) */
+/** PUT 200; the saved file is trusted only if the one it replaced was */
 export interface PutProjectConfigResponse {
   hash: string;
+  trusted: boolean;
 }
 
 /** PUT 409 */

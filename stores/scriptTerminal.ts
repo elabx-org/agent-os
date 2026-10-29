@@ -13,10 +13,20 @@ export interface TerminalRunRequest {
 
 export const scriptTerminalStore = proxy<{
   pending: TerminalRunRequest[];
-}>({ pending: [] });
+  /** The last run handed to each session's drawer */
+  last: Record<string, string>;
+}>({ pending: [], last: {} });
 
 export function requestTerminalRun(request: TerminalRunRequest) {
   scriptTerminalStore.pending.push(request);
+  if (request.shellCommand) {
+    scriptTerminalStore.last[request.sessionId] = request.runId;
+  }
+}
+
+/** The run last typed into this session's drawer (still running or not) */
+export function lastTerminalRun(sessionId: string): string | undefined {
+  return scriptTerminalStore.last[sessionId];
 }
 
 /** Taken by the drawer that typed it, so it runs once */

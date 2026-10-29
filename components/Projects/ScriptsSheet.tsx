@@ -27,6 +27,7 @@ import { CONFIG_FILE } from "@/lib/project-config-types";
 import { formatShortcut, parseShortcut } from "@/lib/script-shortcuts";
 import { cn } from "@/lib/utils";
 import { mobileNavStore } from "@/stores/mobileNav";
+import { postureStore } from "@/stores/posture";
 import { openProjectSettings } from "@/stores/projectSettings";
 import { closeScripts, useScriptsSheet } from "@/stores/scriptsSheet";
 import { registerNavHandlers } from "@/lib/nav-actions";
@@ -157,12 +158,15 @@ function RunningCard({
             </span>
           </span>
         </span>
-        <RoundButton
-          kind="stop"
-          label={`Stop ${script.name}`}
-          busy={stopping}
-          onClick={onStop}
-        />
+        {/* A terminal run is stopped where it runs, in the shell drawer */}
+        {background && (
+          <RoundButton
+            kind="stop"
+            label={`Stop ${script.name}`}
+            busy={stopping}
+            onClick={onStop}
+          />
+        )}
       </div>
       {background ? (
         <LogTail runId={run!.id} live />
@@ -400,6 +404,7 @@ export function ScriptsSheet({
 }) {
   const mode = useLayoutMode();
   const { railWidth } = useSnapshot(mobileNavStore);
+  const { fold } = useSnapshot(postureStore);
   const close = () => onOpenChange(false);
 
   if (CENTRED.includes(mode)) {
@@ -412,7 +417,7 @@ export function ScriptsSheet({
           <DialogPrimitive.Content
             aria-describedby={undefined}
             className={cn(
-              "sheet-surface data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=closed]:zoom-out-95 fixed top-1/2 z-50 flex max-h-[85dvh] -translate-x-1/2 -translate-y-1/2 flex-col overflow-y-auto rounded-[28px] p-4 outline-none",
+              "sheet-surface on-sheet data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=closed]:zoom-out-95 fixed top-1/2 z-50 flex max-h-[85dvh] -translate-x-1/2 -translate-y-1/2 flex-col overflow-y-auto rounded-[28px] p-4 outline-none",
               !duo && "left-1/2 w-[calc(100vw-2rem)] max-w-[440px]"
             )}
             style={
@@ -442,10 +447,12 @@ export function ScriptsSheet({
 
   // The closed Duo's web column stays beside it (E-Live, N-Scripts)
   const beside = railWidth > 0;
+  // Tabletop: the lower half only, clear of the hinge, scrolling there
+  const belowFold = mode === "tabletop" && fold?.axis === "horizontal";
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
-        className="sheet-surface bg-[var(--sheet)]"
+        className="sheet-surface on-sheet bg-[var(--sheet)]"
         data-beside-column={beside ? "" : undefined}
         style={
           beside
@@ -456,7 +463,12 @@ export function ScriptsSheet({
                 maxWidth: "none",
                 maxHeight: "calc(100dvh - 64px)",
               }
-            : undefined
+            : belowFold
+              ? {
+                  top: "var(--fold-end)",
+                  maxHeight: "calc(100dvh - var(--fold-end))",
+                }
+              : undefined
         }
         onPointerDownOutside={(e) => {
           const target = e.target as Element | null;

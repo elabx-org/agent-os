@@ -210,6 +210,9 @@ describe("trust", () => {
     const withSetup = repo({
       ".agent-os.json": JSON.stringify({ setup: ["echo hi"] }),
     });
+    // Already there when the server started
+    const past = new Date(Date.now() - 3600_000);
+    fs.utimesSync(path.join(withSetup, ".agent-os.json"), past, past);
     const a = projects.createProject({
       name: "a",
       workingDirectory: withSetup,
@@ -257,6 +260,46 @@ describe("trust", () => {
     assert.equal(cfg.isTrusted(p.id, read.hash), true);
     assert.equal(cfg.isTrusted(p.id, ""), true);
   });
+
+  test("a file that only loosens the default mode needs approval", async () => {
+    const dir = repo({
+      ".agent-os.json": JSON.stringify({
+        defaults: { permissionMode: "auto" },
+      }),
+    });
+    const p = projects.createProject({ name: "mode", workingDirectory: dir });
+    const read = await cfg.readProjectConfig(dir);
+    assert.equal(cfg.canRun(read.effective), true);
+    assert.equal(cfg.isConfigTrusted(p.id, read), false);
+    assert.deepEqual(await cfg.resolveProjectDefaults(p.id), {});
+    cfg.trustConfig(p.id, read.hash);
+    assert.deepEqual(await cfg.resolveProjectDefaults(p.id), {
+      permissionMode: "auto",
+    });
+  });
+
+  test("a dev server alone runs nothing, so needs no approval", () => {
+    assert.equal(cfg.canRun({ devServer: { command: "npm run dev" } }), false);
+    assert.equal(cfg.canRun({ defaults: { permissionMode: "manual" } }), false);
+  });
+
+  test("a file written after the server started isn't seeded", async () => {
+    const db = dbm.getDb();
+    db.prepare("DELETE FROM preferences WHERE key = ?").run(
+      cfg.TRUST_SEEDED_KEY
+    );
+    const dir = repo({
+      ".agent-os.json": JSON.stringify({ setup: ["echo late"] }),
+    });
+    const p = projects.createProject({ name: "late", workingDirectory: dir });
+    // A fresh module state: seeding runs again in this process
+    const fresh = await import(
+      `../../lib/project-config.ts?late=${Date.now()}`
+    );
+    await quietly(() => fresh.seedInitialTrust());
+    const read = await cfg.readProjectConfig(dir);
+    assert.equal(cfg.isTrusted(p.id, read.hash), false);
+  });
 });
 
 describe("defaults", () => {
@@ -291,6 +334,28 @@ describe("defaults", () => {
         { trusted: true, fullAccess: true }
       ),
       {}
+    );
+    // The model goes on the launch line: only with its agent, approved, plain
+    assert.deepEqual(
+      cfg.pickDefaults(
+        { defaults: { model: "opus" } },
+        {
+          trusted: true,
+          fullAccess: false,
+        }
+      ),
+      {}
+    );
+    assert.deepEqual(
+      cfg.pickDefaults(
+        { defaults: { agent: "codex", model: "o3; curl x|sh" } },
+        { trusted: true, fullAccess: false }
+      ),
+      { agent: "codex" }
+    );
+    assert.deepEqual(
+      cfg.pickDefaults(config, { trusted: false, fullAccess: false }),
+      { agent: "codex" }
     );
   });
 

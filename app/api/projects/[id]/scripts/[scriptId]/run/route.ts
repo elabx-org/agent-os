@@ -12,6 +12,8 @@ import {
   type UntrustedConfigError,
 } from "@/lib/project-config";
 import { startScriptRun } from "@/lib/script-runs";
+import { findNativeWorktree } from "@/lib/env-setup";
+import { getProviderDefinition } from "@/lib/providers/registry";
 
 // POST /api/projects/[id]/scripts/[scriptId]/run {sessionId?} -
 // RunScriptResponse; requireUser; 409 UntrustedConfigError until the hash
@@ -73,11 +75,37 @@ export async function POST(
     return NextResponse.json(untrusted, { status: 409 });
   }
 
-  const cwd = expandHome(
+  let cwd = expandHome(
     session?.worktree_path ||
       session?.working_directory ||
       project.working_directory
   );
+  // A native --worktree session (Claude) keeps the project root as its
+  // folder; its scripts belong in the worktree the CLI made, never the
+  // main checkout
+  if (
+    session &&
+    !session.worktree_path &&
+    session.branch_name &&
+    getProviderDefinition(session.agent_type).worktreeFlag
+  ) {
+    const created = Date.parse(`${session.created_at.replace(" ", "T")}Z`);
+    const found = await findNativeWorktree(
+      session.working_directory,
+      session.branch_name,
+      Number.isNaN(created) ? Date.now() : created - 5000
+    );
+    if (!found) {
+      return NextResponse.json(
+        {
+          error:
+            "This session's worktree isn't there yet, so the script would run in the main checkout. Try again once the session has started.",
+        },
+        { status: 409 }
+      );
+    }
+    cwd = found;
+  }
   try {
     return NextResponse.json(
       await startScriptRun({ projectId: id, cwd, script, sessionId })

@@ -59,6 +59,7 @@ import {
   withDefaults,
 } from "./ProjectConfigText";
 import { ScriptIcon } from "./ScriptIcon";
+import { TrustConfigPrompt } from "./TrustConfigPrompt";
 
 /** A refused save in words */
 function saveError(err: unknown): string {
@@ -128,7 +129,7 @@ export function useProjectConfigEditor(projectId: string) {
     [res, put, qc, projectId]
   );
 
-  return { status, res, file, scripts, save, notice, setNotice };
+  return { projectId, status, res, file, scripts, save, notice, setNotice };
 }
 
 export type ProjectConfigEditorState = ReturnType<
@@ -172,6 +173,7 @@ export function ProjectConfigEditor({
 }) {
   const { status, res, file, scripts, save, notice } = editor;
   const [picker, setPicker] = useState<Picker>(null);
+  const [reviewing, setReviewing] = useState(false);
   // The column's <> (N-Config) shows the file
   useEffect(
     () => registerNavHandlers({ viewConfig: () => setPicker("file") }),
@@ -222,6 +224,37 @@ export function ProjectConfigEditor({
         >
           {notice}
         </p>
+      )}
+
+      {!res.trusted && (
+        <div
+          role="status"
+          className="status-card tone-needs h-auto flex-wrap gap-x-3 gap-y-2 px-3 py-2.5 text-[14px]"
+        >
+          <span className="min-w-0 flex-1">
+            This version of{" "}
+            <span className="font-mono text-[13px]">{CONFIG_FILE}</span>{" "}
+            isn&apos;t approved, so its setup steps, scripts and default mode
+            don&apos;t apply. Saving here doesn&apos;t approve it.
+          </span>
+          <button
+            type="button"
+            onClick={() => setReviewing(true)}
+            className="pill pill-sm pill-secondary flex-none active:opacity-70"
+          >
+            Review
+          </button>
+        </div>
+      )}
+      {reviewing && (
+        <TrustConfigPrompt
+          projectId={editor.projectId}
+          projectName={projectName}
+          hash={res.hash}
+          config={res.config}
+          open
+          onResult={() => setReviewing(false)}
+        />
       )}
 
       <section className="flex min-w-0 flex-col gap-1.5">
@@ -285,7 +318,7 @@ export function ProjectConfigEditor({
             <div
               role="table"
               aria-label="Scripts"
-              className="group-card hidden px-1 pt-1 @3xl/settings:grid @3xl/settings:grid-cols-[minmax(0,1.3fr)_minmax(0,1.5fr)_130px_110px_52px]"
+              className="group-card hidden px-1 pt-1 @3xl/settings:grid @3xl/settings:grid-cols-[minmax(0,1.3fr)_minmax(0,1.5fr)_144px_110px_52px]"
             >
               <div role="row" className="contents">
                 {["Name", "Command", "Runs in", "Shortcut", ""].map((h, i) => (
@@ -313,7 +346,10 @@ export function ProjectConfigEditor({
                   </div>
                   <div
                     role="cell"
-                    className={cn(CELL, "text-muted-foreground")}
+                    className={cn(
+                      CELL,
+                      "text-muted-foreground whitespace-nowrap"
+                    )}
                   >
                     {s.in === "background" ? "Background" : "Session terminal"}
                   </div>

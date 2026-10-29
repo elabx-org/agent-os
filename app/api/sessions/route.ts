@@ -7,6 +7,7 @@ import { createWorktree } from "@/lib/worktrees";
 import { generateBranchName } from "@/lib/git";
 import { setupNativeWorktreeWhenReady, setupWorktree, type SetupResult } from "@/lib/env-setup";
 import { resolveProjectDefaults, type ResolvedProjectDefaults } from "@/lib/project-config";
+import { isSafeModelName } from "@/lib/model-name";
 import { findAvailablePort } from "@/lib/ports";
 import { runInBackground } from "@/lib/async-operations";
 import { getProject } from "@/lib/projects";
@@ -97,12 +98,16 @@ export async function POST(request: NextRequest) {
       () => ({}) as ResolvedProjectDefaults
     );
     const rawAgentType = requestedAgentType ?? projectDefaults.agent ?? "claude";
+    // The file's model goes with the agent it names only
     const model =
-      requestedModel ??
-      (rawAgentType === (projectDefaults.agent ?? rawAgentType)
+      (requestedModel || undefined) ??
+      (rawAgentType === projectDefaults.agent
         ? projectDefaults.model
         : undefined) ??
       "sonnet";
+    if (!isSafeModelName(model)) {
+      return NextResponse.json({ error: "Invalid model name" }, { status: 400 });
+    }
     // The file's Full access (the user chose it in the UI) is the user's
     // own only: anyone else's request gets the capped mode, unrefused
     const defaultMode =

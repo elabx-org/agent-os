@@ -1,6 +1,6 @@
 import { after, before, describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -67,7 +67,7 @@ describe("pure helpers", () => {
   test("shellQuote and the terminal line", () => {
     assert.equal(runs.shellQuote("a'b"), `'a'\\''b'`);
     const line = runs.terminalCommand("npm test", "sr_x");
-    assert.ok(line.startsWith("npm test; printf %s $? > '"));
+    assert.ok(line.startsWith("eval 'npm test'; printf %s $? > '"));
     assert.ok(line.endsWith(`sr_x.exit'`));
     assert.equal(runs.isRunId("sr_abc123"), true);
     assert.equal(runs.isRunId("../etc"), false);
@@ -198,6 +198,35 @@ describe("terminal runs", () => {
     assert.equal(failed.status, "failed");
     assert.equal(failed.exit_code, 1);
   });
+
+  test("a trailing &, ; or # comment still writes the exit code", async () => {
+    for (const [id, command] of [
+      ["amp", "true &"],
+      ["semi", "true;"],
+      ["comment", "true # a note"],
+    ]) {
+      const res = await runs.startScriptRun({
+        projectId: P,
+        cwd,
+        script: script(id, command, { in: "terminal" }),
+        sessionId: "session-1",
+      });
+      execFileSync("bash", ["-c", res.shellCommand!]);
+      await runs.reconcileRuns(P);
+      assert.equal(runs.getScriptRun(res.runId)?.status, "passed", command);
+    }
+  });
+
+  test("Stop leaves a terminal run alone (it runs in the drawer)", async () => {
+    const res = await runs.startScriptRun({
+      projectId: P,
+      cwd,
+      script: script("drawer", "sleep 5", { in: "terminal" }),
+      sessionId: "session-1",
+    });
+    const after = await runs.stopScriptRun(res.runId);
+    assert.equal(after?.status, "running");
+  });
 });
 
 describe("reconcile and last runs", () => {
@@ -214,6 +243,29 @@ describe("reconcile and last runs", () => {
       .run(P, pid, Date.now());
     await runs.reconcileRuns(P);
     assert.equal(runs.getScriptRun("sr_dead")?.status, "failed");
+  });
+
+  test("a reused pid (not this run's process) is failed and never signalled", async () => {
+    const other = spawn("sleep", ["5"], { detached: true, stdio: "ignore" });
+    try {
+      dbm
+        .getDb()
+        .prepare(
+          `INSERT INTO script_runs (id, project_id, script_id, command, status, pid, log_path, started_at)
+           VALUES ('sr_reused', ?, 'reused', 'x', 'running', ?, '/nonexistent', ?)`
+        )
+        .run(P, other.pid, Date.now());
+      assert.equal(
+        runs.runProcessAlive({ id: "sr_reused", pid: other.pid! }),
+        false
+      );
+      const after = await runs.stopScriptRun("sr_reused");
+      assert.equal(after?.status, "failed");
+      await new Promise((r) => setTimeout(r, 1200));
+      assert.ok(alive(other.pid!));
+    } finally {
+      other.kill("SIGKILL");
+    }
   });
 
   test("lastRunsByScript gives the newest run of each script", async () => {

@@ -751,3 +751,16 @@
     line-height: 1.75;
   }
 }
+
+@layer components {
+  /* M3: panels on a sheet or dialog (log tails, grouped rows, icon tiles).
+     Light sheets are white like --block and --card, so they take the
+     page's grey there; dark keeps its values (--diff-bg is --block) */
+  .on-sheet {
+    --block: var(--diff-bg);
+  }
+  :root:not(.dark) .on-sheet {
+    --card: 240 14% 97%;
+    --block: #ececf1;
+  }
+}

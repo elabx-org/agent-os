@@ -210,8 +210,33 @@ describe("isReservedShortcut", () => {
   test("with Shift, other digits and other letters they're free", () => {
     assert.ok(!isReservedShortcut(spec({ mod: true, shift: true, key: "K" })));
     assert.ok(!isReservedShortcut(spec({ mod: true, key: "5" })));
-    assert.ok(!isReservedShortcut(spec({ mod: true, key: "T" })));
+    assert.ok(!isReservedShortcut(spec({ mod: true, key: "G" })));
+    assert.ok(!isReservedShortcut(spec({ mod: true, shift: true, key: "T" })));
     assert.ok(!isReservedShortcut(spec({ mod: true, alt: true, key: "N" })));
+  });
+
+  test("editing, browser and terminal keys stay theirs", () => {
+    for (const k of [
+      "C",
+      "V",
+      "X",
+      "A",
+      "Z",
+      "Y",
+      "F",
+      "S",
+      "W",
+      "T",
+      "R",
+      "L",
+      "Q",
+    ])
+      assert.ok(isReservedShortcut(spec({ mod: true, key: k })), `mod+${k}`);
+    for (const k of ["C", "V", "F", "Z"])
+      assert.ok(
+        isReservedShortcut(spec({ mod: true, shift: true, key: k })),
+        `mod+shift+${k}`
+      );
   });
 });
 

@@ -39,8 +39,7 @@ function isTextInput(target: EventTarget | null): boolean {
  *
  * In a text field only shortcuts with Cmd (Ctrl) count, so Alt and Shift
  * keep typing; in the terminal only Cmd+Shift ones, as plain Ctrl keys are
- * the shell's. A file that isn't approved yet opens the Scripts sheet,
- * where play asks.
+ * the shell's. A file that isn't approved yet registers none.
  */
 export function useScriptShortcuts(
   projectId: string | null | undefined,
@@ -56,7 +55,9 @@ export function useScriptShortcuts(
   });
   latest.current = { scripts: data?.config.scripts, run, projectId, sessionId };
 
-  const hasShortcuts = !!data?.config.scripts?.some((s) => s.shortcut);
+  // Only an approved file's keys: an unapproved one can't take any over
+  const hasShortcuts =
+    !!data?.trusted && !!data.config.scripts?.some((s) => s.shortcut);
 
   // ⋯ → Scripts over a session: the session's project (a project page
   // keeps its own, nav-actions' default)

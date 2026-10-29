@@ -51,9 +51,22 @@ export function shellQuote(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`;
 }
 
-/** The line typed into the shell drawer: the command, then its exit code to the exit file */
-export function terminalCommand(command: string, runId: string): string {
-  return `${command}; printf %s $? > ${shellQuote(exitPathFor(runId))}`;
+/**
+ * The line typed into the shell drawer: the command (quoted through eval,
+ * so a trailing `&`, `;` or `# comment` can't break or swallow what
+ * follows), then its exit code to the exit file
+ */
+export function terminalCommand(
+  command: string,
+  runId: string,
+  cwd?: string
+): string {
+  // In a subshell in the run's folder: the drawer may sit anywhere (a
+  // native worktree session's drawer opens in the project root)
+  const run = cwd
+    ? `(cd ${shellQuote(cwd)} && eval ${shellQuote(command)})`
+    : `eval ${shellQuote(command)}`;
+  return `${run}; printf %s $? > ${shellQuote(exitPathFor(runId))}`;
 }
 
 /**
@@ -98,6 +111,23 @@ function pidAlive(pid: number): boolean {
   } catch (error) {
     return (error as NodeJS.ErrnoException).code === "EPERM";
   }
+}
+
+/**
+ * The run's own process is still alive: its pid's argv is backgroundArgv's
+ * for this run. After a restart the pid may belong to anything (the tmux
+ * server, say), which must never be signalled. Without /proc, liveness only.
+ */
+export function runProcessAlive(run: Pick<ScriptRun, "id" | "pid">): boolean {
+  const pid = run.pid;
+  if (!pid) return false;
+  let argv: string[];
+  try {
+    argv = fs.readFileSync(`/proc/${pid}/cmdline`, "utf-8").split("\0");
+  } catch {
+    return fs.existsSync("/proc/self/cmdline") ? false : pidAlive(pid);
+  }
+  return argv.includes("agentos-script") && argv.includes(exitPathFor(run.id));
 }
 
 /** Sets the final status, only while the row is still running */
@@ -157,7 +187,7 @@ export async function startScriptRun(
     return {
       runId,
       in: "terminal",
-      shellCommand: terminalCommand(script.command, runId),
+      shellCommand: terminalCommand(script.command, runId, cwd),
     };
   }
 
@@ -193,14 +223,21 @@ export async function startScriptRun(
   return { runId, in: "background" };
 }
 
-/** SIGTERM then SIGKILL the process group; status "stopped" */
+/**
+ * SIGTERM then SIGKILL the run's process group; status "stopped". Only a
+ * process that is provably this run's is signalled; a terminal run (no
+ * pid, typed into the shell drawer) can't be stopped from here.
+ */
 export async function stopScriptRun(runId: string): Promise<ScriptRun | null> {
+  const before = rowOf(runId);
+  if (!before) return null;
+  await reconcileRuns(before.project_id);
   const run = rowOf(runId);
-  if (!run) return null;
-  if (run.status !== "running") return run;
+  if (!run || run.status !== "running") return run;
+  if (!run.log_path) return run;
   finish(runId, "stopped", null);
   const pid = run.pid;
-  if (pid) {
+  if (pid && runProcessAlive(run)) {
     const signal = (sig: NodeJS.Signals) => {
       try {
         process.kill(-pid, sig);
@@ -214,7 +251,7 @@ export async function stopScriptRun(runId: string): Promise<ScriptRun | null> {
     };
     signal("SIGTERM");
     setTimeout(() => {
-      if (pidAlive(pid)) signal("SIGKILL");
+      if (runProcessAlive(run)) signal("SIGKILL");
     }, STOP_GRACE_MS).unref();
   }
   return rowOf(runId);
@@ -293,7 +330,7 @@ export async function reconcileRuns(projectId?: string): Promise<void> {
     if (written) {
       finish(run.id, statusFor(written.code), written.code, written.at);
     } else if (run.pid) {
-      if (!pidAlive(run.pid)) finish(run.id, "failed", null);
+      if (!runProcessAlive(run)) finish(run.id, "failed", null);
     } else if (!run.log_path && now - run.started_at > TERMINAL_STALE_MS) {
       finish(run.id, "stopped", null);
     }

@@ -3,14 +3,18 @@
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
 import { useEnsureTrusted } from "@/components/Projects/TrustConfigPrompt";
-import { ProjectConfigError, useRunScript } from "@/hooks/useProjectConfig";
+import {
+  ProjectConfigError,
+  useRunScript,
+  useScriptRuns,
+} from "@/hooks/useProjectConfig";
 import { useViewport } from "@/hooks/useViewport";
 import { refusalText } from "@/lib/client/user-fetch";
 import type {
   ProjectScript,
   RunScriptResponse,
 } from "@/lib/project-config-types";
-import { requestTerminalRun } from "@/stores/scriptTerminal";
+import { lastTerminalRun, requestTerminalRun } from "@/stores/scriptTerminal";
 
 const isUntrusted = (e: unknown) =>
   e instanceof ProjectConfigError &&
@@ -55,6 +59,7 @@ export function useScriptRunner(
   sessionId: string | null | undefined
 ) {
   const runScript = useRunScript(projectId ?? "");
+  const { data: runs } = useScriptRuns(projectId);
   const { ensure, prompt } = useEnsureTrusted(projectId);
   const { isMobile } = useViewport();
   const [pendingId, setPendingId] = useState<string | null>(null);
@@ -66,7 +71,16 @@ export function useScriptRunner(
       { onUntrusted, announce }: RunOptions = {}
     ): Promise<RunScriptResponse | null> => {
       if (!projectId) return null;
-      const drawer = sessionId && !isMobile ? sessionId : undefined;
+      let drawer = sessionId && !isMobile ? sessionId : undefined;
+      // A script still running in the drawer would get this line as its
+      // input: run this one in the background instead
+      const busy =
+        drawer && script.in !== "background"
+          ? Object.values(runs ?? {}).find(
+              (r) => r.id === lastTerminalRun(drawer!) && r.status === "running"
+            )
+          : undefined;
+      if (busy) drawer = undefined;
       const attempt = () =>
         mutateAsync({ scriptId: script.id, sessionId: drawer });
       setPendingId(script.id);
@@ -89,6 +103,10 @@ export function useScriptRunner(
             sessionId: drawer,
             shellCommand: res.shellCommand,
           });
+        } else if (busy) {
+          toast(
+            `${script.name} started in the background: the shell drawer is still running ${busy.command}`
+          );
         } else if (announce) {
           toast(`${script.name} started`);
         }
@@ -100,7 +118,7 @@ export function useScriptRunner(
         setPendingId(null);
       }
     },
-    [projectId, sessionId, isMobile, mutateAsync, ensure]
+    [projectId, sessionId, isMobile, mutateAsync, ensure, runs]
   );
 
   return { run, pendingId, prompt };

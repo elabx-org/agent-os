@@ -161,7 +161,7 @@ export function AddScriptDialog({
       return;
     }
     if (isReservedShortcut(spec)) {
-      setKeyNote("Agent-OS uses that one");
+      setKeyNote("That one is taken by Agent-OS, the browser or the terminal");
       return;
     }
     const text = shortcutText(spec);
@@ -208,7 +208,7 @@ export function AddScriptDialog({
     <Dialog open={open} onOpenChange={(o) => !busy && onOpenChange(o)}>
       <DialogContent
         className={cn(
-          "flex max-h-[90vh] flex-col gap-5 overflow-y-auto sm:max-w-[520px] lg:max-w-[748px]",
+          "on-sheet flex max-h-[90vh] flex-col gap-5 overflow-y-auto sm:max-w-[520px] lg:max-w-[748px]",
           !isTouch && "rounded-[28px] border-0 bg-[var(--sheet)] p-8",
           besideAt !== null && "gap-4 px-6 py-[22px] lg:max-w-[540px]"
         )}
@@ -288,7 +288,7 @@ export function AddScriptDialog({
             </div>
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-4 sm:grid-cols-[auto_minmax(0,1fr)]">
             <div className="min-w-0">
               <FieldLabel>Run in</FieldLabel>
               <div
@@ -307,7 +307,7 @@ export function AddScriptDialog({
                     type="button"
                     aria-pressed={runIn === value}
                     onClick={() => setRunIn(value)}
-                    className="min-w-0 flex-auto truncate px-2.5 text-[15px]"
+                    className="flex-auto px-3 text-[14px] whitespace-nowrap"
                   >
                     {label}
                   </button>
@@ -330,9 +330,12 @@ export function AddScriptDialog({
                   <span className="font-mono text-[14px]">
                     {shortcut ? shortcutLabel(shortcut) : "None"}
                   </span>
-                  <span className="text-muted-foreground ml-auto truncate text-[13px]">
-                    Press keys to {shortcut ? "change" : "set"}
-                  </span>
+                  {/* With a shortcut set, its clear button takes the hint's room */}
+                  {!shortcut && (
+                    <span className="text-muted-foreground ml-auto truncate text-[13px]">
+                      Press keys to set
+                    </span>
+                  )}
                 </button>
                 {shortcut && (
                   <button

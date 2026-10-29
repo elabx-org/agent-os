@@ -10,6 +10,7 @@ import { promisify } from "util";
 import * as fs from "fs";
 import * as path from "path";
 import {
+  everApproved,
   isConfigTrusted,
   projectIdForPath,
   readProjectConfig,
@@ -204,7 +205,11 @@ export async function setupWorktree(options: {
       name: WAITING_STEP,
       command: "",
       success: false,
-      error: `${read.exists ? read.path : read.legacy?.path} changed since it was approved`,
+      error: `${read.exists ? read.path : read.legacy?.path} ${
+        projectId && everApproved(projectId)
+          ? "changed since it was approved"
+          : "isn't approved yet"
+      }`,
     });
     console.log(
       `[env-setup] ${worktreePath}: setup skipped, config not approved (${read.hash.slice(0, 12)})`
@@ -347,6 +352,27 @@ export function pickNativeWorktree(
   if (byName) return byName.path;
   const fresh = native.filter((w) => (w.createdMs ?? 0) >= since);
   return fresh.length === 1 ? fresh[0].path : null;
+}
+
+/** A native --worktree session's folder, once the CLI has made it */
+export async function findNativeWorktree(
+  repoPath: string,
+  name: string,
+  since: number
+): Promise<string | null> {
+  const repo = repoPath.replace(/^~/, process.env.HOME || "");
+  const worktrees = (await listWorktrees(repo)).map((w) => {
+    let createdMs = 0;
+    try {
+      const st = fs.statSync(w.path);
+      createdMs = st.birthtimeMs || st.ctimeMs;
+    } catch {
+      // Listed but not on disk yet
+    }
+    return { ...w, createdMs };
+  });
+  const found = pickNativeWorktree(worktrees, repo, name, since);
+  return found && fs.existsSync(found) ? found : null;
 }
 
 /**

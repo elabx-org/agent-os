@@ -14,7 +14,9 @@ import { getDb, queries } from "@/lib/db";
 import { getAllProjects, getProject } from "@/lib/projects";
 import { isValidAgentType } from "@/lib/providers";
 import { normalizeMode } from "@/lib/permission-mode";
+import { isSafeModelName } from "@/lib/model-name";
 import {
+  canRun,
   CONFIG_FILE,
   LEGACY_CONFIG_FILE,
   type AgentOsConfig,
@@ -222,15 +224,6 @@ export async function writeProjectConfig(
   return { hash: configHash(text, legacyText) };
 }
 
-/** Whether the files hold anything that runs (setup, scripts, a dev server) */
-export function canRun(config: AgentOsConfig): boolean {
-  return (
-    (Array.isArray(config.setup) && config.setup.length > 0) ||
-    (Array.isArray(config.scripts) && config.scripts.length > 0) ||
-    !!config.devServer?.command
-  );
-}
-
 function hasTrustRow(projectId: string, hash: string): boolean {
   return !!getDb()
     .prepare(
@@ -258,6 +251,13 @@ export function isTrusted(projectId: string, hash: string): boolean {
   return read.hash === hash && !canRun(read.effective);
 }
 
+/** Whether the user ever approved a version of this project's files */
+export function everApproved(projectId: string): boolean {
+  return !!getDb()
+    .prepare(`SELECT 1 FROM project_trust WHERE project_id = ? LIMIT 1`)
+    .get(projectId);
+}
+
 export function trustConfig(projectId: string, hash: string): void {
   if (!hash) return;
   getDb()
@@ -265,6 +265,21 @@ export function trustConfig(projectId: string, hash: string): void {
       `INSERT OR IGNORE INTO project_trust (project_id, config_hash, trusted_at) VALUES (?, ?, ?)`
     )
     .run(projectId, hash, Date.now());
+}
+
+/** When this server process started (epoch ms) */
+const PROCESS_START = Date.now() - process.uptime() * 1000;
+
+/** Either config file was written after this process started */
+function changedSinceStart(projectPath: string): boolean {
+  const root = expandHome(projectPath);
+  return [CONFIG_FILE, LEGACY_CONFIG_FILE].some((name) => {
+    try {
+      return fs.statSync(path.join(root, name)).mtimeMs > PROCESS_START;
+    } catch {
+      return false;
+    }
+  });
 }
 
 let seeding: Promise<void> | null = null;
@@ -282,6 +297,8 @@ export async function seedInitialTrust(): Promise<void> {
       if (project.is_uncategorized) continue;
       const read = readProjectConfigSync(project.working_directory);
       if (!read.hash || !canRun(read.effective)) continue;
+      // Seeded lazily (first read), so only files already there at start
+      if (changedSinceStart(project.working_directory)) continue;
       trustConfig(project.id, read.hash);
       trusted++;
     }
@@ -334,8 +351,11 @@ export function pickDefaults(
   if (typeof raw.agent === "string" && isValidAgentType(raw.agent)) {
     out.agent = raw.agent;
   }
-  if (typeof raw.model === "string" && raw.model.trim()) {
-    out.model = raw.model.trim();
+  // The launch line takes the model, so only an approved file's plain name,
+  // and only with the agent it names (another agent's flag would fail)
+  const model = typeof raw.model === "string" ? raw.model.trim() : "";
+  if (out.agent && opts.trusted && isSafeModelName(model)) {
+    out.model = model;
   }
   const mode = normalizeMode(raw.permissionMode);
   // A file anyone can edit picks how much an agent may do unasked only

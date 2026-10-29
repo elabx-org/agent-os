@@ -3,6 +3,7 @@ import { getProject } from "@/lib/projects";
 import { userOnly } from "@/lib/permission-guard";
 import { requireUser } from "@/lib/user-proof";
 import {
+  isTrusted,
   projectConfigResponse,
   setProjectFullAccess,
   trustConfig,
@@ -83,9 +84,11 @@ export async function GET(_request: NextRequest, { params }: Params) {
   }
 }
 
-// PUT {config, baseHash, allowFullAccess?} - {hash}; requireUser; 409
-// ConfigConflictError when the file moved. The saved file is trusted (the
-// user wrote it); allowFullAccess is kept in the DB, never in the file
+// PUT {config, baseHash, allowFullAccess?} - {hash, trusted}; requireUser;
+// 409 ConfigConflictError when the file moved. The saved file is trusted
+// only if the one it started from was: a save that changes one field must
+// not approve commands someone else put in the file. allowFullAccess is
+// kept in the DB, never in the file, and only changes when sent
 export async function PUT(request: NextRequest, { params }: Params) {
   const { id } = await params;
   const proof = requireUser(request);
@@ -102,6 +105,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
 
   const dir = found.project.working_directory;
   try {
+    const wasTrusted = isTrusted(id, body.baseHash);
     const written = await writeProjectConfig(dir, body.config, body.baseHash);
     if (!written) {
       const conflict: ConfigConflictError = {
@@ -110,14 +114,19 @@ export async function PUT(request: NextRequest, { params }: Params) {
       };
       return NextResponse.json(conflict, { status: 409 });
     }
-    trustConfig(id, written.hash);
+    if (wasTrusted) trustConfig(id, written.hash);
     const config = body.config as AgentOsConfig;
-    setProjectFullAccess(
-      id,
-      body.allowFullAccess === true &&
-        config.defaults?.permissionMode === "bypassPermissions"
-    );
-    const response: PutProjectConfigResponse = { hash: written.hash };
+    if (typeof body.allowFullAccess === "boolean") {
+      setProjectFullAccess(
+        id,
+        body.allowFullAccess &&
+          config.defaults?.permissionMode === "bypassPermissions"
+      );
+    }
+    const response: PutProjectConfigResponse = {
+      hash: written.hash,
+      trusted: isTrusted(id, written.hash),
+    };
     return NextResponse.json(response);
   } catch (error) {
     console.error("Error writing project config:", error);

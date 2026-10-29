@@ -91,18 +91,21 @@ export function ProjectScripts({
                         Open
                       </a>
                     )}
-                    <RoundButton
-                      kind="stop"
-                      small
-                      label={`Stop ${script.name}`}
-                      busy={stop.isPending && stop.variables === run!.id}
-                      onClick={() =>
-                        stop.mutate(run!.id, {
-                          onError: (e) =>
-                            toast.error(stopErrorText(e, script.name)),
-                        })
-                      }
-                    />
+                    {/* A terminal run stops in its shell drawer */}
+                    {run!.log_path && (
+                      <RoundButton
+                        kind="stop"
+                        small
+                        label={`Stop ${script.name}`}
+                        busy={stop.isPending && stop.variables === run!.id}
+                        onClick={() =>
+                          stop.mutate(run!.id, {
+                            onError: (e) =>
+                              toast.error(stopErrorText(e, script.name)),
+                          })
+                        }
+                      />
+                    )}
                   </span>
                 }
               />
