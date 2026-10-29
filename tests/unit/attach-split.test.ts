@@ -137,3 +137,26 @@ test("only sessions, no text: the text is empty", () => {
 test("no entries, no block", () => {
   assert.equal(formatAttachmentBlock([]), "");
 });
+
+test("a summary holding a block of the same name doesn't end the outer one early", () => {
+  const inner = formatAttachmentBlock([health]);
+  const outer = formatAttachmentBlock([
+    {
+      ...health,
+      summary: `Earlier it was told:\n${inner}\nThen it fixed /ready.`,
+    },
+  ]);
+  const out = split(`${outer}\n\nWhat's left?`);
+  assert.deepEqual(out.attached, ["Stack health check"]);
+  assert.equal(out.text, "What's left?");
+});
+
+test("CRLF line endings still split", () => {
+  const sent = `${formatAttachmentBlock([deck])}\n\nShip it`.replace(
+    /\n/g,
+    "\r\n"
+  );
+  const out = split(sent);
+  assert.deepEqual(out.attached, ["Deck state line fix"]);
+  assert.equal(out.text, "Ship it");
+});

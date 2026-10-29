@@ -15,6 +15,7 @@ import { readTranscriptTail, type ChatItem } from "./claude-transcript";
 import { planFromItems, type PlanState } from "./claude-plan";
 import { locateTranscript, sessionCwd } from "./transcript-locate";
 import { tmuxNameOf } from "./session-launch";
+import { splitAttachmentBlock } from "./session-attach-types";
 
 const execFileAsync = promisify(execFile);
 
@@ -99,6 +100,17 @@ function isAsk(text: string): boolean {
   return !!text.trim() && !text.trim().startsWith("/");
 }
 
+/**
+ * A user message without the attached sessions' block (M9), so a summary
+ * of a session that attached others doesn't carry their summaries along
+ */
+function ownText(text: string): string {
+  const { text: rest, attached } = splitAttachmentBlock(text);
+  if (!attached.length) return text;
+  const names = attached.map((n) => `"${n}"`).join(", ");
+  return `${rest} (attached: ${names})`.trim();
+}
+
 /** The asks, conclusions and plan in a transcript's chat items */
 export function extractConversation(
   items: readonly ChatItem[]
@@ -109,8 +121,8 @@ export function extractConversation(
     if (item.kind === "summary") {
       compacted = item.text;
       turns.length = 0;
-    } else if (item.kind === "user" && isAsk(item.text)) {
-      turns.push({ ask: item.text, reply: null });
+    } else if (item.kind === "user" && isAsk(ownText(item.text))) {
+      turns.push({ ask: ownText(item.text), reply: null });
     } else if (item.kind === "assistant" && item.text.trim()) {
       if (!turns.length) turns.push({ ask: "", reply: null });
       turns[turns.length - 1].reply = item.text;
@@ -285,7 +297,7 @@ export function cleanScrollback(raw: string, max = SCROLLBACK_CHARS): string {
 function conversationText(items: readonly ChatItem[]): string {
   const lines: string[] = [];
   for (const item of items) {
-    if (item.kind === "user") lines.push(`User: ${item.text}`);
+    if (item.kind === "user") lines.push(`User: ${ownText(item.text)}`);
     else if (item.kind === "assistant") lines.push(`Assistant: ${item.text}`);
     else if (item.kind === "summary") lines.push(`Earlier: ${item.text}`);
     else if (item.kind === "tool") lines.push(`(${item.name} ${item.summary})`);

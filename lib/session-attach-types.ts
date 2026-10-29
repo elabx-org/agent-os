@@ -123,14 +123,39 @@ export function splitAttachmentBlock(text: string): {
   attached: string[];
 } {
   const attached: string[] = [];
-  let rest = text;
+  let rest = text.replace(/\r\n/g, "\n");
   for (;;) {
     const m = OPEN.exec(rest);
     if (!m) break;
-    const end = rest.indexOf(close(m[1]), m[0].length);
+    const end = closingIndex(rest, m[1], m[0].length);
     if (end < 0) break;
     attached.push(m[1]);
     rest = rest.slice(end + close(m[1]).length).replace(/^\s+/, "");
   }
   return { text: attached.length ? rest : text, attached };
+}
+
+/**
+ * Where the block named `name` that opened before `from` ends: a summary
+ * can hold a block of its own with the same name (a session that attached
+ * one with that name earlier), so same-name opens and ends are counted
+ */
+function closingIndex(text: string, name: string, from: number) {
+  const open = `[AgentOS: attached session "${name}"`;
+  const end = close(name);
+  let depth = 1;
+  let at = from;
+  for (;;) {
+    const nextEnd = text.indexOf(end, at);
+    if (nextEnd < 0) return -1;
+    const nextOpen = text.indexOf(open, at);
+    if (nextOpen >= 0 && nextOpen < nextEnd) {
+      depth += 1;
+      at = nextOpen + open.length;
+      continue;
+    }
+    depth -= 1;
+    if (depth === 0) return nextEnd;
+    at = nextEnd + end.length;
+  }
 }

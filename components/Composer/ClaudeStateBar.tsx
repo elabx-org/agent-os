@@ -24,6 +24,8 @@ import type { ClaudeState, ClaudeTool } from "@/lib/claude-state";
 import type { Session } from "@/lib/db";
 import type { ChatItem } from "@/lib/claude-transcript";
 import type { HistoryEntry } from "@/hooks/useComposerData";
+import { splitUndoNotice } from "@/lib/queue/types";
+import { splitAttachmentBlock } from "@/lib/session-attach-types";
 import { GROUP_HEADING, POPOVER } from "./SuggestionPopover";
 import { usePopoverPlacement } from "./usePopoverPlacement";
 import {
@@ -485,6 +487,10 @@ function ago(at: number): string {
   return WHEN.format(Math.round(s / 86400), "day");
 }
 
+/** A prompt as the user typed it: no undo notice, no attached sessions */
+const typedText = (text: string) =>
+  splitAttachmentBlock(splitUndoNotice(text).text).text || text;
+
 /** This conversation's prompts, newest first, as Claude's rewind lists them */
 async function fetchPrompts(
   sessionId: string,
@@ -499,7 +505,10 @@ async function fetchPrompts(
     if (res.ok) {
       const { entries } = (await res.json()) as { entries?: HistoryEntry[] };
       if (entries?.length)
-        return entries.map((e) => ({ text: e.text, at: e.timestamp }));
+        return entries.map((e) => ({
+          text: typedText(e.text),
+          at: e.timestamp,
+        }));
     }
   }
   // Before the hooks have said which session it is: the transcript, which
@@ -509,7 +518,9 @@ async function fetchPrompts(
   const { items } = (await res.json()) as { items?: ChatItem[] };
   return (items ?? [])
     .flatMap((i) =>
-      i.kind === "user" ? [{ text: i.text, at: Date.parse(i.ts) || 0 }] : []
+      i.kind === "user"
+        ? [{ text: typedText(i.text), at: Date.parse(i.ts) || 0 }]
+        : []
     )
     .reverse();
 }
