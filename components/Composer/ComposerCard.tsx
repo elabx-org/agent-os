@@ -508,7 +508,8 @@ export function ComposerCard({
             {!collapsed && composer.attached.length > 0 && (
               <span
                 data-attach-footer
-                className="text-muted-foreground min-w-0 truncate text-[13px]"
+                // Shrinks (never wraps the send button to a row of its own)
+                className="text-muted-foreground min-w-0 flex-1 basis-0 truncate text-[13px]"
               >
                 {attachFooter(composer.attached)}
               </span>

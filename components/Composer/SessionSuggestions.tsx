@@ -62,7 +62,7 @@ export function SessionSuggestions({
         role="listbox"
         aria-label="Sessions"
         aria-multiselectable="true"
-        className="max-h-[min(40vh,280px)] overflow-y-auto overscroll-contain"
+        className="max-h-[min(34vh,232px)] overflow-y-auto overscroll-contain"
       >
         {sessions.length === 0 && (
           <div className="text-muted-foreground flex min-h-14 items-center gap-2 px-3.5 text-sm">
