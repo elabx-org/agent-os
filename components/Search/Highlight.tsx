@@ -1,11 +1,13 @@
 "use client";
 
 import type { HitRanges } from "@/lib/search/types";
+import { highlightParts } from "./palette-model";
 
-/**
- * Text with its matches marked (the mocks' `.hit`: accent text on a faint
- * accent tint). Owned by U11.3
- */
+/** The mocks' `.hit`: accent text, semibold, on a faint accent tint */
+export const HIT_CLASS =
+  "rounded px-0.5 font-semibold text-[#6D28D9] dark:text-[#C4B5FD] bg-primary/[0.22]";
+
+/** Text with its matches marked */
 export function Highlight({
   text,
   ranges,
@@ -15,6 +17,17 @@ export function Highlight({
   ranges: HitRanges;
   className?: string;
 }) {
-  void ranges;
-  return <span className={className}>{text}</span>;
+  return (
+    <span className={className}>
+      {highlightParts(text, ranges).map((part, i) =>
+        part.hit ? (
+          <mark key={i} className={HIT_CLASS}>
+            {part.text}
+          </mark>
+        ) : (
+          part.text
+        )
+      )}
+    </span>
+  );
 }
