@@ -2,6 +2,7 @@
 
 import { useSnapshot } from "valtio";
 import {
+  WIDE,
   columnFor,
   type ColumnContext,
   type ColumnItem,
@@ -86,17 +87,20 @@ export function useColumn(
 }
 
 /** Where the page draws its own bar, so the app's column steps aside */
-const PAGE_BARS: LayoutMode[] = ["phone", "tabletop"];
+export const PAGE_BARS: LayoutMode[] = ["phone", "tabletop"];
 
 /**
  * What the iOS app's column shows now, outside React: the surface, its
  * items without the web icons ([] where the page draws its own tab bar or
- * tabletop bar) and whether the first one is back
+ * tabletop bar), whether the first one is back, and what its More menu
+ * needs: the live activity showing and the wide layout
  */
 export function nativeColumn(): {
   surface: Surface;
   column: NativeColumnItem[];
   canGoBack: boolean;
+  liveOpen: boolean;
+  wide: boolean;
 } {
   const surface = currentSurface();
   const mode = layoutStore.mode;
@@ -123,5 +127,11 @@ export function nativeColumn(): {
   const column = PAGE_BARS.includes(mode)
     ? []
     : items.map(({ icon: _icon, ...rest }) => rest);
-  return { surface, column, canGoBack: items[0]?.id === "back" };
+  return {
+    surface,
+    column,
+    canGoBack: items[0]?.id === "back",
+    liveOpen: mobileNavStore.liveOpen,
+    wide: WIDE.includes(mode),
+  };
 }

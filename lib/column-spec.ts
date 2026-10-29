@@ -383,7 +383,8 @@ function nowWithSession(ctx: ColumnContext): ColumnItem[] {
   ];
 }
 
-const WIDE: LayoutMode[] = ["duo-open", "book", "desktop"];
+/** Layouts with room for two pages: More offers Open beside */
+export const WIDE: LayoutMode[] = ["duo-open", "book", "desktop"];
 
 /**
  * The items for a surface, top to bottom (or left to right), as the mocks
