@@ -351,7 +351,15 @@ export function ChatView({
           ...(options?.sessions?.length ? { sessions: options.sessions } : {}),
         }),
       });
-      if (!res.ok) throw new Error("Couldn't send to Claude");
+      if (!res.ok) {
+        // A 409: the attached sessions can't go with an answer (send-keys)
+        const body = await res.json().catch(() => null);
+        throw new Error(
+          res.status === 409 && body?.error
+            ? body.error
+            : "Couldn't send to Claude"
+        );
+      }
       sent();
     },
     [session.id, sent]

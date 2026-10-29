@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { AtSign } from "lucide-react";
 import { useSessionsQuery } from "@/data/sessions/queries";
 import type { SessionAttachmentRef } from "@/lib/session-attach-types";
@@ -36,25 +37,48 @@ export function AttachedSessionPill({
 
 /**
  * The sessions attached to a message the user sent, from its block
- * (splitAttachmentBlock): above the bubble, right-aligned
+ * (splitAttachmentBlock): above the bubble, right-aligned. A tap shows
+ * the summary the agent got, so nothing sent with a message is hidden
  */
 export function AttachedSessionsLine({
   names,
+  summaries = [],
   className,
 }: {
   names: readonly string[];
+  /** Each one's summary, as the agent got it */
+  summaries?: readonly string[];
   className?: string;
 }) {
+  const [open, setOpen] = useState<number | null>(null);
   if (!names.length) return null;
+  const shown = open !== null ? summaries[open] : undefined;
   return (
-    <div
-      role="list"
-      aria-label="Attached sessions, as summaries"
-      className={cn("flex max-w-full flex-wrap justify-end gap-1", className)}
-    >
-      {names.map((name, i) => (
-        <AttachedSessionPill key={`${i}-${name}`} name={name} />
-      ))}
+    <div className={cn("flex max-w-full flex-col items-end gap-1", className)}>
+      <div
+        role="list"
+        aria-label="Attached sessions, as summaries"
+        className="flex max-w-full flex-wrap justify-end gap-1"
+      >
+        {names.map((name, i) => (
+          <span key={`${i}-${name}`} role="listitem" className="max-w-full">
+            <button
+              type="button"
+              aria-expanded={open === i}
+              aria-label={`${name}: ${open === i ? "hide" : "show"} the summary it got`}
+              onClick={() => setOpen((was) => (was === i ? null : i))}
+              className="relative max-w-full after:absolute after:-inset-x-1 after:-inset-y-2.5 after:content-['']"
+            >
+              <AttachedSessionPill name={name} listItem={false} />
+            </button>
+          </span>
+        ))}
+      </div>
+      {shown !== undefined && (
+        <div className="text-muted-foreground bg-foreground/[0.04] max-h-60 w-full overflow-y-auto rounded-xl border border-[var(--hair)] px-3 py-2 font-mono text-xs [overflow-wrap:anywhere] whitespace-pre-wrap">
+          {shown || "(empty)"}
+        </div>
+      )}
     </div>
   );
 }

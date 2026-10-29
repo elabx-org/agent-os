@@ -42,7 +42,7 @@ function RowView({
     // front aren't the user's words
     const notice = splitUndoNotice(row.text);
     const { undoneTurn } = notice;
-    const { text, attached } = splitAttachmentBlock(notice.text);
+    const { text, attached, summaries } = splitAttachmentBlock(notice.text);
     return (
       <div className="flex min-w-0 flex-col items-end gap-1">
         {undoneTurn !== null && (
@@ -50,7 +50,11 @@ function RowView({
             Told it turn {undoneTurn} was undone
           </span>
         )}
-        <AttachedSessionsLine names={attached} className="ml-8" />
+        <AttachedSessionsLine
+          names={attached}
+          summaries={summaries}
+          className="ml-8"
+        />
         {text && (
           <div className="bubble-me ml-8 min-w-0 text-[15px] [overflow-wrap:anywhere] whitespace-pre-wrap">
             {text}

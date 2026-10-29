@@ -9,6 +9,10 @@ import { SuggestionPopover } from "./SuggestionPopover";
 import type { ComposerEngine } from "./useComposer";
 import { usePopoverPlacement } from "./usePopoverPlacement";
 
+/** A Sessions row, and the tabs plus caption around the list (px) */
+const SESSION_ROW = 56;
+const SESSIONS_CHROME = 96;
+
 /**
  * What floats over the composer: the history search, a pill's preview, or
  * the "/" and "@" suggestions. Place it in a relative wrapper around the box.
@@ -26,6 +30,20 @@ export function ComposerPopover({ composer }: { composer: ComposerEngine }) {
     },
     [setHistoryOpen, recall]
   );
+
+  const open =
+    !!(composer.historyOpen && composer.cwd) ||
+    composer.previewChip?.kind === "paste" ||
+    !!composer.picker;
+  const anchorRef = useRef<HTMLDivElement>(null);
+  const { below, maxHeight } = usePopoverPlacement(anchorRef, open);
+  // The panels cap themselves at 320px; only a tighter side (the deck, a
+  // landscape keyboard) scrolls the whole panel and clips its shadow
+  const tight = maxHeight !== undefined && maxHeight < 360;
+  // There the Sessions list alone shrinks: the tabs and caption stay
+  const listMax = tight
+    ? Math.max(SESSION_ROW * 1.5, maxHeight - SESSIONS_CHROME)
+    : undefined;
 
   let panel: ReactNode = null;
   if (composer.historyOpen && composer.cwd)
@@ -56,7 +74,8 @@ export function ComposerPopover({ composer }: { composer: ComposerEngine }) {
         onHover={composer.setSelected}
         onChoose={composer.choose}
         tab={composer.atTab}
-        onTab={composer.setAtTab}
+        // Editing a queued message: files only
+        onTab={composer.sessionsOff ? undefined : composer.setAtTab}
         sessions={
           <SessionSuggestions
             id={composer.listboxId}
@@ -66,16 +85,11 @@ export function ComposerPopover({ composer }: { composer: ComposerEngine }) {
             onHover={composer.setSelected}
             onToggle={composer.attachSession}
             loading={composer.attachableLoading}
+            maxHeight={listMax}
           />
         }
       />
     );
-
-  const anchorRef = useRef<HTMLDivElement>(null);
-  const { below, maxHeight } = usePopoverPlacement(anchorRef, panel !== null);
-  // The panels cap themselves at 320px; only a tighter side (the deck, a
-  // landscape keyboard) scrolls the whole panel and clips its shadow
-  const tight = maxHeight !== undefined && maxHeight < 360;
 
   return (
     <div

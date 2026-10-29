@@ -348,14 +348,15 @@ export function useComposer({
     if (atStart !== null) setAtTabState("files");
   }, [atStart]);
   const atOpen = atStart !== null;
+  const [attachedState, setAttachedState] = useState<AttachedSession[]>([]);
   const { sessions: attachable, loading: attachableLoading } =
     useAttachableSessions(
       sessionId ?? null,
       pickerToken?.kind === "at" ? pickerToken.query : "",
-      atOpen && atTab === "sessions"
+      atOpen && atTab === "sessions",
+      attachedState.map((a) => a.sessionId)
     );
 
-  const [attachedState, setAttachedState] = useState<AttachedSession[]>([]);
   const attachedRef = useRef(attachedState);
   const setAttached = useCallback(
     (next: AttachedSession[]) => {
@@ -473,7 +474,16 @@ export function useComposer({
     [caret, setDisplay]
   );
 
+  // Off while a queued message is edited: its sessions can't change
+  const [sessionsOff, setSessionsOffState] = useState(false);
+  const sessionsOffRef = useRef(false);
+  const setSessionsOff = useCallback((off: boolean) => {
+    sessionsOffRef.current = off;
+    setSessionsOffState(off);
+    if (off) setAtTabState("files");
+  }, []);
   const setAtTab = useCallback((tab: AtTab) => {
+    if (tab === "sessions" && sessionsOffRef.current) return;
     setAtTabState(tab);
     setSelected(0);
   }, []);
@@ -902,15 +912,19 @@ export function useComposer({
     [quotes, value, command]
   );
 
-  /** After a send: the pills, quotes and history position start over */
-  const sent = useCallback(() => {
-    setPastes([]);
-    setAttached([]);
-    setHist(-1);
-    setPreview(null);
-    setDismissed(null);
-    if (sessionId && !command) clearQuotes(sessionId);
-  }, [setPastes, setAttached, sessionId, command]);
+  /** After a send: the pills, quotes and history position start over.
+      `keepAttached`: the caller drops only the chips that went */
+  const sent = useCallback(
+    (options?: { keepAttached?: boolean }) => {
+      setPastes([]);
+      if (!options?.keepAttached) setAttached([]);
+      setHist(-1);
+      setPreview(null);
+      setDismissed(null);
+      if (sessionId && !command) clearQuotes(sessionId);
+    },
+    [setPastes, setAttached, sessionId, command]
+  );
 
   /** The whole draft becomes `text` (cleared after a send, a queued
       message brought back to edit); no pills */
@@ -950,6 +964,9 @@ export function useComposer({
     // @ sessions (N-Attach)
     atTab,
     setAtTab,
+    /** No Sessions tab and no chips (a queued message being edited) */
+    sessionsOff,
+    setSessionsOff,
     /** The Sessions tab's rows, while it's open */
     attachable,
     attachableLoading,

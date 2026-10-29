@@ -27,6 +27,9 @@ export interface SessionSuggestionsProps {
   onHover: (index: number) => void;
   onToggle: (session: AttachableSession) => void;
   loading?: boolean;
+  /** A tight side (the deck): the list's height, so the tabs and the
+      caption stay in view */
+  maxHeight?: number;
 }
 
 const STATE: Record<AttachableStatus, AgentState> = {
@@ -46,6 +49,7 @@ export function SessionSuggestions({
   onHover,
   onToggle,
   loading = false,
+  maxHeight,
 }: SessionSuggestionsProps) {
   const listRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -63,6 +67,7 @@ export function SessionSuggestions({
         aria-label="Sessions"
         aria-multiselectable="true"
         className="max-h-[min(34vh,232px)] overflow-y-auto overscroll-contain"
+        style={maxHeight !== undefined ? { maxHeight } : undefined}
       >
         {sessions.length === 0 && (
           <div className="text-muted-foreground flex min-h-14 items-center gap-2 px-3.5 text-sm">

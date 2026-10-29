@@ -13,6 +13,7 @@ import {
   type AttachmentBlockEntry,
   type SessionAttachmentRef,
   type SessionSummaryResponse,
+  quoteAttachMarkers,
 } from "./session-attach-types";
 import { getSessionSummary } from "./session-summaries";
 
@@ -21,7 +22,10 @@ const MAX_ID = 200;
 export interface AttachDeps {
   getSession(id: string): Session | null;
   projectName(session: Session): string | null;
-  summary(session: Session): Promise<SessionSummaryResponse>;
+  summary(
+    session: Session,
+    options?: { persist?: boolean }
+  ): Promise<SessionSummaryResponse>;
 }
 
 const realDeps = (): AttachDeps => {
@@ -36,7 +40,7 @@ const realDeps = (): AttachDeps => {
         | undefined;
       return project && !project.is_uncategorized ? project.name : null;
     },
-    summary: (session) => getSessionSummary(session),
+    summary: (session, options) => getSessionSummary(session, options),
   };
 };
 
@@ -71,7 +75,7 @@ export async function resolveAttachmentBlockWith(
     sessions.map(async (session) => {
       let summary: string;
       try {
-        summary = (await deps.summary(session)).text;
+        summary = (await deps.summary(session, { persist: true })).text;
       } catch (error) {
         console.error(`[attach] summary of ${session.id}:`, error);
         summary = "(Its summary could not be built; ask the user about it.)";
@@ -102,13 +106,15 @@ export async function resolveAttachmentBlock(
 
 /**
  * The text that goes in: the undo notice, the attached sessions' block,
- * then the message (and its file paths). Without a block, as before M9
+ * then the message (and its file paths). Without a block, as before M9.
+ * Block markers in the message are quoted (quoteAttachMarkers)
  */
 export function composeOutgoing(
   notice: string | null,
   block: string | null,
-  message: string
+  typed: string
 ): string {
+  const message = quoteAttachMarkers(typed);
   if (!block?.trim()) {
     return [notice, message].filter((p) => p && p.trim()).join(" ");
   }

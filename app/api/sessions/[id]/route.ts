@@ -120,9 +120,13 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 function dropSessionData(session: Session) {
   try {
     clearQueue(session.id);
-    forgetSessionSummary(session.id);
   } catch (error) {
     console.error(`Failed to clear the queue of ${session.id}:`, error);
+  }
+  try {
+    forgetSessionSummary(session.id);
+  } catch (error) {
+    console.error(`Failed to drop the summary of ${session.id}:`, error);
   }
   pruneSessionTurns(session).catch((error) =>
     console.error(`Failed to prune the turns of ${session.id}:`, error)

@@ -4,8 +4,12 @@ import { useEffect, useRef, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import type { AtTab, Suggestion } from "./useComposer";
 
-/** Glass-like, as the + menu; ComposerPopover places it */
-export const POPOVER = "glass overflow-hidden rounded-[20px] p-1.5";
+/**
+ * Glass-like, as the + menu; ComposerPopover places it. Near opaque: it
+ * floats over the chat, whose text would otherwise read through it
+ */
+export const POPOVER =
+  "glass bg-[rgba(255,255,255,0.98)] dark:bg-[rgba(44,44,50,0.96)] overflow-hidden rounded-[20px] p-1.5";
 
 export const GROUP_HEADING =
   "text-muted-foreground/80 px-2.5 pt-1.5 pb-0.5 text-[10px] font-semibold tracking-[0.08em] uppercase";
@@ -66,7 +70,7 @@ export function SuggestionPopover({
                 type="button"
                 role="tab"
                 aria-selected={tab === value}
-                aria-pressed={tab === value}
+                aria-controls={tab === value ? id : undefined}
                 tabIndex={-1}
                 // Keep the keyboard up: focus stays in the box
                 onMouseDown={(e) => e.preventDefault()}

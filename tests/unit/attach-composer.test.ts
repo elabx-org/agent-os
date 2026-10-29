@@ -17,11 +17,15 @@ import type {
   AttachedSession,
 } from "../../lib/session-attach-types";
 
-test("formatTokens: exact under 1k, one decimal in k, whole k from 10k", () => {
+test("formatTokens: exact under 100, one decimal in k, whole k from 10k", () => {
   assert.equal(formatTokens(0), "0 tokens");
   assert.equal(formatTokens(1), "1 token");
-  assert.equal(formatTokens(850), "850 tokens");
-  assert.equal(formatTokens(999), "999 tokens");
+  assert.equal(formatTokens(83), "83 tokens");
+  assert.equal(formatTokens(99), "99 tokens");
+  assert.equal(formatTokens(100), "0.1k tokens");
+  assert.equal(formatTokens(600), "0.6k tokens");
+  assert.equal(formatTokens(860), "0.9k tokens");
+  assert.equal(formatTokens(999), "1k tokens");
   assert.equal(formatTokens(1000), "1k tokens");
   assert.equal(formatTokens(1200), "1.2k tokens");
   assert.equal(formatTokens(2149), "2.1k tokens");
@@ -119,6 +123,11 @@ test("filterAttachable: not the current one, most recent first, by name or proje
   assert.deepEqual(
     filterAttachable(rows, null, "", 2).map((r) => r.id),
     ["me", "b"]
+  );
+  // Attached ones lead, so their checked row is in view
+  assert.deepEqual(
+    filterAttachable(rows, "me", "", 30, ["a"]).map((r) => r.id),
+    ["a", "b", "c"]
   );
 });
 

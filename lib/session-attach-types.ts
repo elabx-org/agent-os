@@ -85,6 +85,19 @@ export interface AttachmentBlockEntry {
 const OPEN = /^\[AgentOS: attached session "([^"\n]*)"[^\]\n]*\]\n/;
 const close = (name: string) => `[AgentOS: end of attached session "${name}"]`;
 
+/**
+ * Text that only looks like an attached session's block: a summary that
+ * quotes one, or a message (an agent's too) typed to forge one. Its
+ * markers are quoted, so it can't end a real block early or be hidden in
+ * the chat as one; only formatAttachmentBlock writes real markers
+ */
+export function quoteAttachMarkers(text: string): string {
+  return text.replace(
+    /\[AgentOS:(?=\s*(?:end of )?attached session\b)/g,
+    "[AgentOS (quoted):"
+  );
+}
+
 /** A name that can't end the block's header early */
 const safeName = (name: string) =>
   name.replace(/["\]\n]/g, "'").trim() || "Untitled";
@@ -106,7 +119,7 @@ export function formatAttachmentBlock(entries: AttachmentBlockEntry[]): string {
       const where = e.projectName ? ` (${safeName(e.projectName)})` : "";
       return [
         `[AgentOS: attached session "${name}"${where}, a summary, not its full transcript]`,
-        e.summary.trim(),
+        quoteAttachMarkers(e.summary.trim()),
         close(name),
       ].join("\n");
     })
@@ -121,8 +134,11 @@ export function formatAttachmentBlock(entries: AttachmentBlockEntry[]): string {
 export function splitAttachmentBlock(text: string): {
   text: string;
   attached: string[];
+  /** Each attached session's summary, as the agent got it */
+  summaries: string[];
 } {
   const attached: string[] = [];
+  const summaries: string[] = [];
   let rest = text.replace(/\r\n/g, "\n");
   for (;;) {
     const m = OPEN.exec(rest);
@@ -130,9 +146,10 @@ export function splitAttachmentBlock(text: string): {
     const end = closingIndex(rest, m[1], m[0].length);
     if (end < 0) break;
     attached.push(m[1]);
+    summaries.push(rest.slice(m[0].length, end).trim());
     rest = rest.slice(end + close(m[1]).length).replace(/^\s+/, "");
   }
-  return { text: attached.length ? rest : text, attached };
+  return { text: attached.length ? rest : text, attached, summaries };
 }
 
 /**

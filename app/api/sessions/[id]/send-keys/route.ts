@@ -28,6 +28,7 @@ import {
   parseSessionRefs,
   resolveAttachmentBlock,
 } from "@/lib/session-attach";
+import { quoteAttachMarkers } from "@/lib/session-attach-types";
 
 // Log to file for debugging
 const LOG_FILE = "/tmp/agent-os-send-keys.log";
@@ -138,11 +139,25 @@ export async function POST(
     // A pending undo notice and the attached sessions' block ride on the
     // next message (lib/turns.ts), not on an answer typed at a prompt or a
     // slash command
+    const message =
+      pressEnter && typeof text === "string" ? quoteAttachMarkers(text) : text;
     const prefixable =
       pressEnter &&
-      takesNotice(text) &&
+      takesNotice(message) &&
       (!!getUndoNotice(session.id) || refs.length > 0) &&
       !(await readScreenPrompt(tmuxSessionName).catch(() => null));
+    // Attached sessions can't ride on an answer or a command: say so, so
+    // the composer keeps the draft and the chips
+    if (refs.length > 0 && !prefixable) {
+      log("REFUSED: attached sessions on an answer or a command");
+      return NextResponse.json(
+        {
+          error:
+            "The attached sessions can't go with this: answer the prompt first, then send them with a message.",
+        },
+        { status: 409 }
+      );
+    }
     const notice =
       prefixable && getUndoNotice(session.id)
         ? takeUndoNotice(session.id)
@@ -159,10 +174,10 @@ export async function POST(
       if (block) log(`Prefixing ${refs.length} attached session(s)`);
     }
     const outgoing = block
-      ? composeOutgoing(notice, block, text)
+      ? composeOutgoing(notice, block, message)
       : notice
-        ? `${notice} ${text}`
-        : text;
+        ? `${notice} ${message}`
+        : message;
 
     try {
       log(`Pasting ${outgoing.length} bytes to ${tmuxSessionName}`);

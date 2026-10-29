@@ -37,8 +37,11 @@ async function fetchStatuses(): Promise<{
 export function useAttachableSessions(
   currentId: string | null,
   query: string,
-  enabled: boolean
+  enabled: boolean,
+  /** Shown first, so their checked rows are in view */
+  attachedIds: readonly string[] = []
 ): UseAttachableSessions {
+  const attachedKey = attachedIds.join(",");
   const { data, isLoading } = useSessionsQuery();
   const { data: projects } = useProjectsQuery();
   // The statuses everyone polls (data/statuses): read from the same cache
@@ -70,8 +73,14 @@ export function useAttachableSessions(
         updatedAt: Number.isNaN(updated) ? 0 : updated,
       };
     });
-    return filterAttachable(all, currentId, query);
-  }, [enabled, data, projects, statusData, currentId, query]);
+    return filterAttachable(
+      all,
+      currentId,
+      query,
+      undefined,
+      attachedKey ? attachedKey.split(",") : []
+    );
+  }, [enabled, data, projects, statusData, currentId, query, attachedKey]);
 
   // Sizes only for the rows first in view; a failed or missing summary
   // just shows no count

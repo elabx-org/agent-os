@@ -189,10 +189,13 @@ export function ComposerCard({
     [queue, onSendDirect, onSent]
   );
 
-  const clear = useCallback(() => {
-    composer.replace("");
-    composer.sent();
-  }, [composer]);
+  // Editing a queued message: its sessions can't change, so no Sessions
+  // tab and no chips (they belong to the draft it replaced)
+  const { setSessionsOff } = composer;
+  useEffect(() => {
+    setSessionsOff(!!editing);
+  }, [editing, setSessionsOff]);
+  const chips = editing ? [] : composer.attached;
 
   const send = useCallback(async () => {
     if (sendingRef.current) return;
@@ -220,10 +223,21 @@ export function ComposerCard({
     }
     const attached = composer.attached;
     const sessions = sessionRefs(attached);
-    // The chips that went: off, whatever was typed meanwhile
+    // The chips that went: off, not one attached while it went
     const dropSent = () => {
       for (const a of attached) composer.detachSession(a.sessionId);
     };
+    const clearSent = () => {
+      composer.replace("");
+      composer.sent({ keepAttached: true });
+      dropSent();
+    };
+    // A summary needs a message to go with
+    if (!text.trim() && attached.length) {
+      toast("Add a message to go with the attached session");
+      composer.textareaRef.current?.focus();
+      return;
+    }
     // With a video: its frames first, once they're ready
     if (videos) {
       sendWithVideos(
@@ -235,17 +249,11 @@ export function ComposerCard({
             if (!ok && !textRef.current) composer.replace(full);
           });
         },
-        clear
+        clearSent
       );
       return;
     }
     if (!text.trim()) {
-      // A summary needs a message to go with
-      if (attached.length) {
-        toast("Add a message to go with the attached session");
-        composer.textareaRef.current?.focus();
-        return;
-      }
       onEmptySend?.();
       return;
     }
@@ -255,23 +263,14 @@ export function ComposerCard({
       // The draft holds the pills' full text: that's what goes
       if (await deliver(text, sessions)) {
         // Typed on while it went: keep that
-        if (textRef.current === text) clear();
+        if (textRef.current === text) clearSent();
         else dropSent();
       }
     } finally {
       sendingRef.current = false;
       setSending(false);
     }
-  }, [
-    composer,
-    editing,
-    queue,
-    videos,
-    sessionId,
-    deliver,
-    clear,
-    onEmptySend,
-  ]);
+  }, [composer, editing, queue, videos, sessionId, deliver, onEmptySend]);
 
   /** A queued message back into the box, to change and save */
   const startEdit = useCallback(
@@ -480,9 +479,9 @@ export function ComposerCard({
               onEdit={startEdit}
             />
           )}
-          {!collapsed && composer.attached.length > 0 && (
+          {!collapsed && chips.length > 0 && (
             <div className="flex flex-wrap items-center gap-2">
-              {composer.attached.map((a) => (
+              {chips.map((a) => (
                 <SessionAttachChip
                   key={a.sessionId}
                   session={a}
@@ -505,13 +504,13 @@ export function ComposerCard({
                 {plusNode}
               </PlusSlot.Provider>
             )}
-            {!collapsed && composer.attached.length > 0 && (
+            {!collapsed && chips.length > 0 && (
               <span
                 data-attach-footer
                 // Shrinks (never wraps the send button to a row of its own)
                 className="text-muted-foreground min-w-0 flex-1 basis-0 truncate text-[13px]"
               >
-                {attachFooter(composer.attached)}
+                {attachFooter(chips)}
               </span>
             )}
             <div
@@ -567,14 +566,20 @@ export function ComposerCard({
                 className={cn("mode-pill flex-none", tone.className)}
               >
                 {tone.icon}
-                {modeName}
+                {/* With sessions attached: the icon alone, the footer's
+                    token count needs the room (N-Attach) */}
+                {chips.length ? null : modeName}
               </button>
             )}
             {!collapsed && !tone && session && (
-              <PermissionChip session={session} variant="composer" />
+              <PermissionChip
+                session={session}
+                variant="composer"
+                compact={chips.length > 0}
+              />
             )}
             {/* With sessions attached their footer takes the room (N-Attach) */}
-            {!collapsed && showHistory && !composer.attached.length && (
+            {!collapsed && showHistory && !chips.length && (
               <button
                 type="button"
                 onMouseDown={keep}
@@ -586,7 +591,7 @@ export function ComposerCard({
                 <History className="h-5 w-5" />
               </button>
             )}
-            {!collapsed && !composer.attached.length && (
+            {!collapsed && !chips.length && (
               <span className="flex-1" aria-hidden="true" />
             )}
             {!collapsed && !pages && sendButton}

@@ -19,6 +19,12 @@ const SCROLLBACK_BUCKET_MS = 60_000;
 export interface SessionSummaryOptions {
   /** Rebuild even when the cached basis still matches */
   fresh?: boolean;
+  /**
+   * Store it in session_summaries: only when a message attaches the
+   * session. A size for the picker's rows stays in memory, so opening the
+   * Sessions tab writes no terminal output to the DB
+   */
+  persist?: boolean;
 }
 
 /**
@@ -76,12 +82,26 @@ function stmts(db: Database.Database = getDb()) {
   return s;
 }
 
-/** Builds in progress, so concurrent requests share one */
+/** Builds in progress, so concurrent requests for the same basis share one */
 const inFlight = new Map<string, Promise<SessionSummaryResponse>>();
+
+/** Summaries built for the picker only (not persisted), newest last */
+const MEMORY_MAX = 50;
+const memory = new Map<string, SessionSummaryResponse>();
+function remember(sessionId: string, response: SessionSummaryResponse) {
+  memory.delete(sessionId);
+  memory.set(sessionId, response);
+  while (memory.size > MEMORY_MAX) {
+    const oldest = memory.keys().next().value;
+    if (oldest === undefined) break;
+    memory.delete(oldest);
+  }
+}
 
 async function build(
   session: Session,
-  basis: string
+  basis: string,
+  persist: boolean
 ): Promise<SessionSummaryResponse> {
   const summary = await buildSummary(session, { purpose: "attach" });
   const response: SessionSummaryResponse = {
@@ -91,6 +111,14 @@ async function build(
     source: summary.source,
     empty: summary.empty,
   };
+  if (!persist) {
+    remember(session.id, response);
+    return response;
+  }
+  memory.delete(session.id);
+  // Deleted while it was being built: nothing left behind
+  if (!getDb().prepare(`SELECT 1 FROM sessions WHERE id = ?`).get(session.id))
+    return response;
   stmts().put.run(
     session.id,
     basis,
@@ -103,26 +131,34 @@ async function build(
   return response;
 }
 
-/** The cached summary when its basis still matches, else a new one stored */
+/**
+ * The cached summary when its basis still matches, else a new one (stored
+ * with `persist`, see SessionSummaryOptions)
+ */
 export async function getSessionSummary(
   session: Session,
   options: SessionSummaryOptions = {}
 ): Promise<SessionSummaryResponse> {
+  const persist = !!options.persist;
   const basis = await summaryBasis(session);
   if (!options.fresh) {
     const row = stmts().get.get(session.id) as SessionSummaryRow | undefined;
     if (row && row.basis === basis) return toResponse(row);
+    const held = memory.get(session.id);
+    if (!persist && held && held.basis === basis) return held;
   }
-  const running = inFlight.get(session.id);
+  const key = `${session.id}:${basis}:${persist ? "p" : "m"}`;
+  const running = options.fresh ? undefined : inFlight.get(key);
   if (running) return running;
-  const next = build(session, basis).finally(() => {
-    if (inFlight.get(session.id) === next) inFlight.delete(session.id);
+  const next = build(session, basis, persist).finally(() => {
+    if (inFlight.get(key) === next) inFlight.delete(key);
   });
-  inFlight.set(session.id, next);
+  inFlight.set(key, next);
   return next;
 }
 
 /** Drops a session's cached summary (on session delete) */
 export function forgetSessionSummary(sessionId: string): void {
+  memory.delete(sessionId);
   stmts().drop.run(sessionId);
 }

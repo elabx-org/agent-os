@@ -141,7 +141,15 @@ export function Composer({
           sessions: options.sessions,
         }),
       });
-      if (!res.ok) throw new Error(`Couldn't send to ${agentName}`);
+      if (!res.ok) {
+        // A 409: the attached sessions can't go with an answer
+        const body = await res.json().catch(() => null);
+        throw new Error(
+          res.status === 409 && body?.error
+            ? body.error
+            : `Couldn't send to ${agentName}`
+        );
+      }
     },
     [onSend, sessionId, agentName]
   );

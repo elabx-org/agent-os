@@ -19,11 +19,11 @@ export const MAX_ATTACHABLE_ROWS = 30;
 /** Summaries are asked for only for the first rows */
 export const SUMMARY_ROWS = 10;
 
-/** "850 tokens", "1.2k tokens", "2k tokens", "12k tokens" */
+/** As N-Attach writes them: "83 tokens", "0.6k tokens", "1.2k tokens", "12k tokens" */
 export function formatTokens(n: number): string {
   const count = Math.max(0, Math.round(n));
   if (count === 1) return "1 token";
-  if (count < 1000) return `${count} tokens`;
+  if (count < 100) return `${count} tokens`;
   if (count < 9950) {
     const k = (count / 1000).toFixed(1).replace(/\.0$/, "");
     return `${k}k tokens`;
@@ -76,15 +76,18 @@ export function attachableStatus(
 
 /**
  * The Sessions tab's rows: never the session typed in, matching `query`
- * on the name or the project, most recent first, capped
+ * on the name or the project, the attached ones first (N-Attach's top
+ * row), then most recent first, capped
  */
 export function filterAttachable(
   rows: AttachableSession[],
   currentId: string | null,
   query: string,
-  max: number = MAX_ATTACHABLE_ROWS
+  max: number = MAX_ATTACHABLE_ROWS,
+  attachedIds: readonly string[] = []
 ): AttachableSession[] {
   const q = query.trim().toLowerCase();
+  const on = (r: AttachableSession) => (attachedIds.includes(r.id) ? 0 : 1);
   return rows
     .filter((r) => r.id !== currentId)
     .filter(
@@ -93,7 +96,7 @@ export function filterAttachable(
         r.name.toLowerCase().includes(q) ||
         (r.projectName ?? "").toLowerCase().includes(q)
     )
-    .sort((a, b) => b.updatedAt - a.updatedAt)
+    .sort((a, b) => on(a) - on(b) || b.updatedAt - a.updatedAt)
     .slice(0, max);
 }
 

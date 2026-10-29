@@ -79,8 +79,13 @@ describe("block format", () => {
     assert.deepEqual(splitAttachmentBlock(sent), {
       text,
       attached: ["A", "B"],
+      summaries: ["# Session\n\n- [x] one", "two\n[AgentOS: other]"],
     });
-    assert.deepEqual(splitAttachmentBlock(text), { text, attached: [] });
+    assert.deepEqual(splitAttachmentBlock(text), {
+      text,
+      attached: [],
+      summaries: [],
+    });
   });
 
   test("after the undo notice: notice, block, text, each split off", () => {
@@ -95,6 +100,7 @@ describe("block format", () => {
     assert.deepEqual(splitAttachmentBlock(unnoticed.text), {
       text: "go /tmp/x.png",
       attached: ["A"],
+      summaries: ["s"],
     });
   });
 
@@ -120,10 +126,9 @@ describe("resolveAttachmentBlock", () => {
       { sessionId: "b" },
     ]);
     assert.deepEqual(asked.sort(), ["a", "b"]);
-    assert.deepEqual(splitAttachmentBlock(`${block}\n\nhi`), {
-      text: "hi",
-      attached: ["Alpha", "Beta"],
-    });
+    const out = splitAttachmentBlock(`${block}\n\nhi`);
+    assert.equal(out.text, "hi");
+    assert.deepEqual(out.attached, ["Alpha", "Beta"]);
     assert.ok(block!.includes('"Alpha" (proj-1)'));
     assert.ok(block!.includes("summary of Beta"));
   });

@@ -26,7 +26,7 @@ export function SessionAttachChip({
         onMouseDown={(e) => e.preventDefault()}
         onClick={() => onRemove(session.sessionId)}
         aria-label={`Remove ${session.name}`}
-        className="relative flex h-8 w-8 flex-none items-center justify-center rounded-full after:absolute after:-inset-1 after:content-[''] active:bg-[rgba(124,58,237,0.2)]"
+        className="relative flex h-8 w-8 flex-none items-center justify-center rounded-full after:absolute after:-inset-1.5 after:content-[''] active:bg-[rgba(124,58,237,0.2)]"
       >
         <X className="h-3 w-3" />
       </button>

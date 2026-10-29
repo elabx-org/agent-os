@@ -47,6 +47,10 @@ before(async () => {
   } finally {
     console.log = log;
   }
+  // Summaries are stored only for sessions that still exist
+  db.getDb()
+    .prepare(`INSERT INTO sessions (id, name) VALUES (?, ?), (?, ?)`)
+    .run("s-sum", "Stack health check", "s-none", "None");
 });
 
 after(() => {
@@ -75,6 +79,9 @@ function session(over: Partial<Session> = {}): Session {
   } as Session;
 }
 
+/** As a message that attaches the session asks for it */
+const STORE = { persist: true };
+
 const row = (id = "s-sum") =>
   db
     .getDb()
@@ -96,7 +103,7 @@ test("summaryBasis: the transcript's size and mtime, else a minute", async () =>
 });
 
 test("builds an attach summary, not a handoff, and stores it", async () => {
-  const s = await sums.getSessionSummary(session());
+  const s = await sums.getSessionSummary(session(), STORE);
   assert.equal(s.source, "transcript");
   assert.equal(s.empty, false);
   assert.ok(s.text.startsWith('# Session "Stack health check" (Claude)'));
@@ -115,22 +122,25 @@ test("builds an attach summary, not a handoff, and stores it", async () => {
 });
 
 test("the cache holds while the transcript is unchanged", async () => {
-  const first = await sums.getSessionSummary(session());
+  const first = await sums.getSessionSummary(session(), STORE);
   db.getDb()
     .prepare(
       `UPDATE session_summaries SET text = 'CACHED' WHERE session_id = ?`
     )
     .run("s-sum");
-  const second = await sums.getSessionSummary(session());
+  const second = await sums.getSessionSummary(session(), STORE);
   assert.equal(second.text, "CACHED");
   assert.equal(second.basis, first.basis);
   // fresh rebuilds anyway
-  const fresh = await sums.getSessionSummary(session(), { fresh: true });
+  const fresh = await sums.getSessionSummary(session(), {
+    ...STORE,
+    fresh: true,
+  });
   assert.notEqual(fresh.text, "CACHED");
 });
 
 test("a grown transcript rebuilds the summary", async () => {
-  const first = await sums.getSessionSummary(session());
+  const first = await sums.getSessionSummary(session(), STORE);
   db.getDb()
     .prepare(
       `UPDATE session_summaries SET text = 'CACHED' WHERE session_id = ?`
@@ -146,7 +156,7 @@ test("a grown transcript rebuilds the summary", async () => {
       message: { role: "user", content: "Check the herald healthcheck too" },
     }) + "\n"
   );
-  const next = await sums.getSessionSummary(session());
+  const next = await sums.getSessionSummary(session(), STORE);
   assert.notEqual(next.basis, first.basis);
   assert.notEqual(next.text, "CACHED");
   assert.ok(next.text.includes("- Check the herald healthcheck too"));
@@ -154,7 +164,7 @@ test("a grown transcript rebuilds the summary", async () => {
 });
 
 test("a touched transcript (same size, new mtime) rebuilds too", async () => {
-  const first = await sums.getSessionSummary(session());
+  const first = await sums.getSessionSummary(session(), STORE);
   db.getDb()
     .prepare(
       `UPDATE session_summaries SET text = 'CACHED' WHERE session_id = ?`
@@ -162,16 +172,16 @@ test("a touched transcript (same size, new mtime) rebuilds too", async () => {
     .run("s-sum");
   const later = new Date(Date.now() + 5000);
   fs.utimesSync(transcript, later, later);
-  const next = await sums.getSessionSummary(session());
+  const next = await sums.getSessionSummary(session(), STORE);
   assert.notEqual(next.basis, first.basis);
   assert.notEqual(next.text, "CACHED");
 });
 
 test("concurrent requests share one build", async () => {
   const [a, b, c] = await Promise.all([
-    sums.getSessionSummary(session()),
-    sums.getSessionSummary(session()),
-    sums.getSessionSummary(session(), { fresh: true }),
+    sums.getSessionSummary(session(), STORE),
+    sums.getSessionSummary(session(), STORE),
+    sums.getSessionSummary(session(), { ...STORE, fresh: true }),
   ]);
   assert.deepEqual(a, b);
   assert.deepEqual(b, c);
@@ -188,8 +198,29 @@ test("no transcript and no pane: an empty scrollback summary", async () => {
   assert.ok(!s.text.includes("Ask the user"));
 });
 
+test("a size for the picker is not stored", async () => {
+  const s = await sums.getSessionSummary(session());
+  assert.ok(s.tokens > 0);
+  assert.equal(row(), undefined);
+  // Asked again with the same basis: the same one, still nothing stored
+  assert.deepEqual(await sums.getSessionSummary(session()), s);
+  assert.equal(row(), undefined);
+  // Stored once a message attaches it
+  await sums.getSessionSummary(session(), STORE);
+  assert.equal(row()?.basis, s.basis);
+});
+
+test("a session deleted while its summary was built leaves no row", async () => {
+  const s = await sums.getSessionSummary(
+    session({ id: "s-gone" } as Partial<Session>),
+    STORE
+  );
+  assert.ok(s.text);
+  assert.equal(row("s-gone"), undefined);
+});
+
 test("forgetSessionSummary drops the row", async () => {
-  await sums.getSessionSummary(session());
+  await sums.getSessionSummary(session(), STORE);
   assert.ok(row());
   sums.forgetSessionSummary("s-sum");
   assert.equal(row(), undefined);
