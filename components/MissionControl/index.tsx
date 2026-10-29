@@ -23,6 +23,9 @@ import {
   QuietSection,
   WorkingSection,
 } from "./NowSections";
+import { SettledSection } from "./SettledSection";
+import { SettleToasts } from "./SettleToasts";
+import { useAutoSettleToasts } from "./useAutoSettleToasts";
 import { useNowItems } from "./useNowItems";
 
 /** The mocks' page padding per posture (Main, E-iPhone, Open-Now) */
@@ -81,6 +84,10 @@ export function MissionControl({
   const { homeTab } = useSnapshot(mobileNavStore);
   const wide = isWide(mode);
   const now = useNowItems(sessions, sessionStatuses);
+  useAutoSettleToasts(
+    sessions,
+    (session) => displayTitle(session, now.titles).title
+  );
   const first = now.waiting[0];
   // The needs count is useNeedsYou's, as on the column badge
   const counts = {
@@ -180,7 +187,8 @@ export function MissionControl({
               </p>
             </div>
           )}
-        <DoneTodaySection {...sectionProps} sessions={sessions} />
+        <SettledSection {...sectionProps} />
+        <DoneTodaySection {...sectionProps} />
         <QuietSection {...sectionProps} />
 
         {/* Agents outside every project, once they've stopped working:
@@ -198,11 +206,12 @@ export function MissionControl({
     return (
       <div
         className={cn(
-          "flex h-full min-h-0 flex-col",
+          "relative flex h-full min-h-0 flex-col",
           wide ? "bg-page" : "bg-background"
         )}
       >
         {projectsView}
+        <SettleToasts />
       </div>
     );
 
@@ -210,7 +219,7 @@ export function MissionControl({
     <div
       ref={ref}
       className={cn(
-        "flex h-full min-h-0 flex-col",
+        "relative flex h-full min-h-0 flex-col",
         wide ? "bg-page" : "bg-background"
       )}
     >
@@ -237,6 +246,7 @@ export function MissionControl({
       >
         {list(false)}
       </FoldSplit>
+      <SettleToasts />
     </div>
   );
 }

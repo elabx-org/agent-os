@@ -96,3 +96,30 @@ test("sortQuietSessions: leaves its input alone", () => {
     ["a", "b"]
   );
 });
+
+test("nowSubline: the settle mock's line (N-Settle)", () => {
+  assert.equal(
+    nowSubline({ ...zero, working: 3, settledToday: 4 }),
+    "3 working · 4 settled today"
+  );
+});
+
+test("sortQuietSessions: live, then paused, then settled", () => {
+  const s = (id: string, updated_at: string, over = {}) => ({
+    id,
+    updated_at,
+    paused_at: null as number | null,
+    settled_at: null as number | null,
+    ...over,
+  });
+  const sorted = sortQuietSessions([
+    s("settled", "2026-10-29T12:00", { settled_at: 1 }),
+    s("paused", "2026-10-29T11:00", { paused_at: 1 }),
+    s("old", "2026-10-28T10:00"),
+    s("new", "2026-10-29T10:00"),
+  ]);
+  assert.deepEqual(
+    sorted.map((x) => x.id),
+    ["new", "old", "paused", "settled"]
+  );
+});
