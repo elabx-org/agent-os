@@ -329,3 +329,40 @@ describe("migrations 25 and 26", () => {
     assert.deepEqual(columns(db, "session_turns"), TURNS);
   });
 });
+
+describe("migration 28", () => {
+  const HANDOFF = [
+    "paused_at",
+    "handoff_from_session_id",
+    "handoff_to_session_id",
+    "effort",
+  ];
+  const unapply28 = (db: Database.Database, drop: string[]) => {
+    for (const column of drop)
+      db.exec(`ALTER TABLE sessions DROP COLUMN ${column}`);
+    db.exec(`DELETE FROM _migrations WHERE id = 28`);
+  };
+
+  test("adds the handoff columns to sessions", () => {
+    const db = migrated();
+    for (const column of HANDOFF)
+      assert.ok(columns(db, "sessions").includes(column), column);
+    assert.ok(applied(db).includes(28));
+  });
+
+  test("runs twice, and over a database with one column already there", () => {
+    const db = migrated();
+    // paused_at stays: the rest must still be added
+    unapply28(db, HANDOFF.slice(1));
+    quietly(() => runMigrations(db));
+    for (const column of HANDOFF)
+      assert.ok(columns(db, "sessions").includes(column), column);
+    unapply28(db, []);
+    quietly(() => runMigrations(db));
+    assert.ok(applied(db).includes(28));
+    assert.equal(
+      columns(db, "sessions").filter((c) => c === "paused_at").length,
+      1
+    );
+  });
+});
