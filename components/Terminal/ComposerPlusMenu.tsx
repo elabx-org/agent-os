@@ -26,6 +26,7 @@ import { haptic } from "@/lib/haptics";
 import { uploadFilesToTemp } from "@/lib/file-upload";
 import { takeVideos } from "@/stores/videoUploads";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
+import { plusButtonClass, usePlusSlot } from "@/components/Composer/plus-slot";
 import { SnippetsModal } from "./TerminalToolbar";
 
 interface ComposerPlusMenuProps {
@@ -89,6 +90,8 @@ export function ComposerPlusMenu({
   // Opened from the keyboard: focus goes into the menu. A tap leaves it in
   // the composer so the on-screen keyboard stays up
   const [fromKeyboard, setFromKeyboard] = useState(false);
+  // In ComposerCard: its circle, glass when collapsed
+  const slot = usePlusSlot();
 
   // The hook rebuilds its recognizer when the callback changes, so keep it stable
   const onInsertRef = useRef(onInsert);
@@ -238,13 +241,17 @@ export function ComposerPlusMenu({
           }
         }}
         className={cn(
-          "flex h-[44px] w-[44px] touch-manipulation items-center justify-center rounded-full",
+          slot
+            ? plusButtonClass(slot.collapsed)
+            : "flex h-[44px] w-[44px] touch-manipulation items-center justify-center rounded-full",
           hidden && "hidden",
           isListening
             ? "animate-pulse bg-red-500 text-white"
-            : open
-              ? "bg-muted text-foreground"
-              : "bg-secondary text-muted-foreground active:bg-muted"
+            : slot
+              ? open && "bg-muted"
+              : open
+                ? "bg-muted text-foreground"
+                : "bg-secondary text-muted-foreground active:bg-muted"
         )}
         aria-label={isListening ? "Stop dictating" : "Attach and tools"}
         aria-haspopup="menu"

@@ -31,6 +31,8 @@ export interface ComposerInputProps extends NativeProps {
   inputClassName?: string;
   /** Grow with the text, up to the textarea's max height */
   autoGrow?: boolean;
+  /** No fill of its own: it sits on the composer's glass (ComposerCard) */
+  plain?: boolean;
 }
 
 /**
@@ -51,6 +53,7 @@ export function ComposerInput({
   onScroll,
   autoCapitalize,
   autoGrow,
+  plain,
   ...props
 }: ComposerInputProps) {
   const {
@@ -104,7 +107,8 @@ export function ComposerInput({
   return (
     <div
       className={cn(
-        "bg-secondary relative min-w-0 rounded-2xl",
+        "relative min-w-0 rounded-2xl",
+        !plain && "bg-secondary",
         // Claude Code's bash pink, and memory's grey, on the left edge
         mode === "bash" &&
           "rounded-l-xl shadow-[inset_3px_0_0_#C2187A] dark:shadow-[inset_3px_0_0_#FD5DB1]",
