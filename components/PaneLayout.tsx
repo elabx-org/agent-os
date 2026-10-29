@@ -112,6 +112,8 @@ export function PaneLayout({
         {ids.map((paneId) => {
           const shown = fold || paneId === focusedPaneId;
           const left = fold && paneId === leftId;
+          // Nothing to pill (a shell, the app before the column): no strip
+          const top = fold && paneTop ? paneTop(paneId) : null;
           return (
             <div
               key={paneId}
@@ -130,11 +132,7 @@ export function PaneLayout({
                   : undefined
               }
             >
-              {fold && paneTop && (
-                <div className="flex shrink-0 px-5 pt-4 pb-2">
-                  {paneTop(paneId)}
-                </div>
-              )}
+              {top && <div className="flex shrink-0 px-5 pt-4 pb-2">{top}</div>}
               <div className="min-h-0 flex-1">{renderPane(paneId)}</div>
             </div>
           );

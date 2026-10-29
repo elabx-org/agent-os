@@ -4,6 +4,7 @@
  * grouped by day, and a waiting prompt as one question line. Client-safe.
  */
 
+import { shortAge } from "@/lib/agent-state";
 import type { NotificationEntry } from "@/lib/push/history";
 import type { PermissionPrompt } from "@/lib/permission-prompt";
 
@@ -54,14 +55,7 @@ export function historyTitle(entry: NotificationEntry): string {
 }
 
 /** "3h", "2d": the mocks' short age */
-export function shortAgo(at: number, now = Date.now()): string {
-  const mins = Math.floor((now - at) / 60_000);
-  if (mins < 1) return "now";
-  if (mins < 60) return `${mins}m`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h`;
-  return `${Math.floor(hours / 24)}d`;
-}
+export { shortAge as shortAgo };
 
 /** A channel that failed is worth saying; one that worked isn't */
 function failedChannels(entry: NotificationEntry): string | null {
@@ -91,7 +85,7 @@ export function historySubline(
     known ? where : entry.body,
     answered && historyTile(entry) === "needs" ? "answered" : null,
     failedChannels(entry),
-    shortAgo(entry.at, now),
+    shortAge(entry.at, now),
   ]
     .filter(Boolean)
     .join(" · ");

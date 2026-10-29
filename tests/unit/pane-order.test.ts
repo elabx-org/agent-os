@@ -99,7 +99,7 @@ test("sidebarProjects: pinned first, user order, no Uncategorized, live counts",
   );
 });
 
-test("railSessions: shown first in place, then needs, working, rest; no workers or dead", () => {
+test("railSessions: shown first in place, then needs, working; no idle, workers or dead", () => {
   const s = (
     id: string,
     updated_at: string,
@@ -118,7 +118,7 @@ test("railSessions: shown first in place, then needs, working, rest; no workers 
   ];
   assert.deepEqual(
     railSessions(sessions, statuses, []).map((x) => x.id),
-    ["a", "b", "c"]
+    ["a", "b"]
   );
   assert.deepEqual(
     railSessions(sessions, statuses, ["c", "b"]).map((x) => x.id),

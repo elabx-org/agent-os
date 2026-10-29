@@ -5,7 +5,7 @@
  * tests share it.
  */
 
-import type { AgentState } from "@/lib/agent-state";
+import { shortAge, type AgentState } from "@/lib/agent-state";
 import type { Project } from "@/lib/db";
 
 /** PATCH /api/projects/[id] body for the Projects page's own fields */
@@ -75,17 +75,7 @@ export function projectStatusLine(
     return { state: needs > 0 ? "needs" : "work", text: parts.join(" · ") };
   }
   if (lastActiveAt == null) return { state: null, text: "Quiet" };
-  return { state: null, text: `Quiet · ${quietAge(now - lastActiveAt)}` };
-}
-
-/** "now", "12m", "3h", "2d" */
-function quietAge(ms: number): string {
-  const mins = Math.floor(Math.max(0, ms) / 60000);
-  if (mins < 1) return "now";
-  if (mins < 60) return `${mins}m`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h`;
-  return `${Math.floor(hours / 24)}d`;
+  return { state: null, text: `Quiet · ${shortAge(lastActiveAt, now)}` };
 }
 
 /** The Projects column's sort item: the user's order, recent, or by name */

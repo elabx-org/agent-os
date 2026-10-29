@@ -22,7 +22,6 @@ import {
 import { confirmAction } from "@/components/ui/confirm";
 import { Avatar, agentAvatar, agentName } from "@/components/a/Avatar";
 import { GroupCard, GroupRow } from "@/components/a/GroupCard";
-import { InboxItem } from "@/components/Inbox";
 import { PermissionCard } from "@/components/Composer/PermissionCard";
 import { shortAge } from "@/components/MissionControl/now-summary";
 import {
@@ -293,7 +292,7 @@ function HeaderButton({
       onClick={onClick}
       aria-label={label}
       title={label}
-      className="text-muted-foreground active:bg-accent hover:bg-accent grid h-11 w-11 shrink-0 place-items-center rounded-full"
+      className="text-muted-foreground active:bg-accent hover:bg-accent grid h-[44px] w-[44px] shrink-0 place-items-center rounded-full"
     >
       {children}
     </button>
@@ -313,18 +312,19 @@ function Title({
   const { controls, back } = useInPageControls(dialog);
   const title = <h1 className="t-large min-w-0 truncate">Needs you</h1>;
   return (
-    <div className="flex flex-col">
+    // Never squeezed by the scrolling list it heads (tabletop)
+    <div className="flex shrink-0 flex-col">
       {back && (
         <button
           type="button"
           onClick={() => runNav("back")}
           aria-label="Back"
-          className="text-muted-foreground active:bg-accent -ml-2 flex h-11 w-11 items-center justify-center rounded-full"
+          className="text-muted-foreground active:bg-accent -ml-2 flex h-[44px] w-[44px] items-center justify-center rounded-full"
         >
           <ChevronLeft className="h-5 w-5" />
         </button>
       )}
-      <header className="flex items-center gap-1">
+      <header className="flex shrink-0 items-center gap-1">
         <div className="min-w-0 flex-1">
           {dialog ? <DialogTitle asChild>{title}</DialogTitle> : title}
         </div>
@@ -403,19 +403,23 @@ const OPEN_TARGET =
 /**
  * A waiting session as E-NeedsYou's card: who and where, the question,
  * then its answers as pills. Permission requests answer through M0's
- * PermissionCard (the user's alone); questions as the Inbox card does
+ * PermissionCard (the user's alone); questions as the Inbox card does.
+ * As the detail (Open-Now's .ask box) the page's header names the session,
+ * so the card is just the question and full-size answers
  */
 function AskCard({
   session,
   title,
   projectName,
   pollMs,
+  detail,
   onOpen,
 }: {
   session: Session;
   title: string;
   projectName?: string;
   pollMs?: number;
+  detail?: boolean;
   onOpen: () => void;
 }) {
   const { data: prompt, isLoading: promptLoading } = useSessionPrompt(
@@ -439,11 +443,13 @@ function AskCard({
   return (
     <div className="ask-card gap-1.5">
       <button type="button" onClick={onOpen} className={OPEN_TARGET}>
-        <CardHeader
-          agentType={session.agent_type}
-          label={[title, projectName].filter(Boolean).join(" · ")}
-          age={shortAge(session.updated_at)}
-        />
+        {!detail && (
+          <CardHeader
+            agentType={session.agent_type}
+            label={[title, projectName].filter(Boolean).join(" · ")}
+            age={shortAge(session.updated_at)}
+          />
+        )}
         {loading ? (
           <span className="text-muted-foreground flex items-center gap-2 text-[16px]">
             <Loader2 className="h-4 w-4 animate-spin" /> Reading the session…
@@ -460,12 +466,13 @@ function AskCard({
           session={session}
           permission={permission}
           variant="ask"
+          large={detail}
           onOpen={onOpen}
         />
       )}
 
       {(split || (!loading && !prompt)) && (
-        <div className="mt-1 flex gap-2">
+        <div className={cn("flex", detail ? "gap-2.5" : "mt-1 gap-2")}>
           {split?.main.map((option, i) => (
             <button
               key={`${option.index}-${option.label}`}
@@ -474,7 +481,8 @@ function AskCard({
               disabled={answering !== null}
               onClick={() => answer(option)}
               className={cn(
-                "pill pill-sm min-w-0 flex-1 touch-manipulation disabled:opacity-60",
+                "pill min-w-0 flex-1 touch-manipulation disabled:opacity-60",
+                !detail && "pill-sm",
                 // The first answer is the one that lets it go on
                 i === 0
                   ? "pill-primary active:opacity-80"
@@ -492,7 +500,8 @@ function AskCard({
             onClick={onOpen}
             aria-label={`Open ${title}`}
             className={cn(
-              "pill pill-sm shrink-0 touch-manipulation",
+              "pill shrink-0 touch-manipulation",
+              !detail && "pill-sm",
               split
                 ? "pill-secondary active:bg-accent"
                 : "pill-primary active:opacity-80"
@@ -508,7 +517,10 @@ function AskCard({
   );
 }
 
-/** A background agent stopped to ask: it answers on its own page */
+/**
+ * A background agent stopped to ask: it answers on its own page. A picked
+ * history row can be one that isn't waiting (finished): then it just opens
+ */
 function BlockedCard({
   agent,
   projectName,
@@ -518,6 +530,7 @@ function BlockedCard({
   projectName: string;
   onOpen: () => void;
 }) {
+  const blocked = agent.state === "blocked";
   return (
     <div className="ask-card gap-1.5">
       <button type="button" onClick={onOpen} className={OPEN_TARGET}>
@@ -528,7 +541,9 @@ function BlockedCard({
           age={agent.startedAt ? shortAge(agent.startedAt) : undefined}
         />
         <span className="w-full text-[16px] font-medium">
-          A background agent is waiting for you
+          {blocked
+            ? "A background agent is waiting for you"
+            : `Background agent · ${agentStateWord(agent.state)}`}
         </span>
       </button>
       <div className="mt-1 flex gap-2">
@@ -537,11 +552,18 @@ function BlockedCard({
           onClick={onOpen}
           className="pill pill-sm pill-primary flex-1 touch-manipulation active:opacity-80"
         >
-          Open to answer
+          {blocked ? "Open to answer" : "Open"}
         </button>
       </div>
     </div>
   );
+}
+
+/** The CLI's state as a word: "done" → "Finished" */
+function agentStateWord(state: string): string {
+  if (state === "done") return "Finished";
+  if (state === "working") return "Working";
+  return state.charAt(0).toUpperCase() + state.slice(1);
 }
 
 /** A waiting session as a row to pick (open Duo, table): what it asks */
@@ -893,11 +915,12 @@ function PickedDetail({
           }
         />
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 pt-1 pb-[calc(1rem+env(safe-area-inset-bottom))]">
-          <InboxItem
+          <AskCard
             key={session.id}
-            as="div"
-            variant="page"
+            detail
             session={session}
+            title={displayTitle(session, list.titles).title}
+            projectName={projectName}
             onOpen={() => onOpenSession(session)}
           />
         </div>

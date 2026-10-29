@@ -6,6 +6,7 @@ import {
   useEffect,
   useLayoutEffect,
   useMemo,
+  useRef,
   useState,
   type CSSProperties,
   type ReactNode,
@@ -26,7 +27,7 @@ import { FOLD_CLEAR, useHinge } from "@/hooks/useHinge";
 import { useLayoutMode } from "@/hooks/useLayoutMode";
 import { registerNavHandlers } from "@/lib/nav-actions";
 import { setHome } from "@/stores/surface";
-import { nativeCaps } from "@/lib/native-bridge";
+import { isNative, nativeCaps } from "@/lib/native-bridge";
 import { postureStore } from "@/stores/posture";
 import { resetSwap, toggleSwap } from "@/stores/paneOrder";
 import { focusStore } from "@/stores/focus";
@@ -84,6 +85,15 @@ const SpreadPanesContext = createContext<SpreadPanes>(null);
 
 export function useSpreadPanes(): SpreadPanes {
   return useContext(SpreadPanesContext);
+}
+
+/**
+ * Open-Beside's session pills name the two pages, and the column holds
+ * their actions, so the panes drop their title bars. The iOS app before
+ * the column (0.1.62) keeps the bars: swap lives there
+ */
+export function besidePills(): boolean {
+  return !isNative() || nativeCaps().column;
 }
 
 /**
@@ -335,9 +345,12 @@ export function SessionSpread({
     () => registerNavHandlers({ swapPanes: twoPages ? toggleSwap : swap }),
     [twoPages, swap]
   );
-  // A new pair starts in order
+  // A new pair starts in order. Only on the way down from two: the saved
+  // layout loads after the first render, and its pair keeps its sides
+  const lastPaneCount = useRef(paneCount);
   useEffect(() => {
-    if (paneCount < 2) resetSwap();
+    if (paneCount < 2 && lastPaneCount.current >= 2) resetSwap();
+    lastPaneCount.current = paneCount;
   }, [paneCount]);
 
   const spreadPanes = useMemo<SpreadPanes>(

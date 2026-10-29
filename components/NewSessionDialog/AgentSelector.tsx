@@ -161,7 +161,14 @@ export function AgentSelector({
       <div
         role="radiogroup"
         aria-label="Agent"
-        className={cn("grid gap-2", grid ? "grid-cols-4" : "grid-cols-9")}
+        className={cn(
+          "grid",
+          // Nine across 720px leave ~62px of label: "OpenCode" needs the
+          // tile's side padding and a hair less tracking (D-New)
+          grid
+            ? "grid-cols-4 gap-2"
+            : "grid-cols-9 gap-1.5 [&>.pick]:px-0.5 [&>.pick]:tracking-[-0.01em]"
+        )}
       >
         {agents.slice(0, grid ? 7 : agents.length).map(tile)}
         {grid && (

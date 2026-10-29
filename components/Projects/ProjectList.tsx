@@ -447,6 +447,11 @@ export function ProjectList({
   // column don't
   const appBar = native && !nativeCaps().column;
   const ownButtons = appBar || mode === "phone" || mode === "desktop";
+  const count = (
+    <span className="text-muted-foreground text-[14px] tabular-nums">
+      {movable.length}
+    </span>
+  );
   // The ungrouped rest gets a title only below other groups
   const titled = groups.length > 1;
 
@@ -465,13 +470,18 @@ export function ProjectList({
               type="button"
               onClick={() => runNav("back")}
               aria-label="Back to Now"
-              className="text-muted-foreground active:bg-accent -mb-2 -ml-2 flex h-11 w-11 items-center justify-center rounded-full"
+              className="text-muted-foreground active:bg-accent -mb-2 -ml-2 flex h-[44px] w-[44px] items-center justify-center rounded-full"
             >
               <ChevronLeft className="h-5 w-5" />
             </button>
           )}
           <header className="flex items-end justify-between gap-3">
-            <h1 className="t-large">Projects</h1>
+            {/* The count after the title when buttons hold the right
+                (E-Projects has it alone on the right) */}
+            <div className="flex min-w-0 items-baseline gap-2">
+              <h1 className="t-large">Projects</h1>
+              {ownButtons && count}
+            </div>
             <div className="flex shrink-0 items-end gap-1">
               {ownButtons && (
                 <>
@@ -479,6 +489,7 @@ export function ProjectList({
                     variant="ghost"
                     size="icon"
                     aria-label="Edit order and groups"
+                    className="size-[44px]"
                     onClick={() => setSortOpen(true)}
                   >
                     <AlignLeft className="h-5 w-5" />
@@ -489,6 +500,7 @@ export function ProjectList({
                         variant="ghost"
                         size="icon"
                         aria-label="Add project"
+                        className="size-[44px]"
                       >
                         <Plus className="h-5 w-5" />
                       </Button>
@@ -508,9 +520,7 @@ export function ProjectList({
                   </DropdownMenu>
                 </>
               )}
-              <span className="text-muted-foreground text-[14px] tabular-nums">
-                {movable.length}
-              </span>
+              {!ownButtons && count}
             </div>
           </header>
 

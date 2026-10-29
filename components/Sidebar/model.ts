@@ -13,27 +13,8 @@ export function isLive(
   return !!status && status !== "dead";
 }
 
-/**
- * The sidebar's age on the right of a row: "now", "2m", "3h", "2d". Takes
- * epoch ms or a timestamp; SQLite's "YYYY-MM-DD HH:MM:SS" is UTC.
- */
-export function shortAge(value: number | string, now = Date.now()): string {
-  const at =
-    typeof value === "number"
-      ? value
-      : new Date(
-          /(Z|[+-]\d\d:?\d\d)$/.test(value)
-            ? value
-            : value.replace(" ", "T") + "Z"
-        ).getTime();
-  if (Number.isNaN(at)) return "";
-  const mins = Math.floor((now - at) / 60_000);
-  if (mins < 1) return "now";
-  if (mins < 60) return `${mins}m`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h`;
-  return `${Math.floor(hours / 24)}d`;
-}
+/** The sidebar's age on the right of a row (one helper for every list) */
+export { shortAge } from "@/lib/agent-state";
 
 export interface SidebarProject<P> {
   project: P;
@@ -75,9 +56,9 @@ export function sidebarProjects<
 const RAIL_RANK: Record<string, number> = { waiting: 0, running: 1 };
 
 /**
- * The avatar rail's tiles: every live session (not workers), the ones on
- * screen first as they're placed, then what needs you, what's working and
- * the rest, each most recent first
+ * The avatar rail's tiles (Desk-Beside): the sessions on screen first as
+ * they're placed, then what needs you and what's working, each most recent
+ * first. Idle ones and workers stay in the sidebar
  */
 export function railSessions<
   S extends Pick<Session, "id" | "updated_at" | "conductor_session_id">,
@@ -92,7 +73,12 @@ export function railSessions<
     return RAIL_RANK[statuses[s.id]?.status ?? ""] ?? 2;
   };
   return sessions
-    .filter((s) => !s.conductor_session_id && isLive(s, statuses))
+    .filter(
+      (s) =>
+        !s.conductor_session_id &&
+        isLive(s, statuses) &&
+        (shownIds.includes(s.id) || rank(s) < 2)
+    )
     .sort(
       (a, b) => rank(a) - rank(b) || b.updated_at.localeCompare(a.updated_at)
     );

@@ -38,11 +38,12 @@ export function NewScreen({
   const { fold } = useSnapshot(postureStore);
   const tabletop = mode === "tabletop" && fold?.axis === "horizontal";
   const ref = useRef<HTMLDivElement>(null);
-  // The fold is in viewport pixels; the screen may start below the top
+  // The fold is in viewport pixels; the form may start below the top (a
+  // header, the X row), so it's measured where it starts
   const [top, setTop] = useState(0);
   useLayoutEffect(() => {
     if (tabletop) setTop(ref.current?.getBoundingClientRect().top ?? 0);
-  }, [tabletop]);
+  }, [tabletop, fold?.start]);
 
   const gutters = columnNav ? "pr-2 pl-5" : "px-5";
   const body = (
@@ -56,7 +57,7 @@ export function NewScreen({
   );
 
   return (
-    <div ref={ref} className="flex min-h-0 flex-1 flex-col">
+    <div className="flex min-h-0 flex-1 flex-col">
       {!columnNav && (
         <div className="shrink-0 px-3 pt-2">
           <button
@@ -64,7 +65,7 @@ export function NewScreen({
             onClick={onClose}
             disabled={form.busy}
             aria-label="Cancel"
-            className="text-muted-foreground active:bg-accent hover:bg-accent grid h-9 w-9 place-items-center rounded-full"
+            className="text-muted-foreground active:bg-accent hover:bg-accent grid h-[44px] w-[44px] place-items-center rounded-full"
           >
             <X className="h-5 w-5" />
           </button>
@@ -73,6 +74,7 @@ export function NewScreen({
       {tabletop && fold ? (
         <>
           <div
+            ref={ref}
             className="min-h-0 shrink-0 overflow-y-auto overscroll-contain pb-4"
             style={{ height: Math.max(0, fold.start - top) }}
           >

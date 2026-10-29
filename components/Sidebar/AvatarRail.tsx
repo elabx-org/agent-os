@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { Plus, Sun } from "lucide-react";
+import { Plus, Sun, Terminal } from "lucide-react";
 import type { Session } from "@/lib/db";
 import type { SessionStatus } from "@/components/views/types";
 import { Avatar, agentAvatar } from "@/components/a/Avatar";
@@ -20,7 +20,10 @@ export interface AvatarRailProps {
   sessionStatuses: Record<string, SessionStatus>;
   /** Sessions showing in a pane: ringed in the accent */
   shownIds: string[];
+  /** Panes showing a plain shell (no session): a ringed >_ tile each */
+  shells?: { paneId: string; name: string }[];
   onOpenSession: (session: Session) => void;
+  onFocusPane?: (paneId: string) => void;
   onNewSession: () => void;
 }
 
@@ -29,14 +32,17 @@ export const AVATAR_RAIL_WIDTH = 72;
 
 /**
  * Desk-Beside: the sidebar collapsed while two panes are open. New on
- * top, one agent tile per live session with its state dot (the ones on
- * screen ringed), Settings at the bottom.
+ * top, an agent tile per session on screen or needing you or working, with
+ * its state dot, and the open shells; what's on screen is ringed. Settings
+ * at the bottom.
  */
 export function AvatarRail({
   sessions,
   sessionStatuses,
   shownIds,
+  shells = [],
   onOpenSession,
+  onFocusPane,
   onNewSession,
 }: AvatarRailProps) {
   const live = useMemo(
@@ -91,6 +97,18 @@ export function AvatarRail({
             </button>
           );
         })}
+        {shells.map((shell) => (
+          <button
+            key={shell.paneId}
+            type="button"
+            onClick={() => onFocusPane?.(shell.paneId)}
+            aria-label={`${shell.name}, shell`}
+            title={shell.name}
+            className="relative flex-none rounded-xl shadow-[0_0_0_2px_hsl(var(--primary))] active:opacity-80"
+          >
+            <Avatar label=">_" tone="shell" icon={Terminal} />
+          </button>
+        ))}
       </div>
 
       <button

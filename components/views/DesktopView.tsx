@@ -22,7 +22,7 @@ import { focusStore } from "@/stores/focus";
 import { isNative } from "@/lib/native-bridge";
 import { useIsNative } from "@/hooks/useIsNative";
 import type { Session } from "@/lib/db";
-import { SessionSpread } from "./SessionSpread";
+import { besidePills, SessionSpread } from "./SessionSpread";
 import { WorkspacePage } from "@/components/WorkspacePage";
 import { closePage, workspacePageStore } from "@/stores/workspacePage";
 import { useLayoutMode } from "@/hooks/useLayoutMode";
@@ -72,6 +72,13 @@ export function DesktopView(props: ViewProps) {
   const paneIds = getAllPaneIds(paneState.layout);
   const paneSessions = paneIds.map((id) => getActiveTab(id)?.sessionId ?? null);
   const shownIds = paneSessions.filter((id): id is string => !!id);
+  // Panes on a plain shell tab: the rail shows them too (Desk-Beside's >_)
+  const shells = paneIds.flatMap((paneId) => {
+    const tab = getActiveTab(paneId);
+    return tab && !tab.sessionId && tab.attachedTmux
+      ? [{ paneId, name: tab.attachedTmux }]
+      : [];
+  });
   // Needs you: a page across the open Duo, a dialog on the web
   useNeedsYouPage(!desktop);
 
@@ -148,7 +155,8 @@ export function DesktopView(props: ViewProps) {
     const id = paneSessions[paneIds.indexOf(paneId)];
     const session = id ? sessions.find((s) => s.id === id) : undefined;
     return (
-      session && (
+      session &&
+      besidePills() && (
         <SessionPill
           session={session}
           status={sessionStatuses[session.id]}
@@ -246,7 +254,9 @@ export function DesktopView(props: ViewProps) {
               sessions={sessions}
               sessionStatuses={sessionStatuses}
               shownIds={shownIds}
+              shells={shells}
               onOpenSession={openOnDesktop}
+              onFocusPane={focusPane}
               onNewSession={() => runNav("new")}
             />
           ) : (

@@ -20,6 +20,11 @@ interface PageHeaderProps {
    * only where no column or bar holds it
    */
   large?: boolean;
+  /**
+   * The detail half of a list | detail spread (open Duo: Projects on the
+   * left page, this on the right): the list is the way back, so no back
+   */
+  detail?: boolean;
   className?: string;
 }
 
@@ -32,15 +37,16 @@ export function PageHeader({
   subtitle,
   actions,
   large,
+  detail,
   className,
 }: PageHeaderProps) {
   const native = useIsNative();
   const mode = useLayoutMode();
   if (large) {
     // The phone's tab bar has no back; the desktop shell keeps none either
-    const back = native
-      ? !nativeCaps().column
-      : mode === "phone" || mode === "desktop";
+    const back =
+      !detail &&
+      (native ? !nativeCaps().column : mode === "phone" || mode === "desktop");
     return (
       <header className={cn("flex shrink-0 flex-col", className)}>
         {back && (
@@ -48,7 +54,7 @@ export function PageHeader({
             type="button"
             onClick={backPage}
             aria-label="Back"
-            className="text-muted-foreground active:bg-accent mb-1 -ml-2 flex h-11 w-11 items-center justify-center rounded-full"
+            className="text-muted-foreground active:bg-accent mb-1 -ml-2 flex h-[44px] w-[44px] items-center justify-center rounded-full"
           >
             <ChevronLeft className="h-5 w-5" />
           </button>

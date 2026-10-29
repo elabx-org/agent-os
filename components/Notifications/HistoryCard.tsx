@@ -60,7 +60,7 @@ export function HistoryCard({
 }: HistoryCardProps) {
   if (!entries.length) return null;
   return (
-    <section className="flex flex-col gap-3">
+    <section className="flex shrink-0 flex-col gap-3">
       <SectionTitle className="mt-1">{title}</SectionTitle>
       <GroupCard aria-label={title}>
         {entries.map((entry) => {
@@ -73,6 +73,7 @@ export function HistoryCard({
               // Still there and not waiting: the prompt was dealt with
               subtitle={historySubline(entry, { answered: !!open })}
               selected={entry.id === selectedId}
+              compact
               onClick={open}
             />
           );

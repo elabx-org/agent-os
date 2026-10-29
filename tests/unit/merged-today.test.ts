@@ -14,7 +14,7 @@ const pr = (number: number, mergedAt: string) => ({
   mergedAt,
 });
 
-test("parseMergedPrs: only today's, newest first", () => {
+test("parseMergedPrs: only today's, in merge order", () => {
   const json = JSON.stringify([
     pr(105, at(28, 23)),
     pr(106, at(29, 9)),
@@ -23,7 +23,7 @@ test("parseMergedPrs: only today's, newest first", () => {
   ]);
   assert.deepEqual(
     parseMergedPrs(json, today).map((p) => p.number),
-    [107, 106, 104]
+    [104, 106, 107]
   );
 });
 

@@ -74,7 +74,7 @@ export function ActivityRail({
   const activity = useSessionActivity(session, { active, rail: true });
   const { files, agents, workflows, devServer, pr } = activity;
   const block = cn(
-    "border-border grid gap-1 border-b last:border-b-0",
+    "border-border grid grid-cols-[minmax(0,1fr)] gap-1 border-b last:border-b-0",
     compact ? "px-2 py-2" : "px-3 py-2.5"
   );
 

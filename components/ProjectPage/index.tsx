@@ -242,7 +242,8 @@ function ProjectWorkspace({
       variant="ghost"
       size="icon"
       aria-label="Project actions"
-      className="text-muted-foreground mb-0.5"
+      // 44px whatever the text size (density moves rem)
+      className="text-muted-foreground mb-0.5 size-[44px]"
       onClick={isTouch ? () => setSheetOpen(true) : undefined}
     >
       <MoreHorizontal className="h-5 w-5" />
@@ -284,6 +285,8 @@ function ProjectWorkspace({
         <div className="flex max-w-[760px] flex-col gap-3.5">
           <PageHeader
             large
+            // The open Duo's right page: Projects is on the left one
+            detail={mode === "duo-open" || mode === "book"}
             title={title}
             subtitle={subtitle}
             actions={ownMore ? more : undefined}
@@ -339,6 +342,8 @@ function ProjectWorkspace({
             statuses={statuses}
             titles={titles}
             activeSessionId={view.activeSession?.id}
+            projects={view.projects}
+            actions={mutations}
             onOpenSession={onOpenSession}
           />
           <AgentsSection agents={agents} />

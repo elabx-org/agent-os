@@ -44,6 +44,8 @@ export interface PermissionCardProps {
    * itself: only Allow, Always allow and Deny as pills
    */
   variant?: "full" | "card" | "page" | "now" | "ask";
+  /** "ask" as a page's detail (Open-Now): full-size 44px pills */
+  large?: boolean;
   /**
    * Opens the session: "More…" on the compact card, and "Answer in
    * terminal" when only the hook saw the request (nothing to answer here)
@@ -80,6 +82,7 @@ export function PermissionCard({
   permission,
   onAnswered,
   variant = "full",
+  large,
   onOpen,
 }: PermissionCardProps) {
   const { tool, prompt } = permission;
@@ -235,7 +238,8 @@ export function PermissionCard({
               disabled={busy}
               onClick={() => choose(option)}
               className={cn(
-                "pill pill-sm min-w-0 touch-manipulation disabled:opacity-60",
+                "pill min-w-0 touch-manipulation disabled:opacity-60",
+                !large && "pill-sm",
                 option.kind === "deny" ? "shrink-0" : "flex-1",
                 option.kind === "allow" || (question && i === 0)
                   ? "pill-primary active:opacity-80"
@@ -254,7 +258,10 @@ export function PermissionCard({
             <button
               type="button"
               onClick={onOpen}
-              className="pill pill-sm pill-secondary active:bg-accent shrink-0 touch-manipulation"
+              className={cn(
+                "pill pill-secondary active:bg-accent shrink-0 touch-manipulation",
+                !large && "pill-sm"
+              )}
             >
               Open
             </button>

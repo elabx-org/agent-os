@@ -28,7 +28,7 @@ const GH_TIMEOUT_MS = 8000;
 const LIMIT = 20;
 
 // One cache for the server.ts and Next copies of this module
-type Cache = Map<string, { at: number; prs: Promise<MergedPr[]> }>;
+type Cache = Map<string, { at: number; day: string; prs: Promise<MergedPr[]> }>;
 const store = globalThis as typeof globalThis & {
   __agentosMergedToday?: Cache;
 };
@@ -41,7 +41,8 @@ function localDate(day: Date): string {
 }
 
 /**
- * gh's JSON as the PRs merged on `today`'s local date, newest first; [] for
+ * gh's JSON as the PRs merged on `today`'s local date, in the order they
+ * merged (Closed-Project: #106 then #107); [] for
  * anything that isn't a list, and entries missing a field are skipped
  */
 export function parseMergedPrs(json: string, today: Date): MergedPr[] {
@@ -68,7 +69,7 @@ export function parseMergedPrs(json: string, today: Date): MergedPr[] {
     if (isNaN(at.getTime()) || localDate(at) !== day) continue;
     prs.push({ number, title, url, mergedAt });
   }
-  return prs.sort((a, b) => Date.parse(b.mergedAt) - Date.parse(a.mergedAt));
+  return prs.sort((a, b) => Date.parse(a.mergedAt) - Date.parse(b.mergedAt));
 }
 
 async function fetchMerged(dir: string): Promise<MergedPr[]> {
@@ -100,13 +101,15 @@ async function fetchMerged(dir: string): Promise<MergedPr[]> {
   }
 }
 
-/** Newest first; [] when it isn't a GitHub repo or gh can't answer */
+/** In merge order; [] when it isn't a GitHub repo or gh can't answer */
 export async function mergedToday(dir: string): Promise<MergedPr[]> {
   const now = Date.now();
+  // Past midnight yesterday's list is stale whatever its age
+  const day = localDate(new Date(now));
   const hit = cache.get(dir);
-  if (hit && now - hit.at < CACHE_MS) return hit.prs;
+  if (hit && hit.day === day && now - hit.at < CACHE_MS) return hit.prs;
   // The promise is cached, so pages opening together share one gh run
   const prs = fetchMerged(dir);
-  cache.set(dir, { at: now, prs });
+  cache.set(dir, { at: now, day, prs });
   return prs;
 }

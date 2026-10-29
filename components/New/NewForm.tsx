@@ -483,11 +483,9 @@ export function NewForm({
           wide ? "mb-2" : "mb-1.5"
         )}
       >
-        {background
-          ? "Task"
-          : wide
-            ? "Task (optional) · / for commands, @ for files"
-            : "Task (optional)"}
+        {/* D-New adds "· / for commands, @ for files": not until the
+            composer's pickers come here (M2) */}
+        {background ? "Task" : "Task (optional)"}
       </span>
       <textarea
         value={form.task}

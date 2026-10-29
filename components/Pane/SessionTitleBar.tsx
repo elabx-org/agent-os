@@ -39,8 +39,10 @@ import { focusStore } from "@/stores/focus";
 import { displayTitle, useListTitles } from "@/hooks/useSessionTitles";
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
 import { useIsNative } from "@/hooks/useIsNative";
-import { useSpreadPanes } from "@/components/views/SessionSpread";
+import { besidePills, useSpreadPanes } from "@/components/views/SessionSpread";
 import { usePanes } from "@/contexts/PaneContext";
+import { useLayoutMode } from "@/hooks/useLayoutMode";
+import { DesktopViewSwitch } from "./DesktopViewSwitch";
 import { BesideItems } from "@/components/BesideItems";
 import { useReplyPage } from "@/components/ReplyContext/store";
 import {
@@ -97,7 +99,8 @@ function visibleInput(pane: Element): HTMLTextAreaElement | null {
 /**
  * The session's header: back, its title and a crumb, and ⋯. Views switch
  * from the control column, so nothing here changes what the pane shows
- * except the less used ones (Workers, the drawers).
+ * except the less used ones (Workers, the drawers). The desktop shell has
+ * no column: there the views switch here.
  */
 export function SessionTitleBar({
   session,
@@ -128,7 +131,10 @@ export function SessionTitleBar({
   const { on: duoPreview } = useSnapshot(duoPreviewStore);
   const focus = useSnapshot(focusStore);
   const { paneCount, canSplitDown } = usePanes();
-  const pilled = useSpreadPanes()?.mode === "fold";
+  // Open-Beside: the session pill above names the page and the column holds
+  // the actions, so this bar steps aside
+  const pilled =
+    useSpreadPanes()?.mode === "fold" && !!session && besidePills();
   const pageTitle = duoPreview && railActive && isMobile;
   const titles = useListTitles(session ? [session] : []);
   const { copy } = useCopyToClipboard();
@@ -148,6 +154,8 @@ export function SessionTitleBar({
   ].filter(Boolean);
 
   const wide = !isMobile;
+  // The desktop shell: no column, so the views switch in this bar
+  const desktop = useLayoutMode() === "desktop" && !native;
   const hasFolder = !!session?.working_directory;
   // Plain phones get the column as a bottom bar, which has no room for it
   const settingsHere = isMobile && !native && railWidth === 0;
@@ -236,9 +244,9 @@ export function SessionTitleBar({
       </div>
       <div
         className={cn(
-          "native-top-inset kb-compact-hide border-border/60 bg-background flex items-center gap-1.5 border-b py-1.5 pr-[calc(0.5rem+var(--safe-right,env(safe-area-inset-right)))] pl-[calc(0.25rem+env(safe-area-inset-left))]",
+          "native-top-inset kb-compact-hide border-border/60 bg-background @container/bar flex items-center gap-1.5 border-b py-1.5 pr-[calc(0.5rem+var(--safe-right,env(safe-area-inset-right)))] pl-[calc(0.25rem+env(safe-area-inset-left))]",
           wide && !isFocused && "opacity-70",
-          nativeTyping && "hidden"
+          (nativeTyping || pilled) && "hidden"
         )}
       >
         <button
@@ -253,13 +261,7 @@ export function SessionTitleBar({
           <ChevronLeft className="h-5 w-5" />
         </button>
 
-        {/* Two pages side by side: the session pill above names it */}
-        <div
-          className={cn(
-            "flex min-w-0 flex-1 flex-col gap-0.5",
-            pilled && "invisible"
-          )}
-        >
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
           <span
             className={cn(
               "truncate leading-tight font-semibold",
@@ -278,6 +280,12 @@ export function SessionTitleBar({
           )}
         </div>
 
+        {desktop && session && (
+          <DesktopViewSwitch
+            viewMode={viewMode}
+            onViewModeChange={onViewModeChange}
+          />
+        )}
         {session && (
           <button
             type="button"

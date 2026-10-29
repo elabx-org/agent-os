@@ -74,17 +74,21 @@ export async function createWorktree(
     throw new Error(`Not a git repository: ${projectPath}`);
   }
 
-  // Generate branch name
-  const branchName = generateBranchName(featureName);
-
-  // Check if branch already exists
-  if (await branchExists(resolvedProjectPath, branchName)) {
-    throw new Error(`Branch already exists: ${branchName}`);
+  // Generate branch name. A task's name (`fix/foo`) is used as it is, so it
+  // can meet a branch made by hand: then the next free `-2`, `-3`, …
+  const baseName = generateBranchName(featureName);
+  let branchName = baseName;
+  let suffix = "";
+  for (let n = 2; await branchExists(resolvedProjectPath, branchName); n++) {
+    if (n > 20) throw new Error(`Branch already exists: ${baseName}`);
+    suffix = `-${n}`;
+    branchName = `${baseName}${suffix}`;
   }
 
   // Generate worktree path
   const projectName = getRepoName(resolvedProjectPath);
-  const worktreeDirName = generateWorktreeDirName(projectName, featureName);
+  const worktreeDirName =
+    generateWorktreeDirName(projectName, featureName) + suffix;
   const worktreePath = path.join(WORKTREES_DIR, worktreeDirName);
 
   // Check if worktree path already exists

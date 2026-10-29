@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useState, type ComponentProps, type ReactNode } from "react";
 import {
   Globe,
   MoreHorizontal,
@@ -34,6 +34,8 @@ import type { MergedPr } from "@/lib/merged-today";
 import type { ProjectWithDevServers } from "@/lib/projects";
 import type { SessionStatus } from "@/components/views/types";
 import { cn } from "@/lib/utils";
+import { SessionRowActions } from "./SessionRowActions";
+import { HoldMenu } from "@/components/a/HoldMenu";
 
 /** Transcript titles by session id (useListTitles) */
 type Titles = Record<string, string>;
@@ -88,6 +90,8 @@ export function SessionsSection({
   statuses,
   titles,
   activeSessionId,
+  projects,
+  actions,
   onOpenSession,
 }: {
   sessions: Session[];
@@ -95,6 +99,10 @@ export function SessionsSection({
   titles: Titles;
   /** The session beside the page (open Duo, desktop) */
   activeSessionId?: string;
+  /** Move to project's choices */
+  projects: ProjectWithDevServers[];
+  /** Rename, pin, fork, delete…: held or right-clicked */
+  actions: ComponentProps<typeof SessionRowActions>["actions"];
   onOpenSession: (session: Session) => void;
 }) {
   if (!sessions.length) return null;
@@ -110,22 +118,32 @@ export function SessionsSection({
   );
   return (
     <Section title="Sessions">
-      {sorted.map((session) => (
-        <GroupRow
-          key={session.id}
-          leading={<Avatar {...agentAvatar(session.agent_type)} />}
-          title={displayTitle(session, titles).title}
-          subtitle={
-            <StateLine
-              state={stateOf(session)}
-              age={shortAge(session.updated_at)}
+      {sorted.map((session) => {
+        const { title } = displayTitle(session, titles);
+        return (
+          <SessionRowActions
+            key={session.id}
+            session={session}
+            title={title}
+            projects={projects}
+            actions={actions}
+          >
+            <GroupRow
+              leading={<Avatar {...agentAvatar(session.agent_type)} />}
+              title={title}
+              subtitle={
+                <StateLine
+                  state={stateOf(session)}
+                  age={shortAge(session.updated_at)}
+                />
+              }
+              chevron
+              selected={session.id === activeSessionId}
+              onClick={() => onOpenSession(session)}
             />
-          }
-          chevron
-          selected={session.id === activeSessionId}
-          onClick={() => onOpenSession(session)}
-        />
-      ))}
+          </SessionRowActions>
+        );
+      })}
     </Section>
   );
 }
@@ -275,50 +293,57 @@ export function RunningSection({
           {shown.map((server) => {
             const port = primaryPort(server);
             const state = fromDevServerStatus(server.status);
+            const openable = !!port && server.status === "running";
+            const openSheet = () => setSheet({ id: server.id, open: true });
             return (
-              <GroupRow
-                key={server.id}
-                leading={
-                  <span
-                    className={cn(
-                      "flex h-10 w-10 flex-none items-center justify-center rounded-xl text-white",
-                      state === "error"
-                        ? "bg-red-600 dark:bg-red-900"
-                        : "bg-emerald-600 dark:bg-[#065F46]"
-                    )}
-                  >
-                    <Play className="h-4 w-4" />
-                  </span>
-                }
-                title={server.name}
-                subtitle={
-                  <span className="font-mono text-[13px]">
-                    {serverDetail(server, port)}
-                  </span>
-                }
-                trailing={
-                  <span className="flex items-center gap-1">
-                    {port && server.status === "running" && (
-                      <a
-                        href={`http://localhost:${port}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="pill pill-secondary pill-sm text-foreground active:opacity-80"
-                      >
-                        Open
-                      </a>
-                    )}
-                    <button
-                      type="button"
-                      aria-label={`${server.name} actions`}
-                      onClick={() => setSheet({ id: server.id, open: true })}
-                      className="text-muted-foreground active:bg-accent relative grid h-9 w-9 place-items-center rounded-full after:absolute after:-inset-1 after:content-['']"
+              // Running, the row is Closed-Project's: Open alone, the rest
+              // on a hold or right-click; else ⋯ shows what it can do
+              <HoldMenu key={server.id} onOpen={openSheet}>
+                <GroupRow
+                  leading={
+                    <span
+                      className={cn(
+                        "flex h-10 w-10 flex-none items-center justify-center rounded-xl text-white",
+                        state === "error"
+                          ? "bg-red-600 dark:bg-red-900"
+                          : "bg-emerald-600 dark:bg-[#065F46]"
+                      )}
                     >
-                      <MoreHorizontal className="h-4 w-4" />
-                    </button>
-                  </span>
-                }
-              />
+                      <Play className="h-4 w-4" />
+                    </span>
+                  }
+                  title={server.name}
+                  subtitle={
+                    <span className="font-mono text-[13px]">
+                      {serverDetail(server, port)}
+                    </span>
+                  }
+                  trailing={
+                    <span className="flex items-center gap-1">
+                      {openable && (
+                        <a
+                          href={`http://localhost:${port}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="pill pill-secondary pill-sm text-foreground active:opacity-80"
+                        >
+                          Open
+                        </a>
+                      )}
+                      {!openable && (
+                        <button
+                          type="button"
+                          aria-label={`${server.name} actions`}
+                          onClick={openSheet}
+                          className="text-muted-foreground active:bg-accent relative grid h-9 w-9 place-items-center rounded-full after:absolute after:-inset-1 after:content-['']"
+                        >
+                          <MoreHorizontal className="h-4 w-4" />
+                        </button>
+                      )}
+                    </span>
+                  }
+                />
+              </HoldMenu>
             );
           })}
         </Section>
