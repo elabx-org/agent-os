@@ -247,6 +247,20 @@ test("columnFor: a sheet over the closed session (E-Live, N-Undo)", () => {
     fmt(columnFor("session", "duo-closed", { ...CTX, sheet: "permissions" })),
     "closeSheet | done*"
   );
+  // N-Worktree: close | Move session, over a session or a project's row
+  const move = { ...CTX, sheet: "move" as const };
+  assert.equal(
+    fmt(columnFor("session", "duo-closed", move)),
+    "closeSheet | done*"
+  );
+  assert.equal(
+    fmt(columnFor("project", "duo-closed", move)),
+    "closeSheet | done*"
+  );
+  assert.equal(
+    columnFor("session", "duo-closed", move)[1].label,
+    "Move session"
+  );
   // The open Duo shows Live activity as its rail: no sheet column
   assert.equal(
     fmt(columnFor("session", "duo-open", { ...CTX, liveOpen: true })),

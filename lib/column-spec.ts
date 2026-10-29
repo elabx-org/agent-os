@@ -520,6 +520,9 @@ export function columnFor(
   // N-Scripts over a project page too (over a session, sessionColumn has it)
   if (mode === "duo-closed" && !inSession && ctx.sheet === "scripts")
     return scriptsColumn();
+  // N-Worktree from a project page's row: × | Move session there too
+  if (mode === "duo-closed" && !inSession && ctx.sheet === "move")
+    return sheetColumn(ctx) ?? [];
   if (mode === "phone" && !inSession) return tabs(surface, ctx);
   if ((mode === "phone" || mode === "tabletop") && inSession)
     return sessionBar(ctx);
