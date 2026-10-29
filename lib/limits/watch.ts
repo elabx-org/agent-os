@@ -195,6 +195,29 @@ export function detectLimit(input: {
   return { kind, until };
 }
 
+/**
+ * A resume was typed in (the dispatcher): over, as on its busy edge, which
+ * a short turn can slip between two looks of the watch
+ */
+export function markResumed(
+  sessionId: string,
+  deps: LimitWatchDeps = defaultDeps()
+): Promise<void> {
+  const session = deps.session(sessionId);
+  if (!session) return Promise.resolve();
+  return handleLimitEdge(
+    {
+      tmuxName: session.tmux_name,
+      sessionId,
+      from: "idle",
+      to: "running",
+      workedMs: 0,
+      at: deps.now(),
+    },
+    deps
+  );
+}
+
 /** One edge, with the deps injectable for the tests */
 export async function handleLimitEdge(
   edge: WatchEdge,

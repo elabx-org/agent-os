@@ -11,6 +11,9 @@ import { readiness, type Readiness } from "../session-ready";
 import { onEdge, type WatchEdge } from "../session-watch";
 import { sendText } from "../tmux-send";
 import { beforeAgentSend } from "../turns";
+import { limitStore } from "../limits/store";
+import { markResumed } from "../limits/watch";
+import { wentOnSince } from "../limits/went-on";
 import { queueStore, type NewQueueItem, type QueueStore } from "./store";
 import {
   takesNotice,
@@ -52,6 +55,13 @@ export interface DispatcherDeps {
    * before a read saw it busy
    */
   hookAt?(session: Session): number | null;
+  /**
+   * A scheduled resume (M6) whose session went on without it: drops it
+   * (and the limit) and says true, so nothing is typed
+   */
+  dropStaleResume?(session: Session, item: QueueItem): boolean;
+  /** A resume was typed in: the limit is over (M6) */
+  resumed?(session: Session): void;
 }
 
 export interface DispatcherState {
@@ -174,6 +184,12 @@ export function createDispatcher(
           : deps.queueOn(sessionId);
       if (!on) return;
       if (head.notBefore !== null && head.notBefore > deps.now()) return;
+      if (
+        head.kind === "resume" &&
+        head.origin === "system" &&
+        deps.dropStaleResume?.(session, head)
+      )
+        return;
       if (awaiting(sessionId)) {
         await read(session);
         return;
@@ -182,7 +198,8 @@ export function createDispatcher(
 
       const item = store.claimNext(sessionId, deps.now());
       if (!item) return;
-      await deliver(session, item);
+      const sent = await deliver(session, item);
+      if (sent && item.kind === "resume") deps.resumed?.(session);
     });
   }
 
@@ -272,6 +289,18 @@ function dispatcher(): Dispatcher {
       sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
       hookAt: (session) =>
         session.agent_type === "claude" ? claudeHookAt(session.id) : null,
+      dropStaleResume: (session, item) => {
+        if (session.limited_at === null) return false;
+        if (!wentOnSince(session.id, session.limited_at)) return false;
+        queueStore().cancelItem(session.id, item.id);
+        limitStore().clearLimited(session.id);
+        return true;
+      },
+      resumed: (session) => {
+        markResumed(session.id).catch((error) =>
+          console.error("[queue] resumed:", error)
+        );
+      },
     },
     shared.__agentosDispatch.state
   );

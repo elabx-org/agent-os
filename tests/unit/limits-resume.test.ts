@@ -68,7 +68,10 @@ function limit(id: string, until: number | null = UNTIL, at = BASE - 60_000) {
   return row(id)!;
 }
 
-function harness(opts: { autoResume?: boolean; queue?: boolean } = {}) {
+function harness(
+  opts: { autoResume?: boolean; queue?: boolean; wentOn?: Set<string> } = {}
+) {
+  const resumedIds: string[] = [];
   const kicked: string[] = [];
   let usage: UsageResponse | null = null;
   const r = resume.createResume({
@@ -96,6 +99,12 @@ function harness(opts: { autoResume?: boolean; queue?: boolean } = {}) {
     beforeAgentSend: async () => {},
     now: () => clock.now,
     sleep: () => new Promise((res) => setImmediate(res)),
+    dropStaleResume: (s, item) => {
+      if (!opts.wentOn?.has(s.id)) return false;
+      store.queueStore(raw()).cancelItem(s.id, item.id);
+      return true;
+    },
+    resumed: (s) => resumedIds.push(s.id),
   });
   return {
     r,
@@ -104,6 +113,7 @@ function harness(opts: { autoResume?: boolean; queue?: boolean } = {}) {
     sent,
     kicked,
     flags,
+    resumedIds,
     screen: (id: string, x: Readiness | null) =>
       x ? screens.set(id, x) : screens.delete(id),
     setUsage: (u: UsageResponse | null) => (usage = u),
@@ -303,6 +313,25 @@ describe("resume at reset through the dispatcher", () => {
     h.flags.autoResume = true;
     await h.d.recheck();
     assert.equal(h.sent.length, 1);
+  });
+
+  test("typed in: the dispatcher says resumed (a short turn has no busy edge)", async () => {
+    const h = harness();
+    await h.r.scheduleResume(limit("s1"), { when: "reset" }, BASE);
+    h.clock.now = UNTIL + 30_000;
+    await h.d.service("s1");
+    assert.equal(h.sent.length, 1);
+    assert.deepEqual(h.resumedIds, ["s1"]);
+  });
+
+  test("went on without it: a stale scheduled resume is dropped, not typed", async () => {
+    const h = harness({ wentOn: new Set(["s1"]) });
+    await h.r.scheduleResume(limit("s1"), { when: "reset" }, BASE);
+    h.clock.now = UNTIL + 30_000;
+    await h.d.service("s1");
+    assert.deepEqual(h.sent, []);
+    assert.deepEqual(h.resumedIds, []);
+    assert.equal(h.r.pendingResume("s1"), null);
   });
 
   test("autoResume off: Resume now, the user's click, still goes", async () => {
