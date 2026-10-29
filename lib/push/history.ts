@@ -113,6 +113,8 @@ export function markNotificationsRead(ids: string[] | "all"): void {
 
 /**
  * Empties the history (Needs you → Clear history); what still waits is
- * the sessions' own state, so it stays. M1b U1b.2 implements it.
+ * the sessions' own state, so it stays. Seen as of now: nothing is unread
  */
-export function clearNotifications(): void {}
+export function clearNotifications(): void {
+  save({ items: [], lastSeen: Date.now() });
+}
