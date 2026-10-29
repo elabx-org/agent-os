@@ -51,6 +51,14 @@ const LOOKBACK_MS = 10 * 60_000;
 // An agent can try in the moment before the hook writes the request
 const HOOK_SLACK_MS = 5_000;
 
+// Never mid-turn: the relaunch takes the pending full access
+const restartForFullAccess = (session: Session) =>
+  restartSession(session, {
+    whenIdle: true,
+    message:
+      "Claude starts again in the same conversation, with full access. It won't restart in the middle of a turn.",
+  });
+
 const ANSWER =
   "flex min-h-[44px] min-w-0 touch-manipulation items-center gap-1.5 rounded-xl px-3 text-[13px] font-semibold disabled:opacity-60";
 // Small to look at, the size of a finger to press
@@ -115,7 +123,10 @@ export function PermissionCard({
       // The card goes with the answered request, so the toast carries it
       toast(`${session.name}: ${next.text}`, {
         action: next.restart
-          ? { label: "Restart now", onClick: () => restartSession(session) }
+          ? {
+              label: "Restart now",
+              onClick: () => restartForFullAccess(session),
+            }
           : undefined,
       });
       onAnswered?.();
@@ -260,7 +271,7 @@ export function PermissionCard({
               <span aria-hidden="true">·</span>
               <button
                 type="button"
-                onClick={() => restartSession(session)}
+                onClick={() => restartForFullAccess(session)}
                 className={cn(LINK, "text-foreground")}
               >
                 Restart now

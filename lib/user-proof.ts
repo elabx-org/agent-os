@@ -71,14 +71,25 @@ function originMatches(
   }
 }
 
+/**
+ * Browsers send Sec-Fetch-* only to secure origins (https, localhost), so a
+ * page on plain http (a LAN address, the e2e server) has none: there the
+ * Origin match alone says it's this site's page, as Sec-Fetch-Site would
+ */
+function insecureBrowser(site: string | null, proto: HeaderValue): boolean {
+  return site === null && first(proto) !== "https";
+}
+
 /** For route handlers (Web Request / NextRequest); fails closed */
 export function requireUser(req: Request): UserProof {
   const headers = req.headers;
   if (headers.get("x-agentos-origin")?.toLowerCase() === "agent") {
     return { ok: false, reason: "agent_origin" };
   }
+  const site = headers.get("sec-fetch-site");
   if (
-    headers.get("sec-fetch-site") !== "same-origin" ||
+    (site !== "same-origin" &&
+      !insecureBrowser(site, headers.get("x-forwarded-proto"))) ||
     !originMatches(
       headers.get("origin"),
       headers.get("host"),
@@ -101,14 +112,32 @@ export function requireUser(req: Request): UserProof {
   return { ok: true };
 }
 
+function isHttps(req: IncomingMessage): boolean {
+  return (
+    first(req.headers["x-forwarded-proto"]) === "https" ||
+    !!(req.socket as { encrypted?: boolean } | undefined)?.encrypted
+  );
+}
+
 /** A page or iframe the user's browser opened on this site, not a fetch */
 function isUserNavigation(req: IncomingMessage): boolean {
   const h = req.headers;
   const site = first(h["sec-fetch-site"]);
   const dest = first(h["sec-fetch-dest"]);
+  if (
+    req.method !== "GET" ||
+    first(h["x-agentos-origin"])?.toLowerCase() === "agent"
+  ) {
+    return false;
+  }
+  // Plain http: no Sec-Fetch-*, but navigations ask to upgrade and want HTML
+  if (insecureBrowser(site, h["x-forwarded-proto"]) && !isHttps(req)) {
+    return (
+      first(h["upgrade-insecure-requests"]) === "1" &&
+      !!first(h["accept"])?.includes("text/html")
+    );
+  }
   return (
-    req.method === "GET" &&
-    first(h["x-agentos-origin"])?.toLowerCase() !== "agent" &&
     first(h["sec-fetch-mode"]) === "navigate" &&
     (dest === "document" || dest === "iframe") &&
     (site === "same-origin" || site === "none")
@@ -122,9 +151,7 @@ export function issueUserProof(
 ): void {
   if (!isUserNavigation(req)) return;
   if (isSecret(readCookie(req.headers.cookie, USER_PROOF_COOKIE))) return;
-  const https =
-    first(req.headers["x-forwarded-proto"]) === "https" ||
-    !!(req.socket as { encrypted?: boolean } | undefined)?.encrypted;
+  const https = isHttps(req);
   // No Max-Age: the secret only lives as long as this server process
   const cookie = `${USER_PROOF_COOKIE}=${userSecret()}; Path=/; HttpOnly; SameSite=Strict${https ? "; Secure" : ""}`;
   const existing = res.getHeader("Set-Cookie");

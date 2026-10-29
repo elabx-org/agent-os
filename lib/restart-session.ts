@@ -6,12 +6,17 @@ import type { Session } from "@/lib/db";
 
 /**
  * Restart a Claude session with its conversation resumed, so it picks up
- * what it reads at start (the project note). The page re-attaches it.
+ * what it reads at start (the project note, a pending permission mode).
+ * The page re-attaches it. `whenIdle` refuses while Claude is mid-turn.
  */
-export async function restartSession(session: Session): Promise<void> {
+export async function restartSession(
+  session: Session,
+  { whenIdle = false, message }: { whenIdle?: boolean; message?: string } = {}
+): Promise<void> {
   const ok = await confirmAction({
     title: `Restart ${session.name}?`,
     message:
+      message ??
       "Claude stops what it is doing and starts again with the same conversation, picking up the other sessions in its project.",
     confirmLabel: "Restart",
   });
@@ -19,6 +24,8 @@ export async function restartSession(session: Session): Promise<void> {
   try {
     const res = await fetch(`/api/sessions/${session.id}/restart`, {
       method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ whenIdle }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "Restart failed");

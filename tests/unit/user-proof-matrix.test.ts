@@ -152,3 +152,43 @@ describe("issueUserProof", () => {
     }
   });
 });
+
+// Browsers send no Sec-Fetch-* to a plain http origin (a LAN address)
+describe("plain http", () => {
+  const good = () => `${proof.USER_PROOF_COOKIE}=${proof.userSecret()}`;
+
+  test("requireUser: the Origin match stands in for Sec-Fetch-Site", () => {
+    assert.deepEqual(
+      proof.requireUser(request({ origin: ORIGIN, cookie: good() })),
+      { ok: true }
+    );
+    assert.deepEqual(
+      proof.requireUser(
+        request({ origin: "http://evil.test", cookie: good() })
+      ),
+      {
+        ok: false,
+        reason: "cross_site",
+      }
+    );
+    // Behind https every browser sends it, so its absence fails
+    assert.deepEqual(
+      proof.requireUser(
+        request({
+          origin: ORIGIN,
+          cookie: good(),
+          "x-forwarded-proto": "https",
+        })
+      ),
+      { ok: false, reason: "cross_site" }
+    );
+  });
+
+  test("issueUserProof: only a navigation (upgrade request, wants HTML)", () => {
+    const nav = { "upgrade-insecure-requests": "1", accept: "text/html,*/*" };
+    assert.ok(navigate(nav));
+    assert.equal(navigate({ accept: "text/html" }), null);
+    assert.equal(navigate({ ...nav, "x-agentos-origin": "agent" }), null);
+    assert.equal(navigate({ ...nav, "x-forwarded-proto": "https" }), null);
+  });
+});

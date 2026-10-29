@@ -3,15 +3,17 @@ import { execFile } from "child_process";
 import { promisify } from "util";
 import { queries, getDb, type Session } from "@/lib/db";
 import { readClaudeSessionMeta } from "@/lib/claude-transcript";
+import { readClaudeState } from "@/lib/claude-state";
 
 const execFileAsync = promisify(execFile);
 
 // POST /api/sessions/[id]/restart - end a Claude session's tmux so the next
 // attach starts it again, resuming the same conversation with its stored
 // permission mode (which applies a pending full access). Refuses when the
-// conversation to resume can't be found.
+// conversation to resume can't be found. {whenIdle: true} refuses (409)
+// while Claude is mid-turn, so a pending full access never cuts one short.
 export async function POST(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
@@ -27,6 +29,13 @@ export async function POST(
     );
   }
   const target = session.tmux_name || `claude-${id}`;
+  const { whenIdle } = await request.json().catch(() => ({}));
+  if (whenIdle === true && readClaudeState(id).busy) {
+    return NextResponse.json(
+      { error: "Claude is busy. Restart it when this turn ends", busy: true },
+      { status: 409 }
+    );
+  }
 
   // The running conversation, not the newest transcript in the folder
   const meta = await readClaudeSessionMeta(target);
