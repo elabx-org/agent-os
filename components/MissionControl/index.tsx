@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils";
 import { nowSubline } from "./now-summary";
 import {
   DoneTodaySection,
+  LimitedSection,
   NeedsSection,
   QuietSection,
   WorkingSection,
@@ -131,17 +132,20 @@ export function MissionControl({
         </header>
 
         <NeedsSection {...sectionProps} skipFirst={cardOnBase} />
+        <LimitedSection {...sectionProps} />
         <WorkingSection {...sectionProps} />
-        {now.needsCount === 0 && now.workingCount === 0 && (
-          <div className="px-1 py-2">
-            <p className="font-medium">Nothing running</p>
-            <p className="text-muted-foreground text-sm">
-              {now.quiet.length + now.loose.length
-                ? "Start a session, or pick up one below."
-                : "Start a session."}
-            </p>
-          </div>
-        )}
+        {now.needsCount === 0 &&
+          now.workingCount === 0 &&
+          now.limited.length === 0 && (
+            <div className="px-1 py-2">
+              <p className="font-medium">Nothing running</p>
+              <p className="text-muted-foreground text-sm">
+                {now.quiet.length + now.loose.length
+                  ? "Start a session, or pick up one below."
+                  : "Start a session."}
+              </p>
+            </div>
+          )}
         <DoneTodaySection {...sectionProps} sessions={sessions} />
         <QuietSection {...sectionProps} />
 
