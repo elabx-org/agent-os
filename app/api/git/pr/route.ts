@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isGitRepo, expandPath } from "@/lib/git-status";
 import {
-  checkGhCli,
+  isGhReady,
   getCommitsSinceBase,
   generatePRTitle,
   generatePRBody,
@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  if (!checkGhCli()) {
+  if (!(await isGhReady())) {
     return NextResponse.json(
       {
         error:
@@ -54,8 +54,8 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Check if PR already exists
-    const existingPR = getPRForBranch(expanded, branch);
+    // The branch's PR (open, else its latest), with its checks
+    const existingPR = await getPRForBranch(expanded, branch);
 
     // Get commits for listing
     const commits = getCommitsSinceBase(expanded, baseBranch);
@@ -127,7 +127,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!checkGhCli()) {
+    if (!(await isGhReady())) {
       return NextResponse.json(
         { error: "GitHub CLI not installed or not authenticated" },
         { status: 400 }
@@ -146,8 +146,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if PR already exists
-    const existingPR = getPRForBranch(expanded, branch);
-    if (existingPR) {
+    const existingPR = await getPRForBranch(expanded, branch);
+    if (existingPR?.state === "open") {
       return NextResponse.json(
         { error: "PR already exists for this branch", pr: existingPR },
         { status: 409 }
@@ -155,7 +155,13 @@ export async function POST(request: NextRequest) {
     }
 
     // Create the PR
-    const pr = createPR(expanded, branch, baseBranch, title, description || "");
+    const pr = await createPR(
+      expanded,
+      branch,
+      baseBranch,
+      title,
+      description || ""
+    );
 
     return NextResponse.json({ pr }, { status: 201 });
   } catch (error) {

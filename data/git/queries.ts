@@ -88,8 +88,8 @@ export function useCreatePR(workingDir: string) {
 
       if (info.error) throw new Error(info.error);
 
-      if (info.existingPR) {
-        // PR already exists, just return it
+      if (info.existingPR?.state === "open") {
+        // PR already exists, just return it (a merged one gets a new PR)
         return { pr: info.existingPR, created: false };
       }
 
