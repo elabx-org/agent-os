@@ -1,12 +1,15 @@
 "use client";
 
 import type { CSSProperties, ReactNode } from "react";
+import { Check } from "lucide-react";
 import { useLayoutMode } from "@/hooks/useLayoutMode";
 import { useSyncedLook } from "@/hooks/useSyncedLook";
 import { ACCENTS, ACCENT_LABELS, type Accent, type LookMode } from "@/lib/look";
 import { MODE_LABEL } from "@/lib/look-sync";
 import { MAX_OFFSET, MIN_OFFSET, offsetLabel } from "@/lib/display-density";
 import { cn } from "@/lib/utils";
+import { useTerminalFont } from "@/hooks/useTerminalFont";
+import { TERMINAL_FONTS, type TerminalFont } from "@/lib/terminal-font";
 import { SettingGroup, SettingRow, Toggle } from "./SettingGroup";
 import { BackgroundChoice } from "./BackgroundChoice";
 
@@ -79,6 +82,8 @@ export function DisplaySection() {
         </div>
       </Card>
 
+      <TerminalFontCard />
+
       <SettingGroup className="my-0">
         <SettingRow
           label="Same look on all devices"
@@ -93,6 +98,64 @@ export function DisplaySection() {
         <BackgroundChoice />
       </SettingGroup>
     </div>
+  );
+}
+
+/** The terminal's typeface, the same on every device; its size follows Text size */
+function TerminalFontCard() {
+  const { font, save } = useTerminalFont();
+  return (
+    <Card className="gap-1 px-0 pb-1.5">
+      <span className="px-3.5 text-[16px] font-medium">Terminal font</span>
+      <span className="text-muted-foreground px-3.5 text-[13px]">
+        The same on every device. Its size follows Text size.
+      </span>
+      <div
+        role="radiogroup"
+        aria-label="Terminal font"
+        className="divide-hair mt-1.5 divide-y"
+      >
+        {(Object.keys(TERMINAL_FONTS) as TerminalFont[]).map((id) => {
+          const { name, note } = TERMINAL_FONTS[id];
+          const on = font === id;
+          const family = `"${name}", monospace`;
+          return (
+            <button
+              key={id}
+              type="button"
+              role="radio"
+              aria-checked={on}
+              onClick={() => save(id)}
+              className="flex min-h-[52px] w-full items-center gap-3 px-3.5 py-2 text-left"
+            >
+              <span className="flex min-w-0 flex-col">
+                <span className="text-[16px]" style={{ fontFamily: family }}>
+                  {name}
+                </span>
+                <span className="text-muted-foreground text-[13px]">
+                  {note}
+                </span>
+              </span>
+              <span
+                aria-hidden="true"
+                className="text-muted-foreground ml-auto text-[13px] whitespace-nowrap"
+                // As the terminal draws it: no joined symbols
+                style={{ fontFamily: family, fontVariantLigatures: "none" }}
+              >
+                0O 1lI {"{}"} {"->"}
+              </span>
+              <Check
+                aria-hidden="true"
+                className={cn(
+                  "text-primary h-5 w-5 shrink-0",
+                  !on && "invisible"
+                )}
+              />
+            </button>
+          );
+        })}
+      </div>
+    </Card>
   );
 }
 

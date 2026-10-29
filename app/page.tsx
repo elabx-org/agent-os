@@ -50,6 +50,7 @@ import type { TerminalHandle } from "@/components/Terminal";
 import { generatePaneId, getAllPaneIds } from "@/lib/panes";
 import { typingElsewhere } from "@/lib/typing-elsewhere";
 import { useColumnOrderSource } from "@/hooks/useColumnOrder";
+import { useTerminalFontSource } from "@/hooks/useTerminalFont";
 import { getProvider } from "@/lib/providers";
 import { getProviderDefinition } from "@/lib/providers/registry";
 import { DesktopView } from "@/components/views/DesktopView";
@@ -489,6 +490,7 @@ function HomeContent() {
   useFoldPosture();
   useLayoutModeSource();
   useColumnOrderSource();
+  useTerminalFontSource();
   useSurfaceSource({
     paneCount: getAllPaneIds(paneState.layout).length,
     searchOpen: showQuickSwitcher,

@@ -13,13 +13,16 @@ import type {
 import {
   createTerminal,
   updateTerminalDensity,
+  updateTerminalFont,
   updateTerminalTheme,
 } from "./terminal-init";
 import { setupTouchScroll } from "./touch-scroll";
 import { createWebSocketConnection } from "./websocket-connection";
 import { setupResizeHandlers } from "./resize-handlers";
 import { remeasureWhenFontsReady, terminalFontReady } from "../font-ready";
+import { subscribe } from "valtio";
 import { DENSITY_EVENT } from "@/lib/display-density";
+import { terminalFontStore } from "@/lib/terminal-font";
 import { BACKGROUND_EVENT } from "@/lib/background";
 
 export type { TerminalScrollState } from "./useTerminalConnection.types";
@@ -367,6 +370,22 @@ export function useTerminalConnection({
     window.addEventListener(DENSITY_EVENT, update);
     return () => window.removeEventListener(DENSITY_EVENT, update);
   }, [isMobile]);
+
+  // Follow the terminal font (Settings → Display), from any device
+  useEffect(
+    () =>
+      subscribe(terminalFontStore, () => {
+        const term = xtermRef.current;
+        const fitAddon = fitAddonRef.current;
+        if (!term || !fitAddon) return;
+        updateTerminalFont(term, fitAddon, (cols, rows) => {
+          if (wsRef.current?.readyState === WebSocket.OPEN) {
+            wsRef.current.send(JSON.stringify({ type: "resize", cols, rows }));
+          }
+        });
+      }),
+    []
+  );
 
   // Handle theme changes dynamically
   useEffect(() => {
