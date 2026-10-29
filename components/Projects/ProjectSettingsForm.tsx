@@ -543,7 +543,7 @@ function Section({
   return (
     <section className="space-y-3">
       <div className="flex min-h-8 items-center gap-2">
-        <h2 className="text-muted-foreground flex min-w-0 flex-1 items-center gap-2 text-xs font-semibold tracking-wide uppercase [&_svg]:h-3.5 [&_svg]:w-3.5 [&_svg]:shrink-0">
+        <h2 className="t-sec min-w-0 flex-1 [&_svg]:h-4 [&_svg]:w-4 [&_svg]:shrink-0">
           {icon}
           <span className="truncate">{title}</span>
         </h2>
