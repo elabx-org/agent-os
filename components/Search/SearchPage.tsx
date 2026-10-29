@@ -412,7 +412,7 @@ function SessionCards({
           <Highlight
             text={hit.name}
             ranges={hit.nameRanges}
-            className="truncate text-[14px] font-semibold"
+            className="max-w-full truncate text-[14px] font-semibold"
           />
           <span className="text-muted-foreground flex min-w-0 items-center gap-1.5 text-[13px]">
             <StateDot state={status(hit.id)} size={6} />
