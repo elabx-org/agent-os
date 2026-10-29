@@ -11,6 +11,7 @@ import { flagOnFor } from "@/lib/flags";
 import { readiness } from "@/lib/session-ready";
 import { getUndoNotice, listFailed, listQueue } from "@/lib/queue/store";
 import { sendOrQueue } from "@/lib/queue/dispatcher";
+import { parseSessionRefs } from "@/lib/session-attach";
 import type { EnqueueRequest, QueueState } from "@/lib/queue/types";
 
 const MAX_TEXT = 100_000;
@@ -23,7 +24,10 @@ function getSession(id: string): Session | null {
 /** The request body as an EnqueueRequest, or what is wrong with it */
 function parseRequest(body: unknown): EnqueueRequest | string {
   if (!body || typeof body !== "object") return "Expected a JSON body";
-  const { text, attachments, kind, sendNow } = body as Record<string, unknown>;
+  const { text, attachments, sessions, kind, sendNow } = body as Record<
+    string,
+    unknown
+  >;
   if (typeof text !== "string" || !text.trim()) return "No text provided";
   if (text.length > MAX_TEXT) return "Text is too long";
   if (
@@ -34,6 +38,8 @@ function parseRequest(body: unknown): EnqueueRequest | string {
   ) {
     return "Attachments must be a list of file paths";
   }
+  const refs = parseSessionRefs(sessions);
+  if (typeof refs === "string") return refs;
   if (kind !== undefined && kind !== "message" && kind !== "command") {
     return "Unknown kind";
   }
@@ -43,6 +49,7 @@ function parseRequest(body: unknown): EnqueueRequest | string {
   return {
     text,
     attachments: attachments as string[] | undefined,
+    sessions: refs.length ? refs : undefined,
     kind,
     sendNow,
   };
@@ -82,11 +89,13 @@ export async function GET(
   return NextResponse.json(state);
 }
 
-// POST /api/sessions/[id]/queue {text, attachments?, kind?, sendNow?} -
-// EnqueueResult. The server decides whether it goes straight in (sendNow,
-// the session ready and nothing queued ahead) or waits in the queue. Agents
-// may queue messages, never commands, and give a full-access session work
-// only from a full-access session of their own, as with send-keys.
+// POST /api/sessions/[id]/queue {text, attachments?, sessions?, kind?,
+// sendNow?} - EnqueueResult. The server decides whether it goes straight in
+// (sendNow, the session ready and nothing queued ahead) or waits in the
+// queue. `sessions` are attached with @ (M9), their summaries resolved when
+// it goes. Agents may queue messages, never commands, and give a
+// full-access session work only from a full-access session of their own,
+// as with send-keys.
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
