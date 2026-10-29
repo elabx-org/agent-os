@@ -1,0 +1,12 @@
+ ▐▛███▜▌   Claude Code v2.1.30
+▝▜█████▛▘  Opus 4.5 · Claude Max
+  ▘▘ ▝▝    ~/workspace/gh/agent-os
+
+> fix the flaky test
+
+⏺ Fixed: the test waited on a timer that never fired.
+
+────────────────────────────────────────────────────────────────
+❯ half typed
+────────────────────────────────────────────────────────────────
+  ⏵⏵ accept edits on (shift+tab to cycle)
