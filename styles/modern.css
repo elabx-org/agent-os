@@ -30,6 +30,17 @@
     --say: #1c1c1f;
     /* The edge of what needs you: amber-600 here, readable on white */
     --needs-edge: rgba(217, 119, 6, 0.45);
+    /* M2b: git letters, the PR card's edge, code (D-Files) */
+    --git-mod: #d97706;
+    --checks-edge: rgba(5, 150, 105, 0.35);
+    --fail-edge: rgba(220, 38, 38, 0.35);
+    --code-gutter: #aeaeb2;
+    /* The code panel and its open tab: a white card on the light page */
+    --code-bg: #ffffff;
+    --syn-key: #7c3aed;
+    --syn-str: #047857;
+    --syn-fn: #2563eb;
+    --syn-com: #8e8e93;
   }
 
   .dark {
@@ -51,6 +62,15 @@
     --sheet: #1c1c1e;
     --block: #0e0e10;
     --say: #e5e5ea;
+    --git-mod: hsl(var(--needs));
+    --checks-edge: rgba(52, 211, 153, 0.3);
+    --fail-edge: rgba(248, 113, 113, 0.3);
+    --code-gutter: #4b4b52;
+    --code-bg: var(--diff-bg);
+    --syn-key: #c4b5fd;
+    --syn-str: #86efac;
+    --syn-fn: #93c5fd;
+    --syn-com: #6b6b70;
   }
 }
 
@@ -550,5 +570,184 @@
   }
   .light .tkey.danger {
     background: linear-gradient(#fdecec, #f9dede);
+  }
+  /* ---- M2b: Changes and Files ---- */
+
+  /* A file's git letter: M amber, A green, D red, ? muted (E-Git, E-Files) */
+  .git-m {
+    color: var(--git-mod);
+  }
+  .git-a {
+    color: var(--add);
+  }
+  .git-d {
+    color: var(--del);
+  }
+  .git-u {
+    color: hsl(var(--muted-foreground));
+  }
+  /* The letter before a changed file's path (E-Git, D-Git) */
+  .git-letter {
+    flex-shrink: 0;
+    width: 14px;
+    font-family: var(--font-geist-mono), ui-monospace, monospace;
+    font-size: 12px;
+  }
+  /* The letter at a tree row's end (E-Files) */
+  .git-st {
+    flex-shrink: 0;
+    width: 16px;
+    text-align: center;
+    font-family: var(--font-geist-mono), ui-monospace, monospace;
+    font-size: 11px;
+    font-weight: 600;
+  }
+  /* A folder with changes inside */
+  .dirty-dot {
+    flex-shrink: 0;
+    width: 6px;
+    height: 6px;
+    border-radius: 3px;
+    background: hsl(var(--needs));
+  }
+
+  /* The branch's PR: edged green when its checks passed (E-Git, D-Git) */
+  .pr-card {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 14px;
+    border-radius: 20px;
+    background: hsl(var(--card));
+    border: 1px solid transparent;
+  }
+  .pr-card.checks-passed {
+    border-color: var(--checks-edge);
+  }
+  .pr-card.checks-failed {
+    border-color: var(--fail-edge);
+  }
+  .pr-card.checks-pending {
+    border-color: var(--needs-edge);
+  }
+  /* The checks' dot: 8px, the card's tone */
+  .check-dot {
+    flex-shrink: 0;
+    width: 8px;
+    height: 8px;
+    border-radius: 4px;
+    background: hsl(var(--muted-foreground));
+  }
+  .check-dot.passed {
+    background: hsl(var(--work));
+  }
+  .check-dot.failed {
+    background: var(--del);
+  }
+  .check-dot.pending {
+    background: hsl(var(--needs));
+  }
+
+  /* History (D-Git): 56px commits, a ring each, filled for the branch's own */
+  .commit-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    height: 56px;
+    padding: 0 16px;
+  }
+  .commit-row + .commit-row {
+    border-top: 1px solid var(--hair);
+  }
+  .commit-node {
+    flex-shrink: 0;
+    width: 12px;
+    height: 12px;
+    border-radius: 6px;
+    border: 2px solid hsl(var(--meter));
+    background: hsl(var(--background));
+  }
+  .commit-node.own {
+    background: hsl(var(--meter));
+  }
+
+  /* The commit message as a pill beside Commit (E-Git) */
+  .pill-field {
+    flex: 1;
+    min-width: 0;
+    height: 44px;
+    padding: 0 16px;
+    border-radius: 22px;
+    border: 1px solid hsl(var(--foreground) / 0.1);
+    background: hsl(var(--card));
+    font-size: 15px;
+    outline: 0;
+  }
+
+  /* Find a file or text (E-Files 40px; .sm: D-Files' sidebar, 34px) */
+  .search-field {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 40px;
+    padding: 0 12px;
+    border-radius: 12px;
+    background: hsl(var(--card));
+    color: hsl(var(--muted-foreground));
+  }
+  .search-field > input {
+    flex: 1;
+    min-width: 0;
+    background: transparent;
+    border: 0;
+    outline: 0;
+    font-size: 15px;
+    color: hsl(var(--foreground));
+  }
+  .search-field.sm {
+    height: 34px;
+    padding: 0 10px;
+    border-radius: 10px;
+    font-size: 13px;
+  }
+  .search-field.sm > input {
+    font-size: 13px;
+  }
+
+  /* The file tree's rows: 38px, indented by depth inline (E-Files, D-Files) */
+  .tree-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 38px;
+    padding-right: 8px;
+    font-size: 14px;
+  }
+  .tree-row.sel {
+    background: var(--row-sel);
+    border-radius: 8px;
+  }
+
+  /* Open files over the code (D-Files) */
+  .file-tab {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 40px;
+    padding: 0 14px;
+    border-radius: 10px 10px 0 0;
+    font-size: 13px;
+    color: hsl(var(--muted-foreground));
+  }
+  .file-tab.on {
+    background: var(--code-bg);
+    color: hsl(var(--foreground));
+  }
+  /* The code under them: true black page, 44px gutter (CodeMirror's theme reads the --syn-* tokens) */
+  .code-view {
+    background: var(--code-bg);
+    font-family: var(--font-geist-mono), ui-monospace, monospace;
+    font-size: 13px;
+    line-height: 1.75;
   }
 }

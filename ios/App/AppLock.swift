@@ -68,7 +68,7 @@ final class AppLock {
         guard locked, !asking else { return }
         asking = true
         defer { asking = false }
-        if await authenticate(reason: "Unlock Agent-OS") {
+        if await authenticate(reason: "Unlock AgentOS") {
             locked = false
             Haptics.play("success")
         }
@@ -76,7 +76,7 @@ final class AppLock {
 
     /// Turning the lock on asks first, so it can't lock you out
     func setEnabled(_ on: Bool) async {
-        if on, !(await authenticate(reason: "Turn on the lock for Agent-OS")) { return }
+        if on, !(await authenticate(reason: "Turn on the lock for AgentOS")) { return }
         enabled = on
         locked = false
     }
@@ -100,7 +100,7 @@ struct LockCover: View {
                     Image(systemName: "lock.fill")
                         .font(.system(size: 44, weight: .semibold))
                         .foregroundStyle(.secondary)
-                    Text("Agent-OS is locked")
+                    Text("AgentOS is locked")
                         .font(.title3.weight(.semibold))
                     Button {
                         Task { await lock.unlock() }

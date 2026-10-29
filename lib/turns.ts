@@ -49,7 +49,7 @@ function isClaude(session: Session): boolean {
   return session.agent_type === "claude";
 }
 
-/** Agents whose turns Agent-OS marks itself (no hooks) */
+/** Agents whose turns AgentOS marks itself (no hooks) */
 function marksOwnTurns(session: Session): boolean {
   return !isClaude(session) && session.agent_type !== "shell";
 }

@@ -64,7 +64,7 @@ const jobs: Map<string, VideoJob> = ((
 ).__agentosVideoJobs ??= new Map()) as Map<string, VideoJob>;
 const running = new Map<string, () => void>();
 
-/** The machine's own ffmpeg if it has one, else the one bundled with Agent-OS */
+/** The machine's own ffmpeg if it has one, else the one bundled with AgentOS */
 let ffmpegPath: string | null = null;
 export function ffmpeg(): string {
   if (ffmpegPath) return ffmpegPath;

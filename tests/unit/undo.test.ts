@@ -100,7 +100,7 @@ describe("undoTurn", () => {
 
     assert.equal(notices.length, 1);
     assert.equal(notices[0].sessionId, session.id);
-    assert.match(notices[0].text, /^\[Agent-OS: the user undid turn 1; /);
+    assert.match(notices[0].text, /^\[AgentOS: the user undid turn 1; /);
     assert.match(notices[0].text, /a\.txt/);
 
     const [turn] = await turns.listTurns(session);

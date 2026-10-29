@@ -31,6 +31,7 @@ import { isNative, nativeCaps, postToNative } from "@/lib/native-bridge";
 import { postureStore } from "@/stores/posture";
 import { mobileNavStore } from "@/stores/mobileNav";
 import { layoutStore, type LayoutMode } from "@/hooks/useLayoutMode";
+import { PAGE_BARS } from "@/components/ControlColumn/columnState";
 import { useSyncedLook } from "@/hooks/useSyncedLook";
 import { useClaudeUsage } from "@/components/UsageMonitor";
 import { useToolbarPreferences } from "@/components/Terminal/toolbar-config";
@@ -136,7 +137,7 @@ function VersionLine({ className }: { className?: string }) {
         className
       )}
     >
-      {data?.version && `Agent-OS ${data.version}`}
+      {data?.version && `AgentOS ${data.version}`}
       {data?.version && app && " · "}
       {app && `iOS app ${app}`}
     </p>
@@ -163,6 +164,8 @@ function SettingsLayer(props: NotificationsSectionProps) {
   // Duo in Safari, the app's own once it takes the column spec. Otherwise
   // the page has its own.
   const nativeColumn = native && nativeCaps().column;
+  // Phone and tabletop: the app hides its column ([]), Server with it
+  const serverInColumn = nativeColumn && !PAGE_BARS.includes(layout);
   const columnNav = nativeColumn || (!native && layout === "duo-closed");
   const navRef = useRef<HTMLButtonElement>(null);
   const layerRef = useRef<HTMLDivElement>(null);
@@ -231,7 +234,7 @@ function SettingsLayer(props: NotificationsSectionProps) {
     "claude",
     "uploads",
     "sessions",
-    ...(native && !nativeColumn ? (["server"] as const) : []),
+    ...(native && !serverInColumn ? (["server"] as const) : []),
     ...(labs ? (["labs"] as const) : []),
   ];
   const sections: SettingsSection[] = [...rows, "usage"];

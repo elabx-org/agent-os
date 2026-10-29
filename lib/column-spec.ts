@@ -48,6 +48,8 @@ export interface ColumnContext {
   working?: boolean;
   /** A sheet over the session other than Live activity (N-Undo, N-PermMode) */
   sheet?: "undo" | "permissions" | null;
+  /** The open Duo's Changes page shows beside the conversation (Open-Changes) */
+  changesOpen?: boolean;
 }
 
 type Base = Pick<ColumnItem, "id" | "symbol" | "icon" | "label">;
@@ -179,6 +181,36 @@ const BASE = {
     icon: "Ellipsis",
     label: "Project actions",
   },
+  pull: {
+    id: "pull",
+    symbol: "arrow.down.to.line",
+    icon: "ArrowDownToLine",
+    label: "Pull",
+  },
+  push: {
+    id: "push",
+    symbol: "arrow.up.to.line",
+    icon: "ArrowUpToLine",
+    label: "Push",
+  },
+  newPr: {
+    id: "newPr",
+    symbol: "arrow.triangle.pull",
+    icon: "GitPullRequestArrow",
+    label: "New pull request",
+  },
+  newFile: {
+    id: "newFile",
+    symbol: "doc.badge.plus",
+    icon: "FilePlus",
+    label: "New file",
+  },
+  upload: {
+    id: "upload",
+    symbol: "square.and.arrow.up",
+    icon: "Upload",
+    label: "Upload",
+  },
 } satisfies Record<string, Base & { id: NavAction }>;
 
 function item(base: Base, extra: Partial<ColumnItem> = {}): ColumnItem {
@@ -207,7 +239,7 @@ function changes(ctx: ColumnContext, extra: Partial<ColumnItem> = {}) {
   return item(BASE.git, {
     badge,
     badgeTone: badge ? "neutral" : undefined,
-    selected: ctx.viewMode === "git",
+    selected: ctx.viewMode === "git" || !!ctx.changesOpen,
     ...extra,
   });
 }
@@ -240,6 +272,35 @@ function sheetColumn(ctx: ColumnContext): ColumnItem[] | null {
   return null;
 }
 
+/**
+ * The closed Duo's git and files views have their own column, back to the
+ * conversation first: E-Git's Pull, Push, New pull request | More and
+ * E-Files' New file, Upload | More (the keyboard up keeps the first two)
+ */
+function viewColumn(ctx: ColumnContext): ColumnItem[] | null {
+  const back = item(BASE.back, { label: "Back to session" });
+  if (ctx.viewMode === "git")
+    return ctx.keyboardUp
+      ? [back, item(BASE.pull, sep), item(BASE.push), item(BASE.more)]
+      : [
+          back,
+          item(BASE.pull, sep),
+          item(BASE.push),
+          item(BASE.newPr),
+          item(BASE.more, sep),
+        ];
+  if (ctx.viewMode === "files")
+    return ctx.keyboardUp
+      ? [back, item(BASE.newFile, sep), item(BASE.upload), item(BASE.more)]
+      : [
+          back,
+          item(BASE.newFile, sep),
+          item(BASE.upload),
+          item(BASE.more, sep),
+        ];
+  return null;
+}
+
 /** Closed-Chat / Open-Changes: back | the other view, Changes, Files, Live | More */
 function sessionColumn(
   ctx: ColumnContext,
@@ -247,8 +308,8 @@ function sessionColumn(
   closed = false
 ): ColumnItem[] {
   if (closed) {
-    const sheet = sheetColumn(ctx);
-    if (sheet) return sheet;
+    const own = sheetColumn(ctx) ?? viewColumn(ctx);
+    if (own) return own;
   }
   if (compact)
     // Closed-Terminal, keyboard up: what fits above it
@@ -333,13 +394,14 @@ function nowWithSession(ctx: ColumnContext): ColumnItem[] {
   ];
 }
 
-const WIDE: LayoutMode[] = ["duo-open", "book", "desktop"];
+/** Layouts with room for two pages: More offers Open beside */
+export const WIDE: LayoutMode[] = ["duo-open", "book", "desktop"];
 
 /**
  * The items for a surface, top to bottom (or left to right), as the mocks
  * draw them: Main, Closed-Chat/Terminal/Settings/Project, E-Display,
  * E-Projects, E-NeedsYou, E-New, N-Search, Open-Now, Open-Beside,
- * Open-Changes, Fold-Chat/Terminal and E-iPhone.
+ * Open-Changes, Fold-Chat/Terminal, E-Git, E-Files and E-iPhone.
  */
 export function columnFor(
   surface: Surface,

@@ -8,7 +8,7 @@ const run = promisify(execFile);
 
 /**
  * Registers `agent-os mcp` with the agent CLIs installed here (Claude Code,
- * Codex, Gemini CLI) so any of them can drive Agent-OS, on fresh installs and
+ * Codex, Gemini CLI) so any of them can drive AgentOS, on fresh installs and
  * after updates alike. Only adds what's missing: a registration someone made
  * or changed by hand is left alone. AGENTOS_MCP_REGISTER=0 turns it off.
  */

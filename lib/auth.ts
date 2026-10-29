@@ -2,7 +2,7 @@
  * Sign-in through an OpenID Connect provider (Authelia), enforced by
  * server.ts for every request and terminal connection.
  *
- * Off unless configured: with no OIDC settings Agent-OS behaves as before
+ * Off unless configured: with no OIDC settings AgentOS behaves as before
  * and relies on whatever sits in front of it. Settings come from the
  * environment or $AGENT_OS_HOME/auth.json (mode 600):
  *
@@ -283,7 +283,7 @@ export async function handleAuthRoute(
         res.end(
           '<!doctype html><meta name="viewport" content="width=device-width">' +
             '<body style="font:16px system-ui;background:#0b0b0c;color:#e6e7ea;padding:24px">' +
-            '<p>Signed out of Agent-OS.</p><p><a style="color:#9ab" href="/">Sign in again</a></p>'
+            '<p>Signed out of AgentOS.</p><p><a style="color:#9ab" href="/">Sign in again</a></p>'
         );
         return true;
       default:
@@ -341,7 +341,7 @@ async function callback(
   );
   const state = url.searchParams.get("state");
   if (!login || !state || state !== login.state) {
-    fail(res, 400, "This sign-in expired. Open Agent-OS again.");
+    fail(res, 400, "This sign-in expired. Open AgentOS again.");
     return;
   }
   const providerError = url.searchParams.get("error");
@@ -404,7 +404,7 @@ async function callback(
     config.groups.length &&
     !config.groups.some((g) => claims.groups?.includes(g))
   ) {
-    fail(res, 403, "Your account isn't allowed to use Agent-OS.");
+    fail(res, 403, "Your account isn't allowed to use AgentOS.");
     return;
   }
 

@@ -5,7 +5,7 @@ import { uploadFileToTemp } from "@/lib/file-upload";
 import type { TerminalHandle } from "@/components/Terminal";
 
 /**
- * Files shared to the iOS app ("Open in Agent-OS" from the share sheet or
+ * Files shared to the iOS app ("Open in AgentOS" from the share sheet or
  * Files) go to the focused session: uploaded like a picked image, its path
  * in the composer (a pill for a picture) or typed into its prompt. Several
  * shared in a row each get their own.

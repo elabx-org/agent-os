@@ -121,7 +121,7 @@ test("errors in words, and queue_off falls back", () => {
   );
   assert.equal(
     queueErrorText(403, { error: "user_only" }),
-    "Only you can do this, in Agent-OS"
+    "Only you can do this, in AgentOS"
   );
   assert.equal(
     queueErrorText(400, { error: "Text is empty" }),
@@ -179,8 +179,8 @@ test("a sent message shows without its undo notice", () => {
     text: "carry on",
     undoneTurn: 1,
   });
-  assert.deepEqual(splitUndoNotice("[Agent-OS] hi"), {
-    text: "[Agent-OS] hi",
+  assert.deepEqual(splitUndoNotice("[AgentOS] hi"), {
+    text: "[AgentOS] hi",
     undoneTurn: null,
   });
 });

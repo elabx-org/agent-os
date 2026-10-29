@@ -3,7 +3,7 @@ import SwiftUI
 import UIKit
 import WebKit
 
-/// Agent-OS in a web view that fills what the system leaves it: built with
+/// AgentOS in a web view that fills what the system leaves it: built with
 /// the iOS 27.1 SDK it runs edge to edge on iPhone Duo, beside the system's
 /// vertical bar instead of under Safari's.
 struct AgentWebContainer: UIViewRepresentable {
@@ -59,10 +59,13 @@ struct AgentWebContainer: UIViewRepresentable {
 
     func updateUIView(_ view: AgentWebView, context: Context) {}
 
-    /// Runs before the page: tells it it's inside the app (lib/native-bridge.ts)
+    /// Runs before the page: tells it it's inside the app (lib/native-bridge.ts).
+    /// `column`: the app draws NativeState.column. No `duo` yet: today's web
+    /// reads it as "open" whenever the screen is landscape, which the closed
+    /// Duo held sideways would get wrong
     private static var bootScript: String {
         """
-        window.agentosNative = { platform: 'ios', version: '\(Bundle.main.shortVersion)', keySpecs: true };
+        window.agentosNative = { platform: 'ios', version: '\(Bundle.main.shortVersion)', keySpecs: true, column: 1 };
         document.documentElement.dataset.native = 'ios';
         """
     }
@@ -97,7 +100,7 @@ struct AgentWebContainer: UIViewRepresentable {
         }
 
         // A tapped link to another site opens in the sheet rather than
-        // replacing Agent-OS; the page's own links and redirects (sign-in)
+        // replacing AgentOS; the page's own links and redirects (sign-in)
         // stay in the app
         func webView(
             _ webView: WKWebView,

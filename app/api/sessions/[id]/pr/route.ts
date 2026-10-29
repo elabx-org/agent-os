@@ -1,79 +1,30 @@
 import { NextRequest, NextResponse } from "next/server";
-import { exec } from "child_process";
-import { promisify } from "util";
 import { getDb, queries, type Session } from "@/lib/db";
-
-const execAsync = promisify(exec);
+import { getProject } from "@/lib/projects";
+import { expandPath } from "@/lib/git-status";
+import { createPR, getPRForBranch, isGhReady } from "@/lib/pr";
 
 interface RouteParams {
   params: Promise<{ id: string }>;
 }
 
-interface PRInfo {
-  number: number;
-  url: string;
-  state: string;
-  title: string;
-}
-
 /**
- * Check if gh CLI is installed and authenticated
+ * Where the session's branch lives: its worktree, else (a native worktree
+ * session, which only records the branch) its own folder or its project's
  */
-async function checkGhCli(): Promise<boolean> {
-  try {
-    await execAsync("gh auth status", { timeout: 5000 });
-    return true;
-  } catch {
-    return false;
-  }
+function branchCwd(session: Session): string | null {
+  if (!session.branch_name) return null;
+  if (session.worktree_path) return session.worktree_path;
+  const dir =
+    session.working_directory ||
+    (session.project_id
+      ? getProject(session.project_id)?.working_directory
+      : "");
+  return dir ? expandPath(dir) : null;
 }
 
-/**
- * Get PR info for a branch
- */
-async function getPRForBranch(
-  projectPath: string,
-  branchName: string
-): Promise<PRInfo | null> {
-  try {
-    const { stdout } = await execAsync(
-      `gh pr list --head "${branchName}" --json number,url,state,title --limit 1`,
-      { cwd: projectPath, timeout: 10000 }
-    );
-    const prs = JSON.parse(stdout);
-    return prs.length > 0 ? prs[0] : null;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Create a new PR for a branch
- */
-async function createPR(
-  projectPath: string,
-  branchName: string,
-  baseBranch: string,
-  title: string,
-  body?: string
-): Promise<PRInfo> {
-  // First push the branch if not already pushed
-  try {
-    await execAsync(`git push -u origin "${branchName}"`, {
-      cwd: projectPath,
-      timeout: 30000,
-    });
-  } catch {
-    // Branch might already be pushed, continue
-  }
-
-  const bodyArg = body ? `--body "${body.replace(/"/g, '\\"')}"` : '--body ""';
-  const { stdout } = await execAsync(
-    `gh pr create --title "${title.replace(/"/g, '\\"')}" --base "${baseBranch}" ${bodyArg} --json number,url,state,title`,
-    { cwd: projectPath, timeout: 30000 }
-  );
-  return JSON.parse(stdout);
-}
+const GH_MISSING =
+  "GitHub CLI not installed or not authenticated. Run 'gh auth login' first.";
 
 // GET /api/sessions/[id]/pr - Get PR info for session
 export async function GET(request: NextRequest, { params }: RouteParams) {
@@ -86,27 +37,21 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "Session not found" }, { status: 404 });
     }
 
-    if (!session.worktree_path || !session.branch_name) {
+    const cwd = branchCwd(session);
+    if (!cwd || !session.branch_name) {
       return NextResponse.json(
         { error: "Session is not a worktree session" },
         { status: 400 }
       );
     }
 
-    // Check gh CLI
-    if (!(await checkGhCli())) {
-      return NextResponse.json(
-        {
-          error:
-            "GitHub CLI not installed or not authenticated. Run 'gh auth login' first.",
-        },
-        { status: 400 }
-      );
+    if (!(await isGhReady())) {
+      return NextResponse.json({ error: GH_MISSING }, { status: 400 });
     }
 
-    const pr = await getPRForBranch(session.worktree_path, session.branch_name);
+    const pr = await getPRForBranch(cwd, session.branch_name);
 
-    // Update session with PR info if found
+    // Update session with PR info if found (SessionCard reads it lowercase)
     if (pr) {
       queries.updateSessionPR(db).run(pr.url, pr.number, pr.state, id);
     }
@@ -135,30 +80,21 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "Session not found" }, { status: 404 });
     }
 
-    if (!session.worktree_path || !session.branch_name) {
+    const cwd = branchCwd(session);
+    if (!cwd || !session.branch_name) {
       return NextResponse.json(
         { error: "Session is not a worktree session" },
         { status: 400 }
       );
     }
 
-    // Check gh CLI
-    if (!(await checkGhCli())) {
-      return NextResponse.json(
-        {
-          error:
-            "GitHub CLI not installed or not authenticated. Run 'gh auth login' first.",
-        },
-        { status: 400 }
-      );
+    if (!(await isGhReady())) {
+      return NextResponse.json({ error: GH_MISSING }, { status: 400 });
     }
 
-    // Check if PR already exists
-    const existingPR = await getPRForBranch(
-      session.worktree_path,
-      session.branch_name
-    );
-    if (existingPR) {
+    // Check if PR already exists (a merged or closed one gets a new PR)
+    const existingPR = await getPRForBranch(cwd, session.branch_name);
+    if (existingPR?.state === "open") {
       return NextResponse.json(
         { error: "PR already exists for this branch", pr: existingPR },
         { status: 409 }
@@ -168,15 +104,17 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     // Create PR
     const prTitle = title || session.name;
     const pr = await createPR(
-      session.worktree_path,
+      cwd,
       session.branch_name,
       session.base_branch || "main",
       prTitle,
-      description
+      description || ""
     );
 
     // Save PR info to session
-    queries.updateSessionPR(db).run(pr.url, pr.number, pr.state, id);
+    queries
+      .updateSessionPR(db)
+      .run(pr.url, pr.number, pr.state.toLowerCase(), id);
 
     return NextResponse.json({ pr }, { status: 201 });
   } catch (error) {
