@@ -244,10 +244,12 @@ export function MobileView(props: ViewProps) {
           setSidebarOpen(false);
         }}
         onSelectFile={(file, line) => {
-          // Convert relative path to absolute by prepending working directory
-          const absolutePath = activeSession?.working_directory
-            ? `${activeSession.working_directory}/${file.replace(/^\.\//, "")}`
-            : file;
+          // Search results pass absolute paths; others are relative to the session folder
+          const absolutePath = file.startsWith("/")
+            ? file
+            : activeSession?.working_directory
+              ? `${activeSession.working_directory}/${file.replace(/^\.\//, "")}`
+              : file;
           fileOpenActions.requestOpen(absolutePath, line);
         }}
       />
