@@ -21,11 +21,7 @@ import {
 } from "@/lib/native-bridge";
 import { useSessionDraft } from "@/hooks/useSessionDraft";
 import { CHAT_KEYS } from "@/components/Terminal/toolbar-config";
-import {
-  ComposerChips,
-  ComposerPopover,
-  useComposer,
-} from "@/components/Composer";
+import { ComposerChips, useComposer } from "@/components/Composer";
 import { ComposerCard } from "@/components/Composer/ComposerCard";
 import { PausedBar } from "@/components/Session/PausedBar";
 import { PausedHistory } from "@/components/Session/PausedHistory";
@@ -669,7 +665,6 @@ export function ChatView({
             {/* Handed off: Open the new session or Resume here, in place
                 of the composer (its transcript still reads above) */}
             {paused && <PausedBar session={session} />}
-            {!paused && <ComposerPopover composer={composer} />}
             {!paused && (
               <RewindSheet
                 live={live}
