@@ -241,8 +241,10 @@ export async function GET() {
     }
 
     // Update claude_session_id directly here instead of requiring separate API calls
-    for (const { id, claudeSessionId } of results) {
-      if (claudeSessionId) {
+    // Claude sessions only: a Codex/Gemini session in the same folder (a
+    // handoff's successor) would otherwise take a Claude conversation's id
+    for (const { id, claudeSessionId, agentType } of results) {
+      if (claudeSessionId && agentType === "claude") {
         updateClaudeIdStmt.run(claudeSessionId, id, claudeSessionId);
       }
     }
