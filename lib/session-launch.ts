@@ -6,6 +6,7 @@ import { getProvider } from "./providers";
 import { getProviderDefinition } from "./providers/registry";
 import { writeProjectContext } from "./project-context";
 import { writeInitScript } from "./init-script";
+import { sessionBrowserEnv, tmuxEnvArgs } from "./browser-helper";
 import { getFlag } from "./flags";
 import type { LaunchCaps } from "./permission-mode";
 
@@ -128,7 +129,15 @@ export async function launchSession(
   );
 
   if (command === null) {
-    await execFileAsync("tmux", ["new-session", "-d", "-s", name, "-c", cwd]);
+    await execFileAsync("tmux", [
+      "new-session",
+      "-d",
+      "-s",
+      name,
+      "-c",
+      cwd,
+      ...tmuxEnvArgs(sessionBrowserEnv(), process.env.BROWSER),
+    ]);
     return true;
   }
 
