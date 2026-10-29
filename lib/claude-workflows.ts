@@ -55,7 +55,7 @@ interface AgentUsage {
 const usageCache = new Map<string, AgentUsage>();
 
 /** "claude-opus-5-5" as "Opus 5.5" */
-function modelName(id: string): string {
+export function modelName(id: string): string {
   const m = /claude-([a-z]+)-(\d+)(?:-(\d+))?/.exec(id);
   if (!m) return id;
   const name = m[1][0].toUpperCase() + m[1].slice(1);
