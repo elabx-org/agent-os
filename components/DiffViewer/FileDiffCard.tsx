@@ -1,9 +1,12 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
+import { ChevronDown, ChevronRight, File } from "lucide-react";
+import { cn } from "@/lib/utils";
 import type { DiffLine, ParsedDiff } from "@/lib/diff-parser";
-import type { GitBadge } from "@/lib/git-types";
-import { UnifiedDiff } from "./UnifiedDiff";
+import { gitBadgeClass, type GitBadge } from "@/lib/git-types";
+import { DiffCounts, DiffLines } from "./UnifiedDiff";
+import { splitPath } from "./diff-format";
 
 export interface FileDiffCardProps {
   /** One file's parsed diff */
@@ -32,19 +35,83 @@ export interface FileDiffCardProps {
 export function FileDiffCard({
   diff,
   path,
+  badge,
   expanded,
   defaultExpanded = true,
   onToggle,
   wrap,
+  actions,
+  onLineClick,
+  className,
 }: FileDiffCardProps) {
-  // M2b contract stub: U2b.4 builds the card
+  const [ownExpanded, setOwnExpanded] = useState(defaultExpanded);
+  const open = expanded ?? ownExpanded;
+  const { name, folder } = splitPath(path);
+
+  const toggle = () => {
+    if (expanded === undefined) setOwnExpanded(!open);
+    onToggle?.(!open);
+  };
+
   return (
-    <UnifiedDiff
-      diff={diff}
-      fileName={path}
-      expanded={expanded ?? defaultExpanded}
-      onToggle={onToggle ? () => onToggle(!(expanded ?? true)) : undefined}
-      wrap={wrap}
-    />
+    <div className={cn("tools", className)}>
+      <div className="flex min-h-12 items-center gap-2.5 pr-3.5">
+        {/* The header's button holds the name; actions stay outside it */}
+        <button
+          type="button"
+          onClick={toggle}
+          aria-expanded={open}
+          title={path}
+          className="flex min-h-12 min-w-0 flex-1 items-center gap-2.5 py-1.5 pl-3.5 text-left"
+        >
+          {badge ? (
+            <span
+              className={cn("git-letter", gitBadgeClass(badge))}
+              aria-label={BADGE_LABEL[badge]}
+            >
+              {badge}
+            </span>
+          ) : (
+            <File
+              className="text-muted-foreground h-4 w-4 shrink-0"
+              aria-hidden="true"
+            />
+          )}
+          <span className="flex min-w-0 flex-1 flex-col">
+            <span className="truncate font-mono text-[13px]">{name}</span>
+            {folder && (
+              <span className="text-muted-foreground truncate text-[13px]">
+                {folder}
+              </span>
+            )}
+          </span>
+          {!diff.isBinary && (
+            <DiffCounts added={diff.additions} removed={diff.deletions} />
+          )}
+        </button>
+        {actions}
+        <button
+          type="button"
+          onClick={toggle}
+          aria-label={open ? `Fold ${name}` : `Unfold ${name}`}
+          tabIndex={-1}
+          className="text-muted-foreground -mr-1 flex h-8 w-8 shrink-0 items-center justify-center"
+        >
+          {open ? (
+            <ChevronDown className="h-4 w-4" />
+          ) : (
+            <ChevronRight className="h-4 w-4" />
+          )}
+        </button>
+      </div>
+      {open && <DiffLines diff={diff} wrap={wrap} onLineClick={onLineClick} />}
+    </div>
   );
 }
+
+const BADGE_LABEL: Record<GitBadge, string> = {
+  M: "Modified",
+  A: "Added",
+  D: "Deleted",
+  "?": "Untracked",
+};
