@@ -44,8 +44,9 @@ export const mobileNavStore = proxy<{
   liveOpen: boolean;
   /** The session in view is working (the closed column's Stop, M2) */
   working: boolean;
-  /** A sheet over the session other than Live activity (N-Undo M2, N-PermMode M7) */
-  sheet: "undo" | "permissions" | null;
+  /** A sheet over the session other than Live activity (N-Undo M2,
+      N-PermMode M7, N-Scripts M3) */
+  sheet: "undo" | "permissions" | "scripts" | null;
   /** Agents the focused session started (its tree's total): the column's Agents item */
   agentCount: number;
   /**

@@ -513,7 +513,7 @@ export function NewForm({
       e.currentTarget.contains(e.target as Node)
     ) {
       e.preventDefault();
-      form.submit();
+      void form.submit();
     }
   };
 
@@ -548,6 +548,7 @@ export function NewForm({
         onKeyDown={keys}
       >
         {overlay}
+        {form.trustPrompt}
         {heading}
         {!background && (
           <AgentSelector
@@ -678,6 +679,7 @@ export function NewForm({
       onKeyDown={keys}
     >
       {overlay}
+      {form.trustPrompt}
       {heading}
       {!background && (
         <AgentSelector

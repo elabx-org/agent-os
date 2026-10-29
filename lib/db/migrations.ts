@@ -437,6 +437,40 @@ const migrations: Migration[] = [
     }),
   },
   {
+    id: 27,
+    name: "add_script_runs_and_project_trust_tables",
+    up: atomic((db) => {
+      // A project script's runs (lib/script-runs.ts); status:
+      // running|passed|failed|stopped; times in epoch ms
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS script_runs (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL,
+          script_id TEXT NOT NULL,
+          command TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'running',
+          exit_code INTEGER,
+          pid INTEGER,
+          log_path TEXT,
+          started_at INTEGER NOT NULL,
+          finished_at INTEGER
+        )
+      `);
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_script_runs_project ON script_runs(project_id, script_id, started_at)`
+      );
+      // Config file hashes the user approved (lib/project-config.ts)
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS project_trust (
+          project_id TEXT NOT NULL,
+          config_hash TEXT NOT NULL,
+          trusted_at INTEGER NOT NULL,
+          PRIMARY KEY (project_id, config_hash)
+        )
+      `);
+    }),
+  },
+  {
     id: 29,
     name: "add_usage_limit_to_sessions",
     up: atomic((db) => {

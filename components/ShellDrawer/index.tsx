@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useCallback, useEffect } from "react";
+import { useRef, useCallback, useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import { X, Copy, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -8,6 +8,10 @@ import { cn } from "@/lib/utils";
 import { useDrawerAnimation } from "@/hooks/useDrawerAnimation";
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
 import type { TerminalHandle } from "@/components/Terminal";
+import {
+  consumeTerminalRun,
+  useTerminalRunRequest,
+} from "@/stores/scriptTerminal";
 
 const Terminal = dynamic(
   () => import("@/components/Terminal").then((mod) => mod.Terminal),
@@ -18,15 +22,25 @@ interface ShellDrawerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   workingDirectory: string;
+  /** The session it belongs to: runs its terminal scripts (M3) */
+  sessionId?: string | null;
 }
+
+// After the drawer's own cd && clear has gone in
+const READY_AFTER_MS = 400;
 
 export function ShellDrawer({
   open,
   onOpenChange,
   workingDirectory,
+  sessionId,
 }: ShellDrawerProps) {
   const terminalRef = useRef<TerminalHandle | null>(null);
   const hasInitialized = useRef(false);
+  // Connected and in the folder: a script's line can go in
+  const [ready, setReady] = useState(false);
+  const typed = useRef(new Set<string>());
+  const runRequest = useTerminalRunRequest(sessionId);
   const { copied, copy } = useCopyToClipboard();
 
   // Animation
@@ -41,8 +55,11 @@ export function ShellDrawer({
         terminalRef.current?.sendInput("\x15"); // Ctrl+U to clear line
         setTimeout(() => {
           terminalRef.current?.sendCommand(`cd ${workingDirectory} && clear`);
+          setTimeout(() => setReady(true), READY_AFTER_MS);
         }, 50);
       }, 100);
+    } else {
+      setReady(true);
     }
   }, [workingDirectory]);
 
@@ -50,8 +67,23 @@ export function ShellDrawer({
   useEffect(() => {
     if (!open) {
       hasInitialized.current = false;
+      setReady(false);
     }
   }, [open]);
+
+  // A script run from the Scripts sheet or a shortcut (M3): type its line
+  // once, then take it off the queue. An empty line only opened the drawer
+  // (Show output of a terminal run)
+  useEffect(() => {
+    if (!open || !ready || !runRequest) return;
+    const { runId, shellCommand } = runRequest;
+    if (!typed.current.has(runId)) {
+      typed.current.add(runId);
+      if (shellCommand) terminalRef.current?.sendCommand(shellCommand);
+      else terminalRef.current?.focus();
+    }
+    consumeTerminalRun(runId);
+  }, [open, ready, runRequest]);
 
   if (!open) return null;
 

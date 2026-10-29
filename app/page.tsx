@@ -62,6 +62,8 @@ import { focusStore, loadFocus } from "@/stores/focus";
 import { registerNavHandlers, runNav } from "@/lib/nav-actions";
 import { isNative } from "@/lib/native-bridge";
 import { SettingsPage } from "@/components/Settings/SettingsPage";
+import { ScriptsSheetHost } from "@/components/Projects/ScriptsSheet";
+import { useScriptShortcuts } from "@/hooks/useScriptShortcuts";
 
 function HomeContent() {
   // UI State
@@ -717,6 +719,7 @@ function HomeContent() {
   const activeSession = sessions.find(
     (s) => s.id === focusedActiveTab?.sessionId
   );
+  useScriptShortcuts(activeSession?.project_id, activeSession?.id);
   const startDevServerProject = startDevServerProjectId
     ? (projects.find((p) => p.id === startDevServerProjectId) ?? null)
     : null;
@@ -769,6 +772,7 @@ function HomeContent() {
         onUpdateSettings={updateSettings}
         onRequestPermission={requestPermission}
       />
+      <ScriptsSheetHost />
     </>
   );
 }

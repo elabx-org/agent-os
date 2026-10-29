@@ -14,6 +14,7 @@ import { agentTreeStore } from "@/stores/agentTree";
 import { newSurfaceStore } from "@/stores/newSurface";
 import { focusStore } from "@/stores/focus";
 import { settingsPageStore } from "@/stores/settingsPage";
+import { workspacePageStore } from "@/stores/workspacePage";
 import {
   currentSurface,
   surfaceStore,
@@ -40,6 +41,7 @@ interface ColumnSources {
   showFinished: boolean;
   allCollapsed: boolean;
   agentDetail: boolean;
+  projectSettings: boolean;
 }
 
 function contextFrom(s: ColumnSources): ColumnContext {
@@ -60,6 +62,7 @@ function contextFrom(s: ColumnSources): ColumnContext {
     showFinished: s.showFinished,
     allCollapsed: s.allCollapsed,
     agentDetail: s.agentDetail,
+    projectSettings: s.projectSettings,
     changesOpen: s.changesOpen,
   };
 }
@@ -76,6 +79,7 @@ export function useColumn(
   const { detail: settingsDetail } = useSnapshot(settingsPageStore);
   const { mode } = useSnapshot(layoutStore);
   const tree = useSnapshot(agentTreeStore);
+  const { page } = useSnapshot(workspacePageStore);
   const surface = useSurface();
   const ctx = contextFrom({
     homeOpen: nav.homeOpen,
@@ -96,6 +100,7 @@ export function useColumn(
     showFinished: tree.showFinished,
     allCollapsed: tree.allCollapsed,
     agentDetail: tree.detailOpen,
+    projectSettings: page?.kind === "projectSettings",
   });
   return { surface, mode, items: columnFor(surface, mode, ctx) };
 }
@@ -140,6 +145,7 @@ export function nativeColumn(): {
       showFinished: agentTreeStore.showFinished,
       allCollapsed: agentTreeStore.allCollapsed,
       agentDetail: agentTreeStore.detailOpen,
+      projectSettings: workspacePageStore.page?.kind === "projectSettings",
     })
   );
   const column = PAGE_BARS.includes(mode)

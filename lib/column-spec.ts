@@ -46,8 +46,11 @@ export interface ColumnContext {
   liveOpen?: boolean;
   /** The session in view is working: closed, Stop ends its column (N-Queue) */
   working?: boolean;
-  /** A sheet over the session other than Live activity (N-Undo, N-PermMode) */
-  sheet?: "undo" | "permissions" | null;
+  /** A sheet over the session other than Live activity (N-Undo,
+      N-PermMode, N-Scripts) */
+  sheet?: "undo" | "permissions" | "scripts" | null;
+  /** The project surface shows the project's settings (N-Config, M3) */
+  projectSettings?: boolean;
   /** Agents the session started (its tree's total): the Agents item shows (O-Tree) */
   agents?: number;
   /** Finished agents show in the agents view (N-Tree's eye) */
@@ -207,6 +210,18 @@ const BASE = {
     icon: "ChevronsDownUp",
     label: "Collapse all",
   },
+  scripts: {
+    id: "scripts",
+    symbol: "play",
+    icon: "Play",
+    label: "Run a script",
+  },
+  viewConfig: {
+    id: "viewConfig",
+    symbol: "chevron.left.forwardslash.chevron.right",
+    icon: "Code",
+    label: "View .agent-os.json",
+  },
   pull: {
     id: "pull",
     symbol: "arrow.down.to.line",
@@ -283,6 +298,7 @@ function otherView(ctx: ColumnContext, extra: Partial<ColumnItem> = {}) {
  * over the permissions sheet (N-PermMode); null when no sheet is up
  */
 function sheetColumn(ctx: ColumnContext): ColumnItem[] | null {
+  if (ctx.sheet === "scripts") return scriptsColumn();
   if (ctx.sheet === "undo")
     return [item(BASE.closeSheet), changes(ctx, { selected: false, ...sep })];
   if (ctx.sheet === "permissions")
@@ -325,6 +341,19 @@ function agentsColumn(ctx: ColumnContext): ColumnItem[] {
         })
       : item(BASE.collapseAll),
     ...(ctx.working ? [item(BASE.stop, { danger: true, ...sep })] : []),
+  ];
+}
+
+/** N-Scripts: close | the project's settings, where the scripts are edited */
+function scriptsColumn(): ColumnItem[] {
+  return [
+    item(BASE.closeSheet),
+    item(BASE.projectSettings, {
+      symbol: "gearshape",
+      icon: "Settings",
+      label: "Edit scripts",
+      sep: true,
+    }),
   ];
 }
 
@@ -474,6 +503,9 @@ export function columnFor(
   const inSession = surface === "session" || surface === "beside";
   // The phone's tab bar holds the home's places; in a session the phone
   // gets the tabletop's bar of views
+  // N-Scripts over a project page too (over a session, sessionColumn has it)
+  if (mode === "duo-closed" && !inSession && ctx.sheet === "scripts")
+    return scriptsColumn();
   if (mode === "phone" && !inSession) return tabs(surface, ctx);
   if ((mode === "phone" || mode === "tabletop") && inSession)
     return sessionBar(ctx);
@@ -522,6 +554,13 @@ export function columnFor(
         item(BASE.sort),
       ];
     case "project":
+      // N-Config: back | run a script, the file
+      if (ctx.projectSettings)
+        return [
+          item(BASE.back, { label: "Back" }),
+          item(BASE.scripts, sep),
+          item(BASE.viewConfig),
+        ];
       return [
         item(BASE.back, { label: "Back" }),
         item(BASE.new, { prominent: true, sep: true }),

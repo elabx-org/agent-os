@@ -1,4 +1,4 @@
-import { spawn, exec } from "child_process";
+import { spawn, exec, type ChildProcess } from "child_process";
 import { promisify } from "util";
 import fs from "fs";
 import path from "path";
@@ -6,7 +6,7 @@ import { db, queries, DevServer, DevServerType, DevServerStatus } from "./db";
 
 const execAsync = promisify(exec);
 
-const LOGS_DIR = path.join(process.env.HOME || "~", ".agent-os", "logs");
+export const LOGS_DIR = path.join(process.env.HOME || "~", ".agent-os", "logs");
 
 // Ensure logs directory exists
 if (!fs.existsSync(LOGS_DIR)) {
@@ -168,6 +168,47 @@ function expandHome(filePath: string): string {
   return filePath;
 }
 
+// Build minimal env - only essentials for shell to work
+// This lets Next.js/Vite/etc load .env.local without interference from parent process env
+function minimalEnv(): Record<string, string | undefined> {
+  return {
+    PATH: process.env.PATH,
+    HOME: process.env.HOME,
+    USER: process.env.USER,
+    SHELL: process.env.SHELL,
+    TERM: process.env.TERM || "xterm-256color",
+    LANG: process.env.LANG || "en_US.UTF-8",
+  };
+}
+
+/**
+ * Runs argv detached in its own process group (kill(-pid) stops all of
+ * it), stdout and stderr appended to logPath, with the same minimal env as
+ * dev servers. The caller listens for "exit"/"error"; the child is unref'd.
+ */
+export function spawnDetached(opts: {
+  argv: string[];
+  cwd: string;
+  logPath: string;
+  env?: Record<string, string>;
+}): ChildProcess {
+  fs.mkdirSync(path.dirname(opts.logPath), { recursive: true });
+  const logFd = fs.openSync(opts.logPath, "a");
+  try {
+    const [file, ...args] = opts.argv;
+    const child = spawn(file, args, {
+      cwd: expandHome(opts.cwd),
+      env: { ...minimalEnv(), ...opts.env } as NodeJS.ProcessEnv,
+      detached: true,
+      stdio: ["ignore", logFd, logFd],
+    });
+    child.unref();
+    return child;
+  } finally {
+    fs.closeSync(logFd);
+  }
+}
+
 // Start a Node.js server
 async function spawnNodeServer(
   id: string,
@@ -182,16 +223,7 @@ async function spawnNodeServer(
   // Expand ~ to absolute path - Node.js spawn doesn't handle tilde
   const cwd = expandHome(workingDirectory);
 
-  // Build minimal env - only essentials for shell to work
-  // This lets Next.js/Vite/etc load .env.local without interference from parent process env
-  const env: Record<string, string | undefined> = {
-    PATH: process.env.PATH,
-    HOME: process.env.HOME,
-    USER: process.env.USER,
-    SHELL: process.env.SHELL,
-    TERM: process.env.TERM || "xterm-256color",
-    LANG: process.env.LANG || "en_US.UTF-8",
-  };
+  const env = minimalEnv();
 
   // Add port if specified
   if (ports.length > 0) {

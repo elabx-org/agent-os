@@ -23,6 +23,7 @@ import {
   Columns2,
   FolderOpen,
   Activity,
+  Play,
   MessageSquare,
 } from "lucide-react";
 import {
@@ -65,6 +66,7 @@ import {
 } from "@/components/Session/SessionHeader";
 import { addedLines } from "@/components/Session/activity-format";
 import { headerVariant } from "@/lib/session-views";
+import { openScripts } from "@/stores/scriptsSheet";
 import {
   PermissionChip,
   PermissionMenuItem,
@@ -399,6 +401,14 @@ export function SessionTitleBar({
           <DropdownMenuItem onSelect={onGitDrawerToggle}>
             <GitBranch className="h-4 w-4" />
             {gitDrawerOpen ? "Hide changes drawer" : "Changes drawer"}
+          </DropdownMenuItem>
+        )}
+        {session?.project_id && session.project_id !== "uncategorized" && (
+          <DropdownMenuItem
+            onSelect={() => openScripts(session.project_id!, session.id)}
+          >
+            <Play className="h-4 w-4" />
+            Scripts
           </DropdownMenuItem>
         )}
         {wide && hasFolder && onShellDrawerToggle && (
