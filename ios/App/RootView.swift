@@ -140,7 +140,7 @@ struct ColumnToolbarItem: ToolbarContent {
                 Button { model.nav(item.id) } label: { label }
                     .badge(item.amber ? 0 : item.badge)
                     .accessibilityAddTraits(item.selected ? .isSelected : [])
-                    .accessibilityValue(item.badge > 0 ? "\(item.badge)" : "")
+                    .accessibilityValue(item.badge > 0 ? (item.amber ? "\(item.badge) waiting" : "\(item.badge)") : "")
                     .tint(.primary)
             }
         }
@@ -188,6 +188,8 @@ struct AmberBadge: View {
             .frame(minWidth: 16, minHeight: 16)
             .background(Capsule().fill(Color(red: 0xFB / 255, green: 0xBF / 255, blue: 0x24 / 255)))
             .fixedSize()
+            // Drawn flat first: the bar's vibrancy washed it out in light mode
+            .compositingGroup()
             .accessibilityHidden(true)
     }
 }
@@ -209,9 +211,11 @@ struct ColumnMoreMenu: View {
                 }
             }
             if model.surface == "now" {
-                Button("Live activity", systemImage: "waveform.path.ecg") { model.nav("live") }
+                Button(model.liveOpen ? "Hide live activity" : "Live activity", systemImage: "waveform.path.ecg") {
+                    model.nav("live")
+                }
             }
-            if inSession && wide && model.surface != "beside" {
+            if inSession && (model.pageWide ?? wide) && model.surface != "beside" {
                 Button("Open beside", systemImage: "rectangle.split.2x1") { model.nav("beside") }
             }
             Button("Projects", systemImage: "folder") { model.nav("projects") }

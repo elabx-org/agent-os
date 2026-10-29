@@ -96,8 +96,13 @@ final class AppModel {
     var columnHidden: Bool { column?.isEmpty == true }
     /// What fills the page ("now", "session"…), for the column's More menu
     var surface: String?
-    /// Running on an iPhone Duo: seen a hinge (nil until the system says),
-    /// kept for the next launch's boot script
+    /// The live activity is showing: the page's `liveOpen`, else its Live item's state
+    var liveOpen = false
+    /// The page's own wide layout (open Duo, book, desktop) when it says,
+    /// for Open beside; nil: the app goes by its size class
+    var pageWide: Bool?
+    /// Running on an iPhone Duo: seen a hinge (nil until the system says).
+    /// Only recorded: the page isn't told until it can tell closed from open
     private(set) var duo: Bool? = UserDefaults.standard.object(forKey: AppModel.duoKey) as? Bool
     private static let duoKey = "isDuo"
     /// Face ID / Touch ID in front of the app (off unless turned on)
@@ -228,6 +233,8 @@ final class AppModel {
         // Its column comes with its first state; the fixed list until then
         column = nil
         surface = nil
+        liveOpen = false
+        pageWide = nil
     }
 
     /// The system reported the device's hinge, or that it has none
@@ -235,8 +242,6 @@ final class AppModel {
         guard duo != present else { return }
         duo = present
         UserDefaults.standard.set(present, forKey: Self.duoKey)
-        (webView as? AgentWebView)?.setBootScript(duo: present)
-        webView?.evaluateJavaScript("if (window.agentosNative) window.agentosNative.duo = \(present);")
     }
 
     func openSession(_ id: String) {
@@ -364,6 +369,9 @@ final class AppModel {
         } else {
             column = nil
         }
+        liveOpen = message["liveOpen"] as? Bool
+            ?? column?.first(where: { $0.id == "live" })?.selected ?? false
+        pageWide = message["wide"] as? Bool
         if let css = message["background"] as? String, let color = Self.color(css: css) {
             pageBackground = Color(uiColor: color)
         }
