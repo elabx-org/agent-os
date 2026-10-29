@@ -19,12 +19,19 @@ export function toQueueItem(row: SessionQueueRow): QueueItem {
   } catch {
     // Unreadable: sent without
   }
+  let sessions: QueueItem["sessions"] = [];
+  try {
+    sessions = row.sessions ? JSON.parse(row.sessions) : [];
+  } catch {
+    // Unreadable: sent without
+  }
   return {
     id: row.id,
     sessionId: row.session_id,
     position: row.position,
     text: row.text,
     attachments,
+    sessions,
     origin: row.origin as QueueOrigin,
     kind: row.kind as QueueKind,
     status: row.status as QueueItem["status"],
@@ -38,6 +45,8 @@ export function toQueueItem(row: SessionQueueRow): QueueItem {
 export interface NewQueueItem {
   text: string;
   attachments?: string[];
+  /** Sessions attached with @ (M9); stored in session_queue.sessions */
+  sessions?: QueueItem["sessions"];
   kind?: QueueKind;
   origin: QueueOrigin;
   notBefore?: number | null;
