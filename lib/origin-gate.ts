@@ -119,6 +119,9 @@ export function applyOriginGate(
 ): boolean {
   const result = refusal(req);
   if (result === "ok") return false;
+  console.warn(
+    `[origin-gate] refused ${req.method} ${pathnameOf(req)}: ${result}`
+  );
   res.writeHead(403, {
     "Content-Type": "application/json",
     "Cache-Control": "no-store",
@@ -134,5 +137,8 @@ export function applyOriginGate(
 
 /** server.ts upgrade handler: Agent-OS's own sockets (/ws/terminal) */
 export function originGateRefusesUpgrade(req: IncomingMessage): boolean {
-  return refusal(req) !== "ok";
+  const result = refusal(req);
+  if (result === "ok") return false;
+  console.warn(`[origin-gate] refused upgrade ${pathnameOf(req)}: ${result}`);
+  return true;
 }
