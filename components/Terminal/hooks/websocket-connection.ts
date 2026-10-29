@@ -2,6 +2,7 @@
 
 import type { Terminal as XTerm } from "@xterm/xterm";
 import { WS_RECONNECT_BASE_DELAY, WS_RECONNECT_MAX_DELAY } from "../constants";
+import { typingElsewhere } from "@/lib/typing-elsewhere";
 
 export interface WebSocketCallbacks {
   /** replacedPty: a reconnect landed on a new PTY, so tmux must be re-attached */
@@ -108,7 +109,7 @@ export function createWebSocketConnection(
     // onConnected fires from the "session" message, once the server says
     // whether this is the same PTY (tmux still attached) or a new one
     sendResize(term.cols, term.rows);
-    term.focus();
+    if (!typingElsewhere(term.element)) term.focus();
     startClientPing(wsRef.current!);
   }
 

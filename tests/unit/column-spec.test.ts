@@ -2,7 +2,11 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   columnFor,
+  hiddenSlots,
+  moreItems,
+  savedOrder,
   type ColumnContext,
+  type ColumnOrder,
   type ColumnItem,
 } from "../../lib/column-spec";
 import type { LayoutMode } from "../../hooks/useLayoutMode";
@@ -247,6 +251,37 @@ test("columnFor: a sheet over the closed session (E-Live, N-Undo)", () => {
     fmt(columnFor("session", "duo-closed", { ...CTX, sheet: "permissions" })),
     "closeSheet | done*"
   );
+  // N-Worktree: close | Move session, over a session or a project's row
+  const move = { ...CTX, sheet: "move" as const };
+  assert.equal(
+    fmt(columnFor("session", "duo-closed", move)),
+    "closeSheet | done*"
+  );
+  assert.equal(
+    fmt(columnFor("project", "duo-closed", move)),
+    "closeSheet | done*"
+  );
+  assert.equal(
+    columnFor("session", "duo-closed", move)[1].label,
+    "Move session"
+  );
+  // On the open Duo too (the sheet stops at the web column)
+  assert.equal(
+    fmt(columnFor("session", "duo-open", move)),
+    "closeSheet | done*"
+  );
+  assert.equal(fmt(columnFor("session", "book", move)), "closeSheet | done*");
+  // Waiting for the turn: Cancel move, not prominent; nothing to do: × alone
+  const waiting = columnFor("session", "duo-closed", {
+    ...move,
+    sheetAction: "cancel",
+  });
+  assert.equal(fmt(waiting), "closeSheet | done");
+  assert.equal(waiting[1].label, "Cancel move");
+  assert.equal(
+    fmt(columnFor("session", "duo-closed", { ...move, sheetAction: "none" })),
+    "closeSheet"
+  );
   // The open Duo shows Live activity as its rail: no sheet column
   assert.equal(
     fmt(columnFor("session", "duo-open", { ...CTX, liveOpen: true })),
@@ -363,6 +398,70 @@ test("columnFor: every icon has a component on the web", () => {
   for (const [surface, mode] of TABLE)
     for (const i of columnFor(surface, mode, CTX))
       assert.notEqual(columnIcon(i.icon), Circle, `${i.id}: ${i.icon}`);
+});
+
+// Settings → Control column: the person's own order between the pinned ends
+const ORDER: ColumnOrder = {
+  session: ["projects", "inbox", "live", "view", "git"],
+  beside: ["swap"],
+  now: ["inbox", "new"],
+};
+
+const ARRANGED: [Surface, LayoutMode, Partial<ColumnContext>, string][] = [
+  [
+    "session",
+    "duo-closed",
+    {},
+    "back | projects inbox[2a] live terminal git[3n] | more",
+  ],
+  [
+    "session",
+    "duo-closed",
+    { keyboardUp: true },
+    "back | projects inbox[2a] more",
+  ],
+  [
+    "session",
+    "duo-open",
+    {},
+    "back | projects inbox[2a] live terminal git[3n] | more",
+  ],
+  ["session", "phone", {}, "projects inbox[2a] live chat(on) git[3n] | more"],
+  ["beside", "duo-open", {}, "back | swap | more"],
+  ["now", "duo-closed", {}, "inbox(on)[2a] new* | settings"],
+];
+
+for (const [surface, mode, extra, want] of ARRANGED)
+  test(`arranged ${surface} on ${mode} ${JSON.stringify(extra)}`, () => {
+    assert.equal(
+      fmt(columnFor(surface, mode, { ...CTX, ...extra, order: ORDER })),
+      want
+    );
+  });
+
+test("an arranged column hands what it leaves out to More", () => {
+  assert.deepEqual(
+    moreItems("session", ORDER).map((i) => i.id),
+    ["files", "new", "search", "beside"]
+  );
+  assert.deepEqual(hiddenSlots("now", {}), []);
+});
+
+test("a saved order drops unknown and repeated slots", () => {
+  assert.deepEqual(
+    savedOrder("session", {
+      session: ["git", "bogus", "git"],
+    } as unknown as ColumnOrder),
+    ["git"]
+  );
+  assert.equal(savedOrder("session", {}), null);
+});
+
+test("no saved order keeps the default column", () => {
+  assert.equal(
+    fmt(columnFor("session", "duo-closed", { ...CTX, order: {} })),
+    fmt(columnFor("session", "duo-closed", CTX))
+  );
 });
 
 test("columnFor: the closed agents view (N-Tree)", () => {

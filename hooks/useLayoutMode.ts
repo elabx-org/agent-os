@@ -59,6 +59,25 @@ export function isOpenDuoSize(
 }
 
 /**
+ * Wraps a posture check so the keyboard can't change it. The keyboard only
+ * takes height: at the same width a shorter screen keeps the answer it had
+ * (the open Duo typing is 951x339, which no longer looks like one), so the
+ * pages aren't laid out again under the box being typed into.
+ */
+export function throughKeyboard(
+  check: (width: number, height: number) => boolean
+): (width: number, height: number) => boolean {
+  let last: { width: number; height: number; result: boolean } | null = null;
+  return (width, height) => {
+    if (last && last.width === width && height < last.height)
+      return last.result;
+    const result = check(width, height);
+    last = { width, height, result };
+    return result;
+  };
+}
+
+/**
  * The closed Duo inside an app build that doesn't say it is one: the outer
  * display is far squarer (about 466x678) than a regular iPhone (390x844)
  */
@@ -110,6 +129,9 @@ function sideRailOverride(): number | null {
 export function useLayoutModeSource(): void {
   useEffect(() => {
     const coarse = window.matchMedia("(pointer: coarse)");
+    const openDuo = throughKeyboard((width, height) =>
+      isOpenDuoSize(width, height, coarse.matches, window.agentosNative?.duo)
+    );
     // The safe-area inset, read the way useSideRail reads it
     const probe = document.createElement("div");
     probe.style.cssText =
@@ -130,7 +152,7 @@ export function useLayoutModeSource(): void {
         height,
         touch: coarse.matches,
         sideRail,
-        openDuo: isOpenDuoSize(width, height, coarse.matches, duo),
+        openDuo: openDuo(width, height),
         fold: postureStore.fold,
         native,
         duo,

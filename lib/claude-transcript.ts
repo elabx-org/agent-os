@@ -299,6 +299,14 @@ export function readTranscriptTail(
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
+/**
+ * The chat items of one parsed transcript line, with the ids the chat uses
+ * (M11's search index stores them for jumping to a message)
+ */
+export function entryItems(entry: unknown, cwd: string): ChatItem[] {
+  return toItems(entry, cwd);
+}
+
 function toItems(entry: any, cwd: string, subagent = false): ChatItem[] {
   if ((entry.isSidechain && !subagent) || entry.isMeta) return [];
   const msg = entry.message;

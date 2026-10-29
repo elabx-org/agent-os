@@ -15,6 +15,7 @@ import {
   parsePorcelain,
 } from "../../lib/summarize";
 import type { Session } from "../../lib/db/types";
+import { formatAttachmentBlock } from "../../lib/session-attach-types";
 
 const ID = "0f6c2b3a-1d2e-4f50-8a9b-0c1d2e3f4a5b";
 const FIXTURE = path.join(__dirname, "fixtures", "m4", "transcript.jsonl");
@@ -196,4 +197,23 @@ test("buildSummary for a non-Claude agent without its pane", async () => {
     summary.text.startsWith('# Handoff from Codex session "dark mode"')
   );
   assert.equal(summary.filesChanged.length, 3);
+});
+
+test("an attached session's block doesn't nest into the next summary", () => {
+  const block = formatAttachmentBlock([
+    { name: "Other", projectName: null, summary: "Long summary of Other." },
+  ]);
+  const items = [
+    {
+      kind: "user",
+      text: `${block}\n\nFix the bug`,
+      ts: "2026-01-01T00:00:00Z",
+    },
+    { kind: "assistant", text: "Fixed.", ts: "2026-01-01T00:00:01Z" },
+  ] as unknown as ChatItem[];
+  const { asks } = extractConversation(items);
+  assert.equal(asks.length, 1);
+  assert.ok(!asks[0].includes("Long summary"));
+  assert.ok(asks[0].startsWith("Fix the bug"));
+  assert.ok(asks[0].includes('"Other"'));
 });

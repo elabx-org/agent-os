@@ -213,6 +213,7 @@ function fakes(over: Partial<import("../../lib/handoff").HandoffDeps> = {}) {
         position: queue.length + 1,
         text: item.text,
         attachments: [],
+        sessions: [],
         origin: item.origin,
         kind: item.kind ?? "message",
         status: "pending",

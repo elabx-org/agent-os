@@ -498,6 +498,28 @@ const migrations: Migration[] = [
     }),
   },
   {
+    id: 31,
+    name: "add_session_summaries",
+    up: atomic((db) => {
+      // Attach a session with @ (M9): its summary, cached until the
+      // transcript grows (lib/session-summaries.ts)
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS session_summaries (
+          session_id TEXT PRIMARY KEY,
+          basis TEXT NOT NULL,
+          text TEXT NOT NULL,
+          tokens INTEGER NOT NULL,
+          source TEXT NOT NULL,
+          empty INTEGER NOT NULL DEFAULT 0,
+          created_at INTEGER NOT NULL
+        )
+      `);
+      // The sessions a queued message attaches, resolved when it goes;
+      // apart from attachments so an older build still reads those
+      addColumnIfMissing(db, "session_queue", "sessions", "TEXT");
+    }),
+  },
+  {
     id: 33,
     name: "add_review_comments_table",
     up: atomic((db) => {

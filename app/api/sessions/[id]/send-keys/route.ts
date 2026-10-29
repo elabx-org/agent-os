@@ -23,6 +23,12 @@ import {
   setUndoNotice,
   takeUndoNotice,
 } from "@/lib/queue/store";
+import {
+  composeOutgoing,
+  parseSessionRefs,
+  resolveAttachmentBlock,
+} from "@/lib/session-attach";
+import { quoteAttachMarkers } from "@/lib/session-attach-types";
 
 // Log to file for debugging
 const LOG_FILE = "/tmp/agent-os-send-keys.log";
@@ -51,6 +57,11 @@ export async function POST(
     if (!text) {
       log("ERROR: No text provided");
       return NextResponse.json({ error: "No text provided" }, { status: 400 });
+    }
+    // Sessions attached with @ (M9), when the queue flag is off
+    const refs = parseSessionRefs(body.sessions);
+    if (typeof refs === "string") {
+      return NextResponse.json({ error: refs }, { status: 400 });
     }
 
     const db = getDb();
@@ -125,17 +136,48 @@ export async function POST(
       forgetRetried(session.id, "send_keys");
     }
 
-    // A pending undo notice rides on the next message (lib/turns.ts), not
-    // on an answer typed at a prompt or a slash command
-    const notice =
+    // A pending undo notice and the attached sessions' block ride on the
+    // next message (lib/turns.ts), not on an answer typed at a prompt or a
+    // slash command
+    const message =
+      pressEnter && typeof text === "string" ? quoteAttachMarkers(text) : text;
+    const prefixable =
       pressEnter &&
-      takesNotice(text) &&
-      getUndoNotice(session.id) &&
-      !(await readScreenPrompt(tmuxSessionName).catch(() => null))
+      takesNotice(message) &&
+      (!!getUndoNotice(session.id) || refs.length > 0) &&
+      !(await readScreenPrompt(tmuxSessionName).catch(() => null));
+    // Attached sessions can't ride on an answer or a command: say so, so
+    // the composer keeps the draft and the chips
+    if (refs.length > 0 && !prefixable) {
+      log("REFUSED: attached sessions on an answer or a command");
+      return NextResponse.json(
+        {
+          error:
+            "The attached sessions can't go with this: answer the prompt first, then send them with a message.",
+        },
+        { status: 409 }
+      );
+    }
+    const notice =
+      prefixable && getUndoNotice(session.id)
         ? takeUndoNotice(session.id)
         : null;
     if (notice) log("Prefixing the pending undo notice");
-    const outgoing = notice ? `${notice} ${text}` : text;
+    let block: string | null = null;
+    if (prefixable && refs.length) {
+      try {
+        block = await resolveAttachmentBlock(session.id, refs);
+      } catch (error) {
+        if (notice) setUndoNotice(session.id, notice);
+        throw error;
+      }
+      if (block) log(`Prefixing ${refs.length} attached session(s)`);
+    }
+    const outgoing = block
+      ? composeOutgoing(notice, block, message)
+      : notice
+        ? `${notice} ${message}`
+        : message;
 
     try {
       log(`Pasting ${outgoing.length} bytes to ${tmuxSessionName}`);

@@ -32,6 +32,8 @@ export interface PermissionChipProps {
    * composer: the composer card's mode pill, same tap
    */
   variant: "header" | "composer";
+  /** The shield alone (its label for screen readers only) */
+  compact?: boolean;
   className?: string;
 }
 
@@ -92,6 +94,7 @@ export function usePermissionChip(session: Session): ChipModel | null {
 export function PermissionChip({
   session,
   variant,
+  compact = false,
   className,
 }: PermissionChipProps) {
   const chip = usePermissionChip(session);
@@ -123,7 +126,9 @@ export function PermissionChip({
         className={header ? "h-3.5 w-3.5" : "h-3 w-3"}
         strokeWidth={2}
       />
-      <span data-chip-label>{chip.label}</span>
+      <span data-chip-label className={compact ? "sr-only" : undefined}>
+        {chip.label}
+      </span>
       {chip.waitsFor === "nextTurn" && (
         <span
           aria-hidden

@@ -9,6 +9,7 @@ import {
   MoreHorizontal,
   Workflow,
   GitBranch,
+  GitBranchPlus,
   SquareTerminal,
   Copy,
   Unplug,
@@ -76,6 +77,8 @@ import {
   PermissionMenuItem,
 } from "@/components/Session/PermissionChip";
 import { PermissionSheetHost } from "@/components/Session/PermissionSheet";
+import { useCanOfferMove } from "@/hooks/useWorktreeMove";
+import { openMoveSheet } from "@/stores/moveSheet";
 
 interface SessionTitleBarProps {
   session: Session | null | undefined;
@@ -165,6 +168,8 @@ export function SessionTitleBar({
   // N-Switch: the header's model chip (or ⋯ where it has no room) opens it
   const [switchOpen, setSwitchOpen] = useState(false);
   const switchable = canSwitch(session);
+  // N-Worktree: git folders, not paused, shell or already in a worktree
+  const movable = useCanOfferMove(session);
   const switcher = useMemo(
     () => ({ open: switchOpen, onOpen: () => setSwitchOpen(true) }),
     [switchOpen]
@@ -356,6 +361,13 @@ export function SessionTitleBar({
                 Agent and model
               </DropdownMenuItem>
             )}
+            {/* No chip to reach it from: every new header has it here */}
+            {movable && variant !== "desktop" && (
+              <DropdownMenuItem onSelect={() => openMoveSheet(session.id)}>
+                <GitBranchPlus className="h-4 w-4" />
+                Move to a worktree
+              </DropdownMenuItem>
+            )}
             {variant === "card" && (
               <>
                 {/* No rail beside two panes, nor a strip under them */}
@@ -449,6 +461,14 @@ export function SessionTitleBar({
             <DropdownMenuItem onSelect={() => setSwitchOpen(true)}>
               <ArrowRightLeft className="h-4 w-4" />
               Agent and model
+            </DropdownMenuItem>
+          )}
+        {session &&
+          movable &&
+          (variant === "classic" || variant === "desktop") && (
+            <DropdownMenuItem onSelect={() => openMoveSheet(session.id)}>
+              <GitBranchPlus className="h-4 w-4" />
+              Move to a worktree
             </DropdownMenuItem>
           )}
         {session && (

@@ -15,12 +15,21 @@ import { readTranscriptTail, type ChatItem } from "./claude-transcript";
 import { planFromItems, type PlanState } from "./claude-plan";
 import { locateTranscript, sessionCwd } from "./transcript-locate";
 import { tmuxNameOf } from "./session-launch";
+import { splitAttachmentBlock } from "./session-attach-types";
 
 const execFileAsync = promisify(execFile);
+
+/**
+ * handoff: a message for the agent taking the work over (M4). attach: what
+ * another session's agent reads about this one (M9 @ attach), no takeover
+ */
+export type SummaryPurpose = "handoff" | "attach";
 
 export interface SummarizeOptions {
   /** Condense with `claude -p` (uses quota); default extractive only */
   useModel?: boolean;
+  /** Default handoff; attach is always extractive (no `claude -p`) */
+  purpose?: SummaryPurpose;
 }
 
 /** The whole message's cap: a first message, not a transcript */
@@ -91,6 +100,17 @@ function isAsk(text: string): boolean {
   return !!text.trim() && !text.trim().startsWith("/");
 }
 
+/**
+ * A user message without the attached sessions' block (M9), so a summary
+ * of a session that attached others doesn't carry their summaries along
+ */
+function ownText(text: string): string {
+  const { text: rest, attached } = splitAttachmentBlock(text);
+  if (!attached.length) return text;
+  const names = attached.map((n) => `"${n}"`).join(", ");
+  return `${rest} (attached: ${names})`.trim();
+}
+
 /** The asks, conclusions and plan in a transcript's chat items */
 export function extractConversation(
   items: readonly ChatItem[]
@@ -101,8 +121,8 @@ export function extractConversation(
     if (item.kind === "summary") {
       compacted = item.text;
       turns.length = 0;
-    } else if (item.kind === "user" && isAsk(item.text)) {
-      turns.push({ ask: item.text, reply: null });
+    } else if (item.kind === "user" && isAsk(ownText(item.text))) {
+      turns.push({ ask: ownText(item.text), reply: null });
     } else if (item.kind === "assistant" && item.text.trim()) {
       if (!turns.length) turns.push({ ask: "", reply: null });
       turns[turns.length - 1].reply = item.text;
@@ -139,16 +159,26 @@ export interface HandoffTextInput {
 
 const STEP_MARK = { done: "[x]", active: "[>]", todo: "[ ]" } as const;
 
-/** The handoff message: self-contained, capped at MAX_SUMMARY_CHARS */
-export function formatHandoff(input: HandoffTextInput): string {
+/**
+ * The handoff message (or, for attach, a neutral account of the session):
+ * self-contained, capped at MAX_SUMMARY_CHARS
+ */
+export function formatHandoff(
+  input: HandoffTextInput,
+  purpose: SummaryPurpose = "handoff"
+): string {
   const agent = AGENT_NAMES[input.agentType] ?? input.agentType;
-  const head = [
-    `# Handoff from ${agent} session "${input.name}"`,
-    "",
-    "You are taking over work another agent session started in this folder. This is what it left.",
-    "",
-    `Folder: ${input.cwd}${input.branch ? ` (branch ${input.branch})` : ""}`,
-  ].join("\n");
+  const folder = `Folder: ${input.cwd}${input.branch ? ` (branch ${input.branch})` : ""}`;
+  const head =
+    purpose === "attach"
+      ? [`# Session "${input.name}" (${agent})`, "", folder].join("\n")
+      : [
+          `# Handoff from ${agent} session "${input.name}"`,
+          "",
+          "You are taking over work another agent session started in this folder. This is what it left.",
+          "",
+          folder,
+        ].join("\n");
 
   const sections: string[] = [];
   if (input.asks.length) {
@@ -185,7 +215,9 @@ export function formatHandoff(input: HandoffTextInput): string {
     );
   }
   const tail =
-    "Check `git status` and `git diff` for the exact changes, then carry on from where it got to.";
+    purpose === "attach"
+      ? "Its working tree may have changed since; check git before relying on file contents."
+      : "Check `git status` and `git diff` for the exact changes, then carry on from where it got to.";
 
   const room = MAX_SUMMARY_CHARS - head.length - tail.length - 4;
   let body = sections.join("\n\n");
@@ -265,7 +297,7 @@ export function cleanScrollback(raw: string, max = SCROLLBACK_CHARS): string {
 function conversationText(items: readonly ChatItem[]): string {
   const lines: string[] = [];
   for (const item of items) {
-    if (item.kind === "user") lines.push(`User: ${item.text}`);
+    if (item.kind === "user") lines.push(`User: ${ownText(item.text)}`);
     else if (item.kind === "assistant") lines.push(`Assistant: ${item.text}`);
     else if (item.kind === "summary") lines.push(`Earlier: ${item.text}`);
     else if (item.kind === "tool") lines.push(`(${item.name} ${item.summary})`);
@@ -333,6 +365,7 @@ export async function buildSummary(
   options: SummarizeOptions = {}
 ): Promise<SessionSummary> {
   const agentType = session.agent_type || "claude";
+  const purpose = options.purpose ?? "handoff";
   let cwd = sessionCwd(session);
 
   let items: ChatItem[] | null = null;
@@ -380,7 +413,12 @@ export async function buildSummary(
       extract.conclusions.length > 0 ||
       !!extract.compacted);
 
-  if (options.useModel && !isLimited(session) && (hasConversation || !items)) {
+  if (
+    options.useModel &&
+    purpose === "handoff" &&
+    !isLimited(session) &&
+    (hasConversation || !items)
+  ) {
     const input =
       items && hasConversation
         ? conversationText(items)
@@ -400,38 +438,47 @@ export async function buildSummary(
   }
 
   if (extract && hasConversation) {
-    const text = formatHandoff({
-      ...base,
-      asks: extract.asks,
-      conclusions: extract.conclusions,
-      body: extract.compacted
-        ? {
-            title: "Earlier in the session",
-            text: clip(extract.compacted, CONCLUSION_CHARS),
-          }
-        : null,
-      plan: extract.plan,
-    });
+    const text = formatHandoff(
+      {
+        ...base,
+        asks: extract.asks,
+        conclusions: extract.conclusions,
+        body: extract.compacted
+          ? {
+              title: "Earlier in the session",
+              text: clip(extract.compacted, CONCLUSION_CHARS),
+            }
+          : null,
+        plan: extract.plan,
+      },
+      purpose
+    );
     return finish(text, extract.plan, "transcript");
   }
 
   // Codex, Gemini, or a Claude session whose transcript isn't there
   const scrollback = await captureScrollback(session);
   const plan = extract?.plan ?? null;
-  const text = formatHandoff({
-    ...base,
-    asks: [],
-    conclusions: [],
-    body: scrollback
-      ? {
-          title: "Its terminal, last lines",
-          text: "```\n" + scrollback + "\n```",
-        }
-      : {
-          title: "Its conversation",
-          text: "No transcript or terminal history was available. Ask the user what they were working on.",
-        },
-    plan,
-  });
+  const text = formatHandoff(
+    {
+      ...base,
+      asks: [],
+      conclusions: [],
+      body: scrollback
+        ? {
+            title: "Its terminal, last lines",
+            text: "```\n" + scrollback + "\n```",
+          }
+        : {
+            title: "Its conversation",
+            text:
+              purpose === "attach"
+                ? "No transcript or terminal history was available."
+                : "No transcript or terminal history was available. Ask the user what they were working on.",
+          },
+      plan,
+    },
+    purpose
+  );
   return finish(text, plan, "scrollback", !scrollback && !plan);
 }

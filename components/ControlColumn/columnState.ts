@@ -4,9 +4,13 @@ import { useSnapshot } from "valtio";
 import {
   WIDE,
   columnFor,
+  columnKindFor,
+  moreItems,
   type ColumnContext,
   type ColumnItem,
+  type ColumnOrder,
 } from "@/lib/column-spec";
+import { columnOrderStore } from "@/stores/columnOrder";
 import type { NativeColumnItem } from "@/lib/native-bridge";
 import { layoutStore, type LayoutMode } from "@/hooks/useLayoutMode";
 import { mobileNavStore } from "@/stores/mobileNav";
@@ -35,8 +39,10 @@ interface ColumnSources {
   liveOpen: boolean;
   working: boolean;
   sheet: ColumnContext["sheet"];
+  sheetAction: ColumnContext["sheetAction"];
   changesOpen: boolean;
   native: boolean;
+  order: ColumnOrder;
   agents: number;
   showFinished: boolean;
   allCollapsed: boolean;
@@ -58,12 +64,14 @@ function contextFrom(s: ColumnSources): ColumnContext {
     liveOpen: s.liveOpen,
     working: s.working,
     sheet: s.sheet,
+    sheetAction: s.sheetAction,
     agents: s.agents,
     showFinished: s.showFinished,
     allCollapsed: s.allCollapsed,
     agentDetail: s.agentDetail,
     projectSettings: s.projectSettings,
     changesOpen: s.changesOpen,
+    order: s.order,
   };
 }
 
@@ -81,6 +89,7 @@ export function useColumn(
   const tree = useSnapshot(agentTreeStore);
   const { page } = useSnapshot(workspacePageStore);
   const surface = useSurface();
+  const { order } = useSnapshot(columnOrderStore);
   const ctx = contextFrom({
     homeOpen: nav.homeOpen,
     newOpen,
@@ -94,8 +103,10 @@ export function useColumn(
     liveOpen: nav.liveOpen,
     working: nav.working,
     sheet: nav.sheet,
+    sheetAction: nav.sheetAction,
     changesOpen: nav.changesOpen,
     native,
+    order: order as ColumnOrder,
     agents: nav.agentCount,
     showFinished: tree.showFinished,
     allCollapsed: tree.allCollapsed,
@@ -120,6 +131,7 @@ export function nativeColumn(): {
   canGoBack: boolean;
   liveOpen: boolean;
   wide: boolean;
+  more: NativeColumnItem[];
 } {
   const surface = currentSurface();
   const mode = layoutStore.mode;
@@ -139,8 +151,10 @@ export function nativeColumn(): {
       liveOpen: mobileNavStore.liveOpen,
       working: mobileNavStore.working,
       sheet: mobileNavStore.sheet,
+      sheetAction: mobileNavStore.sheetAction,
       changesOpen: mobileNavStore.changesOpen,
       native: true,
+      order: columnOrderStore.order,
       agents: mobileNavStore.agentCount,
       showFinished: agentTreeStore.showFinished,
       allCollapsed: agentTreeStore.allCollapsed,
@@ -148,6 +162,7 @@ export function nativeColumn(): {
       projectSettings: workspacePageStore.page?.kind === "projectSettings",
     })
   );
+  const kind = columnKindFor(surface, mode);
   const column = PAGE_BARS.includes(mode)
     ? []
     : items.map(({ icon: _icon, ...rest }) => rest);
@@ -157,5 +172,10 @@ export function nativeColumn(): {
     canGoBack: items[0]?.id === "back",
     liveOpen: mobileNavStore.liveOpen,
     wide: WIDE.includes(mode),
+    more: kind
+      ? moreItems(kind, columnOrderStore.order, mobileNavStore.viewMode).map(
+          ({ icon: _icon, ...rest }) => rest
+        )
+      : [],
   };
 }
