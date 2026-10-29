@@ -21,6 +21,8 @@ import { ComposerInput, type ComposerInputProps } from "./ComposerInput";
 import { ComposerPopover } from "./ComposerPopover";
 import { ComposerChips } from "./ModeChip";
 import { VideoPills } from "./VideoPills";
+import { SessionAttachChip } from "./SessionAttachChip";
+import { attachFooter, sessionRefs } from "./attach-model";
 import { FailedSends, QueueCard } from "./QueueCard";
 import { modeTone, type ClaudeLive } from "./ClaudeStateBar";
 import { PlusSlot, plusButtonClass } from "./plus-slot";
@@ -36,6 +38,10 @@ import { permissionModeKeys } from "@/hooks/usePermissionMode";
 import { PermissionChip } from "@/components/Session/PermissionChip";
 import type { Session } from "@/lib/db";
 import type { EnqueueResult, QueueItem } from "@/lib/queue/types";
+import type {
+  DirectSendOptions,
+  SessionAttachmentRef,
+} from "@/lib/session-attach-types";
 
 export interface ComposerCardProps {
   composer: ComposerEngine;
@@ -45,8 +51,12 @@ export interface ComposerCardProps {
   /** The session's server queue. With `queue.enabled`, sending goes
       through `queue.send` and Queue replaces Send while it is held */
   queue: UseQueue;
-  /** The old send, used while `queue.enabled` is false */
-  onSendDirect: (text: string) => void | Promise<void>;
+  /** The old send, used while `queue.enabled` is false; with the
+      sessions attached with @ (M9) */
+  onSendDirect: (
+    text: string,
+    options?: DirectSendOptions
+  ) => void | Promise<void>;
   /** After the server took it (sent or queued): clear the draft, scroll… */
   onSent?: (result: EnqueueResult) => void;
   /** "Reply to Claude" (chat) / "Type into the terminal" */
@@ -133,7 +143,7 @@ export function ComposerCard({
   const expanded = composerExpanded({
     focused: composer.focused,
     text: composer.display,
-    attachments: videos + composer.uploading,
+    attachments: videos + composer.uploading + composer.attached.length,
     queued: (queue.enabled ? queue.items.length : 0) + typed.length,
     notice: !!queue.notice || !!editing || queue.failed.length > 0,
   });
@@ -146,14 +156,19 @@ export function ComposerCard({
   const sendingRef = useRef(false);
   const [sending, setSending] = useState(false);
 
-  /** The send rule: the server queue when it's on, the old send if not */
+  /** The send rule: the server queue when it's on, the old send if not.
+      `sessions`: the @ chips as they were when Send was pressed */
   const deliver = useCallback(
-    async (text: string): Promise<boolean> => {
+    async (
+      text: string,
+      sessions: SessionAttachmentRef[] = []
+    ): Promise<boolean> => {
+      const options = sessions.length ? { sessions } : undefined;
       // Not known yet (loading, or the reads failing): try the queue, which
       // says when it's off, rather than typing into a busy agent
       if (queue.enabled || !queue.known) {
         try {
-          onSent?.(await queue.send(text));
+          onSent?.(await queue.send(text, options));
           return true;
         } catch (e) {
           if (!isQueueOff(e)) {
@@ -163,7 +178,7 @@ export function ComposerCard({
         }
       }
       try {
-        await onSendDirect(text);
+        await onSendDirect(text, options);
         return true;
       } catch (e) {
         // Not sent: the draft stays
@@ -203,13 +218,19 @@ export function ComposerCard({
       }
       return;
     }
+    const attached = composer.attached;
+    const sessions = sessionRefs(attached);
+    // The chips that went: off, whatever was typed meanwhile
+    const dropSent = () => {
+      for (const a of attached) composer.detachSession(a.sessionId);
+    };
     // With a video: its frames first, once they're ready
     if (videos) {
       sendWithVideos(
         sessionId,
         () => textRef.current,
         (full) => {
-          void deliver(full).then((ok) => {
+          void deliver(full, sessions).then((ok) => {
             // Couldn't go: back into an empty box rather than lost
             if (!ok && !textRef.current) composer.replace(full);
           });
@@ -219,6 +240,12 @@ export function ComposerCard({
       return;
     }
     if (!text.trim()) {
+      // A summary needs a message to go with
+      if (attached.length) {
+        toast("Add a message to go with the attached session");
+        composer.textareaRef.current?.focus();
+        return;
+      }
       onEmptySend?.();
       return;
     }
@@ -226,9 +253,10 @@ export function ComposerCard({
     setSending(true);
     try {
       // The draft holds the pills' full text: that's what goes
-      if (await deliver(text)) {
+      if (await deliver(text, sessions)) {
         // Typed on while it went: keep that
         if (textRef.current === text) clear();
+        else dropSent();
       }
     } finally {
       sendingRef.current = false;
@@ -289,7 +317,10 @@ export function ComposerCard({
     async (item: QueueItem) => {
       try {
         onSent?.(
-          await queue.send(item.text, { attachments: item.attachments })
+          await queue.send(item.text, {
+            attachments: item.attachments,
+            sessions: item.sessions,
+          })
         );
         await queue.dismiss(item.id);
       } catch (e) {
@@ -449,6 +480,17 @@ export function ComposerCard({
               onEdit={startEdit}
             />
           )}
+          {!collapsed && composer.attached.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2">
+              {composer.attached.map((a) => (
+                <SessionAttachChip
+                  key={a.sessionId}
+                  session={a}
+                  onRemove={composer.detachSession}
+                />
+              ))}
+            </div>
+          )}
           {!collapsed && (
             <ComposerChips composer={composer} className="px-0 pb-0" />
           )}
@@ -462,6 +504,14 @@ export function ComposerCard({
               <PlusSlot.Provider value={{ collapsed }}>
                 {plusNode}
               </PlusSlot.Provider>
+            )}
+            {!collapsed && composer.attached.length > 0 && (
+              <span
+                data-attach-footer
+                className="text-muted-foreground min-w-0 truncate text-[13px]"
+              >
+                {attachFooter(composer.attached)}
+              </span>
             )}
             <div
               className={cn(

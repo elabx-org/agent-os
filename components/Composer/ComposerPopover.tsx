@@ -4,6 +4,7 @@ import { useCallback, useRef, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { HistorySheet } from "./HistorySheet";
 import { PasteChip } from "./PasteChip";
+import { SessionSuggestions } from "./SessionSuggestions";
 import { SuggestionPopover } from "./SuggestionPopover";
 import type { ComposerEngine } from "./useComposer";
 import { usePopoverPlacement } from "./usePopoverPlacement";
@@ -54,6 +55,19 @@ export function ComposerPopover({ composer }: { composer: ComposerEngine }) {
         selected={composer.selected}
         onHover={composer.setSelected}
         onChoose={composer.choose}
+        tab={composer.atTab}
+        onTab={composer.setAtTab}
+        sessions={
+          <SessionSuggestions
+            id={composer.listboxId}
+            sessions={composer.attachable}
+            attachedIds={composer.attached.map((a) => a.sessionId)}
+            selected={composer.selected}
+            onHover={composer.setSelected}
+            onToggle={composer.attachSession}
+            loading={composer.attachableLoading}
+          />
+        }
       />
     );
 
