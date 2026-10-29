@@ -6,7 +6,12 @@
  * paused (handed-off) chat stays readable.
  */
 
+import os from "os";
+import path from "path";
 import type { Session } from "./db";
+import { findTranscript, transcriptFileFor } from "./claude-transcript";
+import { isPaused } from "./handoff-types";
+import { tmuxNameOf } from "./session-launch";
 
 export interface LocatedTranscript {
   sessionId: string;
@@ -15,8 +20,35 @@ export interface LocatedTranscript {
   cwd: string;
 }
 
+const CLAUDE_SESSION_ID = /^[0-9a-f-]{36}$/;
+
+/** "~" and "~/…" against the home folder */
+export function expandHome(dir: string): string {
+  if (dir === "~") return os.homedir();
+  if (dir.startsWith("~/")) return path.join(os.homedir(), dir.slice(2));
+  return dir;
+}
+
+/** The folder the session works in: its worktree, else its directory */
+export function sessionCwd(
+  session: Pick<Session, "worktree_path" | "working_directory">
+): string {
+  return expandHome(session.worktree_path || session.working_directory || "~");
+}
+
 export async function locateTranscript(
-  _session: Session
+  session: Session
 ): Promise<LocatedTranscript | null> {
-  return null; // M4 U1
+  if ((session.agent_type || "claude") !== "claude") return null;
+
+  // A paused session's tmux has ended: no pane to ask
+  if (!isPaused(session)) {
+    const live = await findTranscript(tmuxNameOf(session));
+    if (live) return live;
+  }
+
+  const sessionId = session.claude_session_id;
+  if (!sessionId || !CLAUDE_SESSION_ID.test(sessionId)) return null;
+  const cwd = sessionCwd(session);
+  return { sessionId, file: transcriptFileFor(sessionId, cwd), cwd };
 }

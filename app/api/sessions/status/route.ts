@@ -12,6 +12,7 @@ import {
   getSessionIdFromName,
 } from "@/lib/providers/registry";
 import { getDb } from "@/lib/db";
+import { projectDirFor } from "@/lib/claude-transcript";
 
 const execAsync = promisify(exec);
 
@@ -73,7 +74,7 @@ async function getClaudeSessionIdFromEnv(
 function getClaudeSessionIdFromFiles(projectPath: string): string | null {
   const home = os.homedir();
   const claudeDir = process.env.CLAUDE_CONFIG_DIR || path.join(home, ".claude");
-  const projectDirName = projectPath.replace(/\//g, "-");
+  const projectDirName = projectDirFor(projectPath);
   const projectDir = path.join(claudeDir, "projects", projectDirName);
 
   if (!fs.existsSync(projectDir)) {
