@@ -55,7 +55,7 @@ export function ModelChip({
       aria-expanded={open}
       aria-label={`Agent and model: ${label.replace(" · ", ", ")}`}
       className={cn(
-        "chip hover:text-foreground relative min-w-0 shrink pr-2.5 pl-1.5 transition-shadow",
+        "chip hover:text-foreground relative min-w-[64px] shrink pr-2.5 pl-1.5 transition-shadow",
         // A 44pt touch around the 30px chip
         "after:absolute after:inset-x-0 after:-inset-y-[7px] after:content-['']",
         open && "text-foreground shadow-[0_0_0_1.5px_hsl(var(--meter))]",

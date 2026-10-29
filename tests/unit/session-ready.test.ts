@@ -5,11 +5,13 @@ import path from "node:path";
 import {
   classifyScreen,
   inputText,
+  readiness,
   stripAnsi,
   type Readiness,
   type ScreenInput,
 } from "../../lib/session-ready";
 import type { HoldReason } from "../../lib/queue/types";
+import type { Session } from "../../lib/db";
 
 const FIXTURES = path.join(__dirname, "fixtures", "screens");
 
@@ -222,5 +224,19 @@ describe("inputText", () => {
 
   test("stripAnsi leaves the text", () => {
     assert.equal(stripAnsi("\x1b[7ma\x1b[27m\x1b[38;5;246mb\x1b[0m"), "ab");
+  });
+});
+
+describe("ended sessions", () => {
+  test("paused and settled are held before tmux is asked (M4, M8)", async () => {
+    const base = { id: "s-ended", agent_type: "claude" } as Session;
+    assert.deepEqual(await readiness({ ...base, paused_at: 1 }), {
+      ready: false,
+      holdReason: "paused",
+    });
+    assert.deepEqual(await readiness({ ...base, settled_at: 1 }), {
+      ready: false,
+      holdReason: "settled",
+    });
   });
 });

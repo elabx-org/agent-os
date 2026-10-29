@@ -46,7 +46,9 @@ export const mobileNavStore = proxy<{
   working: boolean;
   /** A sheet over the session other than Live activity (N-Undo M2,
       N-Switch M4, N-PermMode M7, N-Scripts M3) */
-  sheet: "undo" | "switch" | "permissions" | "scripts" | null;
+  sheet: "undo" | "switch" | "permissions" | "scripts" | "move" | null;
+  /** What the move sheet can do now (lib/column-spec.ts sheetAction) */
+  sheetAction: "move" | "cancel" | "none";
   /** Agents the focused session started (its tree's total): the column's Agents item */
   agentCount: number;
   /**
@@ -72,6 +74,7 @@ export const mobileNavStore = proxy<{
   liveOpen: false,
   working: false,
   sheet: null,
+  sheetAction: "move",
   agentCount: 0,
   changesOpen: false,
   conversationView: "chat",

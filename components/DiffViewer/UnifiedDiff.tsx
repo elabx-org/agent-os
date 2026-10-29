@@ -1,10 +1,12 @@
 "use client";
 
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ParsedDiff, DiffLine } from "@/lib/diff-parser";
 import { diffBody, hunkLines, lineNumberOf, lineText } from "./diff-format";
+import { isSelected, type ReviewLineProps } from "./review-selection";
+import { ReviewGutter, SELECTED_LINE } from "./SplitDiff";
 
 interface UnifiedDiffProps {
   diff: ParsedDiff;
@@ -97,7 +99,7 @@ export function DiffCounts({
   );
 }
 
-interface DiffLinesProps {
+interface DiffLinesProps extends Partial<ReviewLineProps> {
   diff: ParsedDiff;
   wrap?: boolean;
   lineNumbers?: boolean;
@@ -114,8 +116,23 @@ export function DiffLines({
   wrap = false,
   lineNumbers = false,
   onLineClick,
+  path = "",
+  selection = null,
+  onLineHit,
+  renderAfter,
 }: DiffLinesProps) {
   const { caption, hunks } = diffBody(diff);
+  // M12's review: numbers are the tap targets, rows can follow a line
+  const review = !!(onLineHit || renderAfter);
+  const scroller = useRef<HTMLDivElement>(null);
+  const [viewWidth, setViewWidth] = useState<number>();
+  useEffect(() => {
+    const el = scroller.current;
+    if (!review || wrap || !el) return;
+    const observer = new ResizeObserver(() => setViewWidth(el.clientWidth));
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [review, wrap]);
   const lineClass = wrap && "whitespace-pre-wrap [overflow-wrap:anywhere]";
   const gutter = (n: number | null) =>
     lineNumbers && (
@@ -125,7 +142,10 @@ export function DiffLines({
     );
 
   return (
-    <div className={wrap ? undefined : "overflow-x-auto overscroll-x-contain"}>
+    <div
+      ref={scroller}
+      className={wrap ? undefined : "overflow-x-auto overscroll-x-contain"}
+    >
       <div className={cn("mini-diff", wrap ? "w-full" : "w-max min-w-full")}>
         {caption && <div className={cn("dl-ctx", lineClass)}>{caption}</div>}
         {hunks &&
@@ -133,11 +153,56 @@ export function DiffLines({
             <Fragment key={h}>
               {/* The @@ line stays one line even when the code wraps */}
               <div className={cn("dl-ctx", wrap && "truncate")}>
-                {gutter(null)}
+                {(lineNumbers || review) && (
+                  <span className="mr-3 inline-block w-7" />
+                )}
                 {hunk.header}
               </div>
               {hunkLines(hunk).map((line, i) => {
                 const cls = cn(lineTone(line.type), lineClass);
+                if (review) {
+                  const selected = isSelected(selection, path, line);
+                  const after = renderAfter?.(line, h);
+                  return (
+                    <Fragment key={i}>
+                      <div
+                        className={cn(
+                          cls,
+                          // Wrapped code hangs past the number, not under it
+                          wrap && "flex items-start",
+                          selected && SELECTED_LINE
+                        )}
+                      >
+                        <ReviewGutter
+                          path={path}
+                          line={line}
+                          selected={selected}
+                          onLineHit={
+                            onLineHit &&
+                            ((hit) => onLineHit({ ...hit, hunkIndex: h }))
+                          }
+                          className="mr-3"
+                        />
+                        {wrap ? (
+                          <span className="min-w-0 flex-1">
+                            {lineText(line)}
+                          </span>
+                        ) : (
+                          lineText(line)
+                        )}
+                      </div>
+                      {after && (
+                        // Under the line at the visible width, however far it scrolled
+                        <div
+                          className="sticky left-0 !px-0 !whitespace-normal"
+                          style={viewWidth ? { width: viewWidth } : undefined}
+                        >
+                          {after}
+                        </div>
+                      )}
+                    </Fragment>
+                  );
+                }
                 const body = (
                   <>
                     {gutter(lineNumberOf(line))}

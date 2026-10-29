@@ -3,7 +3,7 @@ import { useBackgroundAgentsByProject } from "@/components/BackgroundAgents";
 import { useNeedsYou } from "@/hooks/useNeedsYou";
 import { useRunningSubagents } from "@/hooks/useRunningSubagents";
 import type { SessionSubagent } from "@/hooks/useRunningSubagents";
-import { useSessionTitles } from "@/hooks/useSessionTitles";
+import { displayTitle, useSessionTitles } from "@/hooks/useSessionTitles";
 import { agentName } from "@/components/a/Avatar";
 import { useDevServersQuery } from "@/data/dev-servers";
 import { useProjectsQuery } from "@/data/projects";
@@ -16,6 +16,15 @@ import { isPaused } from "@/lib/handoff-types";
 import { sortQuietSessions } from "./now-summary";
 import { limitedSessions } from "@/components/Chat/limited-model";
 import { useLimitClock } from "@/hooks/useSessionLimit";
+import { usePendingRemoval } from "@/stores/pendingRemoval";
+import {
+  doneTodayItems,
+  settledTodayList,
+  withPendingSettles,
+  type DoneItem,
+} from "./settle-model";
+import { useWorktreeMoves } from "@/hooks/useWorktreeMove";
+import { nowMoveLine } from "@/components/Session/move-sheet-model";
 
 export interface AgentGroup {
   key: string;
@@ -23,14 +32,8 @@ export interface AgentGroup {
   agents: BackgroundAgent[];
 }
 
-/** A finished piece of work for the "Done today" row (M8 fills these) */
-export interface DoneTodayItem {
-  sessionId: string;
-  title: string;
-  prNumber?: number;
-  /** epoch ms */
-  at: number;
-}
+/** A finished piece of work for the "Done today" rows: a settled session */
+export type DoneTodayItem = DoneItem;
 
 export interface NowItems {
   /** Waiting sessions plus blocked agents: the hero's number */
@@ -47,7 +50,8 @@ export interface NowItems {
   /** Projects with nothing waiting or working, most recently used first */
   quiet: ProjectWithRepositories[];
   /** Idle sessions outside every project, most recent first, the paused
-      (handed-off) ones last: no quiet project lists them */
+      (handed-off) then settled ones last: no quiet project lists them.
+      Those settled today are under Settled instead */
   loose: Session[];
   /** Agents outside every project that are neither blocked nor working */
   elsewhere: BackgroundAgent[];
@@ -56,17 +60,16 @@ export interface NowItems {
    * goes (limitView): oldest limit first
    */
   limited: Session[];
-  /** Settled today (M8 fills it) */
+  /** Settled today, swiped ones at once, newest first */
   settled: Session[];
-  /** The "Done today" row, hidden while empty (M8 fills it) */
+  /** The settled ones as "Done today" rows (wide), hidden while empty */
   doneToday: DoneTodayItem[];
   titles: Record<string, string>;
   /** Paused sessions' sublines by id: "Handed off to Codex" */
   handoffs: Record<string, string>;
+  /** Sessions with a move into a worktree (M5): "Moving…", "Move failed" */
+  moves: Record<string, string>;
 }
-
-const EMPTY_SESSIONS: Session[] = [];
-const EMPTY_DONE: DoneTodayItem[] = [];
 
 const EMPTY_PROJECTS: ProjectWithRepositories[] = [];
 const EMPTY_SERVERS: DevServer[] = [];
@@ -76,9 +79,15 @@ const EMPTY_SERVERS: DevServer[] = [];
  * subagents, background agents, dev servers) and the projects left quiet.
  */
 export function useNowItems(
-  sessions: Session[],
+  listed: Session[],
   statuses: Record<string, SessionStatus>
 ): NowItems {
+  // A swiped session is settled at once; the settle goes after its Undo
+  const { settles } = usePendingRemoval();
+  const sessions = useMemo(
+    () => withPendingSettles(listed, settles),
+    [listed, settles]
+  );
   const projects = useProjectsQuery().data ?? EMPTY_PROJECTS;
   const servers = useDevServersQuery().data ?? EMPTY_SERVERS;
   // A paused (handed-off) session never needs you nor works: its tmux ended
@@ -86,6 +95,7 @@ export function useNowItems(
   // What needs you is defined once, so the hero matches the column badge
   const needs = useNeedsYou(active, statuses);
   const { agents, waiting } = needs;
+  const moveStates = useWorktreeMoves();
   const agentsByProject = useBackgroundAgentsByProject(projects);
 
   // Limited until the reset passes: the clock moves on then
@@ -112,10 +122,12 @@ export function useNowItems(
           (s) =>
             !s.conductor_session_id &&
             !limitedIds.has(s.id) &&
-            statuses[s.id]?.status === "running"
+            // Mid-move its agent restarts: it keeps its place in Working
+            (statuses[s.id]?.status === "running" ||
+              moveStates[s.id]?.phase === "moving")
         )
         .sort((a, b) => b.updated_at.localeCompare(a.updated_at)),
-    [active, statuses, limitedIds]
+    [active, statuses, limitedIds, moveStates]
   );
 
   // Only sessions that are doing something can have subagents running
@@ -124,7 +136,11 @@ export function useNowItems(
     [waiting, running, limited]
   );
   const subagents = useRunningSubagents(live);
-  const titles = useSessionTitles(live);
+  const settled = useMemo(
+    () => settledTodayList(sessions, Date.now()),
+    [sessions]
+  );
+  const titles = useSessionTitles([...live, ...settled.map((s) => s.id)]);
 
   // The by-project map is new each render, so the rest isn't memoised
   const projectName = new Map(projects.map((p) => [p.id, p.name]));
@@ -197,18 +213,26 @@ export function useNowItems(
   const uncategorized = new Set(
     projects.filter((p) => p.is_uncategorized).map((p) => p.id)
   );
+  // Those settled today are under Settled instead
+  const settledIds = new Set(settled.map((s) => s.id));
   const loose = sortQuietSessions(
     sessions.filter(
       (s) =>
         !s.conductor_session_id &&
         !byId.has(s.id) &&
         !limitedIds.has(s.id) &&
+        !settledIds.has(s.id) &&
         (!s.project_id || uncategorized.has(s.project_id))
     )
   );
   const handoffs: Record<string, string> = {};
   for (const s of sessions)
     if (isPaused(s)) handoffs[s.id] = handedOffLine(s, sessions, agentName);
+  const moves: Record<string, string> = {};
+  for (const [id, state] of Object.entries(moveStates)) {
+    const line = nowMoveLine(state);
+    if (line) moves[id] = line;
+  }
 
   return {
     needsCount: needs.count,
@@ -229,9 +253,10 @@ export function useNowItems(
     loose,
     elsewhere,
     limited,
-    settled: EMPTY_SESSIONS,
-    doneToday: EMPTY_DONE,
+    settled,
+    doneToday: doneTodayItems(settled, (s) => displayTitle(s, titles).title),
     titles,
     handoffs,
+    moves,
   };
 }

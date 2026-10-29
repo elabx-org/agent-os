@@ -3,13 +3,20 @@
 import { Fragment, useEffect, useState } from "react";
 import { useSnapshot } from "valtio";
 import { cn } from "@/lib/utils";
-import type { ColumnItem as Item } from "@/lib/column-spec";
+import {
+  columnKindFor,
+  moreItems,
+  type ColumnItem as Item,
+  type ColumnOrder,
+} from "@/lib/column-spec";
+import { columnOrderStore } from "@/stores/columnOrder";
 import { MORE_EVENT, runNav, type NavAction } from "@/lib/nav-actions";
 import { isMacLike, shortcutKey } from "@/hooks/useViewShortcuts";
 import { useLayoutMode } from "@/hooks/useLayoutMode";
 import { mobileNavStore } from "@/stores/mobileNav";
 import { focusStore } from "@/stores/focus";
 import { gitMenuStore } from "@/stores/gitMenu";
+import { moveSheetStore, openMoveSheet } from "@/stores/moveSheet";
 import { useSurface } from "@/stores/surface";
 import {
   DropdownMenu,
@@ -99,6 +106,9 @@ type MoreProps = Omit<
   "onClick" | "ref"
 >;
 
+/** What More lists anyway, so a column that leaves them out doesn't add them twice */
+const LISTED: NavAction[] = ["inbox", "beside", "projects", "settings"];
+
 /**
  * ⋯: what the surface's column has no room for. Also opened by
  * runNav("more") (navStore.openMore's MORE_EVENT)
@@ -112,12 +122,21 @@ function MoreMenu(props: MoreProps) {
   }, []);
   const surface = useSurface();
   const mode = useLayoutMode();
-  const { needsYou, liveOpen } = useSnapshot(mobileNavStore);
+  const { needsYou, liveOpen, viewMode } = useSnapshot(mobileNavStore);
   const { on: focus } = useSnapshot(focusStore);
   const { actions: git } = useSnapshot(gitMenuStore);
+  const { offer: movable } = useSnapshot(moveSheetStore);
   const inSession = surface === "session" || surface === "beside";
   const wide = mode === "duo-open" || mode === "book" || mode === "desktop";
   const go = (action: NavAction) => () => runNav(action);
+  // What the person took out of this column; the menu already lists some
+  const { order } = useSnapshot(columnOrderStore);
+  const kind = columnKindFor(surface, mode);
+  const takenOut = kind
+    ? moreItems(kind, order as ColumnOrder, viewMode).filter(
+        (it) => !LISTED.includes(it.id)
+      )
+    : [];
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger asChild>
@@ -169,6 +188,12 @@ function MoreMenu(props: MoreProps) {
         {inSession && (
           <DropdownMenuItem onSelect={go("scripts")}>Scripts</DropdownMenuItem>
         )}
+        {/* Over a session, or beside Now on a wide screen */}
+        {movable && (inSession || (surface === "now" && wide)) && (
+          <DropdownMenuItem onSelect={() => openMoveSheet(movable)}>
+            Move to a worktree
+          </DropdownMenuItem>
+        )}
         {/* A session's column has no Find of its own (M11) */}
         {inSession && (
           <DropdownMenuItem onSelect={go("search")}>Find</DropdownMenuItem>
@@ -178,6 +203,11 @@ function MoreMenu(props: MoreProps) {
             Open beside
           </DropdownMenuItem>
         )}
+        {takenOut.map((it) => (
+          <DropdownMenuItem key={it.id} onSelect={go(it.id)}>
+            {it.label}
+          </DropdownMenuItem>
+        ))}
         <DropdownMenuItem onSelect={go("projects")}>Projects</DropdownMenuItem>
         <DropdownMenuItem onSelect={go("settings")}>Settings</DropdownMenuItem>
         <DropdownMenuSeparator />

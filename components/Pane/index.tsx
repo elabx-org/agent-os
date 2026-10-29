@@ -18,6 +18,7 @@ import { canonicalViewMode } from "@/lib/agent-views";
 import { useFileEditor } from "@/hooks/useFileEditor";
 import { SessionTitleBar } from "./SessionTitleBar";
 import { SendMenuDim } from "@/components/Composer/SendMenuDim";
+import { MoveToWorktreeSheetHost } from "@/components/Session/MoveToWorktreeSheet";
 import { DesktopTabBar } from "./DesktopTabBar";
 import {
   TerminalSkeleton,
@@ -46,7 +47,7 @@ import {
 import { useFlag } from "@/hooks/useFlags";
 import { usePaneChrome } from "@/components/Session/usePaneChrome";
 import { takePaneLaunch } from "@/stores/beside";
-import { isPaused } from "@/lib/handoff-types";
+import { isEnded } from "@/lib/settle-types";
 import { ActivityStrip } from "@/components/Session/ActivityStrip";
 import { isNative } from "@/lib/native-bridge";
 import { useSharedFiles } from "@/hooks/useSharedFiles";
@@ -164,8 +165,9 @@ export const Pane = memo(function Pane({
   const session = activeTab
     ? sessions.find((s) => s.id === activeTab.sessionId)
     : null;
-  // Handed off (M4): no terminal to attach or launch, its chat stays
-  const sessionPaused = isPaused(session);
+  // Handed off (M4) or settled (M8): no terminal to attach or launch, its
+  // chat stays
+  const sessionPaused = isEnded(session);
   // M3: a script for this session's shell drawer opens it
   const terminalRun = useTerminalRunRequest(session?.id);
   useEffect(() => {
@@ -230,7 +232,7 @@ export const Pane = memo(function Pane({
     // Each session opens in the view you last used there, else chat for
     // Claude (flag chatDefault) or the terminal
     const next = session
-      ? isPaused(session)
+      ? isEnded(session)
         ? "chat"
         : openingView(session.id, session.agent_type, chatDefault)
       : "terminal";
@@ -257,7 +259,8 @@ export const Pane = memo(function Pane({
     setViewMode((mode) => (mode === "chat" ? "terminal" : mode));
   }, [setViewMode, sessionPaused]);
 
-  // Handed off while showing here: its terminal ended, its chat stays
+  // Handed off or settled while showing here: its terminal ended, its chat
+  // stays
   const wasPaused = useRef(sessionPaused);
   useEffect(() => {
     if (sessionPaused && !wasPaused.current) {
@@ -422,9 +425,9 @@ export const Pane = memo(function Pane({
       }
       initializedTabs.current.add(tab.id);
 
-      // A paused (handed-off) session's tmux ended: nothing to attach, and
-      // never a launch
-      if (isPaused(sessions.find((s) => s.id === tab.sessionId))) return;
+      // A paused (handed-off) or settled session's tmux ended: nothing to
+      // attach, and never a launch
+      if (isEnded(sessions.find((s) => s.id === tab.sessionId))) return;
 
       // Determine tmux session name to attach
       const tmuxName = tab.sessionId
@@ -555,6 +558,8 @@ export const Pane = memo(function Pane({
         onClose={() => close(paneId)}
       />
       )}
+      {/* Here, not in the header: Changes and Files on the Duo have none */}
+      {session && <MoveToWorktreeSheetHost session={session} />}
       {showStrip && session && <ActivityStrip session={session} />}
 
       {/* Content Area - Mobile: simple flex, Desktop: resizable panels */}

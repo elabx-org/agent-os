@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { CirclePause, Loader2 } from "lucide-react";
 import { Avatar, agentAvatar, agentName } from "@/components/a/Avatar";
 import { confirmAction } from "@/components/ui/confirm";
+import { showSession } from "@/components/Session/settle-action";
 import { useSessionsQuery } from "@/data/sessions/queries";
 import { HandoffRequestError, useHandoff } from "@/hooks/useHandoff";
 import { displayTitle, useListTitles } from "@/hooks/useSessionTitles";
@@ -26,13 +27,6 @@ export interface PausedBarProps {
 }
 
 const NO_SESSIONS: Session[] = [];
-
-/** The page attaches a session sent this way (lib/restart-session.ts) */
-function showSession(session: Session) {
-  window.dispatchEvent(
-    new CustomEvent("agentos-session-restarted", { detail: { session } })
-  );
-}
 
 export function PausedBar({
   session,

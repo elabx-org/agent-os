@@ -56,6 +56,7 @@ import type { EnqueueResult, QueueItem } from "./queue/types";
 import { readiness, type Readiness } from "./session-ready";
 import { clearHandingOff, markHandingOff } from "./handing-off";
 import { savePausedHistory } from "./paused-history";
+import { isSettled } from "./settle-types";
 import { isRunning, launchSession, tmuxNameOf } from "./session-launch";
 import { forgetSessionSummary } from "./session-summaries";
 import { buildSummary } from "./summarize";
@@ -394,6 +395,10 @@ export function createHandoff(deps: HandoffDeps) {
     }
     if (isPaused(source)) {
       throw new HandoffRefused(409, { error: "Already handed off" });
+    }
+    // Settled (M8): its tmux ended; Resume it first
+    if (isSettled(source)) {
+      throw new HandoffRefused(409, { error: "This session is settled" });
     }
     if (inFlight.has(source.id)) {
       throw new HandoffRefused(409, {

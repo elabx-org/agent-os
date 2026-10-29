@@ -15,6 +15,7 @@ import { beforeAgentSend } from "../turns";
 import { limitStore } from "../limits/store";
 import { markResumed } from "../limits/watch";
 import { wentOnSince } from "../limits/went-on";
+import { clearMoving, markMoving } from "../worktree-moving";
 import { composeOutgoing, resolveAttachmentBlock } from "../session-attach";
 import { queueStore, type NewQueueItem, type QueueStore } from "./store";
 import {
@@ -76,6 +77,12 @@ export interface DispatcherDeps {
    * queued send; its failure never holds the send back
    */
   applyPendingMode?(session: Session): Promise<unknown>;
+  /**
+   * Runs a claimed `kind='move'` item (M5, lib/worktree-move.ts
+   * runScheduledMove) instead of typing it in; goes with or without the
+   * queue flag. Throws when the move failed. Absent: move items wait
+   */
+  runMove?(session: Session, item: QueueItem): Promise<void>;
   /**
    * The attached sessions' block (M9), resolved right before the item is
    * typed in. Absent: items go without it
@@ -213,6 +220,9 @@ export function createDispatcher(
    */
   async function service(sessionId: string): Promise<void> {
     if (state.locks.has(sessionId)) return;
+    // A claimed move runs after the lock is let go: it holds the session
+    // itself (readiness "moving"), so a send now isn't kept waiting on it
+    const started: { move?: Promise<void> } = {};
     await withLock(sessionId, async () => {
       const session = deps.getSession(sessionId);
       if (!session) return;
@@ -229,10 +239,22 @@ export function createDispatcher(
         head = store.head(sessionId);
         if (!head) return;
       }
-      // A resume left here may go (the user's, or autoResume is on)
-      const on = head.kind === "resume" || deps.queueOn(sessionId);
+      // A move without its runner waits (tests, or a copy without it)
+      if (head.kind === "move" && !deps.runMove) return;
+      // A resume left here may go (the user's, or autoResume is on); a
+      // scheduled move goes with or without the queue
+      const on =
+        head.kind === "resume" ||
+        head.kind === "move" ||
+        deps.queueOn(sessionId);
       if (!on) return;
-      if (head.notBefore !== null && head.notBefore > deps.now()) return;
+      // A move's notBefore only holds builds without M5 (store MOVE_HOLD)
+      if (
+        head.kind !== "move" &&
+        head.notBefore !== null &&
+        head.notBefore > deps.now()
+      )
+        return;
       if (
         head.kind === "resume" &&
         head.origin === "system" &&
@@ -247,9 +269,43 @@ export function createDispatcher(
 
       const item = store.claimNext(sessionId, deps.now());
       if (!item) return;
+      if (item.kind === "move") {
+        started.move = runMove(session, item);
+        return;
+      }
       const sent = await deliver(session, item);
       if (sent && item.kind === "resume") deps.resumed?.(session);
     });
+    // Not awaited: a move may take a minute or more, and the 2s re-check
+    // waits for every service() call. The move holds its session itself
+    void started.move;
+  }
+
+  /**
+   * A claimed move (M5): never typed in, no undo notice, snapshot or
+   * pending mode. runMove holds the session from its first (synchronous)
+   * step, so it is started under the lock. Sent when moved, failed (with
+   * why) when it was rolled back
+   */
+  function runMove(session: Session, item: QueueItem): Promise<void> {
+    let running: Promise<void>;
+    try {
+      running = deps.runMove!(session, item);
+    } catch (error) {
+      running = Promise.reject(error);
+    }
+    return running
+      .then(
+        () => {
+          store.markSent(session.id, item.id);
+        },
+        (error) => {
+          const why = error instanceof Error ? error.message : String(error);
+          store.markFailed(session.id, item.id, why);
+          console.error("[queue] move:", why);
+        }
+      )
+      .catch((error) => console.error("[queue] move:", error));
   }
 
   /**
@@ -378,11 +434,29 @@ function dispatcher(): Dispatcher {
       },
       applyPendingMode: async (session) =>
         getFlag("modeAtIdle") ? applyPendingMode(session) : null,
+      runMove: (session, item) => {
+        // Held before anything yields (see runMove above); the move clears it
+        markMoving(session.id);
+        return loadMove().then(
+          (m) => m.runScheduledMove(session, item),
+          (error) => {
+            clearMoving(session.id);
+            throw error;
+          }
+        );
+      },
       attachmentBlock: (session, item) =>
         resolveAttachmentBlock(session.id, item.sessions),
     },
     shared.__agentosDispatch.state
   );
+}
+
+// Loaded when first needed: lib/worktree-move.ts imports this module
+type MoveModule = typeof import("../worktree-move");
+let moveModule: MoveModule | null = null;
+async function loadMove(): Promise<MoveModule> {
+  return (moveModule ??= await import("../worktree-move"));
 }
 
 let instance: Dispatcher | null = null;
@@ -396,6 +470,14 @@ export function startDispatcher(): void {
 
   const failed = queueStore().failInterrupted();
   if (failed) console.log(`[queue] ${failed} item(s) cut off by a restart`);
+  // A move cut off mid-way: failed, and its source checked (M5)
+  const moves = queueStore().failInterruptedMoves();
+  if (moves.length) {
+    console.log(`[queue] ${moves.length} move(s) cut off by a restart`);
+    loadMove()
+      .then((m) => Promise.all(moves.map((item) => m.recoverMove(item))))
+      .catch((error) => console.error("[queue] recovering a move:", error));
+  }
   onEdge((edge) => live().handleEdge(edge));
   let busy = false;
   setInterval(async () => {

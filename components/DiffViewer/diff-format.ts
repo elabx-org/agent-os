@@ -102,3 +102,11 @@ export function lineText(line: DiffLine): string {
 export function lineNumberOf(line: DiffLine): number | null {
   return line.type === "deletion" ? line.oldLineNumber : line.newLineNumber;
 }
+
+/** The path a file's diff is about: a deleted file keeps its old name */
+export function diffPath(diff: ParsedDiff): string {
+  const real = (p: string) => (p && p !== "/dev/null" ? p : "");
+  return diff.isDeleted
+    ? real(diff.oldFile) || real(diff.newFile)
+    : real(diff.newFile) || real(diff.oldFile);
+}

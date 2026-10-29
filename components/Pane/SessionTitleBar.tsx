@@ -9,6 +9,7 @@ import {
   MoreHorizontal,
   Workflow,
   GitBranch,
+  GitBranchPlus,
   SquareTerminal,
   Copy,
   Unplug,
@@ -26,6 +27,7 @@ import {
   ArrowRightLeft,
   Play,
   MessageSquare,
+  CircleCheck,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -56,7 +58,10 @@ import {
   STATE_WORD,
 } from "@/lib/agent-state";
 import { sessionState } from "@/lib/paused";
-import { isPaused } from "@/lib/handoff-types";
+import { isEnded, sessionPr, wantsSettleChip } from "@/lib/settle-types";
+import { canSettle } from "@/lib/settle-views";
+import { useSettleActions } from "@/components/Session/settle-action";
+import { PrChip } from "@/components/a/PrChip";
 import { useGitStatus } from "@/data/git/queries";
 import {
   Crumb,
@@ -78,6 +83,8 @@ import {
 import { PermissionSheetHost } from "@/components/Session/PermissionSheet";
 import { bgSendStore } from "@/stores/bgSend";
 import { isAutoSessionName } from "@/lib/session-names";
+import { useCanOfferMove } from "@/hooks/useWorktreeMove";
+import { openMoveSheet } from "@/stores/moveSheet";
 
 interface SessionTitleBarProps {
   session: Session | null | undefined;
@@ -164,9 +171,14 @@ export function SessionTitleBar({
     useSpreadPanes()?.mode === "fold" && !!session && besidePills();
   const titles = useListTitles(session ? [session] : []);
   const { copy } = useCopyToClipboard();
+  // N-Settle: end its tmux, keep its chat (⋯ Settle, the PR chip's Settle)
+  const { settle } = useSettleActions();
+  const pr = session ? sessionPr(session) : null;
   // N-Switch: the header's model chip (or ⋯ where it has no room) opens it
   const [switchOpen, setSwitchOpen] = useState(false);
   const switchable = canSwitch(session);
+  // N-Worktree: git folders, not paused, shell or already in a worktree
+  const movable = useCanOfferMove(session);
   const switcher = useMemo(
     () => ({ open: switchOpen, onOpen: () => setSwitchOpen(true) }),
     [switchOpen]
@@ -364,6 +376,13 @@ export function SessionTitleBar({
                 Agent and model
               </DropdownMenuItem>
             )}
+            {/* No chip to reach it from: every new header has it here */}
+            {movable && variant !== "desktop" && (
+              <DropdownMenuItem onSelect={() => openMoveSheet(session.id)}>
+                <GitBranchPlus className="h-4 w-4" />
+                Move to a worktree
+              </DropdownMenuItem>
+            )}
             {variant === "card" && (
               <>
                 {/* No rail beside two panes, nor a strip under them */}
@@ -459,6 +478,20 @@ export function SessionTitleBar({
               Agent and model
             </DropdownMenuItem>
           )}
+        {session && canSettle(session) && (
+          <DropdownMenuItem onSelect={() => void settle(session, title)}>
+            <CircleCheck className="h-4 w-4" />
+            Settle
+          </DropdownMenuItem>
+        )}
+        {session &&
+          movable &&
+          (variant === "classic" || variant === "desktop") && (
+            <DropdownMenuItem onSelect={() => openMoveSheet(session.id)}>
+              <GitBranchPlus className="h-4 w-4" />
+              Move to a worktree
+            </DropdownMenuItem>
+          )}
         {session && (
           <DropdownMenuItem
             onSelect={async () => {
@@ -529,8 +562,21 @@ export function SessionTitleBar({
                   className="max-w-[220px] @max-[640px]/bar:hidden"
                 />
               )}
-              {/* Handed off: no running agent to set a mode on */}
-              {!isPaused(info.session) && (
+              {/* The branch's PR; merged and still running, Settle */}
+              {pr && (
+                <PrChip
+                  pr={pr}
+                  baseBranch={info.session.base_branch}
+                  onSettle={
+                    wantsSettleChip(info.session)
+                      ? () => void settle(info.session, info.title)
+                      : undefined
+                  }
+                  className="shrink-0 self-center @max-[900px]/bar:hidden"
+                />
+              )}
+              {/* Handed off or settled: no running agent to set a mode on */}
+              {!isEnded(info.session) && (
                 <PermissionChip
                   session={info.session}
                   variant="header"
@@ -589,7 +635,7 @@ export function SessionTitleBar({
     header = (
       <div
         className={cn(
-          "native-top-inset kb-compact-hide border-border/60 bg-background @container/bar flex items-center gap-1.5 border-b py-1.5 pr-[calc(0.5rem+var(--safe-right,env(safe-area-inset-right)))] pl-[calc(0.25rem+env(safe-area-inset-left))]",
+          "native-top-inset kb-compact-hide border-border/60 bg-background @container/bar flex flex-wrap items-center gap-1.5 border-b py-1.5 pr-[calc(0.5rem+var(--safe-right,env(safe-area-inset-right)))] pl-[calc(0.25rem+env(safe-area-inset-left))]",
           wide && !isFocused && "opacity-70",
           hidden && "hidden"
         )}
@@ -658,6 +704,21 @@ export function SessionTitleBar({
           </button>
         )}
         {moreMenu}
+        {/* N-Settle: the branch's PR on its own line, under the title */}
+        {pr && session && (
+          <div className="flex basis-full pb-0.5 pl-[42px]">
+            <PrChip
+              pr={pr}
+              baseBranch={session.base_branch}
+              onSettle={
+                wantsSettleChip(session)
+                  ? () => void settle(session, title)
+                  : undefined
+              }
+              className="min-w-0"
+            />
+          </div>
+        )}
       </div>
     );
 

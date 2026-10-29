@@ -7,8 +7,13 @@ import type { DiffLine, ParsedDiff } from "@/lib/diff-parser";
 import { gitBadgeClass, type GitBadge } from "@/lib/git-types";
 import { DiffCounts, DiffLines } from "./UnifiedDiff";
 import { splitPath } from "./diff-format";
+import { SplitDiff } from "./SplitDiff";
+import type { DiffLayout, ReviewLineProps } from "./review-selection";
 
-export interface FileDiffCardProps {
+export interface FileDiffCardProps extends Omit<
+  Partial<ReviewLineProps>,
+  "path"
+> {
   /** One file's parsed diff */
   diff: ParsedDiff;
   /** Repo-relative path: the header shows its name, the folder under it */
@@ -24,6 +29,8 @@ export interface FileDiffCardProps {
   actions?: ReactNode;
   /** A tap on a line, for M12's line comments; lines are not tappable without it */
   onLineClick?: (line: DiffLine, hunkIndex: number) => void;
+  /** M12's desktop review: side by side (SplitDiff) instead of unified */
+  layout?: DiffLayout;
   className?: string;
 }
 
@@ -42,6 +49,10 @@ export function FileDiffCard({
   wrap,
   actions,
   onLineClick,
+  selection,
+  onLineHit,
+  renderAfter,
+  layout = "unified",
   className,
 }: FileDiffCardProps) {
   const [ownExpanded, setOwnExpanded] = useState(defaultExpanded);
@@ -104,7 +115,26 @@ export function FileDiffCard({
           )}
         </button>
       </div>
-      {open && <DiffLines diff={diff} wrap={wrap} onLineClick={onLineClick} />}
+      {open &&
+        (layout === "split" ? (
+          <SplitDiff
+            diff={diff}
+            path={path}
+            selection={selection}
+            onLineHit={onLineHit}
+            renderAfter={renderAfter}
+          />
+        ) : (
+          <DiffLines
+            diff={diff}
+            wrap={wrap}
+            onLineClick={onLineClick}
+            path={path}
+            selection={selection}
+            onLineHit={onLineHit}
+            renderAfter={renderAfter}
+          />
+        ))}
     </div>
   );
 }

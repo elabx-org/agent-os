@@ -10,6 +10,8 @@ import { startPushWatcher } from "./lib/push/watcher";
 import { startTickers } from "./lib/tickers";
 import { issueUserProof } from "./lib/user-proof";
 import { registerMcp } from "./lib/register-mcp";
+import { proxyRequest, proxyUpgrade } from "./lib/port-proxy";
+import { applyOriginGate, originGateRefusesUpgrade } from "./lib/origin-gate";
 import {
   authConfig,
   deny,
@@ -243,11 +245,14 @@ app.prepare().then(() => {
     try {
       const parsedUrl = parse(req.url!, true);
       const url = new URL(req.url!, "http://localhost");
+      if (await proxyRequest(req, res, url, "host")) return;
+      if (applyOriginGate(req, res)) return;
       if (await handleAuthRoute(req, res, url)) return;
       if (!isAllowed(req, url.pathname)) {
         deny(req, res);
         return;
       }
+      if (await proxyRequest(req, res, url, "path")) return;
       issueUserProof(req, res);
       await handle(req, res, parsedUrl);
     } catch (err) {
@@ -260,9 +265,11 @@ app.prepare().then(() => {
   const terminalWss = new WebSocketServer({ noServer: true });
 
   server.on("upgrade", (request, socket, head) => {
+    if (proxyUpgrade(request, socket, head, "host")) return;
     const parsed = parse(request.url || "", true);
+    if (proxyUpgrade(request, socket, head, "path")) return;
     // A terminal runs commands: signed in, and only from our own pages
-    if (!isAllowed(request, parsed.pathname || "/") || !isSameOrigin(request)) {
+    if (!isAllowed(request, parsed.pathname || "/") || !isSameOrigin(request) || originGateRefusesUpgrade(request)) {
       socket.write("HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n");
       socket.destroy();
       return;

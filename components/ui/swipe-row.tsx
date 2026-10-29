@@ -155,6 +155,8 @@ export function SwipeRow({
     <div
       ref={rowRef}
       data-swipe-row
+      // Rows hide what the open action replaces (a chevron)
+      data-swiped={offset !== 0 || undefined}
       className={cn("relative overflow-hidden rounded-md", className)}
     >
       {shown && (

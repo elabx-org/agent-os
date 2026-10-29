@@ -137,30 +137,33 @@ html.light {
   color-scheme: light;
 }
 
-/* Thin, quiet scrollbars in the theme's colours. Browsers with
-   scrollbar-color (Chrome, Firefox, Safari 26) use it; older WebKit falls
-   back to the pseudo-elements, which those browsers ignore once it's set. */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: hsl(var(--muted-foreground) / 0.35) transparent;
-}
-@supports not (scrollbar-color: auto) {
-  ::-webkit-scrollbar {
-    width: 10px;
-    height: 10px;
+/* Thin, quiet scrollbars in the theme's colours, where there's a mouse.
+   Browsers with scrollbar-color (Chrome, Firefox, Safari 26) use it; older
+   WebKit falls back to the pseudo-elements. Touch screens keep the system's
+   own indicators, which only show while scrolling: styled ones stay drawn */
+@media (pointer: fine) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--muted-foreground) / 0.35) transparent;
   }
-  ::-webkit-scrollbar-track,
-  ::-webkit-scrollbar-corner {
-    background: transparent;
-  }
-  ::-webkit-scrollbar-thumb {
-    background: hsl(var(--muted-foreground) / 0.3);
-    background-clip: content-box;
-    border: 3px solid transparent;
-    border-radius: 9999px;
-  }
-  ::-webkit-scrollbar-thumb:hover {
-    background-color: hsl(var(--muted-foreground) / 0.5);
+  @supports not (scrollbar-color: auto) {
+    ::-webkit-scrollbar {
+      width: 10px;
+      height: 10px;
+    }
+    ::-webkit-scrollbar-track,
+    ::-webkit-scrollbar-corner {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: hsl(var(--muted-foreground) / 0.3);
+      background-clip: content-box;
+      border: 3px solid transparent;
+      border-radius: 9999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background-color: hsl(var(--muted-foreground) / 0.5);
+    }
   }
 }
 
@@ -171,23 +174,6 @@ html.light {
 }
 .scrollbar-none::-webkit-scrollbar {
   display: none;
-}
-
-/* Thin scrollbar for xterm on mobile */
-@media (max-width: 768px) {
-  .xterm-viewport {
-    scrollbar-width: thin;
-  }
-  .xterm-viewport::-webkit-scrollbar {
-    width: 4px;
-  }
-  .xterm-viewport::-webkit-scrollbar-track {
-    background: transparent;
-  }
-  .xterm-viewport::-webkit-scrollbar-thumb {
-    background: hsl(var(--muted-foreground) / 0.3);
-    border-radius: 2px;
-  }
 }
 
 /* Safe area padding utilities */

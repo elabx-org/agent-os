@@ -66,10 +66,13 @@ export const surfaceStore = proxy<{
   /** The home (Now) is up: the phone's home layer, the Duo's left page or
       the web's sidebar (MobileView / SessionSpread) */
   home: boolean;
+  /** The focused pane holds a session: Now can go back to it */
+  behind: boolean;
 }>({
   paneCount: 1,
   searchOpen: false,
   home: false,
+  behind: false,
 });
 
 /**
@@ -85,12 +88,14 @@ export function setHome(open: boolean): void {
 export function useSurfaceSource(inputs: {
   paneCount: number;
   searchOpen: boolean;
+  behind: boolean;
 }): void {
-  const { paneCount, searchOpen } = inputs;
+  const { paneCount, searchOpen, behind } = inputs;
   useEffect(() => {
     surfaceStore.paneCount = paneCount;
     surfaceStore.searchOpen = searchOpen;
-  }, [paneCount, searchOpen]);
+    surfaceStore.behind = behind;
+  }, [paneCount, searchOpen, behind]);
 }
 
 interface SurfaceState {

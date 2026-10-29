@@ -34,6 +34,12 @@ import { focusStore } from "@/stores/focus";
 import { mobileNavStore } from "@/stores/mobileNav";
 import { ContextPanel } from "@/components/ReplyContext/ContextPanel";
 import { ChangesPage } from "@/components/Changes/ChangesPage";
+import { DiffReview } from "@/components/DiffViewer/DiffReview";
+import {
+  closeDiffReview,
+  diffReviewStore,
+  undoReviewTurn,
+} from "@/stores/diffReview";
 import { spreadLayout } from "./spread-layout";
 import { useReplyContext } from "@/hooks/useReplyContext";
 import {
@@ -234,6 +240,8 @@ export function SessionSpread({
   const hingeX = useHinge(duo && !fold);
   const { on: focus } = useSnapshot(focusStore);
   const { viewMode, liveOpen, changesOpen } = useSnapshot(mobileNavStore);
+  const { open: review } = useSnapshot(diffReviewStore);
+  const reviewOpen = !!review && review.sessionId === session?.id;
   const roomForRail = useMinWidth(RAIL_MIN_VIEWPORT);
 
   // Two pages either side of the fold: the left one's width, then the gap
@@ -263,6 +271,8 @@ export function SessionSpread({
     changesLeft,
     changesRoom,
     changesBeside,
+    reviewRoom,
+    reviewBeside,
     showRail,
     paneLeft,
     paneRight,
@@ -286,6 +296,7 @@ export function SessionSpread({
     railByDefault,
     changesOpen,
     roomForRail,
+    reviewOpen,
   });
   // Flat there's no gutter: the pages meet at the hinge
   const spreadStart = book ? book.start : hingeX;
@@ -309,6 +320,15 @@ export function SessionSpread({
       setReplyPage(replyId, false);
     };
   }, [replyId]);
+
+  // Where the review has room, the chat hands it here (stores/diffReview)
+  const roomFor = reviewRoom ? (session?.id ?? null) : null;
+  useEffect(() => {
+    diffReviewStore.room = roomFor;
+    return () => {
+      if (diffReviewStore.room === roomFor) diffReviewStore.room = null;
+    };
+  }, [roomFor]);
 
   useEffect(() => {
     mobileNavStore.railShown = showRail;
@@ -517,6 +537,25 @@ export function SessionSpread({
           sessionId={session.id}
           workingDirectory={folder}
           className="bg-page min-w-0 flex-1"
+        />
+      )}
+
+      {/* A turn's diff review: the right page (O-Diff), or beside the chat
+          on the desktop (D-Diff), the session header over the chat only */}
+      {reviewBeside && session && review && (
+        <DiffReview
+          key={`${session.id}:${review.turnNo}`}
+          session={session}
+          agentName="Claude"
+          initialScope={`turn:${review.turnNo}`}
+          placement="page"
+          onClose={closeDiffReview}
+          onUndoTurn={undoReviewTurn}
+          className={
+            pages
+              ? "bg-background min-w-0 flex-1"
+              : "bg-background border-border w-[min(60rem,60%)] flex-shrink-0 border-l"
+          }
         />
       )}
 

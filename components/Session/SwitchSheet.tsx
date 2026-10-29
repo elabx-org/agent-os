@@ -13,6 +13,7 @@ import {
   type HandoffAgent,
   type ModelSwitchResult,
 } from "@/lib/handoff-types";
+import { isSettled } from "@/lib/settle-types";
 import { cn } from "@/lib/utils";
 import { haptic } from "@/lib/haptics";
 import { registerNavHandlers } from "@/lib/nav-actions";
@@ -202,6 +203,7 @@ function SwitchBody({
     effortChanged,
     busy: !!preview?.busy,
     paused: isPaused(session),
+    settled: isSettled(session),
   });
   const caption = modelRowCaption({ source, picked: agent, pickedName });
   const disabled = sending || action.disabled;

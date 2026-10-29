@@ -149,11 +149,13 @@ export function switchAction(o: {
   /** From the preview: mid-turn */
   busy: boolean;
   paused: boolean;
+  /** Settled (M8): ended like a paused one */
+  settled?: boolean;
 }): SwitchAction {
-  if (o.paused)
+  if (o.paused || o.settled)
     return {
       kind: "none",
-      label: "Paused",
+      label: o.paused ? "Paused" : "Settled",
       disabled: true,
       note: "Resume this session to switch it",
     };

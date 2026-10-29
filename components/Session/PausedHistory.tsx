@@ -21,6 +21,7 @@ export function PausedHistory({ session }: { session: Session }) {
     staleTime: Infinity,
   });
   const name = agentName(session.agent_type);
+  const ended = session.settled_at ? "it settled" : "it was handed off";
 
   if (isLoading) {
     return (
@@ -32,14 +33,14 @@ export function PausedHistory({ session }: { session: Session }) {
   if (!data) {
     return (
       <p className="text-muted-foreground py-8 text-sm">
-        {name} keeps no conversation, and its terminal ended with the handoff.
+        {name} keeps no conversation, and its terminal ended when {ended}.
       </p>
     );
   }
   return (
     <div className="flex flex-col gap-2">
       <p className="text-muted-foreground text-[13px]">
-        {name}&apos;s terminal when it was handed off
+        {name}&apos;s terminal when {ended}
       </p>
       <pre className="term-blk overflow-x-auto text-[12px] break-words whitespace-pre-wrap">
         {data}

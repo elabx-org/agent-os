@@ -9,6 +9,7 @@ import { runInBackground } from "@/lib/async-operations";
 import { clearQueue } from "@/lib/queue/store";
 import { forgetSessionSummary } from "@/lib/session-summaries";
 import { pruneSessionTurns } from "@/lib/turns";
+import { reviewStore } from "@/lib/review-comments";
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -116,12 +117,20 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
   }
 }
 
-/** Its queued messages, turn rows and snapshot refs (in the background) */
+/**
+ * Its queued messages, review comments, turn rows and snapshot refs (in the
+ * background)
+ */
 function dropSessionData(session: Session) {
   try {
     clearQueue(session.id);
   } catch (error) {
     console.error(`Failed to clear the queue of ${session.id}:`, error);
+  }
+  try {
+    reviewStore().removeSession(session.id);
+  } catch (error) {
+    console.error(`Failed to drop the comments of ${session.id}:`, error);
   }
   try {
     forgetSessionSummary(session.id);

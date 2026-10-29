@@ -12,6 +12,8 @@ import { findAvailablePort } from "@/lib/ports";
 import { runInBackground } from "@/lib/async-operations";
 import { getProject } from "@/lib/projects";
 import { launchSession } from "@/lib/session-launch";
+import { filterSettled } from "@/lib/settle";
+import { parseSettledFilter } from "@/lib/settle-types";
 import {
   announceFullAccess,
   grantFullAccess,
@@ -20,10 +22,14 @@ import {
 import { capForAgent, normalizeMode } from "@/lib/permission-mode";
 
 // GET /api/sessions - List all sessions and groups
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const db = getDb();
-    const sessions = queries.getAllSessions(db).all() as Session[];
+    // ?settled=0|1|today (M8); no parameter lists them all
+    const sessions = filterSettled(
+      queries.getAllSessions(db).all() as Session[],
+      parseSettledFilter(request.nextUrl.searchParams.get("settled"))
+    );
     const groups = queries.getAllGroups(db).all() as Group[];
 
     // Convert expanded from 0/1 to boolean

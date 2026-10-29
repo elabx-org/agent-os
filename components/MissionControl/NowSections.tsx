@@ -1,19 +1,25 @@
 "use client";
 
-import { Check } from "lucide-react";
+import { useId, useState, type ReactNode } from "react";
+import { Check, ChevronRight } from "lucide-react";
 import { Avatar, agentAvatar } from "@/components/a/Avatar";
 import { GroupCard, GroupRow } from "@/components/a/GroupCard";
+import { PrChip } from "@/components/a/PrChip";
 import { SectionTitle } from "@/components/a/SectionTitle";
 import { StateDot } from "@/components/a/StateDot";
 import { openBackgroundAgent } from "@/components/BackgroundAgents";
 import { DevServerRow } from "@/components/DevServers/DevServerCard";
+import { SwipeRow } from "@/components/ui/swipe-row";
 import { LimitedCard, LimitedRow } from "@/components/Chat/LimitedCard";
 import { limitView } from "@/components/Chat/limited-model";
 import { askLabel, InboxItem } from "@/components/Inbox";
 import { PROMPT_POLL_SLOW_MS, useSessionPrompt } from "@/data/prompts/queries";
 import { displayTitle } from "@/hooks/useSessionTitles";
+import { confirmSettleBusy, useSettle } from "@/hooks/useSettle";
 import { STATE_TEXT_CLASS, STATE_WORD } from "@/lib/agent-state";
 import { runNav } from "@/lib/nav-actions";
+import { sessionPr, wantsSettleChip } from "@/lib/settle-types";
+import { settleWithUndo } from "@/lib/undo";
 import { openSubagent } from "@/stores/agentOpen";
 import { mobileNavActions } from "@/stores/mobileNav";
 import { openPage } from "@/stores/workspacePage";
@@ -22,11 +28,12 @@ import type { BackgroundAgent } from "@/lib/claude-background";
 import type { Session } from "@/lib/db";
 import { cn } from "@/lib/utils";
 import { shortAge } from "./now-summary";
+import { settleCaption } from "./settle-model";
 import type { NowItems } from "./useNowItems";
 
 /** Quiet projects listed on Now; the rest are under Projects */
 const QUIET_SHOWN = 3;
-/** Done today rows on the wide page; the rest are a tap away (M8) */
+/** Done today rows on the wide page; the rest are a tap away */
 const DONE_SHOWN = 3;
 
 export interface SectionProps {
@@ -264,7 +271,20 @@ export function WorkingSection({
   onOpenSession,
 }: SectionProps) {
   const { working } = now;
+  const { settle } = useSettle();
   if (now.workingCount === 0) return null;
+
+  // A working row: ask first (its turn ends with the tmux window), then it
+  // moves to Settled with a few seconds to undo before the settle is sent
+  const settleRow = async (session: Session, title: string) => {
+    if (!(await confirmSettleBusy())) return;
+    settleWithUndo({
+      id: session.id,
+      title,
+      caption: settleCaption(session),
+      commit: () => settle(session, { force: true }),
+    });
+  };
 
   // Narrow: "Editing X · 6m" after a green dot; wide: "project · Editing X"
   // with the time on the right
@@ -283,21 +303,43 @@ export function WorkingSection({
   return (
     <section className={cn("flex flex-col", wide ? "gap-3.5" : "gap-2")}>
       <SectionTitle state={wide ? "work" : undefined}>Working</SectionTitle>
-      <GroupCard aria-label="Working">
-        {working.sessions.map((session) => (
-          <GroupRow
-            key={session.id}
-            leading={<Avatar {...agentAvatar(session.agent_type)} />}
-            title={displayTitle(session, now.titles).title}
-            {...row(
-              projectOf(projectNames, session),
-              sessionStatuses[session.id]?.lastLine?.trim() || "Working",
-              shortAge(session.updated_at)
-            )}
-            selected={session.id === selectedId}
-            onClick={() => onOpenSession(session)}
-          />
-        ))}
+      {/* Swiped rows aren't .row siblings: the hairline goes between all */}
+      <GroupCard
+        aria-label="Working"
+        className="[&>*+*]:border-hair [&>*+*]:border-t dark:[&>*+*]:border-white/[0.06]"
+      >
+        {working.sessions.map((session) => {
+          const title = displayTitle(session, now.titles).title;
+          const settle = () => settleRow(session, title);
+          return (
+            // Swipe left to settle (N-Settle); a vertical drag still scrolls
+            <SwipeRow
+              key={session.id}
+              className="rounded-none"
+              trailing={{
+                label: "",
+                icon: SettleTile,
+                tone: "bg-[#7C3AED]",
+                onAction: settle,
+              }}
+            >
+              <WorkingSessionRow
+                session={session}
+                title={title}
+                {...row(
+                  projectOf(projectNames, session),
+                  now.moves[session.id] ??
+                    (sessionStatuses[session.id]?.lastLine?.trim() ||
+                      "Working"),
+                  shortAge(session.updated_at)
+                )}
+                selected={session.id === selectedId}
+                onOpen={() => onOpenSession(session)}
+                onSettle={settle}
+              />
+            </SwipeRow>
+          );
+        })}
         {working.subagents.map((agent) => (
           <GroupRow
             key={`${agent.sessionId}:${agent.agentId}`}
@@ -345,48 +387,154 @@ export function WorkingSection({
   );
 }
 
-/** "Done today": one row to the list when narrow, the latest when wide */
+/** The revealed Settle action (N-Settle .swipe .act): check over the word */
+function SettleTile() {
+  return (
+    <span className="flex w-[60px] flex-col items-center gap-[3px] text-[13px] font-semibold">
+      <Check className="h-6 w-6" strokeWidth={2.3} />
+      Settle
+    </span>
+  );
+}
+
+/**
+ * A working session's row, with its PR's chip under the title when it has
+ * one ("#107 open · ✓ checks passed"), or "PR #106 merged · Settle" once it
+ * merged. The row opens the session; the chip's Settle is its own button
+ */
+function WorkingSessionRow({
+  session,
+  title,
+  subtitle,
+  trailing,
+  chevron,
+  selected,
+  onOpen,
+  onSettle,
+}: {
+  session: Session;
+  title: string;
+  subtitle: ReactNode;
+  trailing?: ReactNode;
+  chevron?: boolean;
+  selected: boolean;
+  onOpen: () => void;
+  onSettle: () => void;
+}) {
+  const pr = sessionPr(session);
+  const id = useId();
+  return (
+    // On the card's colour: the swipe's action sits under the row
+    <div className="bg-card">
+      <div
+        className={cn(
+          "row has-[>button:first-child:active]:bg-accent [@media(pointer:fine)]:hover:bg-accent/50 relative w-full",
+          pr && "items-start",
+          selected && "sel"
+        )}
+      >
+        <button
+          type="button"
+          onClick={onOpen}
+          aria-current={selected || undefined}
+          aria-labelledby={`${id}-title`}
+          aria-describedby={`${id}-sub${pr ? ` ${id}-pr` : ""}`}
+          className="absolute inset-0"
+        />
+        <span className="pointer-events-none relative flex min-w-0 flex-1 items-start gap-3">
+          <Avatar {...agentAvatar(session.agent_type)} />
+          <span className="flex min-w-0 flex-1 flex-col gap-1.5 self-center text-left">
+            <span className="min-w-0">
+              <span
+                id={`${id}-title`}
+                className="block truncate text-[16px] font-medium"
+              >
+                {title}
+              </span>
+              <span
+                id={`${id}-sub`}
+                className="text-muted-foreground mt-0.5 block truncate text-[14px]"
+              >
+                {subtitle}
+              </span>
+            </span>
+            {pr && (
+              <span id={`${id}-pr`} className="contents">
+                <PrChip
+                  pr={pr}
+                  baseBranch={session.base_branch}
+                  onSettle={wantsSettleChip(session) ? onSettle : undefined}
+                />
+              </span>
+            )}
+          </span>
+        </span>
+        {trailing != null && (
+          <span
+            className={cn(
+              "text-muted-foreground pointer-events-none relative flex shrink-0 items-center text-[13px]",
+              pr && "mt-2.5"
+            )}
+          >
+            {trailing}
+          </span>
+        )}
+        {chevron && (
+          <ChevronRight
+            aria-hidden
+            strokeWidth={2}
+            className={cn(
+              "pointer-events-none relative h-4 w-4 flex-none text-[#AEAEB2] dark:text-[#636366]",
+              // Swiped open: the Settle tile stands in for it (N-Settle)
+              "[[data-swiped]_&]:invisible",
+              pr && "mt-3"
+            )}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * "Done today" on the wide page (Open-Now): the latest settled sessions,
+ * the rest a tap away. Narrow, the Settled group lists them (SettledSection)
+ */
 export function DoneTodaySection({
   now,
   wide,
-  sessions,
   onOpenSession,
-}: Pick<SectionProps, "now" | "wide" | "onOpenSession"> & {
-  sessions: Session[];
-}) {
+}: Pick<SectionProps, "now" | "wide" | "onOpenSession">) {
+  const [all, setAll] = useState(false);
   const done = now.doneToday;
-  if (!done.length) return null;
-  const prs = done.filter((item) => item.prNumber != null).length;
+  if (!wide || !done.length) return null;
 
-  if (!wide)
-    return (
-      <GroupCard>
-        <GroupRow
-          leading={
-            <span className="bg-work/15 text-work flex h-7 w-7 flex-none items-center justify-center rounded-full">
-              <Check className="h-4 w-4" strokeWidth={2.6} />
-            </span>
-          }
-          title={<span className="font-normal">Done today</span>}
-          trailing={joined(`${done.length}`, prs ? `${prs} PRs` : null)}
-          // M8 gives Done today a list of its own to open
-        />
-      </GroupCard>
-    );
-
-  const byId = new Map(sessions.map((s) => [s.id, s]));
+  const byId = new Map(now.settled.map((s) => [s.id, s]));
   return (
     <section className="flex flex-col gap-3.5">
-      <SectionTitle>Done today · {done.length}</SectionTitle>
+      <SectionTitle
+        action={
+          done.length > DONE_SHOWN
+            ? {
+                label: all ? "Show less" : "Show all",
+                onClick: () => setAll(!all),
+              }
+            : undefined
+        }
+      >
+        Done today · {done.length}
+      </SectionTitle>
       <GroupCard aria-label="Done today">
-        {done.slice(0, DONE_SHOWN).map((item) => {
+        {(all ? done : done.slice(0, DONE_SHOWN)).map((item) => {
           const session = byId.get(item.sessionId);
           return (
             <GroupRow
               key={item.sessionId}
               leading={<Avatar {...agentAvatar(session?.agent_type)} />}
               title={item.title}
-              subtitle={item.prNumber ? `PR #${item.prNumber} merged` : "Done"}
+              subtitle={
+                item.prNumber ? `PR #${item.prNumber} merged` : "Settled"
+              }
               trailing={shortAge(item.at)}
               onClick={session ? () => onOpenSession(session) : undefined}
             />
@@ -442,7 +590,7 @@ export function QuietSection({
                 />
               }
               title={quietRow(displayTitle(session, now.titles).title)}
-              subtitle={handoff}
+              subtitle={handoff ?? now.moves[session.id]}
               trailing={handoff ? STATE_WORD.paused : undefined}
               chevron
               onClick={() => onOpenSession(session)}

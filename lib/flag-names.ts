@@ -14,6 +14,7 @@ export const FLAG_NAMES = [
   "chatDefault",
   "liveFullAccess",
   "modeAtIdle",
+  "portProxy",
   "bgSendCleanup",
 ] as const;
 
@@ -44,6 +45,8 @@ export const FLAG_DEFAULTS: Flags = {
   chatDefault: false,
   liveFullAccess: false,
   modeAtIdle: false,
+  // The code-server replacement: on unless turned off (or AGENTOS_PROXY=0)
+  portProxy: true,
   // M10: on, so "Send and start a new session" doesn't litter Now; Labs
   // turns it off (fresh sessions are then kept)
   bgSendCleanup: true,
@@ -122,6 +125,10 @@ export const FLAG_LABELS: Record<FlagName, { label: string; hint: string }> = {
   modeAtIdle: {
     label: "Permission changes wait for the turn",
     hint: "A mode picked mid-turn applies when the turn ends. Off applies it at once",
+  },
+  portProxy: {
+    label: "Port proxy",
+    hint: "Apps in the container at /proxy/<port>/, sign-in links from sessions. Off keeps the origin gate on",
   },
   bgSendCleanup: {
     label: "Remove unused new sessions",

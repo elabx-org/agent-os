@@ -57,6 +57,11 @@ const WHEN: { event: PushEvent; label: string; short: string }[] = [
     label: "Resumed after a limit",
     short: "a session resumes after a limit",
   },
+  {
+    event: "settled",
+    label: "A session settles on its own",
+    short: "a session settles",
+  },
 ];
 
 /**

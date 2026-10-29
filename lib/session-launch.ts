@@ -6,6 +6,7 @@ import { getProvider } from "./providers";
 import { getProviderDefinition } from "./providers/registry";
 import { writeProjectContext } from "./project-context";
 import { writeInitScript } from "./init-script";
+import { sessionBrowserEnv, tmuxEnvArgs } from "./browser-helper";
 import { getFlag } from "./flags";
 import type { LaunchCaps } from "./permission-mode";
 
@@ -28,26 +29,33 @@ export async function isRunning(session: Session): Promise<boolean> {
   }
 }
 
+/** What tmux runs for a session, and where */
+export interface LaunchCommand {
+  /** The session's tmux name */
+  name: string;
+  /** Its folder, ~ expanded */
+  cwd: string;
+  /**
+   * The init script that starts the agent with the session's flags
+   * (resume, mode, model, effort); null for a plain shell
+   */
+  command: string | null;
+}
+
 /**
- * Starts a session's agent in a detached tmux, as the page does when it
- * opens one (app/page.tsx buildSessionCommand), so it runs with nobody
- * watching; opening it later attaches to the same tmux session.
- * False when it was already running.
+ * The command a session's agent starts with, as launchSession runs it.
+ * Records the launch's capabilities (sessions.launch_caps) like a launch
+ * does. Also used to relaunch it in place (`tmux respawn-pane`, M5)
  */
-export async function launchSession(
+export async function buildLaunchCommand(
   session: Session,
   initialPrompt?: string
-): Promise<boolean> {
-  if (await isRunning(session)) return false;
-
+): Promise<LaunchCommand> {
   const provider = getProvider(session.agent_type || "claude");
   const name = tmuxNameOf(session);
   const cwd = (session.working_directory || "~").replace(/^~/, os.homedir());
 
-  if (provider.id === "shell") {
-    await execFileAsync("tmux", ["new-session", "-d", "-s", name, "-c", cwd]);
-    return true;
-  }
+  if (provider.id === "shell") return { name, cwd, command: null };
 
   let parentSessionId: string | null = null;
   if (!session.claude_session_id && session.parent_session_id) {
@@ -100,6 +108,38 @@ export async function launchSession(
     worktreeName: nativeWorktreeName,
   });
   const command = writeInitScript(`${provider.command} ${flags.join(" ")}`);
+  return { name, cwd, command };
+}
+
+/**
+ * Starts a session's agent in a detached tmux, as the page does when it
+ * opens one (app/page.tsx buildSessionCommand), so it runs with nobody
+ * watching; opening it later attaches to the same tmux session.
+ * False when it was already running.
+ */
+export async function launchSession(
+  session: Session,
+  initialPrompt?: string
+): Promise<boolean> {
+  if (await isRunning(session)) return false;
+
+  const { name, cwd, command } = await buildLaunchCommand(
+    session,
+    initialPrompt
+  );
+
+  if (command === null) {
+    await execFileAsync("tmux", [
+      "new-session",
+      "-d",
+      "-s",
+      name,
+      "-c",
+      cwd,
+      ...tmuxEnvArgs(sessionBrowserEnv(), process.env.BROWSER),
+    ]);
+    return true;
+  }
 
   await execFileAsync("tmux", [
     "new-session",

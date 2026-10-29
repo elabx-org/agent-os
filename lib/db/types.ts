@@ -54,6 +54,15 @@ export interface Session {
   // What happens at the reset (ResumePolicy) and the text typed then
   resume_policy: string | null;
   resume_text: string | null;
+  // Settle (migration 30, lib/settle.ts): when it settled (ms), why
+  // (SettleReason; "unsettled" after an Undo, so auto-settle leaves it be)
+  settled_at: number | null;
+  settled_reason: string | null;
+  // The branch's PR as the poller last saw it (lib/pr-poller.ts): checks
+  // (PRChecks), title, when it merged (ms)
+  pr_checks: string | null;
+  pr_title: string | null;
+  pr_merged_at: number | null;
 }
 
 /** What an agent tried on a session's permissions (lib/agent-actions.ts) */
@@ -120,6 +129,23 @@ export interface SessionTurnRow {
   added: number | null;
   removed: number | null;
   undone_at: number | null; // ms
+}
+
+/** A line comment on a session's diff (migration 33, lib/review-comments.ts) */
+export interface ReviewCommentRow {
+  id: number;
+  session_id: string;
+  scope: string; // lib/turn-types.ts DiffScope
+  path: string;
+  side: string; // lib/review-types.ts ReviewSide
+  start_line: number;
+  end_line: number;
+  quote: string;
+  body: string;
+  created_at: number; // ms
+  sent_at: number | null; // ms
+  /** The queued message carrying it (session_queue.id), while it waits */
+  queue_item_id: number | null;
 }
 
 export interface Group {
