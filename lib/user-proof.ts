@@ -40,20 +40,26 @@ type HeaderValue = string | string[] | null | undefined;
 const first = (value: HeaderValue) =>
   (Array.isArray(value) ? value[0] : value)?.split(",")[0].trim() || null;
 
-function readCookie(header: HeaderValue, name: string): string | null {
+/**
+ * Every value of a cookie: a sibling subdomain (port proxy subdomain mode)
+ * can plant a second agentos_u, and the browser sends both
+ */
+function readCookies(header: HeaderValue, name: string): string[] {
   const raw = Array.isArray(header) ? header.join(";") : (header ?? "");
+  const values: string[] = [];
   for (const part of raw.split(";")) {
     const [key, ...rest] = part.trim().split("=");
-    if (key === name) return rest.join("=");
+    if (key === name) values.push(rest.join("="));
   }
-  return null;
+  return values;
 }
 
-function isSecret(value: string | null): boolean {
-  if (!value) return false;
-  const given = Buffer.from(value);
+function isSecret(values: string[]): boolean {
   const expected = Buffer.from(userSecret());
-  return given.length === expected.length && timingSafeEqual(given, expected);
+  return values.some((value) => {
+    const given = Buffer.from(value);
+    return given.length === expected.length && timingSafeEqual(given, expected);
+  });
 }
 
 /** Origin is this site, as the browser sees it (directly or via the proxy) */
@@ -99,7 +105,7 @@ export function requireUser(req: Request): UserProof {
     return { ok: false, reason: "cross_site" };
   }
   const cookies = headers.get("cookie");
-  if (!isSecret(readCookie(cookies, USER_PROOF_COOKIE))) {
+  if (!isSecret(readCookies(cookies, USER_PROOF_COOKIE))) {
     return { ok: false, reason: "no_proof" };
   }
   // currentSession takes Node's request but only reads its cookie header
@@ -150,7 +156,7 @@ export function issueUserProof(
   res: ServerResponse
 ): void {
   if (!isUserNavigation(req)) return;
-  if (isSecret(readCookie(req.headers.cookie, USER_PROOF_COOKIE))) return;
+  if (isSecret(readCookies(req.headers.cookie, USER_PROOF_COOKIE))) return;
   const https = isHttps(req);
   // No Max-Age: the secret only lives as long as this server process
   const cookie = `${USER_PROOF_COOKIE}=${userSecret()}; Path=/; HttpOnly; SameSite=Strict${https ? "; Secure" : ""}`;

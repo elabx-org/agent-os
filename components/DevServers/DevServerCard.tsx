@@ -14,6 +14,7 @@ import {
 import { afterMenuCloses, cn } from "@/lib/utils";
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
 import { useViewport } from "@/hooks/useViewport";
+import { useProxyUrl } from "@/hooks/useProxyConfig";
 import { Button } from "@/components/ui/button";
 import { confirmAction } from "@/components/ui/confirm";
 import { ActionSheet, type SheetAction } from "@/components/ui/action-sheet";
@@ -50,10 +51,6 @@ function primaryPortOf(server: DevServer): number | undefined {
   }
 }
 
-function urlOf(port: number) {
-  return `http://localhost:${port}`;
-}
-
 /** A stopped server reads "Stopped · <command>" rather than "Idle" */
 function rowState(server: DevServer): AgentState {
   return server.status === "stopped"
@@ -87,6 +84,7 @@ const TOUCH_HIT =
   "relative pointer-coarse:after:absolute pointer-coarse:after:-inset-1.5 pointer-coarse:after:content-['']";
 
 function OpenButton({ port }: { port: number }) {
+  const urlOf = useProxyUrl();
   return (
     <Button
       asChild
@@ -162,6 +160,7 @@ export function DevServerCard({
   const [sheetOpen, setSheetOpen] = useState(false);
   const { isTouch } = useViewport();
   const { copy } = useCopyToClipboard();
+  const urlOf = useProxyUrl();
 
   const port = primaryPortOf(server);
   const isRunning = server.status === "running";
