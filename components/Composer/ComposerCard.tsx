@@ -188,7 +188,10 @@ export function ComposerCard({
       // says when it's off, rather than typing into a busy agent
       if (queue.enabled || !queue.known) {
         try {
-          onSent?.(await queue.send(text, options));
+          // Awaited first: `onSent?.(await …)` skips the call when there
+          // is no onSent (the terminal's composer), and nothing goes
+          const result = await queue.send(text, options);
+          onSent?.(result);
           markFreshUsed(sessionId);
           return true;
         } catch (e) {
@@ -226,9 +229,11 @@ export function ComposerCard({
       sessions: SessionAttachmentRef[] = []
     ): Promise<boolean> => {
       try {
-        onSent?.(
-          await queue.enqueue(text, sessions.length ? { sessions } : undefined)
+        const result = await queue.enqueue(
+          text,
+          sessions.length ? { sessions } : undefined
         );
+        onSent?.(result);
         markFreshUsed(sessionId);
         return true;
       } catch (e) {
@@ -386,12 +391,11 @@ export function ComposerCard({
   const retry = useCallback(
     async (item: QueueItem) => {
       try {
-        onSent?.(
-          await queue.send(item.text, {
-            attachments: item.attachments,
-            sessions: item.sessions,
-          })
-        );
+        const result = await queue.send(item.text, {
+          attachments: item.attachments,
+          sessions: item.sessions,
+        });
+        onSent?.(result);
         markFreshUsed(sessionId);
         await queue.dismiss(item.id);
       } catch (e) {
