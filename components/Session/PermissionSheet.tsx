@@ -183,13 +183,19 @@ export function PermissionSheet({ session, onClose }: PermissionSheetProps) {
       closeSheet: close,
       confirmSheet: () => void doneRef.current(),
     });
-    // Escape in the full-access confirm is the confirm's own
-    const onKey = (e: KeyboardEvent) =>
-      e.key === "Escape" && !confirmingRef.current && close();
-    window.addEventListener("keydown", onKey);
+    // Escape in the full-access confirm is the confirm's own. Caught before
+    // it reaches the composer's box (opened from its pill, the box keeps
+    // focus), where Escape would interrupt Claude
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || confirmingRef.current) return;
+      e.preventDefault();
+      e.stopPropagation();
+      close();
+    };
+    window.addEventListener("keydown", onKey, true);
     return () => {
       unregister();
-      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("keydown", onKey, true);
       mobileNavStore.sheet = null;
     };
   }, [close]);

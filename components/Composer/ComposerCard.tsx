@@ -34,6 +34,8 @@ import {
 import type { UseQueue } from "@/hooks/useQueue";
 import { permissionModeKeys } from "@/hooks/usePermissionMode";
 import { openPermissionSheet } from "@/stores/permissionSheet";
+import { PermissionChip } from "@/components/Session/PermissionChip";
+import type { Session } from "@/lib/db";
 import type { EnqueueResult, QueueItem } from "@/lib/queue/types";
 
 export interface ComposerCardProps {
@@ -69,6 +71,9 @@ export interface ComposerCardProps {
   history?: boolean;
   /** The mode pill, with `live` (default on; the terminal shows Claude's) */
   modePill?: boolean;
+  /** Without `live`'s pill: the session's shield chip in the bottom row
+      (E-Composer's mode pill; a tap opens its Permissions sheet) */
+  session?: Session;
   /** Send with nothing typed (the terminal: press Enter); without it an
       empty send does nothing */
   onEmptySend?: () => void;
@@ -114,6 +119,7 @@ export function ComposerCard({
   live,
   history,
   modePill = true,
+  session,
   onEmptySend,
   pages,
   inlinePlus = false,
@@ -515,6 +521,9 @@ export function ComposerCard({
                 {tone.icon}
                 {modeName}
               </button>
+            )}
+            {!collapsed && !tone && session && (
+              <PermissionChip session={session} variant="composer" />
             )}
             {!collapsed && showHistory && (
               <button
