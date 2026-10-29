@@ -3,14 +3,14 @@
  * pane when it runs (lib/claude-transcript.ts findTranscript), else from
  * sessions.claude_session_id under <CLAUDE_CONFIG_DIR>/projects/
  * <projectDirFor(cwd)>/, else by that id across the project folders. So a
- * paused (handed-off) chat stays readable.
+ * paused (handed-off) or settled chat stays readable.
  */
 
 import os from "os";
 import path from "path";
 import type { Session } from "./db";
 import { findTranscript, transcriptFileFor } from "./claude-transcript";
-import { isPaused } from "./handoff-types";
+import { isEnded } from "./settle-types";
 import { tmuxNameOf } from "./session-launch";
 
 export interface LocatedTranscript {
@@ -41,8 +41,8 @@ export async function locateTranscript(
 ): Promise<LocatedTranscript | null> {
   if ((session.agent_type || "claude") !== "claude") return null;
 
-  // A paused session's tmux has ended: no pane to ask
-  if (!isPaused(session)) {
+  // A paused or settled session's tmux has ended: no pane to ask
+  if (!isEnded(session)) {
     const live = await findTranscript(tmuxNameOf(session));
     if (live) return live;
   }
