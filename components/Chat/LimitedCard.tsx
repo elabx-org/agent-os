@@ -101,7 +101,7 @@ export function LimitedCard({
             disabled={pending}
             onClick={() => choose(when)}
             className={cn(
-              "pill pill-sm h-11 min-w-0 touch-manipulation rounded-[22px] active:opacity-80 disabled:opacity-60",
+              "pill pill-sm h-[44px] min-w-0 touch-manipulation rounded-[22px] active:opacity-80 disabled:opacity-60",
               // The primary keeps its whole label; the quiet ones give way
               primary
                 ? "pill-primary flex-[1_0_auto] px-2"
