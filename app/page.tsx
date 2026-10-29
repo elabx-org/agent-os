@@ -61,6 +61,7 @@ import { mobileNavActions, mobileNavStore } from "@/stores/mobileNav";
 import { focusStore, loadFocus } from "@/stores/focus";
 import { registerNavHandlers, runNav } from "@/lib/nav-actions";
 import { isNative } from "@/lib/native-bridge";
+import { isPaused } from "@/lib/handoff-types";
 import { SettingsPage } from "@/components/Settings/SettingsPage";
 import { ScriptsSheetHost } from "@/components/Projects/ScriptsSheet";
 import { useScriptShortcuts } from "@/hooks/useScriptShortcuts";
@@ -193,8 +194,9 @@ function HomeContent() {
       const sessionName = session.tmux_name || `${provider.id}-${session.id}`;
       const cwd = session.working_directory?.replace("~", "$HOME") || "$HOME";
 
-      // Shell sessions just open a terminal - no agent command
-      if (provider.id === "shell") {
+      // Shell sessions just open a terminal - no agent command; a paused
+      // (handed-off) one is never relaunched (runSessionInTerminal)
+      if (provider.id === "shell" || isPaused(session)) {
         return { sessionName, cwd, command: "" };
       }
 
@@ -247,6 +249,8 @@ function HomeContent() {
         permissionMode: session.permission_mode,
         continueSession: session.continue_session,
         model: session.model,
+        modelPinned: !!session.model_pinned,
+        effort: session.effort,
         initialPrompt: initialPrompt || undefined,
         worktreeName: nativeWorktreeName,
       });
@@ -268,6 +272,11 @@ function HomeContent() {
       session: Session,
       sessionInfo: { sessionName: string; cwd: string; command: string }
     ) => {
+      // Paused (handed off, M4): its chat shows, its agent isn't relaunched
+      if (isPaused(session)) {
+        attachSession(paneId, session.id, "");
+        return;
+      }
       const { sessionName, cwd, command } = sessionInfo;
       // For shell sessions (empty command), just start tmux without a command so it opens the default shell
       const tmuxNew = command

@@ -238,6 +238,11 @@ test("columnFor: a sheet over the closed session (E-Live, N-Undo)", () => {
     fmt(columnFor("session", "duo-closed", { ...CTX, sheet: "undo" })),
     "closeSheet | git[3n]"
   );
+  // N-Switch: the close alone
+  assert.equal(
+    fmt(columnFor("session", "duo-closed", { ...CTX, sheet: "switch" })),
+    "closeSheet"
+  );
   assert.equal(
     fmt(columnFor("session", "duo-closed", { ...CTX, sheet: "permissions" })),
     "closeSheet | done*"

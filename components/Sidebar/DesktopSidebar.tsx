@@ -12,6 +12,7 @@ import { isLimitShown } from "@/lib/limits/types";
 import { displayTitle, useListTitles } from "@/hooks/useSessionTitles";
 import { isMacLike } from "@/hooks/useViewShortcuts";
 import { runNav } from "@/lib/nav-actions";
+import { withoutPaused } from "@/lib/paused";
 import { openPage, workspacePageStore } from "@/stores/workspacePage";
 import { newSurfaceStore } from "@/stores/newSurface";
 import { mobileNavStore } from "@/stores/mobileNav";
@@ -127,19 +128,21 @@ export function DesktopSidebar({
     if (!isMacLike()) setFindKey("Ctrl K");
   }, []);
 
-  const { waiting } = useNeedsYou(sessions, sessionStatuses);
+  // A paused (handed-off) session neither needs you nor works
+  const active = useMemo(() => withoutPaused(sessions), [sessions]);
+  const { waiting } = useNeedsYou(active, sessionStatuses);
   // At a usage limit (M6): their own section, oldest limit first
   const limited = useMemo(
     () =>
-      sessions
+      active
         .filter((s) => !s.conductor_session_id && isLimitShown(s))
         .sort((a, b) => (a.limited_at ?? 0) - (b.limited_at ?? 0)),
-    [sessions]
+    [active]
   );
   // Workers show inside their conductor's session, as on Now
   const working = useMemo(
     () =>
-      sessions
+      active
         .filter(
           (s) =>
             !s.conductor_session_id &&
@@ -147,11 +150,11 @@ export function DesktopSidebar({
             !isLimitShown(s)
         )
         .sort((a, b) => b.updated_at.localeCompare(a.updated_at)),
-    [sessions, sessionStatuses]
+    [active, sessionStatuses]
   );
   const listed = useMemo(
-    () => sidebarProjects(projects, sessions, sessionStatuses),
-    [projects, sessions, sessionStatuses]
+    () => sidebarProjects(projects, active, sessionStatuses),
+    [projects, active, sessionStatuses]
   );
   const shown = listed.slice(0, SIDEBAR_PROJECTS);
   const more = listed.length - shown.length;

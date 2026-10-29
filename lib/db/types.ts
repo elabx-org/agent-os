@@ -38,6 +38,14 @@ export interface Session {
   permission_pending: string | null;
   // JSON LaunchCaps recorded at launch
   launch_caps: string | null;
+  // M4 handoff (migration 28): ms when handed off and its tmux ended; the
+  // session it came from / went to; Claude effort for the next launch
+  paused_at: number | null;
+  handoff_from_session_id: string | null;
+  handoff_to_session_id: string | null;
+  effort: string | null;
+  // 1 when the model was picked (sheet, handoff): --model even for "sonnet"
+  model_pinned: number | null;
   // Usage limit (migration 29, lib/limits): when it hit one (ms), when it
   // resets (ms, null when unknown), which one (LimitKind)
   limited_at: number | null;

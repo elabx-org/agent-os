@@ -4,12 +4,16 @@ import { useNeedsYou } from "@/hooks/useNeedsYou";
 import { useRunningSubagents } from "@/hooks/useRunningSubagents";
 import type { SessionSubagent } from "@/hooks/useRunningSubagents";
 import { useSessionTitles } from "@/hooks/useSessionTitles";
+import { agentName } from "@/components/a/Avatar";
 import { useDevServersQuery } from "@/data/dev-servers";
 import { useProjectsQuery } from "@/data/projects";
 import type { SessionStatus } from "@/components/views/types";
 import type { BackgroundAgent } from "@/lib/claude-background";
 import type { DevServer, Session } from "@/lib/db";
 import type { ProjectWithRepositories } from "@/lib/projects";
+import { handedOffLine, withoutPaused } from "@/lib/paused";
+import { isPaused } from "@/lib/handoff-types";
+import { sortQuietSessions } from "./now-summary";
 import { limitedSessions } from "@/components/Chat/limited-model";
 import { useLimitClock } from "@/hooks/useSessionLimit";
 
@@ -42,8 +46,8 @@ export interface NowItems {
   workingCount: number;
   /** Projects with nothing waiting or working, most recently used first */
   quiet: ProjectWithRepositories[];
-  /** Idle sessions outside every project, most recent first: no quiet
-      project lists them */
+  /** Idle sessions outside every project, most recent first, the paused
+      (handed-off) ones last: no quiet project lists them */
   loose: Session[];
   /** Agents outside every project that are neither blocked nor working */
   elsewhere: BackgroundAgent[];
@@ -57,6 +61,8 @@ export interface NowItems {
   /** The "Done today" row, hidden while empty (M8 fills it) */
   doneToday: DoneTodayItem[];
   titles: Record<string, string>;
+  /** Paused sessions' sublines by id: "Handed off to Codex" */
+  handoffs: Record<string, string>;
 }
 
 const EMPTY_SESSIONS: Session[] = [];
@@ -75,8 +81,10 @@ export function useNowItems(
 ): NowItems {
   const projects = useProjectsQuery().data ?? EMPTY_PROJECTS;
   const servers = useDevServersQuery().data ?? EMPTY_SERVERS;
+  // A paused (handed-off) session never needs you nor works: its tmux ended
+  const active = useMemo(() => withoutPaused(sessions), [sessions]);
   // What needs you is defined once, so the hero matches the column badge
-  const needs = useNeedsYou(sessions, statuses);
+  const needs = useNeedsYou(active, statuses);
   const { agents, waiting } = needs;
   const agentsByProject = useBackgroundAgentsByProject(projects);
 
@@ -85,10 +93,10 @@ export function useNowItems(
   const limited = useMemo(
     () =>
       limitedSessions(
-        sessions.filter((s) => !s.conductor_session_id),
+        active.filter((s) => !s.conductor_session_id),
         clock
       ),
-    [sessions, clock]
+    [active, clock]
   );
   const limitedIds = useMemo(
     () => new Set(limited.map((s) => s.id)),
@@ -99,7 +107,7 @@ export function useNowItems(
   // limited one is under Limited, not Working
   const running = useMemo(
     () =>
-      sessions
+      active
         .filter(
           (s) =>
             !s.conductor_session_id &&
@@ -107,7 +115,7 @@ export function useNowItems(
             statuses[s.id]?.status === "running"
         )
         .sort((a, b) => b.updated_at.localeCompare(a.updated_at)),
-    [sessions, statuses, limitedIds]
+    [active, statuses, limitedIds]
   );
 
   // Only sessions that are doing something can have subagents running
@@ -189,15 +197,18 @@ export function useNowItems(
   const uncategorized = new Set(
     projects.filter((p) => p.is_uncategorized).map((p) => p.id)
   );
-  const loose = sessions
-    .filter(
+  const loose = sortQuietSessions(
+    sessions.filter(
       (s) =>
         !s.conductor_session_id &&
         !byId.has(s.id) &&
         !limitedIds.has(s.id) &&
         (!s.project_id || uncategorized.has(s.project_id))
     )
-    .sort((a, b) => b.updated_at.localeCompare(a.updated_at));
+  );
+  const handoffs: Record<string, string> = {};
+  for (const s of sessions)
+    if (isPaused(s)) handoffs[s.id] = handedOffLine(s, sessions, agentName);
 
   return {
     needsCount: needs.count,
@@ -221,5 +232,6 @@ export function useNowItems(
     settled: EMPTY_SESSIONS,
     doneToday: EMPTY_DONE,
     titles,
+    handoffs,
   };
 }

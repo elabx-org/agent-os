@@ -70,7 +70,16 @@ export interface TranscriptChunk {
   truncated: boolean;
 }
 
-function claudeDir(): string {
+/**
+ * The folder under <CLAUDE_CONFIG_DIR>/projects that holds a cwd's
+ * transcripts: every character but a letter or digit becomes "-"
+ */
+export function projectDirFor(cwd: string): string {
+  return cwd.replace(/[^a-zA-Z0-9]/g, "-");
+}
+
+/** <CLAUDE_CONFIG_DIR>, else ~/.claude */
+export function claudeDir(): string {
   return process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), ".claude");
 }
 
@@ -152,22 +161,34 @@ export async function findTranscript(
   const meta = await readClaudeSessionMeta(tmuxName);
   if (!meta) return null;
   const { sessionId, cwd } = meta;
+  return { sessionId, file: transcriptFileFor(sessionId, cwd), cwd };
+}
 
+/**
+ * A Claude session's transcript file: in its cwd's project folder, else by
+ * its id across the project folders (the encoding differs in some
+ * versions); null when Claude hasn't written it yet (it does with the
+ * first message)
+ */
+export function transcriptFileFor(
+  sessionId: string,
+  cwd: string
+): string | null {
   const projects = path.join(claudeDir(), "projects");
-  const direct = path.join(
-    projects,
-    cwd.replace(/[^a-zA-Z0-9]/g, "-"),
-    `${sessionId}.jsonl`
-  );
-  if (fs.existsSync(direct)) return { sessionId, file: direct, cwd };
+  const direct = path.join(projects, projectDirFor(cwd), `${sessionId}.jsonl`);
+  if (fs.existsSync(direct)) return direct;
 
-  // Encoding differs in some versions: look the id up across projects
-  for (const dir of fs.readdirSync(projects)) {
-    const file = path.join(projects, dir, `${sessionId}.jsonl`);
-    if (fs.existsSync(file)) return { sessionId, file, cwd };
+  let dirs: string[];
+  try {
+    dirs = fs.readdirSync(projects);
+  } catch {
+    return null;
   }
-  // Claude Code writes the transcript with the first message
-  return { sessionId, file: null, cwd };
+  for (const dir of dirs) {
+    const file = path.join(projects, dir, `${sessionId}.jsonl`);
+    if (fs.existsSync(file)) return file;
+  }
+  return null;
 }
 
 function readRange(file: string, from: number, to: number): string {

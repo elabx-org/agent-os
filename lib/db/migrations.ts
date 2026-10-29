@@ -471,6 +471,21 @@ const migrations: Migration[] = [
     }),
   },
   {
+    id: 28,
+    name: "add_handoff_to_sessions",
+    up: atomic((db) => {
+      // M4: a session handed off to another agent stays listed, paused
+      // (tmux ended, transcript kept); effort is applied on the next launch
+      addColumnIfMissing(db, "sessions", "paused_at", "INTEGER");
+      addColumnIfMissing(db, "sessions", "handoff_from_session_id", "TEXT");
+      addColumnIfMissing(db, "sessions", "handoff_to_session_id", "TEXT");
+      addColumnIfMissing(db, "sessions", "effort", "TEXT");
+      // 1: the model was picked, so --model goes even for "sonnet" (which
+      // otherwise stands for Claude's own default)
+      addColumnIfMissing(db, "sessions", "model_pinned", "INTEGER");
+    }),
+  },
+  {
     id: 29,
     name: "add_usage_limit_to_sessions",
     up: atomic((db) => {

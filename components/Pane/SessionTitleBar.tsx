@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { useSnapshot } from "valtio";
 import { toast } from "sonner";
@@ -23,6 +23,7 @@ import {
   Columns2,
   FolderOpen,
   Activity,
+  ArrowRightLeft,
   Play,
   MessageSquare,
 } from "lucide-react";
@@ -53,8 +54,9 @@ import {
   STATE_DOT_CLASS,
   STATE_TEXT_CLASS,
   STATE_WORD,
-  sessionState,
 } from "@/lib/agent-state";
+import { sessionState } from "@/lib/paused";
+import { isPaused } from "@/lib/handoff-types";
 import { useGitStatus } from "@/data/git/queries";
 import {
   Crumb,
@@ -65,6 +67,8 @@ import {
   type HeaderInfo,
 } from "@/components/Session/SessionHeader";
 import { addedLines } from "@/components/Session/activity-format";
+import { canSwitch, ModelChip } from "@/components/Session/ModelChip";
+import { SwitchSheet } from "@/components/Session/SwitchSheet";
 import { headerVariant } from "@/lib/session-views";
 import { openScripts } from "@/stores/scriptsSheet";
 import {
@@ -158,6 +162,21 @@ export function SessionTitleBar({
     useSpreadPanes()?.mode === "fold" && !!session && besidePills();
   const titles = useListTitles(session ? [session] : []);
   const { copy } = useCopyToClipboard();
+  // N-Switch: the header's model chip (or ⋯ where it has no room) opens it
+  const [switchOpen, setSwitchOpen] = useState(false);
+  const switchable = canSwitch(session);
+  const switcher = useMemo(
+    () => ({ open: switchOpen, onOpen: () => setSwitchOpen(true) }),
+    [switchOpen]
+  );
+  // The new session opens where this one was, as a restarted one does
+  const openHandedOff = useCallback((next: Session) => {
+    window.dispatchEvent(
+      new CustomEvent("agentos-session-restarted", {
+        detail: { session: next },
+      })
+    );
+  }, []);
 
   const { title, idLabel } = session
     ? displayTitle(session, titles)
@@ -331,6 +350,12 @@ export function SessionTitleBar({
                 {focus.on ? "Leave Focus" : "Focus"}
               </DropdownMenuItem>
             )}
+            {switchable && (variant === "fold" || variant === "card") && (
+              <DropdownMenuItem onSelect={() => setSwitchOpen(true)}>
+                <ArrowRightLeft className="h-4 w-4" />
+                Agent and model
+              </DropdownMenuItem>
+            )}
             {variant === "card" && (
               <>
                 {/* No rail beside two panes, nor a strip under them */}
@@ -417,6 +442,15 @@ export function SessionTitleBar({
             {shellDrawerOpen ? "Hide shell drawer" : "Shell drawer"}
           </DropdownMenuItem>
         )}
+        {/* The phone's classic header has no chip; a narrow desktop bar hides it */}
+        {session &&
+          switchable &&
+          (variant === "classic" || variant === "desktop") && (
+            <DropdownMenuItem onSelect={() => setSwitchOpen(true)}>
+              <ArrowRightLeft className="h-4 w-4" />
+              Agent and model
+            </DropdownMenuItem>
+          )}
         {session && (
           <DropdownMenuItem
             onSelect={async () => {
@@ -479,12 +513,23 @@ export function SessionTitleBar({
           dimmed={wide && !isFocused}
           actions={
             <>
-              <PermissionChip
-                session={info.session}
-                variant="header"
-                // A crowded bar keeps the shield alone, so the subtitle keeps the state
-                className="h-9 rounded-full @max-[900px]/bar:px-2.5 @max-[900px]/bar:[&>[data-chip-label]]:hidden"
-              />
+              {session && switchable && (
+                <ModelChip
+                  session={session}
+                  open={switchOpen}
+                  onOpen={switcher.onOpen}
+                  className="max-w-[220px] @max-[640px]/bar:hidden"
+                />
+              )}
+              {/* Handed off: no running agent to set a mode on */}
+              {!isPaused(info.session) && (
+                <PermissionChip
+                  session={info.session}
+                  variant="header"
+                  // A crowded bar keeps the shield alone, so the subtitle keeps the state
+                  className="h-9 rounded-full @max-[900px]/bar:px-2.5 @max-[900px]/bar:[&>[data-chip-label]]:hidden"
+                />
+              )}
               <DesktopLiveButton />
               {besideMenu}
               {moreMenu}
@@ -528,6 +573,7 @@ export function SessionTitleBar({
                 ? "compact"
                 : "title"
           }
+          switcher={switcher}
         />
       </div>
     );
@@ -710,6 +756,14 @@ export function SessionTitleBar({
         )}
       </div>
       {header}
+      {session && switchable && (
+        <SwitchSheet
+          session={session}
+          open={switchOpen}
+          onOpenChange={setSwitchOpen}
+          onHandedOff={openHandedOff}
+        />
+      )}
       {session && <PermissionSheetHost session={session} />}
     </>
   );

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb, queries, type Session } from "@/lib/db";
 import { launchSession } from "@/lib/session-launch";
+import { isPaused } from "@/lib/handoff-types";
 import { effectiveMode } from "@/lib/permission-mode";
 import { grantFullAccess, requester, userOnly } from "@/lib/permission-guard";
 
@@ -15,6 +16,13 @@ export async function POST(
   const session = queries.getSession(getDb()).get(id) as Session | undefined;
   if (!session) {
     return NextResponse.json({ error: "Session not found" }, { status: 404 });
+  }
+  // Handed off (M4): only resume-paused starts it again
+  if (isPaused(session)) {
+    return NextResponse.json(
+      { error: "This session is paused", reason: "paused" },
+      { status: 409 }
+    );
   }
   const { initialPrompt } = (await request.json().catch(() => ({}))) as {
     initialPrompt?: string;

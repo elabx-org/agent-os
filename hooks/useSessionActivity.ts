@@ -8,13 +8,8 @@ import type { WorkflowInfo } from "@/lib/claude-workflows";
 import type { PermissionPrompt } from "@/lib/permission-prompt";
 import type { PlanResponse, PlanState } from "@/lib/claude-plan";
 import type { SessionStatus } from "@/components/views/types";
-import {
-  dbTimeMs,
-  fromSessionStatus,
-  sessionState,
-  STATE_WORD,
-  type AgentState,
-} from "@/lib/agent-state";
+import { dbTimeMs, STATE_WORD, type AgentState } from "@/lib/agent-state";
+import { sessionState } from "@/lib/paused";
 import { limitStateOf } from "@/lib/limits/types";
 import { resetTime } from "@/components/Chat/limited-model";
 import { mobileNavStore } from "@/stores/mobileNav";
@@ -215,10 +210,9 @@ export function useSessionActivity(
   const dir = session?.working_directory ?? "";
   const { statuses } = useSnapshot(mobileNavStore);
   const status = statuses[id] as SessionStatus | undefined;
-  // At a usage limit it is Limited, not waiting for you (M6)
-  const state = session
-    ? sessionState(session, status?.status)
-    : fromSessionStatus(status?.status ?? "idle");
+  // Paused (handed off): its tmux ended, whatever the last status said;
+  // at a usage limit it is Limited, not waiting for you (M6)
+  const state = sessionState(session, status?.status);
   const on = active && !!session;
 
   const { data: prompt } = useSessionPrompt(id, {

@@ -47,8 +47,8 @@ export interface ColumnContext {
   /** The session in view is working: closed, Stop ends its column (N-Queue) */
   working?: boolean;
   /** A sheet over the session other than Live activity (N-Undo,
-      N-PermMode, N-Scripts) */
-  sheet?: "undo" | "permissions" | "scripts" | null;
+      N-Switch, N-PermMode, N-Scripts) */
+  sheet?: "undo" | "switch" | "permissions" | "scripts" | null;
   /** The project surface shows the project's settings (N-Config, M3) */
   projectSettings?: boolean;
   /** Agents the session started (its tree's total): the Agents item shows (O-Tree) */
@@ -301,6 +301,8 @@ function sheetColumn(ctx: ColumnContext): ColumnItem[] | null {
   if (ctx.sheet === "scripts") return scriptsColumn();
   if (ctx.sheet === "undo")
     return [item(BASE.closeSheet), changes(ctx, { selected: false, ...sep })];
+  // N-Switch: the close alone
+  if (ctx.sheet === "switch") return [item(BASE.closeSheet)];
   if (ctx.sheet === "permissions")
     return [
       item(BASE.closeSheet),

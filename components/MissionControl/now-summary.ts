@@ -1,3 +1,6 @@
+import type { Session } from "@/lib/db/types";
+import { isPaused } from "@/lib/handoff-types";
+
 /** The counts the Now subline is made of */
 export interface NowCounts {
   needs: number;
@@ -14,6 +17,20 @@ export interface NowCounts {
 export function nowSubline(counts: NowCounts): string {
   const parts = nowSublineParts(counts);
   return parts.length ? parts.join(" · ") : "All quiet";
+}
+
+/**
+ * Quiet sessions outside any project: live ones first, then the paused
+ * (handed-off) ones, each most recent first
+ */
+export function sortQuietSessions<
+  S extends Pick<Session, "updated_at" | "paused_at">,
+>(sessions: readonly S[]): S[] {
+  return [...sessions].sort(
+    (a, b) =>
+      Number(isPaused(a)) - Number(isPaused(b)) ||
+      b.updated_at.localeCompare(a.updated_at)
+  );
 }
 
 /** The subline's counts, most pressing first; empty when all are zero */

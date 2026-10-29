@@ -1,6 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { nowSubline } from "../../components/MissionControl/now-summary";
+import {
+  nowSubline,
+  sortQuietSessions,
+} from "../../components/MissionControl/now-summary";
 
 const zero = { needs: 0, working: 0, limited: 0, settledToday: 0 };
 
@@ -62,4 +65,34 @@ test("nowSubline: every combination joins the non-zero parts", () => {
       expected || "All quiet"
     );
   }
+});
+
+test("sortQuietSessions: live first, paused (handed off) last, each latest first", () => {
+  const s = (
+    id: string,
+    updated_at: string,
+    paused_at: number | null = null
+  ) => ({ id, updated_at, paused_at });
+  const sorted = sortQuietSessions([
+    s("old", "2026-10-01 10:00:00"),
+    s("paused-new", "2026-10-29 10:00:00", 1),
+    s("new", "2026-10-28 10:00:00"),
+    s("paused-old", "2026-10-02 10:00:00", 2),
+  ]);
+  assert.deepEqual(
+    sorted.map((x) => x.id),
+    ["new", "old", "paused-new", "paused-old"]
+  );
+});
+
+test("sortQuietSessions: leaves its input alone", () => {
+  const input = [
+    { id: "a", updated_at: "2026-10-01 10:00:00", paused_at: 5 },
+    { id: "b", updated_at: "2026-10-01 09:00:00", paused_at: null },
+  ];
+  sortQuietSessions(input);
+  assert.deepEqual(
+    input.map((x) => x.id),
+    ["a", "b"]
+  );
 });

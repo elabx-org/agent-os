@@ -8,7 +8,8 @@ import {
 import { useSessionsQuery } from "@/data/sessions/queries";
 import { displayTitle, useListTitles } from "@/hooks/useSessionTitles";
 import { getSessionView } from "@/lib/session-views";
-import { sessionState, STATE_DOT_CLASS } from "@/lib/agent-state";
+import { STATE_DOT_CLASS } from "@/lib/agent-state";
+import { pausedLast, sessionState } from "@/lib/paused";
 import { mobileNavStore } from "@/stores/mobileNav";
 import { openBeside } from "@/stores/beside";
 import { cn } from "@/lib/utils";
@@ -22,10 +23,12 @@ const MAX_SESSIONS = 8;
 export function BesideItems({ exclude }: { exclude?: string[] }) {
   const { data } = useSessionsQuery();
   const { statuses } = useSnapshot(mobileNavStore);
-  const sessions = (data?.sessions ?? [])
-    .filter((s) => !exclude?.includes(s.id))
-    .sort((a, b) => b.updated_at.localeCompare(a.updated_at))
-    .slice(0, MAX_SESSIONS);
+  // Paused (handed-off) ones after the live ones
+  const sessions = pausedLast(
+    (data?.sessions ?? [])
+      .filter((s) => !exclude?.includes(s.id))
+      .sort((a, b) => b.updated_at.localeCompare(a.updated_at))
+  ).slice(0, MAX_SESSIONS);
   const titles = useListTitles(sessions);
 
   return (
@@ -39,7 +42,11 @@ export function BesideItems({ exclude }: { exclude?: string[] }) {
       {sessions.map((session) => {
         const { title } = displayTitle(session, titles);
         const state = sessionState(session, statuses[session.id]?.status);
-        const view = getSessionView(session.id) ?? "terminal";
+        // A paused one has no terminal to show: it opens in its chat
+        const view =
+          state === "paused"
+            ? "chat"
+            : (getSessionView(session.id) ?? "terminal");
         return (
           <DropdownMenuItem
             key={session.id}

@@ -59,6 +59,11 @@ function session(over: Partial<Session> & { id: string }): Session {
     limit_kind: null,
     resume_policy: null,
     resume_text: null,
+    paused_at: null,
+    handoff_from_session_id: null,
+    handoff_to_session_id: null,
+    effort: null,
+    model_pinned: null,
     ...over,
   };
 }

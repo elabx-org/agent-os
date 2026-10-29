@@ -12,7 +12,7 @@ import { limitView } from "@/components/Chat/limited-model";
 import { askLabel, InboxItem } from "@/components/Inbox";
 import { PROMPT_POLL_SLOW_MS, useSessionPrompt } from "@/data/prompts/queries";
 import { displayTitle } from "@/hooks/useSessionTitles";
-import { STATE_TEXT_CLASS } from "@/lib/agent-state";
+import { STATE_TEXT_CLASS, STATE_WORD } from "@/lib/agent-state";
 import { runNav } from "@/lib/nav-actions";
 import { openSubagent } from "@/stores/agentOpen";
 import { mobileNavActions } from "@/stores/mobileNav";
@@ -428,16 +428,28 @@ export function QuietSection({
             className="min-h-12 py-2.5"
           />
         ))}
-        {loose.map((session) => (
-          <GroupRow
-            key={session.id}
-            leading={<Avatar {...agentAvatar(session.agent_type)} size="sm" />}
-            title={quietRow(displayTitle(session, now.titles).title)}
-            chevron
-            onClick={() => onOpenSession(session)}
-            className="min-h-12 py-2.5"
-          />
-        ))}
+        {loose.map((session) => {
+          // Paused (handed off): its own state word and where it went
+          const handoff = now.handoffs[session.id];
+          return (
+            <GroupRow
+              key={session.id}
+              leading={
+                <Avatar
+                  {...agentAvatar(session.agent_type)}
+                  size="sm"
+                  className={handoff ? "opacity-60" : undefined}
+                />
+              }
+              title={quietRow(displayTitle(session, now.titles).title)}
+              subtitle={handoff}
+              trailing={handoff ? STATE_WORD.paused : undefined}
+              chevron
+              onClick={() => onOpenSession(session)}
+              className="min-h-12 py-2.5"
+            />
+          );
+        })}
       </GroupCard>
     </section>
   );

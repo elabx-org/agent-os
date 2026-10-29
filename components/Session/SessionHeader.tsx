@@ -17,7 +17,9 @@ import { Avatar, agentAvatar, agentName } from "@/components/a/Avatar";
 import { PlanChip } from "@/components/Chat/PlanChip";
 import { useSessionActivity } from "@/hooks/useSessionActivity";
 import { openLiveSheet, StatusCardButton } from "./ActivityStrip";
+import { canSwitch, ModelChip } from "./ModelChip";
 import { PermissionChip } from "./PermissionChip";
+import { isPaused } from "@/lib/handoff-types";
 import { formatAge, workingLine } from "./activity-format";
 
 /** What every header says about the session */
@@ -44,19 +46,28 @@ export function crumbState(state: AgentState): { word: string; cls: string } {
   }
 }
 
-/** "agent-os · Claude · main · Needs you"; `state: false` drops the word */
+/**
+ * "agent-os · Claude · main · Needs you"; `state: false` drops the word,
+ * `agent: false` the agent (the model chip beside it names it)
+ */
 export function Crumb({
   info,
   extra = [],
   state = true,
+  agent = true,
   className,
 }: {
   info: HeaderInfo;
   extra?: (string | null | undefined)[];
   state?: boolean;
+  agent?: boolean;
   className?: string;
 }) {
-  const parts = [info.project, agentName(info.session.agent_type), ...extra]
+  const parts = [
+    info.project,
+    agent ? agentName(info.session.agent_type) : null,
+    ...extra,
+  ]
     .filter(Boolean)
     .join(" · ");
   const { word, cls } = crumbState(info.state);
@@ -73,25 +84,36 @@ export function Crumb({
   );
 }
 
+/** The header's "Agent and model" chip and whether its sheet is up (M4) */
+export interface SwitchChipState {
+  open: boolean;
+  onOpen: () => void;
+}
+
 /**
  * The title in the page. `title` (Closed-Chat, N-Queue): the agent's
  * letter, "agent-os · Claude · Needs you", the 22px title, and under it the
  * plan, or while it works what it's doing; both open the Live activity.
  * `compact` (Closed-Terminal): the crumb and a 17px title, the terminal
  * gets the room. `large` (Open-Changes, the open Duo's page): the 22px
- * title alone; the activity strip under it has the rest
+ * title alone; the activity strip under it has the rest. With `switcher`
+ * (N-Switch), `title` and `large` lead with the "Claude · Opus 5.5" chip
+ * in place of the letter and the agent's name
  */
 export function PageHeader({
   info,
   size = "title",
+  switcher,
   className,
 }: {
   info: HeaderInfo;
   size?: "title" | "compact" | "large";
+  switcher?: SwitchChipState;
   className?: string;
 }) {
   const { session } = info;
   const cards = size === "title";
+  const chip = !!switcher && size !== "compact" && canSwitch(session);
   const activity = useSessionActivity(session, {
     active: cards,
     plan: cards,
@@ -107,22 +129,38 @@ export function PageHeader({
         className
       )}
     >
-      <div className="flex min-w-0 items-center gap-1.5 text-[13px]">
-        {cards && (
-          <Avatar
-            {...agentAvatar(session.agent_type)}
-            size="sm"
-            className="h-5 w-5 rounded-md text-[10px]"
+      {chip && switcher ? (
+        <div className="flex min-w-0 items-center gap-2 text-[13px]">
+          <ModelChip
+            session={session}
+            open={switcher.open}
+            onOpen={switcher.onOpen}
           />
-        )}
-        {/* Working is said by the card below */}
-        <Crumb info={info} state={!cards || state !== "work"} />
-      </div>
+          <Crumb
+            info={info}
+            agent={false}
+            state={!cards || state !== "work"}
+            className="shrink-[2]"
+          />
+        </div>
+      ) : (
+        <div className="flex min-w-0 items-center gap-1.5 text-[13px]">
+          {cards && (
+            <Avatar
+              {...agentAvatar(session.agent_type)}
+              size="sm"
+              className="h-5 w-5 rounded-md text-[10px]"
+            />
+          )}
+          {/* Working is said by the card below */}
+          <Crumb info={info} state={!cards || state !== "work"} />
+        </div>
+      )}
       {/* N-PermMode: the shield chip at the title's right, 10px from it */}
       <div
         className={cn(
           "flex min-w-0 items-center gap-2.5",
-          size === "compact" ? "mt-0.5" : "mt-1"
+          size === "compact" ? "mt-0.5" : chip ? "mt-2" : "mt-1"
         )}
       >
         <h1
@@ -133,15 +171,18 @@ export function PageHeader({
         >
           {info.title}
         </h1>
-        <PermissionChip
-          session={session}
-          variant="header"
-          // The terminal gets the room: a 28px chip that takes a 44px tap
-          className={cn(
-            size === "compact" &&
-              "relative -my-1 h-7 rounded-full px-2.5 text-xs after:absolute after:inset-x-0 after:-inset-y-2 after:content-['']"
-          )}
-        />
+        {/* Handed off: no running agent to set a mode on */}
+        {!isPaused(session) && (
+          <PermissionChip
+            session={session}
+            variant="header"
+            // The terminal gets the room: a 28px chip that takes a 44px tap
+            className={cn(
+              size === "compact" &&
+                "relative -my-1 h-7 rounded-full px-2.5 text-xs after:absolute after:inset-x-0 after:-inset-y-2 after:content-['']"
+            )}
+          />
+        )}
       </div>
       {cards && plan && plan.total > 0 ? (
         <PlanChip plan={plan} onOpen={openLiveSheet} className="mt-2.5" />
