@@ -109,14 +109,13 @@ export function savedOrder(
   );
 }
 
-/** What the column leaves out, for More to offer */
+/** What the column leaves out (the default's too: New and Find), for More to offer */
 export function hiddenSlots(
   kind: ColumnKind,
   order: ColumnOrder | undefined
 ): ColumnSlot[] {
-  const saved = savedOrder(kind, order);
-  if (!saved) return [];
-  return COLUMN_CHOICES[kind].filter((slot) => !saved.includes(slot));
+  const shown = savedOrder(kind, order) ?? COLUMN_DEFAULTS[kind];
+  return COLUMN_CHOICES[kind].filter((slot) => !shown.includes(slot));
 }
 
 type Base = Pick<ColumnItem, "id" | "symbol" | "icon" | "label">;
@@ -529,10 +528,19 @@ function tabs(surface: Surface, ctx: ColumnContext): ColumnItem[] {
 }
 
 /** Main: New / Needs you / Projects / Find | Settings */
+/** The iOS app's More after Settings: its Live activity, Focus, Reload and Server */
+function appMore(ctx: ColumnContext): ColumnItem[] {
+  return ctx.native ? [item(BASE.more)] : [];
+}
+
 function nowColumn(ctx: ColumnContext): ColumnItem[] {
   const own = savedOrder("now", ctx.order);
   if (own)
-    return [...arranged("now", own, ctx, false), item(BASE.settings, sep)];
+    return [
+      ...arranged("now", own, ctx, false),
+      item(BASE.settings, sep),
+      ...appMore(ctx),
+    ];
   return [
     item(BASE.new, { prominent: true }),
     // No Now item here: what needs you leads the page, so it's the one on
@@ -540,6 +548,7 @@ function nowColumn(ctx: ColumnContext): ColumnItem[] {
     item(BASE.projects),
     item(BASE.search),
     item(BASE.settings, sep),
+    ...appMore(ctx),
   ];
 }
 
