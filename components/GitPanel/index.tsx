@@ -53,6 +53,11 @@ import { confirmAction } from "@/components/ui/confirm";
 interface GitPanelProps {
   /** The session it shows: "Review in chat" quotes the PR to it (M2b) */
   sessionId?: string;
+  /**
+   * The focused pane's git view is showing: this mount takes the column's
+   * Pull, Push and New pull request (E-Git). Unset on the drawer and pages
+   */
+  active?: boolean;
   workingDirectory: string;
   projectId?: string;
   repositories?: ProjectRepository[];

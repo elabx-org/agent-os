@@ -589,6 +589,7 @@ export const Pane = memo(function Pane({
             <div className={viewMode === "files" ? "h-full" : "hidden"}>
               <FileExplorer
                 sessionId={session.id}
+                active={isFocused && viewMode === "files"}
                 workingDirectory={session.working_directory}
                 fileEditor={fileEditor}
               />
@@ -600,6 +601,7 @@ export const Pane = memo(function Pane({
             <div className={viewMode === "git" ? "h-full" : "hidden"}>
               <GitPanel
                 sessionId={session.id}
+                active={isFocused && viewMode === "git"}
                 workingDirectory={session.working_directory}
                 projectId={currentProject?.id}
                 repositories={projectRepositories}
@@ -715,6 +717,7 @@ export const Pane = memo(function Pane({
                     <div className={viewMode === "files" ? "h-full" : "hidden"}>
                       <FileExplorer
                         sessionId={session.id}
+                        active={isFocused && viewMode === "files"}
                         workingDirectory={session.working_directory}
                         fileEditor={fileEditor}
                       />
@@ -726,6 +729,7 @@ export const Pane = memo(function Pane({
                     <div className="h-full">
                       <GitPanel
                         sessionId={session.id}
+                        active={isFocused && viewMode === "git"}
                         workingDirectory={session.working_directory}
                         projectId={currentProject?.id}
                         repositories={projectRepositories}
