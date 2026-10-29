@@ -102,9 +102,10 @@ export function LimitedCard({
             onClick={() => choose(when)}
             className={cn(
               "pill pill-sm h-11 min-w-0 touch-manipulation rounded-[22px] active:opacity-80 disabled:opacity-60",
+              // The primary keeps its whole label; the quiet ones give way
               primary
-                ? "pill-primary flex-1 px-2"
-                : "pill-secondary shrink-0 px-2.5"
+                ? "pill-primary flex-[1_0_auto] px-2"
+                : "pill-secondary px-2.5"
             )}
           >
             <span className="truncate">{label}</span>
