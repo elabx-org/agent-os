@@ -37,5 +37,12 @@ export function useAgentCount({
   useEffect(() => {
     if (isFocused) mobileNavStore.agentCount = count;
   }, [isFocused, count]);
+  // Focus leaves or the pane closes: no stale count for the next pane
+  useEffect(() => {
+    if (!isFocused) return;
+    return () => {
+      mobileNavStore.agentCount = 0;
+    };
+  }, [isFocused, id]);
   return count;
 }

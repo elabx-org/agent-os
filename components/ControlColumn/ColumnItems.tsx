@@ -30,7 +30,7 @@ function useModKey(): string {
 }
 
 /** Items that switch something on and off rather than go somewhere */
-const TOGGLES: NavAction[] = ["live", "beside"];
+const TOGGLES: NavAction[] = ["live", "beside", "showFinished"];
 
 interface ColumnItemsProps {
   items: Item[];
