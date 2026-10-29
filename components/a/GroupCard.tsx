@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 /** Rows on one rounded card with hairlines between them (.group-card) */
@@ -46,25 +47,44 @@ export function GroupRow({
   onClick,
   className,
 }: GroupRowProps) {
-  // Contract stub: U1.3 finishes the type and the chevron
   const body = (
     <>
       {leading}
       <span className="min-w-0 flex-1 text-left">
-        <span className="block truncate">{title}</span>
+        <span className="block truncate text-base font-medium">{title}</span>
         {subtitle && (
           <span className="text-muted-foreground mt-0.5 block truncate text-sm">
             {subtitle}
           </span>
         )}
       </span>
-      {trailing}
-      {chevron && <span aria-hidden>›</span>}
+      {trailing != null && (
+        <span className="text-muted-foreground flex shrink-0 items-center text-[13px]">
+          {trailing}
+        </span>
+      )}
+      {chevron && (
+        <ChevronRight
+          aria-hidden
+          strokeWidth={2}
+          className="h-4 w-4 flex-none text-[#AEAEB2] dark:text-[#636366]"
+        />
+      )}
     </>
   );
-  const classes = cn("row w-full", selected && "sel", className);
+  const classes = cn(
+    "row w-full",
+    selected && "sel",
+    onClick && "active:bg-accent [@media(pointer:fine)]:hover:bg-accent/50",
+    className
+  );
   return onClick ? (
-    <button type="button" onClick={onClick} className={classes}>
+    <button
+      type="button"
+      onClick={onClick}
+      aria-current={selected || undefined}
+      className={classes}
+    >
       {body}
     </button>
   ) : (
