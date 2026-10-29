@@ -1,54 +1,32 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
-import { useQueryClient } from "@tanstack/react-query";
-import {
-  GitBranch,
-  GitPullRequest,
-  RefreshCw,
-  Loader2,
-  AlertCircle,
-  ArrowUp,
-  ArrowDown,
-  ArrowDownUp,
-  Plus,
-  Minus,
-  ArrowLeft,
-  ChevronLeft,
-  ChevronRight,
-  FileCode,
-  ExternalLink,
-  X,
-} from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { FileChanges } from "./FileChanges";
-import { CommitForm } from "./CommitForm";
-import { PRCreationModal } from "@/components/PRCreationModal";
-import { GitPanelTabs, type GitTab } from "./GitPanelTabs";
-import { CommitHistory } from "./CommitHistory";
-import { StashList } from "./StashList";
-import { PRReview } from "./PRReview";
-import { DiffView } from "@/components/DiffViewer/DiffModal";
-import { BranchSelector } from "@/components/GitDrawer/BranchSelector";
-import { useViewport } from "@/hooks/useViewport";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AlertCircle, Loader2, X } from "lucide-react";
 import { toast } from "sonner";
-import { cn } from "@/lib/utils";
+import { PRCreationModal } from "@/components/PRCreationModal";
+import { PRReview } from "./PRReview";
+import { BranchCard } from "./BranchCard";
+import { ChangesList } from "./ChangesList";
+import { CommitBar, CommitBox } from "./CommitBar";
+import { CommitDetail } from "./CommitDetail";
+import { FileDiffPage } from "./FileDiffPage";
+import { GitMenu } from "./GitMenu";
+import { HistoryList } from "./HistoryList";
+import { NoPRCard, PRCard } from "./PRCard";
+import { StashRows } from "./StashRows";
+import { Subpage } from "./Subpage";
 import {
-  useGitStatus,
-  usePRStatus,
-  useCreatePR,
-  useStageFiles,
-  useUnstageFiles,
-  useMultiRepoGitStatus,
-  useStashList,
-  useAutoFetch,
-  useSyncBranch,
-  gitKeys,
-} from "@/data/git/queries";
-import type { GitStatus, GitFile } from "@/lib/git-status";
-import type { MultiRepoGitFile } from "@/lib/multi-repo-git";
+  repoOf,
+  useGitModel,
+  type AnyGitFile,
+  type GitModel,
+} from "./useGitModel";
+import { useViewport } from "@/hooks/useViewport";
+import { useLayoutMode } from "@/hooks/useLayoutMode";
+import { registerNavHandlers } from "@/lib/nav-actions";
+import { cn } from "@/lib/utils";
+import type { GitFile } from "@/lib/git-status";
 import type { ProjectRepository } from "@/lib/db";
-import { confirmAction } from "@/components/ui/confirm";
 
 interface GitPanelProps {
   /** The session it shows: "Review in chat" quotes the PR to it (M2b) */
@@ -63,12 +41,6 @@ interface GitPanelProps {
   repositories?: ProjectRepository[];
   onFileSelect?: (file: GitFile, diff: string) => void;
   onClose?: () => void;
-}
-
-interface SelectedFile {
-  file: GitFile | MultiRepoGitFile;
-  diff: string;
-  repoPath?: string;
 }
 
 /** The one-column touch layout below this width, as on the right page of an open iPhone Duo */
@@ -86,7 +58,10 @@ export function GitPanel(props: GitPanelProps) {
   }, [root]);
 
   return (
-    <div ref={setRoot} className="h-full w-full">
+    <div
+      ref={setRoot}
+      className="bg-background relative h-full w-full min-w-0 overflow-hidden"
+    >
       <GitPanelContent
         {...props}
         narrow={isMobile || (width > 0 && width < NARROW_WIDTH)}
@@ -95,1064 +70,431 @@ export function GitPanel(props: GitPanelProps) {
   );
 }
 
+interface OpenFile {
+  file: AnyGitFile;
+  diff: string;
+  loading: boolean;
+}
+
+type Tab = "changes" | "history" | "stashes";
+
 function GitPanelContent({
+  sessionId,
+  active,
   workingDirectory,
   projectId,
   repositories = [],
   onClose,
   narrow,
 }: GitPanelProps & { narrow: boolean }) {
-  const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<GitTab>("changes");
-  const [showPRModal, setShowPRModal] = useState(false);
-
-  // Determine if we're in multi-repo mode
-  const isMultiRepo = repositories.length > 0;
-
-  // Single-repo mode hooks
-  const singleRepoQuery = useGitStatus(workingDirectory, {
-    enabled: !isMultiRepo,
+  const m = useGitModel({
+    sessionId,
+    workingDirectory,
+    projectId,
+    repositories,
   });
+  // The closed Duo: E-Git's insets, and its column holds Pull, Push and New pull request
+  const closed = useLayoutMode() === "duo-closed";
+  const columnActions = !!active && closed && narrow;
 
-  // Multi-repo mode hooks
-  const multiRepoQuery = useMultiRepoGitStatus(projectId, workingDirectory, {
-    enabled: isMultiRepo,
-  });
+  const [tab, setTab] = useState<Tab>("changes");
+  const [openFile, setOpenFile] = useState<OpenFile | null>(null);
+  const [commitHash, setCommitHash] = useState<string | null>(null);
+  const [reviewing, setReviewing] = useState(false);
+  const [creatingPR, setCreatingPR] = useState(false);
 
-  // Unified status based on mode
-  const loading = isMultiRepo
-    ? multiRepoQuery.isPending
-    : singleRepoQuery.isPending;
-  const isError = isMultiRepo
-    ? multiRepoQuery.isError
-    : singleRepoQuery.isError;
-  const error = isMultiRepo ? multiRepoQuery.error : singleRepoQuery.error;
-  const isRefetching = isMultiRepo
-    ? multiRepoQuery.isRefetching
-    : singleRepoQuery.isRefetching;
-
-  // Convert multi-repo status to single-repo-like status for unified handling
-  const status: GitStatus | null = isMultiRepo
-    ? multiRepoQuery.data
-      ? {
-          // Use first repo's branch or "Multiple"
-          branch:
-            multiRepoQuery.data.repositories.length === 1
-              ? multiRepoQuery.data.repositories[0]?.branch || ""
-              : `${multiRepoQuery.data.repositories.length} repos`,
-          ahead: multiRepoQuery.data.repositories.reduce(
-            (sum, r) => sum + r.ahead,
-            0
-          ),
-          behind: multiRepoQuery.data.repositories.reduce(
-            (sum, r) => sum + r.behind,
-            0
-          ),
-          staged: multiRepoQuery.data.staged,
-          unstaged: multiRepoQuery.data.unstaged,
-          untracked: multiRepoQuery.data.untracked,
-        }
-      : null
-    : singleRepoQuery.data || null;
-
-  const refetchStatus = isMultiRepo
-    ? multiRepoQuery.refetch
-    : singleRepoQuery.refetch;
-
-  // For PR status, use the primary repo or first repo in multi-repo mode
-  const primaryRepoPath = isMultiRepo
-    ? repositories.find((r) => r.is_primary)?.path ||
-      repositories[0]?.path ||
-      workingDirectory
-    : workingDirectory;
-
-  const { data: prData } = usePRStatus(primaryRepoPath);
-  const existingPR = prData?.existingPR ?? null;
-
-  const createPRMutation = useCreatePR(primaryRepoPath);
-  const stageMutation = useStageFiles(primaryRepoPath);
-  const unstageMutation = useUnstageFiles(primaryRepoPath);
-  const syncMutation = useSyncBranch(primaryRepoPath);
-
-  // Stash count for tab badge
-  const { data: stashes = [] } = useStashList(workingDirectory);
-
-  // Auto-fetch from remote
-  const [syncInterval, setSyncInterval] = useState(() => {
-    if (typeof window === "undefined") return 0;
-    const stored = localStorage.getItem(`agentOS:gitSync:${workingDirectory}`);
-    return stored ? parseInt(stored, 10) : 0;
-  });
-  useAutoFetch(workingDirectory, syncInterval);
-
-  const handleSyncIntervalChange = (seconds: number) => {
-    setSyncInterval(seconds);
-    localStorage.setItem(`agentOS:gitSync:${workingDirectory}`, String(seconds));
-  };
-
-  // Selected file for diff view
-  const [selectedFile, setSelectedFile] = useState<SelectedFile | null>(null);
-  const [loadingDiff, setLoadingDiff] = useState(false);
-
-  // Resizable panel state (desktop)
-  const [listWidth, setListWidth] = useState(300);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const isDragging = useRef(false);
-
-  const handleRefresh = async () => {
-    await refetchStatus();
-  };
-
-  const handleFileClick = async (file: GitFile | MultiRepoGitFile) => {
-    setLoadingDiff(true);
-    try {
-      const isUntracked = file.status === "untracked";
-      // In multi-repo mode, use the file's repoPath
-      const repoPath =
-        "repoPath" in file && file.repoPath ? file.repoPath : workingDirectory;
-      const params = new URLSearchParams({
-        path: repoPath,
-        file: file.path,
-        staged: file.staged.toString(),
-        ...(isUntracked && { untracked: "true" }),
-      });
-
-      const res = await fetch(`/api/git/status?${params}`);
-      const data = await res.json();
-
-      if (data.diff !== undefined) {
-        setSelectedFile({ file, diff: data.diff, repoPath });
-      }
-    } catch {
-      // Ignore errors
-    } finally {
-      setLoadingDiff(false);
-    }
-  };
-
-  const handleStage = async (file: GitFile | MultiRepoGitFile) => {
-    // In multi-repo mode, use the file's repoPath
-    const repoPath =
-      "repoPath" in file && file.repoPath ? file.repoPath : primaryRepoPath;
-    try {
-      await fetch("/api/git/stage", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path: repoPath, files: [file.path] }),
-      });
-      // Invalidate queries to refresh
-      queryClient.invalidateQueries({ queryKey: gitKeys.all });
-      // Update selected file's staged status if it's the same file
-      if (selectedFile?.file.path === file.path) {
-        setSelectedFile({ ...selectedFile, file: { ...file, staged: true } });
-      }
-    } catch {
-      // Ignore errors
-    }
-  };
-
-  const handleUnstage = async (file: GitFile | MultiRepoGitFile) => {
-    // In multi-repo mode, use the file's repoPath
-    const repoPath =
-      "repoPath" in file && file.repoPath ? file.repoPath : primaryRepoPath;
-    try {
-      await fetch("/api/git/unstage", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path: repoPath, files: [file.path] }),
-      });
-      // Invalidate queries to refresh
-      queryClient.invalidateQueries({ queryKey: gitKeys.all });
-      // Update selected file's staged status if it's the same file
-      if (selectedFile?.file.path === file.path) {
-        setSelectedFile({
-          ...selectedFile,
-          file: { ...file, staged: false },
+  // The latest request wins when files are opened quickly in turn
+  const diffRequest = useRef(0);
+  const showFile = useCallback(
+    async (file: AnyGitFile) => {
+      const id = ++diffRequest.current;
+      setCommitHash(null);
+      setReviewing(false);
+      setOpenFile((cur) => ({
+        file,
+        diff: cur && cur.file.path === file.path ? cur.diff : "",
+        loading: true,
+      }));
+      let diff = "";
+      try {
+        const params = new URLSearchParams({
+          path: repoOf(file, workingDirectory),
+          file: file.path,
+          staged: String(file.staged),
+          ...(file.status === "untracked" && { untracked: "true" }),
         });
+        const data = await (await fetch(`/api/git/status?${params}`)).json();
+        diff = typeof data.diff === "string" ? data.diff : "";
+      } catch {
+        toast.error("Couldn't load the diff");
       }
-    } catch {
-      // Ignore errors
+      if (id === diffRequest.current)
+        setOpenFile((cur) => (cur ? { ...cur, diff, loading: false } : cur));
+    },
+    [workingDirectory]
+  );
+
+  const openCommit = (hash: string) => {
+    setOpenFile(null);
+    setReviewing(false);
+    setCommitHash(hash);
+  };
+  const openReview = () => {
+    setOpenFile(null);
+    setCommitHash(null);
+    setReviewing(true);
+  };
+  const review = () => {
+    if (!m.reviewInChat()) openReview();
+  };
+  const newPullRequest = () => {
+    if (m.pr) return openReview();
+    if (m.onBase) {
+      toast(`You're on ${m.branch}: switch to a branch to open a pull request`);
+      return;
     }
+    setCreatingPR(true);
   };
 
-  const handleStageAll = () => {
-    stageMutation.mutate(undefined);
-  };
-
-  const handleUnstageAll = () => {
-    unstageMutation.mutate(undefined);
-  };
-
-  const handleDiscard = async (file: GitFile | MultiRepoGitFile) => {
-    const ok = await confirmAction({
-      title: file.status === "untracked" ? "Delete this file?" : "Discard changes?",
-      message: `${file.path} — this can't be undone.`,
-      confirmLabel: file.status === "untracked" ? "Delete" : "Discard",
-      destructive: true,
+  // The column's Pull, Push and New pull request, while this view shows
+  const latest = useRef({ pull: m.pull, push: m.push, newPullRequest });
+  latest.current = { pull: m.pull, push: m.push, newPullRequest };
+  useEffect(() => {
+    if (!active) return;
+    return registerNavHandlers({
+      gitPull: () => latest.current.pull(),
+      gitPush: () => latest.current.push(),
+      newPullRequest: () => latest.current.newPullRequest(),
     });
-    if (!ok) return;
-    const repoPath =
-      "repoPath" in file && file.repoPath ? file.repoPath : primaryRepoPath;
-    try {
-      await fetch("/api/git/discard", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path: repoPath, file: file.path }),
-      });
-      queryClient.invalidateQueries({ queryKey: gitKeys.all });
-      if (selectedFile?.file.path === file.path) setSelectedFile(null);
-    } catch {
-      toast.error("Failed to discard changes");
-    }
+  }, [active]);
+
+  const fileActions = {
+    onStage: (f: AnyGitFile) => m.stage(f),
+    onUnstage: async (f: AnyGitFile) => {
+      await m.unstage(f);
+      if (openFile && openFile.file.path === f.path)
+        showFile({ ...f, staged: false });
+    },
+    onDiscard: async (f: AnyGitFile) => {
+      if ((await m.discard(f)) && openFile?.file.path === f.path)
+        setOpenFile(null);
+    },
   };
 
-  // Resize handle for desktop
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    isDragging.current = true;
-    document.body.style.cursor = "col-resize";
-    document.body.style.userSelect = "none";
-
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!isDragging.current || !containerRef.current) return;
-      const containerRect = containerRef.current.getBoundingClientRect();
-      const newWidth = e.clientX - containerRect.left;
-      setListWidth(Math.max(200, Math.min(500, newWidth)));
-    };
-
-    const handleMouseUp = () => {
-      isDragging.current = false;
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
-      document.removeEventListener("mousemove", handleMouseMove);
-      document.removeEventListener("mouseup", handleMouseUp);
-    };
-
-    document.addEventListener("mousemove", handleMouseMove);
-    document.addEventListener("mouseup", handleMouseUp);
-  }, []);
-
-  const handleSync = () => {
-    syncMutation.mutate(undefined, {
-      onSuccess: () => toast.success("Synced with remote"),
-      onError: (err) => toast.error(err.message || "Sync failed"),
-    });
-  };
-
-  if (loading) {
-    return (
-      <div className="bg-background flex h-full w-full flex-col">
-        <Header
-          branch=""
-          ahead={0}
-          behind={0}
-          hasChanges={false}
-          workingDirectory={primaryRepoPath}
-          onRefresh={handleRefresh}
-          refreshing={false}
-          onClose={onClose}
+  const pills = <ActionPills m={m} />;
+  const title = (size: "large" | "title") => (
+    <div className="flex min-w-0 items-center gap-1">
+      <h1
+        className={cn(
+          "min-w-0 flex-1",
+          size === "large" ? "t-large" : "t-title"
+        )}
+      >
+        Git
+      </h1>
+      {!columnActions && (
+        <GitMenu
+          pr={m.pr}
+          syncInterval={m.syncInterval}
+          onSyncInterval={m.setSyncInterval}
+          onRefresh={() => m.refreshAll()}
         />
-        <div className="flex flex-1 items-center justify-center">
+      )}
+      {onClose && (
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close git"
+          className="text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] flex size-9 flex-none items-center justify-center rounded-full"
+        >
+          <X className="h-5 w-5" />
+        </button>
+      )}
+    </div>
+  );
+
+  const branchCard = (
+    <BranchCard
+      workingDirectory={m.repoPath}
+      branch={m.branch}
+      caption={m.caption}
+      hasChanges={m.hasChanges}
+      fixed={m.isMultiRepo && repositories.length > 1}
+      onBranchChanged={m.refreshAll}
+    />
+  );
+
+  // A diff, a commit or the PR's review: over the panel when narrow, in
+  // D-Git's main column when wide
+  const subpage = openFile ? (
+    <FileDiffPage
+      file={openFile.file}
+      diff={openFile.diff}
+      loading={openFile.loading}
+      files={m.files}
+      layer={narrow}
+      closed={closed}
+      onBack={() => setOpenFile(null)}
+      onOpen={showFile}
+      onStage={fileActions.onStage}
+      onUnstage={fileActions.onUnstage}
+    />
+  ) : commitHash ? (
+    <CommitDetail
+      repoPath={m.repoPath}
+      hash={commitHash}
+      layer={narrow}
+      closed={closed}
+      wrap={narrow}
+      onBack={() => setCommitHash(null)}
+    />
+  ) : reviewing && m.pr ? (
+    <Subpage
+      backLabel="Back to git"
+      onBack={() => setReviewing(false)}
+      layer={narrow}
+      closed={closed}
+      title={`#${m.pr.number} ${m.pr.title}`}
+      subtitle={`${m.pr.headRefName} → ${m.pr.baseRefName}`}
+    >
+      <PRReview workingDirectory={m.repoPath} prNumber={m.pr.number} />
+    </Subpage>
+  ) : null;
+
+  const prModal = creatingPR && (
+    <PRCreationModal
+      workingDirectory={m.repoPath}
+      onClose={() => setCreatingPR(false)}
+      onSuccess={() => m.refreshAll()}
+    />
+  );
+
+  const body = (() => {
+    if (m.loading)
+      return (
+        <div className="flex h-24 items-center justify-center">
           <Loader2 className="text-muted-foreground h-6 w-6 animate-spin" />
         </div>
-      </div>
-    );
-  }
-
-  if (isError) {
-    return (
-      <div className="bg-background flex h-full w-full flex-col">
-        <Header
-          branch=""
-          ahead={0}
-          behind={0}
-          hasChanges={false}
-          workingDirectory={primaryRepoPath}
-          onRefresh={handleRefresh}
-          refreshing={isRefetching}
-          existingPR={existingPR}
-          onClose={onClose}
-        />
-        <div className="flex flex-1 flex-col items-center justify-center p-4">
-          <AlertCircle className="text-muted-foreground mb-2 h-8 w-8" />
-          <p className="text-muted-foreground text-center text-sm">
-            {error?.message ?? "Failed to load git status"}
-          </p>
+      );
+    if (m.error || !m.status)
+      return (
+        <div className="text-muted-foreground flex flex-col items-center gap-2 py-10 text-center text-[14px]">
+          <AlertCircle className="h-7 w-7" />
+          {m.error ?? "No git status"}
         </div>
-      </div>
-    );
-  }
-
-  if (!status) {
+      );
     return null;
-  }
+  })();
 
-  const hasChanges =
-    status.staged.length > 0 ||
-    status.unstaged.length > 0 ||
-    status.untracked.length > 0;
-
-  // Narrow layout: full-screen list OR full-screen diff
   if (narrow) {
-    return (
-      <MobileGitPanel
-        status={status}
-        files={[...status.staged, ...status.unstaged, ...status.untracked]}
-        hasChanges={hasChanges}
-        selectedFile={selectedFile}
-        loadingDiff={loadingDiff}
-        refreshing={isRefetching}
-        showPRModal={showPRModal}
-        workingDirectory={workingDirectory}
-        activeTab={activeTab}
-        existingPR={existingPR}
-        creatingPR={createPRMutation.isPending}
-        stashCount={stashes.length}
-        prNumber={existingPR?.number}
-        syncInterval={syncInterval}
-        onSyncIntervalChange={handleSyncIntervalChange}
-        onSync={handleSync}
-        syncing={syncMutation.isPending}
-        primaryRepoPath={primaryRepoPath}
-        onTabChange={setActiveTab}
-        onRefresh={handleRefresh}
-        onFileClick={handleFileClick}
-        onStage={handleStage}
-        onUnstage={handleUnstage}
-        onDiscard={handleDiscard}
-        onStageAll={handleStageAll}
-        onUnstageAll={handleUnstageAll}
-        onBack={() => setSelectedFile(null)}
-        onCommit={() => {
-          queryClient.invalidateQueries({
-            queryKey: gitKeys.status(workingDirectory),
-          });
-          queryClient.invalidateQueries({
-            queryKey: gitKeys.pr(workingDirectory),
-          });
-        }}
-        onShowPRModal={() => setShowPRModal(true)}
-        onClosePRModal={() => setShowPRModal(false)}
-        onCreatePR={() => createPRMutation.mutate()}
-      />
-    );
-  }
-
-  // Desktop layout: full-width tabs (History, Stash, PR)
-  if (activeTab === "history" || activeTab === "stash" || activeTab === "pr") {
-    return (
-      <div className="bg-background flex h-full w-full flex-col">
-        <Header
-          branch={status.branch}
-          ahead={status.ahead}
-          behind={status.behind}
-          hasChanges={hasChanges}
-          workingDirectory={primaryRepoPath}
-          onRefresh={handleRefresh}
-          refreshing={isRefetching}
-          existingPR={existingPR}
-          syncInterval={syncInterval}
-          onSyncIntervalChange={handleSyncIntervalChange}
-          onSync={handleSync}
-          syncing={syncMutation.isPending}
-          onClose={onClose}
-        />
-        <GitPanelTabs activeTab={activeTab} onTabChange={setActiveTab} stashCount={stashes.length} prNumber={existingPR?.number} />
-        {activeTab === "history" && (
-          <CommitHistory workingDirectory={workingDirectory} />
-        )}
-        {activeTab === "stash" && (
-          <StashList workingDirectory={workingDirectory} />
-        )}
-        {activeTab === "pr" && existingPR && (
-          <PRReview workingDirectory={primaryRepoPath} prNumber={existingPR.number} />
-        )}
+    const changes = m.hasChanges ? (
+      <ChangesList files={m.files} onOpen={showFile} {...fileActions} />
+    ) : (
+      <div className="group-card text-muted-foreground px-4 py-3.5 text-[15px]">
+        No changes
       </div>
     );
-  }
-
-  // Desktop layout: Changes tab
-  // When no changes, use full-width layout (no split pane)
-  if (!hasChanges) {
     return (
-      <div className="bg-background flex h-full w-full flex-col">
-        <Header
-          branch={status.branch}
-          ahead={status.ahead}
-          behind={status.behind}
-          hasChanges={false}
-          workingDirectory={primaryRepoPath}
-          onRefresh={handleRefresh}
-          refreshing={isRefetching}
-          syncInterval={syncInterval}
-          onSyncIntervalChange={handleSyncIntervalChange}
-          onSync={handleSync}
-          syncing={syncMutation.isPending}
-          onClose={onClose}
-        />
-        <GitPanelTabs activeTab={activeTab} onTabChange={setActiveTab} stashCount={stashes.length} prNumber={existingPR?.number} />
-        <div className="flex flex-1 flex-col items-center justify-center gap-3">
-          <p className="text-muted-foreground text-sm">No changes</p>
-          {status.branch !== "main" &&
-            status.branch !== "master" &&
-            !existingPR && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => createPRMutation.mutate()}
-                disabled={createPRMutation.isPending}
-                className="gap-1.5"
-              >
-                {createPRMutation.isPending ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <GitPullRequest className="h-3.5 w-3.5" />
-                )}
-                Create PR
-              </Button>
-            )}
-        </div>
-      </div>
-    );
-  }
-
-  // Desktop layout: side-by-side (Changes tab with files)
-  return (
-    <div
-      ref={containerRef}
-      className="bg-background flex h-full w-full flex-col"
-    >
-      <div className="flex min-h-0 flex-1">
-        {/* Left panel - file list */}
-        <div className="flex h-full flex-col" style={{ width: listWidth }}>
-          <Header
-            branch={status.branch}
-            ahead={status.ahead}
-            behind={status.behind}
-            hasChanges={hasChanges}
-            workingDirectory={primaryRepoPath}
-            onRefresh={handleRefresh}
-            refreshing={isRefetching}
-            syncInterval={syncInterval}
-            onSyncIntervalChange={handleSyncIntervalChange}
-            onSync={handleSync}
-            syncing={syncMutation.isPending}
-            onClose={onClose}
-          />
-          <GitPanelTabs activeTab={activeTab} onTabChange={setActiveTab} stashCount={stashes.length} prNumber={existingPR?.number} />
-
-          <div className="smooth-scroll flex-1 overflow-y-auto overscroll-contain">
-            <div className="py-2">
-              {/* Staged section */}
-              {status.staged.length > 0 && (
-                <FileChanges
-                  files={status.staged}
-                  title="Staged Changes"
-                  emptyMessage="No staged changes"
-                  selectedPath={selectedFile?.file.path}
-                  onFileClick={handleFileClick}
-                  onUnstage={handleUnstage}
-                  onUnstageAll={handleUnstageAll}
-                  isStaged={true}
-                />
-              )}
-
-              {/* Unstaged section */}
-              {status.unstaged.length > 0 && (
-                <FileChanges
-                  files={status.unstaged}
-                  title="Changes"
-                  emptyMessage="No changes"
-                  selectedPath={selectedFile?.file.path}
-                  onFileClick={handleFileClick}
-                  onStage={handleStage}
-                  onStageAll={handleStageAll}
-                  onDiscard={handleDiscard}
-                  isStaged={false}
-                />
-              )}
-
-              {/* Untracked section */}
-              {status.untracked.length > 0 && (
-                <FileChanges
-                  files={status.untracked}
-                  title="Untracked Files"
-                  emptyMessage="No untracked files"
-                  selectedPath={selectedFile?.file.path}
-                  onFileClick={handleFileClick}
-                  onStage={handleStage}
-                  onDiscard={handleDiscard}
-                  isStaged={false}
-                />
-              )}
-            </div>
-          </div>
-
-          {/* Commit form */}
-          <CommitForm
-            workingDirectory={workingDirectory}
-            stagedCount={status.staged.length}
-            branch={status.branch}
-            onCommit={() => {
-              queryClient.invalidateQueries({
-                queryKey: gitKeys.status(workingDirectory),
-              });
-              queryClient.invalidateQueries({
-                queryKey: gitKeys.pr(workingDirectory),
-              });
-            }}
-          />
-        </div>
-
-        {/* Resize handle */}
+      <>
         <div
-          className="bg-muted/50 hover:bg-primary/50 active:bg-primary w-1 flex-shrink-0 cursor-col-resize transition-colors"
-          onMouseDown={handleMouseDown}
-        />
-
-        {/* Right panel - diff viewer */}
-        <div className="bg-muted/20 flex h-full min-w-0 flex-1 flex-col">
-          {loadingDiff ? (
-            <div className="flex flex-1 items-center justify-center">
-              <Loader2 className="text-muted-foreground h-6 w-6 animate-spin" />
-            </div>
-          ) : selectedFile ? (
+          className={cn(
+            "flex h-full min-w-0 flex-col gap-3 overflow-x-hidden overflow-y-auto overscroll-contain pt-[18px] pb-[max(1rem,var(--pane-inset-bottom,env(safe-area-inset-bottom)))]",
+            closed ? "pr-2 pl-5" : "px-4"
+          )}
+        >
+          {title("large")}
+          {body ?? (
             <>
-              {/* Diff header with stage/unstage */}
-              <div className="bg-background/50 flex items-center gap-2 p-3">
-                <FileCode className="text-muted-foreground h-4 w-4" />
-                <span className="flex-1 truncate text-sm font-medium">
-                  {selectedFile.file.path}
-                </span>
-                <Button
-                  variant={selectedFile.file.staged ? "outline" : "default"}
-                  size="sm"
-                  onClick={() =>
-                    selectedFile.file.staged
-                      ? handleUnstage(selectedFile.file)
-                      : handleStage(selectedFile.file)
-                  }
-                >
-                  {selectedFile.file.staged ? (
-                    <>
-                      <Minus className="mr-1 h-4 w-4" />
-                      Unstage
-                    </>
-                  ) : (
-                    <>
-                      <Plus className="mr-1 h-4 w-4" />
-                      Stage
-                    </>
-                  )}
-                </Button>
-              </div>
-              {/* Diff content */}
-              <div className="flex-1 overflow-auto p-3">
-                <DiffView
-                  diff={selectedFile.diff}
-                  fileName={selectedFile.file.path}
+              {branchCard}
+              {!columnActions && pills}
+              {m.pr && (
+                <PRCard
+                  pr={m.pr}
+                  merging={m.merging}
+                  onMerge={m.merge}
+                  onReview={review}
+                  onOpen={openReview}
                 />
-              </div>
-            </>
-          ) : (
-            <div className="text-muted-foreground flex flex-1 flex-col items-center justify-center">
-              <FileCode className="mb-4 h-12 w-12 opacity-50" />
-              <p className="text-sm">Select a file to view diff</p>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* PR Creation Modal */}
-      {showPRModal && (
-        <PRCreationModal
-          workingDirectory={workingDirectory}
-          onClose={() => setShowPRModal(false)}
-        />
-      )}
-    </div>
-  );
-}
-
-// Mobile layout component
-interface MobileGitPanelProps {
-  status: GitStatus;
-  /** Every changed file in list order, for moving between diffs */
-  files: GitFile[];
-  hasChanges: boolean;
-  selectedFile: SelectedFile | null;
-  loadingDiff: boolean;
-  refreshing: boolean;
-  showPRModal: boolean;
-  workingDirectory: string;
-  activeTab: GitTab;
-  existingPR: {
-    number: number;
-    url: string;
-    state: string;
-    title: string;
-  } | null;
-  creatingPR: boolean;
-  stashCount: number;
-  prNumber?: number;
-  syncInterval: number;
-  onSyncIntervalChange: (seconds: number) => void;
-  onSync: () => void;
-  syncing: boolean;
-  primaryRepoPath: string;
-  onTabChange: (tab: GitTab) => void;
-  onRefresh: () => void;
-  onFileClick: (file: GitFile) => void;
-  onStage: (file: GitFile) => void | Promise<void>;
-  onUnstage: (file: GitFile) => void;
-  onDiscard: (file: GitFile) => void;
-  onStageAll: () => void;
-  onUnstageAll: () => void;
-  onBack: () => void;
-  onCommit: () => void;
-  onShowPRModal: () => void;
-  onClosePRModal: () => void;
-  onCreatePR: () => void;
-}
-
-function MobileGitPanel({
-  status,
-  files,
-  hasChanges,
-  selectedFile,
-  loadingDiff,
-  refreshing,
-  showPRModal,
-  workingDirectory,
-  activeTab,
-  existingPR,
-  creatingPR,
-  stashCount,
-  prNumber,
-  syncInterval,
-  onSyncIntervalChange,
-  onSync,
-  syncing,
-  primaryRepoPath,
-  onTabChange,
-  onRefresh,
-  onFileClick,
-  onStage,
-  onUnstage,
-  onDiscard,
-  onStageAll,
-  onUnstageAll,
-  onBack,
-  onCommit,
-  onShowPRModal,
-  onClosePRModal,
-  onCreatePR,
-}: MobileGitPanelProps) {
-  // Full-width tabs (History, Stash, PR)
-  if (activeTab === "history" || activeTab === "stash" || activeTab === "pr") {
-    return (
-      <div className="bg-background flex h-full w-full flex-col">
-        <Header
-          branch={status.branch}
-          ahead={status.ahead}
-          behind={status.behind}
-          hasChanges={hasChanges}
-          workingDirectory={primaryRepoPath}
-          onRefresh={onRefresh}
-          refreshing={refreshing}
-          existingPR={existingPR}
-          syncInterval={syncInterval}
-          onSyncIntervalChange={onSyncIntervalChange}
-          onSync={onSync}
-          syncing={syncing}
-        />
-        <GitPanelTabs activeTab={activeTab} onTabChange={onTabChange} stashCount={stashCount} prNumber={prNumber} />
-        {activeTab === "history" && (
-          <CommitHistory workingDirectory={workingDirectory} />
-        )}
-        {activeTab === "stash" && (
-          <StashList workingDirectory={workingDirectory} />
-        )}
-        {activeTab === "pr" && prNumber && (
-          <PRReview workingDirectory={workingDirectory} prNumber={prNumber} />
-        )}
-      </div>
-    );
-  }
-
-  // Show diff view when file is selected
-  if (selectedFile) {
-    return (
-      <MobileDiff
-        file={selectedFile.file}
-        diff={selectedFile.diff}
-        files={files}
-        loading={loadingDiff}
-        onBack={onBack}
-        onOpen={onFileClick}
-        onStage={onStage}
-        onUnstage={onUnstage}
-      />
-    );
-  }
-
-  // Show file list (Changes tab)
-  return (
-    <div className="bg-background flex h-full w-full flex-col">
-      <Header
-        branch={status.branch}
-        ahead={status.ahead}
-        behind={status.behind}
-        hasChanges={hasChanges}
-        workingDirectory={primaryRepoPath}
-        onRefresh={onRefresh}
-        refreshing={refreshing}
-        existingPR={existingPR}
-        syncInterval={syncInterval}
-        onSyncIntervalChange={onSyncIntervalChange}
-        onSync={onSync}
-        syncing={syncing}
-      />
-      <GitPanelTabs activeTab={activeTab} onTabChange={onTabChange} stashCount={stashCount} prNumber={prNumber} />
-
-      <div className="smooth-scroll flex-1 overflow-y-auto overscroll-contain">
-        {!hasChanges ? (
-          <div className="flex h-32 flex-col items-center justify-center gap-3">
-            <p className="text-muted-foreground text-sm">No changes</p>
-            {status.branch !== "main" &&
-              status.branch !== "master" &&
-              !existingPR && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={onCreatePR}
-                  disabled={creatingPR}
-                  className="gap-1.5"
-                >
-                  {creatingPR ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <GitPullRequest className="h-3.5 w-3.5" />
-                  )}
-                  Create PR
-                </Button>
               )}
-          </div>
-        ) : (
-          <div className="py-2">
-            {/* Staged section */}
-            {status.staged.length > 0 && (
-              <FileChanges
-                files={status.staged}
-                title="Staged Changes"
-                emptyMessage="No staged changes"
-                onFileClick={onFileClick}
-                onUnstage={onUnstage}
-                onUnstageAll={onUnstageAll}
-                isStaged={true}
-              />
-            )}
-
-            {/* Unstaged section */}
-            {status.unstaged.length > 0 && (
-              <FileChanges
-                files={status.unstaged}
-                title="Changes"
-                emptyMessage="No changes"
-                onFileClick={onFileClick}
-                onStage={onStage}
-                onStageAll={onStageAll}
-                onDiscard={onDiscard}
-                isStaged={false}
-              />
-            )}
-
-            {/* Untracked section */}
-            {status.untracked.length > 0 && (
-              <FileChanges
-                files={status.untracked}
-                title="Untracked Files"
-                emptyMessage="No untracked files"
-                onFileClick={onFileClick}
-                onStage={onStage}
-                onDiscard={onDiscard}
-                isStaged={false}
-              />
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Commit form */}
-      <CommitForm
-        workingDirectory={workingDirectory}
-        stagedCount={status.staged.length}
-        branch={status.branch}
-        onCommit={onCommit}
-      />
-
-      {/* Mobile hint */}
-      {hasChanges && status.staged.length === 0 && (
-        <div className="px-3 py-2">
-          <p className="text-muted-foreground text-center text-xs">
-            Swipe right to stage, left to unstage
-          </p>
-        </div>
-      )}
-
-      {/* PR Creation Modal */}
-      {showPRModal && (
-        <PRCreationModal
-          workingDirectory={workingDirectory}
-          onClose={onClosePRModal}
-        />
-      )}
-    </div>
-  );
-}
-
-const SAME_FILE = (a: GitFile, b: GitFile) =>
-  a.path === b.path && a.staged === b.staged;
-
-/**
- * One file's diff, full screen. Swipe or use the arrows to move through the
- * changes; staging a file moves on to the next one still to review.
- */
-function MobileDiff({
-  file,
-  diff,
-  files,
-  loading,
-  onBack,
-  onOpen,
-  onStage,
-  onUnstage,
-}: {
-  file: GitFile;
-  diff: string;
-  files: GitFile[];
-  loading: boolean;
-  onBack: () => void;
-  onOpen: (file: GitFile) => void;
-  onStage: (file: GitFile) => void | Promise<void>;
-  onUnstage: (file: GitFile) => void;
-}) {
-  const index = files.findIndex((f) => SAME_FILE(f, file));
-  const prev = index > 0 ? files[index - 1] : undefined;
-  const next = index >= 0 ? files[index + 1] : undefined;
-  const touch = useRef<{ x: number; y: number } | null>(null);
-
-  const stage = async () => {
-    const after = files
-      .slice(index + 1)
-      .find((f) => !f.staged && !SAME_FILE(f, file));
-    await onStage(file);
-    if (after) onOpen(after);
-    else onBack();
-  };
-
-  return (
-    <div className="bg-background flex h-full w-full flex-col">
-      <div className="bg-muted/30 flex items-center gap-1 p-2">
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={onBack}
-          aria-label="Back to changes"
-        >
-          <ArrowLeft className="h-5 w-5" />
-        </Button>
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium">{file.path}</p>
-          {index >= 0 && (
-            <p className="text-muted-foreground text-xs">
-              {index + 1} of {files.length}
-              {file.staged ? " · staged" : ""}
-            </p>
+              {!m.pr && !m.onBase && !columnActions && (
+                <button
+                  type="button"
+                  onClick={newPullRequest}
+                  className="pill pill-secondary pill-sm self-start active:opacity-80"
+                >
+                  New pull request
+                </button>
+              )}
+              <div
+                className="seg bg-card flex-none self-start"
+                role="tablist"
+                aria-label="Git"
+              >
+                {(
+                  [
+                    ["changes", "Changes"],
+                    ["history", "History"],
+                    ["stashes", "Stashes"],
+                  ] as const
+                ).map(([id, label]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    role="tab"
+                    aria-selected={tab === id}
+                    aria-pressed={tab === id}
+                    onClick={() => setTab(id)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              {tab === "changes" && changes}
+              {tab === "changes" && m.hasChanges && (
+                <div className="bg-background sticky bottom-0 -mb-1 flex-none pt-1 pb-1">
+                  <CommitBar {...m} />
+                </div>
+              )}
+              {tab === "history" && (
+                <HistoryList
+                  repoPath={m.repoPath}
+                  branch={m.branch}
+                  info={m.info}
+                  onOpen={openCommit}
+                />
+              )}
+              {tab === "stashes" && (
+                <>
+                  {m.hasChanges && (
+                    <button
+                      type="button"
+                      onClick={m.stash}
+                      disabled={m.stashing}
+                      className="pill pill-secondary pill-sm self-start active:opacity-80 disabled:opacity-50"
+                    >
+                      Stash changes
+                    </button>
+                  )}
+                  <StashRows
+                    workingDirectory={workingDirectory}
+                    stashes={m.stashes}
+                  />
+                </>
+              )}
+            </>
           )}
         </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          disabled={!prev}
-          onClick={() => prev && onOpen(prev)}
-          aria-label="Previous file"
-        >
-          <ChevronLeft className="h-5 w-5" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          disabled={!next}
-          onClick={() => next && onOpen(next)}
-          aria-label="Next file"
-        >
-          <ChevronRight className="h-5 w-5" />
-        </Button>
-        <Button
-          variant={file.staged ? "outline" : "default"}
-          className="h-9"
-          onClick={() => (file.staged ? onUnstage(file) : stage())}
-        >
-          {file.staged ? "Unstage" : "Stage"}
-        </Button>
-      </div>
+        {subpage}
+        {prModal}
+      </>
+    );
+  }
 
-      <div
-        className="flex-1 overflow-auto overscroll-contain p-3"
-        onTouchStart={(e) => {
-          const t = e.touches[0];
-          touch.current = { x: t.clientX, y: t.clientY };
-        }}
-        onTouchEnd={(e) => {
-          const start = touch.current;
-          touch.current = null;
-          if (!start) return;
-          const t = e.changedTouches[0];
-          const dx = t.clientX - start.x;
-          const dy = t.clientY - start.y;
-          if (Math.abs(dx) < 70 || Math.abs(dx) < Math.abs(dy) * 2) return;
-          const target = dx < 0 ? next : prev;
-          if (target) onOpen(target);
-        }}
+  return (
+    <div className="flex h-full min-w-0">
+      <aside
+        aria-label="Working tree"
+        className="bg-page border-hair flex w-[380px] flex-none flex-col gap-3.5 overflow-x-hidden overflow-y-auto overscroll-contain border-r px-4 py-[18px]"
       >
-        {loading ? (
-          <div className="flex h-32 items-center justify-center">
-            <Loader2 className="text-muted-foreground h-6 w-6 animate-spin" />
-          </div>
-        ) : (
-          <DiffView diff={diff} fileName={file.path} wrap />
+        {title("title")}
+        {body ?? (
+          <>
+            {branchCard}
+            {pills}
+            <h2 className="t-sec">Changes · {m.files.length}</h2>
+            {m.hasChanges ? (
+              <>
+                <ChangesList
+                  files={m.files}
+                  wide
+                  selected={openFile?.file}
+                  onOpen={showFile}
+                  {...fileActions}
+                />
+                <CommitBox {...m} />
+              </>
+            ) : (
+              <p className="text-muted-foreground px-1 text-[14px]">
+                No changes
+              </p>
+            )}
+            {m.stashes.length > 0 && (
+              <>
+                <h2 className="t-sec mt-1.5">Stashes · {m.stashes.length}</h2>
+                <StashRows
+                  workingDirectory={workingDirectory}
+                  stashes={m.stashes}
+                />
+              </>
+            )}
+          </>
         )}
-      </div>
+      </aside>
+      <main className="flex min-w-0 flex-1 flex-col">
+        {subpage ?? (
+          <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-x-hidden overflow-y-auto overscroll-contain px-6 py-[18px]">
+            {!body &&
+              (m.pr ? (
+                <PRCard
+                  pr={m.pr}
+                  wide
+                  merging={m.merging}
+                  onMerge={m.merge}
+                  onReview={review}
+                  onOpen={openReview}
+                />
+              ) : (
+                <NoPRCard onCreate={m.onBase ? undefined : newPullRequest} />
+              ))}
+            {!body && (
+              <HistoryList
+                repoPath={m.repoPath}
+                branch={m.branch}
+                info={m.info}
+                wide
+                onOpen={openCommit}
+              />
+            )}
+          </div>
+        )}
+      </main>
+      {prModal}
     </div>
   );
 }
 
-interface HeaderProps {
-  branch: string;
-  ahead: number;
-  behind: number;
-  hasChanges: boolean;
-  workingDirectory: string;
-  onRefresh: () => void;
-  refreshing: boolean;
-  syncInterval?: number;
-  onSyncIntervalChange?: (seconds: number) => void;
-  onSync?: () => void;
-  syncing?: boolean;
-  onClose?: () => void;
-  existingPR?: {
-    number: number;
-    url: string;
-    title: string;
-  } | null;
-}
-
-const SYNC_OPTIONS = [
-  { value: 0, label: "Off" },
-  { value: 60, label: "1m" },
-  { value: 300, label: "5m" },
-  { value: 600, label: "10m" },
-];
-
-function Header({
-  branch,
-  ahead,
-  behind,
-  hasChanges,
-  workingDirectory,
-  onRefresh,
-  refreshing,
-  syncInterval = 0,
-  onSyncIntervalChange,
-  onSync,
-  syncing,
-  onClose,
-  existingPR,
-}: HeaderProps) {
+/** Pull, Push and Stash as quiet pills (D-Git; E-Git's column has its own) */
+function ActionPills({ m }: { m: GitModel }) {
+  const pill =
+    "pill pill-secondary pill-sm min-w-0 flex-1 active:opacity-80 disabled:opacity-50";
   return (
-    <div className="flex items-center gap-2 px-3 py-2">
-      <div className="flex min-w-0 flex-1 items-center gap-2">
-        <BranchSelector
-          workingDirectory={workingDirectory}
-          currentBranch={branch || "unknown"}
-          hasChanges={hasChanges}
-          onBranchChanged={onRefresh}
-        />
-        {existingPR && (
-          <button
-            onClick={() => window.open(existingPR.url, "_blank")}
-            className="bg-muted hover:bg-accent inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-xs transition-colors"
-            title={`${existingPR.title} (#${existingPR.number})`}
-          >
-            <GitPullRequest className="h-3 w-3" />
-            PR
-            <ExternalLink className="h-2.5 w-2.5" />
-          </button>
-        )}
-        {(ahead > 0 || behind > 0) && (
-          <div className="text-muted-foreground flex items-center gap-2 text-xs">
-            {ahead > 0 && (
-              <span className="flex items-center gap-0.5">
-                <ArrowUp className="h-3 w-3" />
-                {ahead}
-              </span>
-            )}
-            {behind > 0 && (
-              <span className="flex items-center gap-0.5">
-                <ArrowDown className="h-3 w-3" />
-                {behind}
-              </span>
-            )}
-          </div>
-        )}
-      </div>
-      {onSyncIntervalChange && (
-        <select
-          value={syncInterval}
-          onChange={(e) => onSyncIntervalChange(parseInt(e.target.value, 10))}
-          className="bg-muted text-muted-foreground hover:text-foreground h-7 cursor-pointer rounded border-0 px-1.5 text-xs transition-colors"
-          title="Auto-fetch interval"
-        >
-          {SYNC_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value}>
-              {opt.value === 0 ? "Sync: Off" : `Sync: ${opt.label}`}
-            </option>
-          ))}
-        </select>
-      )}
-      {onSync && (
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={onSync}
-          disabled={syncing}
-          className="h-7 w-7"
-          title="Sync (fetch, pull, push)"
-        >
-          <ArrowDownUp className={cn("h-3.5 w-3.5", syncing && "animate-spin")} />
-        </Button>
-      )}
-      <Button
-        variant="ghost"
-        size="icon"
-        onClick={onRefresh}
-        disabled={refreshing}
-        className="h-7 w-7"
-        title="Refresh status"
+    <div className="flex min-w-0 gap-2">
+      <button
+        type="button"
+        onClick={m.pull}
+        disabled={m.pulling}
+        className={pill}
       >
-        <RefreshCw className={cn("h-3.5 w-3.5", refreshing && "animate-spin")} />
-      </Button>
-      {onClose && (
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={onClose}
-          className="h-7 w-7"
-        >
-          <X className="h-3.5 w-3.5" />
-        </Button>
-      )}
+        {m.pulling && <Loader2 className="h-4 w-4 animate-spin" />}
+        Pull
+      </button>
+      <button
+        type="button"
+        onClick={m.push}
+        disabled={m.pushing}
+        className={pill}
+      >
+        {m.pushing && <Loader2 className="h-4 w-4 animate-spin" />}
+        Push
+      </button>
+      <button
+        type="button"
+        onClick={m.stash}
+        disabled={m.stashing || !m.hasChanges}
+        className={pill}
+      >
+        Stash
+      </button>
     </div>
   );
 }
