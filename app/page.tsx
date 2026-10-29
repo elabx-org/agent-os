@@ -240,6 +240,7 @@ function HomeContent() {
         sessionId: session.claude_session_id,
         parentSessionId,
         autoApprove: session.auto_approve,
+        permissionMode: session.permission_mode,
         continueSession: session.continue_session,
         model: session.model,
         initialPrompt: initialPrompt || undefined,

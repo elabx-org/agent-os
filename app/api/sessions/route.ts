@@ -11,6 +11,7 @@ import { runInBackground } from "@/lib/async-operations";
 import { getProject } from "@/lib/projects";
 import { launchSession } from "@/lib/session-launch";
 import { isAgentOrigin } from "@/lib/agent-origin";
+import { capForAgent, normalizeMode } from "@/lib/permission-mode";
 
 // GET /api/sessions - List all sessions and groups
 export async function GET() {
@@ -66,6 +67,8 @@ export async function POST(request: NextRequest) {
       claudeSessionId = null,
       agentType: rawAgentType = "claude",
       autoApprove: requestedAutoApprove = false,
+      // lib/permission-mode.ts Mode; NULL keeps the agent's default
+      permissionMode: requestedMode = null,
       projectId = "uncategorized",
       // Worktree options
       useWorktree = false,
@@ -83,7 +86,12 @@ export async function POST(request: NextRequest) {
     } = body;
 
     // Skipping permission prompts is the user's call, never an agent's
-    const autoApprove = !!requestedAutoApprove && !isAgentOrigin(request);
+    const agentOrigin = isAgentOrigin(request);
+    const mode = normalizeMode(requestedMode);
+    const permissionMode = mode && agentOrigin ? capForAgent(mode) : mode;
+    const autoApprove = permissionMode
+      ? permissionMode === "bypassPermissions"
+      : !!requestedAutoApprove && !agentOrigin;
 
     // Validate agent type
     const agentType: AgentType = isValidAgentType(rawAgentType)
@@ -187,6 +195,12 @@ export async function POST(request: NextRequest) {
       continueSession ? 1 : 0,
       projectId
     );
+
+    if (permissionMode) {
+      queries
+        .updateSessionPermissionMode(db)
+        .run(permissionMode, null, autoApprove ? 1 : 0, id);
+    }
 
     // Set worktree info if created
     if (worktreePath) {

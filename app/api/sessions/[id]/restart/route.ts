@@ -7,7 +7,8 @@ import { readClaudeSessionMeta } from "@/lib/claude-transcript";
 const execFileAsync = promisify(execFile);
 
 // POST /api/sessions/[id]/restart - end a Claude session's tmux so the next
-// attach starts it again, resuming the same conversation. Refuses when the
+// attach starts it again, resuming the same conversation with its stored
+// permission mode (which applies a pending full access). Refuses when the
 // conversation to resume can't be found.
 export async function POST(
   _request: NextRequest,
@@ -41,6 +42,9 @@ export async function POST(
       "UPDATE sessions SET claude_session_id = ?, updated_at = datetime('now') WHERE id = ?"
     ).run(claudeSessionId, id);
   }
+
+  // The relaunch takes permission_mode; its caps are recorded anew
+  queries.clearSessionPermissionPending(db).run(id);
 
   try {
     await execFileAsync("tmux", ["kill-session", "-t", target]);

@@ -14,6 +14,7 @@ import {
   getAllProviderDefinitions,
   isValidProviderId,
 } from "./providers/registry";
+import { permissionFlags } from "./permission-mode";
 
 export type AgentType = ProviderId;
 
@@ -48,6 +49,8 @@ export interface BuildFlagsOptions {
   parentSessionId?: string | null; // For fork
   skipPermissions?: boolean;
   autoApprove?: boolean; // Use auto-approve flag from registry
+  permissionMode?: string | null; // sessions.permission_mode; replaces autoApprove when set
+  allowBypassCycle?: boolean; // Full access joins Claude's Shift+Tab cycle (Labs)
   continueSession?: boolean; // Continue last session in working directory
   model?: string;
   initialPrompt?: string; // Initial prompt to send to agent
@@ -77,13 +80,8 @@ export const claudeProvider: AgentProvider = {
     const def = getProviderDefinition("claude");
     const flags: string[] = [];
 
-    // Auto-approve flag from registry
-    if (
-      (options.skipPermissions || options.autoApprove) &&
-      def.autoApproveFlag
-    ) {
-      flags.push(def.autoApproveFlag);
-    }
+    // The session's permission mode, else the registry's auto-approve flag
+    flags.push(...permissionFlags(def.id, options));
 
     // Native worktree isolation (Claude 2.1.50+)
     if (options.worktreeName !== undefined && def.worktreeFlag) {
@@ -186,13 +184,8 @@ export const codexProvider: AgentProvider = {
     const def = getProviderDefinition("codex");
     const flags: string[] = [];
 
-    // Auto-approve flag from registry
-    if (
-      (options.skipPermissions || options.autoApprove) &&
-      def.autoApproveFlag
-    ) {
-      flags.push(def.autoApproveFlag);
-    }
+    // The session's permission mode, else the registry's auto-approve flag
+    flags.push(...permissionFlags(def.id, options));
 
     if (options.model && def.modelFlag) {
       flags.push(`${def.modelFlag} ${options.model}`);
@@ -240,12 +233,8 @@ export const opencodeProvider: AgentProvider = {
     const def = getProviderDefinition("opencode");
     const flags: string[] = [];
 
-    if (
-      (options.skipPermissions || options.autoApprove) &&
-      def.autoApproveFlag
-    ) {
-      flags.push(def.autoApproveFlag);
-    }
+    // The session's permission mode, else the registry's auto-approve flag
+    flags.push(...permissionFlags(def.id, options));
 
     // Resume/fork/continue
     if (options.sessionId && def.resumeFlag) {
@@ -301,13 +290,8 @@ export const geminiProvider: AgentProvider = {
     const def = getProviderDefinition("gemini");
     const flags: string[] = [];
 
-    // Auto-approve flag from registry
-    if (
-      (options.skipPermissions || options.autoApprove) &&
-      def.autoApproveFlag
-    ) {
-      flags.push(def.autoApproveFlag);
-    }
+    // The session's permission mode, else the registry's auto-approve flag
+    flags.push(...permissionFlags(def.id, options));
 
     if (options.model && def.modelFlag) {
       flags.push(`${def.modelFlag} ${options.model}`);
@@ -363,13 +347,8 @@ export const aiderProvider: AgentProvider = {
     const def = getProviderDefinition("aider");
     const flags: string[] = [];
 
-    // Auto-approve flag from registry
-    if (
-      (options.skipPermissions || options.autoApprove) &&
-      def.autoApproveFlag
-    ) {
-      flags.push(def.autoApproveFlag);
-    }
+    // The session's permission mode, else the registry's auto-approve flag
+    flags.push(...permissionFlags(def.id, options));
 
     if (options.model && def.modelFlag) {
       flags.push(`${def.modelFlag} ${options.model}`);
@@ -415,13 +394,8 @@ export const cursorProvider: AgentProvider = {
     const def = getProviderDefinition("cursor");
     const flags: string[] = [...(def.defaultArgs || [])];
 
-    // Auto-approve flag from registry
-    if (
-      (options.skipPermissions || options.autoApprove) &&
-      def.autoApproveFlag
-    ) {
-      flags.push(def.autoApproveFlag);
-    }
+    // The session's permission mode, else the registry's auto-approve flag
+    flags.push(...permissionFlags(def.id, options));
 
     if (options.model && def.modelFlag) {
       flags.push(`${def.modelFlag} ${options.model}`);
@@ -468,13 +442,8 @@ export const clineProvider: AgentProvider = {
     const def = getProviderDefinition("cline");
     const flags: string[] = [];
 
-    // Auto-approve flag from registry (-y / --yolo)
-    if (
-      (options.skipPermissions || options.autoApprove) &&
-      def.autoApproveFlag
-    ) {
-      flags.push(def.autoApproveFlag);
-    }
+    // The session's permission mode, else the registry's auto-approve flag
+    flags.push(...permissionFlags(def.id, options));
 
     if (options.model && def.modelFlag) {
       flags.push(`${def.modelFlag} ${options.model}`);
@@ -531,13 +500,8 @@ export const minimaxProvider: AgentProvider = {
     const def = getProviderDefinition("minimax");
     const flags: string[] = [];
 
-    // Auto-approve flag from registry
-    if (
-      (options.skipPermissions || options.autoApprove) &&
-      def.autoApproveFlag
-    ) {
-      flags.push(def.autoApproveFlag);
-    }
+    // The session's permission mode, else the registry's auto-approve flag
+    flags.push(...permissionFlags(def.id, options));
 
     // Native worktree isolation
     if (options.worktreeName !== undefined && def.worktreeFlag) {
