@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { queries, getDb, type Session } from "@/lib/db";
-import { findTranscript, readTranscript } from "@/lib/claude-transcript";
+import { readTranscript } from "@/lib/claude-transcript";
+import { locateTranscript } from "@/lib/transcript-locate";
 
 // GET /api/sessions/[id]/transcript?since=<offset>&sid=<claude session id>
 // First call (no since) returns the recent history; later calls return what
@@ -19,8 +20,8 @@ export async function GET(
     return NextResponse.json({ unsupported: true });
   }
 
-  const tmuxName = session.tmux_name || `claude-${id}`;
-  const found = await findTranscript(tmuxName);
+  // The pane's, else by claude_session_id: a paused session's chat stays
+  const found = await locateTranscript(session);
   if (!found) return NextResponse.json({ notFound: true });
 
   const url = new URL(request.url);
