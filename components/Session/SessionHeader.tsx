@@ -9,8 +9,10 @@ import {
   STATE_WORD,
   type AgentState,
 } from "@/lib/agent-state";
+import { useSnapshot } from "valtio";
 import { runNav } from "@/lib/nav-actions";
-import type { PaneViewMode } from "@/stores/mobileNav";
+import { canonicalViewMode } from "@/lib/agent-views";
+import { mobileNavStore, type PaneViewMode } from "@/stores/mobileNav";
 import { Avatar, agentAvatar, agentName } from "@/components/a/Avatar";
 import { PlanChip } from "@/components/Chat/PlanChip";
 import { useSessionActivity } from "@/hooks/useSessionActivity";
@@ -237,9 +239,15 @@ export function FoldHeader({
   );
 }
 
+/** "1 agent", "7 agents" */
+export function agentsLabel(count: number): string {
+  return count === 1 ? "1 agent" : `${count} agents`;
+}
+
 /**
- * The desktop session header (Desk-Chat): the agent's tile, the title and
- * "agent-os · Claude · main · Needs you", the views centred, then
+ * The desktop session header (Desk-Chat, D-Tree): the agent's tile, the
+ * title and "agent-os · Claude · main · 7 agents · Needs you", the views
+ * (Chat | Terminal | Changes, and Agents once it has started any), then
  * `actions` (Open beside, ⋯)
  */
 export function DesktopHeader({
@@ -249,6 +257,7 @@ export function DesktopHeader({
   viewMode,
   onViewModeChange,
   dimmed,
+  agents,
   actions,
 }: {
   info: HeaderInfo;
@@ -258,8 +267,16 @@ export function DesktopHeader({
   viewMode: PaneViewMode;
   onViewModeChange: (mode: PaneViewMode) => void;
   dimmed?: boolean;
+  /**
+   * Agents the session started (its tree's total); by default the focused
+   * session's (the desktop header is the one pane's)
+   */
+  agents?: number;
   actions: ReactNode;
 }) {
+  const { agentCount } = useSnapshot(mobileNavStore);
+  const count = agents ?? agentCount;
+  const agentsView = canonicalViewMode(viewMode) === "agents";
   return (
     <header
       className={cn(
@@ -270,10 +287,15 @@ export function DesktopHeader({
       <Avatar {...agentAvatar(info.session.agent_type)} size="sm" />
       <div className="flex min-w-0 flex-1 flex-col">
         <span className="t-head truncate leading-tight">{info.title}</span>
-        <Crumb info={info} extra={[branch]} className="text-[13px]" />
+        <Crumb
+          info={info}
+          extra={[branch, count > 0 ? agentsLabel(count) : null]}
+          className="text-[13px]"
+        />
       </div>
       <ViewSeg
-        viewMode={viewMode}
+        // `workers` is the agents view too
+        viewMode={agentsView ? "agents" : viewMode}
         onViewModeChange={onViewModeChange}
         className="bg-card @max-[640px]/bar:hidden"
         views={[
@@ -287,6 +309,10 @@ export function DesktopHeader({
               </>
             ),
           },
+          // D-Tree: Agents once the session has started any
+          ...(count > 0 || agentsView
+            ? [{ mode: "agents" as const, label: "Agents" }]
+            : []),
         ]}
       />
       {actions}

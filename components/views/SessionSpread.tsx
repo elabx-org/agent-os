@@ -278,7 +278,11 @@ export function SessionSpread({
       ? !homeOpen &&
         (liveOpen || railByDefault) &&
         (viewMode === "terminal" || viewMode === "chat")
-      : roomForRail && !duo && !(desktop && paneCount > 1));
+      : roomForRail &&
+        !duo &&
+        !(desktop && paneCount > 1) &&
+        // D-Tree: the agents view draws its own detail panel there
+        !(desktop && viewMode === "agents"));
   // Pane on the left page, the rail on the right (the home and Changes left
   // pages only come with no rail)
   const paneLeft = pages && showRail;
