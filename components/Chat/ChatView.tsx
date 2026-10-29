@@ -68,6 +68,7 @@ import { TurnDiff } from "./TurnDiff";
 import { UndoSheet } from "./UndoSheet";
 import { useSeam } from "./useSeam";
 import { useTranscript } from "./useTranscript";
+import type { DirectSendOptions } from "@/lib/session-attach-types";
 
 export interface ChatViewProps {
   session: Session;
@@ -343,12 +344,16 @@ export function ChatView({
     atBottom.current = true;
   }, []);
   const sendDirect = useCallback(
-    async (text: string) => {
+    async (text: string, options?: DirectSendOptions) => {
       if (!text.trim()) return;
       const res = await fetchAsUser(`/api/sessions/${session.id}/send-keys`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: text.trim(), pressEnter: true }),
+        body: JSON.stringify({
+          text: text.trim(),
+          pressEnter: true,
+          ...(options?.sessions?.length ? { sessions: options.sessions } : {}),
+        }),
       });
       if (!res.ok) throw new Error("Couldn't send to Claude");
       sent();

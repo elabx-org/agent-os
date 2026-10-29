@@ -1,6 +1,6 @@
 "use client";
 
-import type { MutableRefObject } from "react";
+import { useCallback, type MutableRefObject } from "react";
 import { cn } from "@/lib/utils";
 import { useSessionsQuery } from "@/data/sessions";
 import { useComposer } from "@/components/Composer";
@@ -19,6 +19,8 @@ import {
   isValidProviderId,
 } from "@/lib/providers/registry";
 import type { SpreadPages } from "@/components/views/SessionSpread";
+import { fetchAsUser } from "@/lib/client/user-fetch";
+import type { DirectSendOptions } from "@/lib/session-attach-types";
 import { ComposerPlusMenu, type ComposerTools } from "./ComposerPlusMenu";
 
 /** A one-line box: the 52px capsule and its margin. Growing up, the box
@@ -122,6 +124,28 @@ export function Composer({
         ? getProviderDefinition(session.agent_type).name
         : session.agent_type;
 
+  // The old send types into the terminal; with sessions attached with @
+  // (M9) it goes through send-keys, which puts their summaries first
+  const sendDirect = useCallback(
+    async (text: string, options?: DirectSendOptions) => {
+      if (!options?.sessions?.length || !sessionId || !text.trim()) {
+        onSend(text);
+        return;
+      }
+      const res = await fetchAsUser(`/api/sessions/${sessionId}/send-keys`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text: text.trim(),
+          pressEnter: true,
+          sessions: options.sessions,
+        }),
+      });
+      if (!res.ok) throw new Error(`Couldn't send to ${agentName}`);
+    },
+    [onSend, sessionId, agentName]
+  );
+
   // A snippet, file path or dictation joins what's typed, a space apart
   const insert = (text: string) => {
     if (!text) return;
@@ -146,7 +170,7 @@ export function Composer({
           sessionId={sessionId ?? ""}
           agentName={agentName}
           queue={queue}
-          onSendDirect={onSend}
+          onSendDirect={sendDirect}
           // Nothing typed: Enter, as the terminal's own key
           onEmptySend={() => onSend("")}
           placeholder="Type into the terminal"
