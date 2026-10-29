@@ -7,6 +7,7 @@
 
 import fs from "fs";
 import path from "path";
+import type { SubagentDetail } from "./agent-tree-types";
 
 /** No new lines for this long and not finished: it was stopped */
 const STALE_MS = 5 * 60_000;
@@ -116,4 +117,18 @@ export function listSubagents(transcriptFile: string): SubagentInfo[] {
     });
   }
   return out.sort((a, b) => a.startedAt.localeCompare(b.startedAt));
+}
+
+/**
+ * What one subagent was asked, its last four tool calls, the files it wrote
+ * and its usage (O-Tree's right page, D-Tree's panel), reading only what was
+ * added since the last call, like agentUsage. Null if there is no such
+ * agent. Contract stub (U13.1)
+ */
+export function subagentDetail(
+  _transcriptFile: string,
+  _agentId: string,
+  _cwd?: string
+): SubagentDetail | null {
+  return null;
 }

@@ -5,9 +5,11 @@ import {
   Bell,
   Check,
   ChevronLeft,
+  ChevronsDownUp,
   Circle,
   Columns2,
   Ellipsis,
+  Eye,
   Folder,
   GitBranch,
   Globe,
@@ -19,6 +21,7 @@ import {
   Sun,
   Terminal,
   Trash,
+  Workflow,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -31,8 +34,10 @@ const ICONS: Record<string, LucideIcon> = {
   Bell,
   Check,
   ChevronLeft,
+  ChevronsDownUp,
   Columns2,
   Ellipsis,
+  Eye,
   Folder,
   GitBranch,
   Globe,
@@ -45,6 +50,7 @@ const ICONS: Record<string, LucideIcon> = {
   Square,
   Terminal,
   Trash,
+  Workflow,
   X,
 };
 

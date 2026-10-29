@@ -48,6 +48,12 @@ export interface ColumnContext {
   working?: boolean;
   /** A sheet over the session other than Live activity (N-Undo's undo) */
   sheet?: "undo" | null;
+  /** Agents the session started (its tree's total): the Agents item shows (O-Tree) */
+  agents?: number;
+  /** Finished agents show in the agents view (N-Tree's eye) */
+  showFinished?: boolean;
+  /** Every branch of the agents view is folded (N-Tree's Collapse all) */
+  allCollapsed?: boolean;
 }
 
 type Base = Pick<ColumnItem, "id" | "symbol" | "icon" | "label">;
@@ -172,6 +178,24 @@ const BASE = {
     symbol: "ellipsis",
     icon: "Ellipsis",
     label: "Project actions",
+  },
+  agents: {
+    id: "agents",
+    symbol: "point.3.connected.trianglepath.dotted",
+    icon: "Workflow",
+    label: "Agents",
+  },
+  showFinished: {
+    id: "showFinished",
+    symbol: "eye",
+    icon: "Eye",
+    label: "Show finished agents",
+  },
+  collapseAll: {
+    id: "collapseAll",
+    symbol: "arrow.down.and.line.horizontal.and.arrow.up",
+    icon: "ChevronsDownUp",
+    label: "Collapse all",
   },
 } satisfies Record<string, Base & { id: NavAction }>;
 

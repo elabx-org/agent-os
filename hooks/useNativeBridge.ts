@@ -20,6 +20,7 @@ import { surfaceStore } from "@/stores/surface";
 import { layoutStore } from "@/hooks/useLayoutMode";
 import { nativeColumn } from "@/components/ControlColumn/columnState";
 import { startClientLog } from "@/lib/client-log";
+import { nativeViewMode } from "@/lib/agent-views";
 
 interface NativeBridgeOptions {
   waitingCount: number;
@@ -85,7 +86,7 @@ export function useNativeBridge({ waitingCount }: NativeBridgeOptions) {
     const report = () => {
       const state: NativeState = {
         type: "state",
-        viewMode: mobileNavStore.viewMode,
+        viewMode: nativeViewMode(mobileNavStore.viewMode),
         waiting: waitingCount,
         changes: mobileNavStore.changes,
         background: getComputedStyle(document.body).backgroundColor,

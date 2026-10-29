@@ -1,7 +1,14 @@
 import { proxy } from "valtio";
 import type { SessionStatus } from "@/components/views/types";
 
-export type PaneViewMode = "terminal" | "chat" | "files" | "git" | "workers";
+/** `workers` is an alias of `agents` (lib/agent-views.ts canonicalViewMode) */
+export type PaneViewMode =
+  | "terminal"
+  | "chat"
+  | "files"
+  | "git"
+  | "workers"
+  | "agents";
 
 /**
  * Bridges the mobile nav rail (outside the pane tree) and the focused pane,
@@ -39,6 +46,8 @@ export const mobileNavStore = proxy<{
   working: boolean;
   /** A sheet over the session other than Live activity (N-Undo, M2) */
   sheet: "undo" | null;
+  /** Agents the focused session started (its tree's total): the column's Agents item */
+  agentCount: number;
 }>({
   viewMode: "terminal",
   request: null,
@@ -55,6 +64,7 @@ export const mobileNavStore = proxy<{
   liveOpen: false,
   working: false,
   sheet: null,
+  agentCount: 0,
 });
 
 export const mobileNavActions = {

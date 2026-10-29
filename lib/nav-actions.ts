@@ -19,6 +19,7 @@ import {
 import { closeNew, newSurfaceStore } from "@/stores/newSurface";
 import { openProjectSettings } from "@/stores/projectSettings";
 import { surfaceStore } from "@/stores/surface";
+import { toggleAllCollapsed, toggleShowFinished } from "@/stores/agentTree";
 import { isNative, postToNative } from "@/lib/native-bridge";
 
 /** Every action, for the routes table and its test */
@@ -51,6 +52,9 @@ export const NAV_ACTIONS = [
   "start",
   "stop",
   "closeSheet",
+  "agents",
+  "showFinished",
+  "collapseAll",
 ] as const;
 
 /**
@@ -258,6 +262,9 @@ export const NAV_ROUTES: Record<NavAction, (leftPage: boolean) => void> = {
   start: () => navStore.startNew(),
   stop: () => navStore.stopSession(),
   closeSheet: () => navStore.closeSheet(),
+  agents: () => mobileNavActions.requestViewMode("agents"),
+  showFinished: () => toggleShowFinished(),
+  collapseAll: () => toggleAllCollapsed(),
 };
 
 /** Actions on or beside Settings: it stays up for them */
@@ -277,7 +284,8 @@ export function runNav(action: NavAction): void {
     (action === "chat" ||
       action === "terminal" ||
       action === "git" ||
-      action === "files") &&
+      action === "files" ||
+      action === "agents") &&
     closePage();
   NAV_ROUTES[action](leftPage);
 }

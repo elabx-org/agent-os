@@ -29,7 +29,11 @@ import { GitDrawer } from "@/components/GitDrawer";
 import { ShellDrawer } from "@/components/ShellDrawer";
 import { useSnapshot } from "valtio";
 import { fileOpenStore, fileOpenActions } from "@/stores/fileOpen";
-import { mobileNavStore, mobileNavActions } from "@/stores/mobileNav";
+import {
+  mobileNavStore,
+  mobileNavActions,
+  type PaneViewMode,
+} from "@/stores/mobileNav";
 import { focusStore } from "@/stores/focus";
 import {
   getSessionView,
@@ -77,7 +81,7 @@ interface PaneProps {
   onSelectSession?: (sessionId: string) => void;
 }
 
-type ViewMode = "terminal" | "chat" | "files" | "git" | "workers";
+type ViewMode = PaneViewMode;
 
 
 /** Each pane's view and session, by pane id */
