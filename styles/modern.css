@@ -1,0 +1,127 @@
+/* =============================================================================
+   AGENT-OS MODERN LOOK: shared tokens and parts
+   Mirrors the mocks' ui.css. Colour tokens are raw HSL like themes.css
+   (Tailwind: bg-needs, text-work, bg-meter, bg-page, border-hair), except
+   --hair, which is a full colour because it carries its own alpha.
+   ============================================================================= */
+
+@layer base {
+  :root {
+    --needs: 43 96% 56%; /* #FBBF24 */
+    --work: 158 64% 52%; /* #34D399 */
+    --meter: 255 92% 76%; /* #A78BFA */
+    --page: 240 24% 96%; /* light: #F2F2F7 */
+    --hair: rgba(0, 0, 0, 0.08);
+    --glass-bg: rgba(255, 255, 255, 0.72);
+    --glass-border: rgba(0, 0, 0, 0.08);
+    --glass-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 8px 24px rgba(0, 0, 0, 0.12);
+    --row-sel: hsl(var(--primary) / 0.1);
+  }
+
+  .dark {
+    --page: 240 8% 5%; /* #0B0B0D */
+    --hair: rgba(255, 255, 255, 0.08);
+    --glass-bg: rgba(44, 44, 50, 0.62);
+    --glass-border: rgba(255, 255, 255, 0.12);
+    --glass-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.14), 0 10px 30px rgba(0, 0, 0, 0.45);
+    --row-sel: hsl(var(--primary) / 0.16);
+  }
+}
+
+@layer components {
+  /* Translucent over what scrolls behind: bars, the usage pill, the FAB row */
+  .glass {
+    background: var(--glass-bg);
+    backdrop-filter: blur(24px) saturate(170%);
+    -webkit-backdrop-filter: blur(24px) saturate(170%);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--glass-shadow);
+  }
+
+  .t-large {
+    font-size: 34px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+  }
+  .t-title {
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    line-height: 1.2;
+  }
+  .t-head {
+    font-size: 17px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+  /* Section title above a group card */
+  .t-sec {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 4px;
+    font-size: 15px;
+    font-weight: 600;
+    color: hsl(var(--muted-foreground));
+  }
+
+  /* Rows on one rounded card, hairlines between them */
+  .group-card {
+    background: hsl(var(--card));
+    border-radius: 20px;
+    overflow: hidden;
+  }
+  .row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 56px;
+    padding: 12px 14px;
+  }
+  .group-card .row + .row {
+    border-top: 1px solid var(--hair);
+  }
+  .row.sel {
+    background: var(--row-sel);
+  }
+
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    height: 44px;
+    padding: 0 18px;
+    border-radius: 22px;
+    font-size: 15px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .pill-primary {
+    background: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+  }
+
+  /* Segmented control: buttons with aria-pressed */
+  .seg {
+    display: flex;
+    gap: 2px;
+    padding: 3px;
+    border-radius: 22px;
+  }
+  .seg > button {
+    height: 36px;
+    padding: 0 14px;
+    border-radius: 18px;
+    font-size: 14px;
+    color: hsl(var(--muted-foreground));
+  }
+  .seg > button[aria-pressed="true"] {
+    background: hsl(var(--foreground) / 0.14);
+    color: hsl(var(--foreground));
+    font-weight: 600;
+  }
+}

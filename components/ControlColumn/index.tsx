@@ -91,9 +91,11 @@ function useKeyboardUp(enabled: boolean): boolean {
 interface ControlColumnProps {
   /**
    * column: a vertical capsule, placed by the parent (or by sideRailWidth);
-   * bar: across the bottom of a phone, without Settings (it's in the header ⋯)
+   * bar: across the bottom of a phone, without Settings (it's in the header ⋯);
+   * hbar: the tabletop's centred bar (HBar); tabs: the phone's tab bar and
+   * New button (TabBar). U1.2 retires `bar` for `tabs`
    */
-  variant: "column" | "bar";
+  variant: "column" | "bar" | "hbar" | "tabs";
   /**
    * The iPhone Duo's right-hand system column in a browser: the capsule is
    * fixed in it, under the status glyphs, and stays above a docked keyboard

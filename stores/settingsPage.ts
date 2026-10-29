@@ -3,6 +3,7 @@ import { proxy } from "valtio";
 export type SettingsSection =
   | "notifications"
   | "display"
+  | "keys"
   | "duo"
   | "usage"
   | "claude"

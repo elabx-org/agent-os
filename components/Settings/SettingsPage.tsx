@@ -14,6 +14,7 @@ import {
   FlaskConical,
   Columns2,
   Globe,
+  Keyboard,
   Settings,
   SlidersHorizontal,
   Type,
@@ -44,6 +45,7 @@ import {
 } from "./NotificationsSection";
 import { DisplaySection, themeLabel } from "./DisplaySection";
 import { DuoSection } from "./DuoSection";
+import { KeysSection } from "./KeysSection";
 import { UsageSection } from "./UsageSection";
 import { ClaudeCodeSection } from "./ClaudeCodeSection";
 import { SessionsSection } from "./SessionsSection";
@@ -54,6 +56,7 @@ import { SettingGroup } from "./SettingGroup";
 const SECTION_TITLE: Record<SettingsSection, string> = {
   notifications: "Notifications",
   display: "Display",
+  keys: "Keys",
   duo: "iPhone Duo",
   usage: "Usage",
   claude: "Claude Code",
@@ -66,6 +69,7 @@ const SECTION_TITLE: Record<SettingsSection, string> = {
 const SECTION_ICON = {
   notifications: Bell,
   display: Type,
+  keys: Keyboard,
   duo: Columns2,
   usage: Zap,
   claude: SlidersHorizontal,
@@ -182,6 +186,7 @@ function SettingsLayer(props: NotificationsSectionProps) {
   const body: Record<SettingsSection, ReactNode> = {
     notifications: <NotificationsSection {...props} />,
     display: <DisplaySection />,
+    keys: <KeysSection />,
     duo: <DuoSection />,
     usage: <UsageSection />,
     claude: <ClaudeCodeSection />,
@@ -199,6 +204,7 @@ function SettingsLayer(props: NotificationsSectionProps) {
     notifications: phone ?? `Sound ${props.settings.sound ? "on" : "off"}`,
     // The variant alone: "Graphite", not "Dark · Graphite"
     display: `Text size ${textSize > 0 ? "+" : ""}${textSize} · ${themeLabel(theme).split(" · ").pop()}`,
+    keys: "Adaptive",
     duo: `Closed layout · ${duoTrial ? "title in page" : "standard"}`,
     usage:
       usage && !usage.error

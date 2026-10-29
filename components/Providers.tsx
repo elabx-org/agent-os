@@ -11,9 +11,12 @@ import { createQueryClient } from "@/lib/query-client";
 import { parseTheme, getAllThemes } from "@/lib/theme-config";
 import { applyBackground } from "@/lib/background";
 import { useUpdatePrompt } from "@/hooks/useUpdatePrompt";
+import { useSyncedLook } from "@/hooks/useSyncedLook";
 
 function ThemeClassHandler({ children }: { children: React.ReactNode }) {
   const { theme, systemTheme } = useTheme();
+  // A synced look from the server wins over this device's on load
+  useSyncedLook();
 
   useEffect(() => {
     const root = document.documentElement;

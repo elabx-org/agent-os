@@ -39,6 +39,8 @@ import { useSessionLinks } from "@/hooks/useSessionLinks";
 import { usePresence } from "@/hooks/usePresence";
 import { useFoldPosture } from "@/hooks/useFoldPosture";
 import { useViewShortcuts } from "@/hooks/useViewShortcuts";
+import { useLayoutModeSource } from "@/hooks/useLayoutMode";
+import { useSurfaceSource } from "@/stores/surface";
 import { useSessions } from "@/hooks/useSessions";
 import { useProjects } from "@/hooks/useProjects";
 import { useDevServersManager } from "@/hooks/useDevServersManager";
@@ -470,6 +472,11 @@ function HomeContent() {
   });
 
   useFoldPosture();
+  useLayoutModeSource();
+  useSurfaceSource({
+    paneCount: getAllPaneIds(paneState.layout).length,
+    searchOpen: showQuickSwitcher,
+  });
   useEffect(loadFocus, []);
   useEffect(
     () =>

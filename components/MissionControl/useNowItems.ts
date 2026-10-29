@@ -17,6 +17,15 @@ export interface AgentGroup {
   agents: BackgroundAgent[];
 }
 
+/** A finished piece of work for the "Done today" row (M8 fills these) */
+export interface DoneTodayItem {
+  sessionId: string;
+  title: string;
+  prNumber?: number;
+  /** epoch ms */
+  at: number;
+}
+
 export interface NowItems {
   /** Waiting sessions plus blocked agents: the hero's number */
   needsCount: number;
@@ -33,8 +42,17 @@ export interface NowItems {
   quiet: ProjectWithRepositories[];
   /** Agents outside every project that are neither blocked nor working */
   elsewhere: BackgroundAgent[];
+  /** At a usage limit (M6 fills it) */
+  limited: Session[];
+  /** Settled today (M8 fills it) */
+  settled: Session[];
+  /** The "Done today" row, hidden while empty (M8 fills it) */
+  doneToday: DoneTodayItem[];
   titles: Record<string, string>;
 }
+
+const EMPTY_SESSIONS: Session[] = [];
+const EMPTY_DONE: DoneTodayItem[] = [];
 
 const EMPTY_PROJECTS: ProjectWithRepositories[] = [];
 const EMPTY_SERVERS: DevServer[] = [];
@@ -158,6 +176,9 @@ export function useNowItems(
       devServers.length,
     quiet,
     elsewhere,
+    limited: EMPTY_SESSIONS,
+    settled: EMPTY_SESSIONS,
+    doneToday: EMPTY_DONE,
     titles,
   };
 }
