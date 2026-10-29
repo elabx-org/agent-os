@@ -52,6 +52,45 @@ export interface AgentActionRow {
   at: number; // ms
 }
 
+/** A message waiting for its session (migration 25, lib/queue/store.ts) */
+export interface SessionQueueRow {
+  id: number;
+  session_id: string;
+  position: number;
+  text: string;
+  /** JSON string[] of file paths, or null */
+  attachments: string | null;
+  origin: string; // lib/queue/types.ts QueueOrigin
+  kind: string; // QueueKind
+  status: string; // QueueStatus
+  not_before: number | null; // ms
+  created_at: number; // ms
+  sent_at: number | null; // ms
+  error: string | null;
+}
+
+/** One agent turn and its snapshot refs (migration 26, lib/turns.ts) */
+export interface SessionTurnRow {
+  id: number;
+  session_id: string;
+  turn_no: number;
+  cwd: string;
+  prompt_excerpt: string | null;
+  transcript_uuid: string | null;
+  /** refs/agent-os/<sessionId>/t<N>-pre; null when the snapshot overran */
+  pre_ref: string | null;
+  post_ref: string | null;
+  started_at: number | null; // ms
+  ended_at: number | null; // ms
+  /** JSON TurnFile[]: every file changed in pre..post */
+  files_json: string | null;
+  /** JSON string[]: paths the agent's own edit tools touched */
+  touched_json: string | null;
+  added: number | null;
+  removed: number | null;
+  undone_at: number | null; // ms
+}
+
 export interface Group {
   path: string;
   name: string;

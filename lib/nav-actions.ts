@@ -49,6 +49,8 @@ export const NAV_ACTIONS = [
   "projectSettings",
   "newProject",
   "start",
+  "stop",
+  "closeSheet",
 ] as const;
 
 /**
@@ -105,6 +107,10 @@ interface NavHandlers {
   openNewProject: () => void;
   /** New's ✓ (E-New): start what the form holds; the form registers it */
   startNew: () => void;
+  /** Interrupt the session in view (N-Queue's Stop); the pane registers it */
+  stopSession: () => void;
+  /** Close the sheet over the session (E-Live, N-Undo) */
+  closeSheet: () => void;
 }
 
 /**
@@ -155,6 +161,11 @@ export const navStore: NavHandlers = {
   },
   openNewProject: () => navStore.openNewSession(),
   startNew: () => {},
+  stopSession: () => {},
+  closeSheet: () => {
+    mobileNavStore.liveOpen = false;
+    mobileNavStore.sheet = null;
+  },
 };
 
 /**
@@ -245,6 +256,8 @@ export const NAV_ROUTES: Record<NavAction, (leftPage: boolean) => void> = {
   projectSettings: () => navStore.openProjectSettings(),
   newProject: () => navStore.openNewProject(),
   start: () => navStore.startNew(),
+  stop: () => navStore.stopSession(),
+  closeSheet: () => navStore.closeSheet(),
 };
 
 /** Actions on or beside Settings: it stays up for them */

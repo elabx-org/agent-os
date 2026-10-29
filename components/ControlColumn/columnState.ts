@@ -30,6 +30,8 @@ interface ColumnSources {
   paneCount: number;
   settingsDetail: boolean;
   liveOpen: boolean;
+  working: boolean;
+  sheet: ColumnContext["sheet"];
   native: boolean;
 }
 
@@ -45,6 +47,8 @@ function contextFrom(s: ColumnSources): ColumnContext {
     canGoBack: s.settingsDetail,
     native: s.native,
     liveOpen: s.liveOpen,
+    working: s.working,
+    sheet: s.sheet,
   };
 }
 
@@ -71,6 +75,8 @@ export function useColumn(
     paneCount,
     settingsDetail,
     liveOpen: nav.liveOpen,
+    working: nav.working,
+    sheet: nav.sheet,
     native,
   });
   return { surface, mode, items: columnFor(surface, mode, ctx) };
@@ -105,6 +111,8 @@ export function nativeColumn(): {
       paneCount: surfaceStore.paneCount,
       settingsDetail: settingsPageStore.detail,
       liveOpen: mobileNavStore.liveOpen,
+      working: mobileNavStore.working,
+      sheet: mobileNavStore.sheet,
       native: true,
     })
   );

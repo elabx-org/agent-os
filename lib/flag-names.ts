@@ -41,6 +41,36 @@ export const FLAG_DEFAULTS: Flags = {
 
 export const FLAGS_PREFERENCE_KEY = "flags";
 
+/**
+ * Per-session overrides (preference key "flagSessions"): a flag that is off
+ * can be switched on for listed sessions only, e.g. the queue on one
+ * non-critical live session before everywhere
+ */
+export const FLAG_SESSIONS_PREFERENCE_KEY = "flagSessions";
+
+/** The flags that take a per-session override */
+export const SESSION_FLAGS = [
+  "queue",
+  "snapshots",
+] as const satisfies readonly FlagName[];
+
+export type SessionFlagName = (typeof SESSION_FLAGS)[number];
+
+export type FlagSessions = Partial<Record<SessionFlagName, string[]>>;
+
+/** Known flags' lists of session ids from a stored value */
+export function parseFlagSessions(value: unknown): FlagSessions {
+  const out: FlagSessions = {};
+  if (!value || typeof value !== "object" || Array.isArray(value)) return out;
+  const stored = value as Record<string, unknown>;
+  for (const name of SESSION_FLAGS) {
+    const ids = stored[name];
+    if (Array.isArray(ids))
+      out[name] = ids.filter((id): id is string => typeof id === "string");
+  }
+  return out;
+}
+
 /** What the Labs section shows for each flag */
 export const FLAG_LABELS: Record<FlagName, { label: string; hint: string }> = {
   queue: {

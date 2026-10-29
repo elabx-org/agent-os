@@ -18,6 +18,8 @@ export interface ColumnItemProps extends Omit<
   badgeTone?: "amber" | "neutral";
   /** The filled accent circle (New) */
   prominent?: boolean;
+  /** Red, the icon filled: Stop */
+  danger?: boolean;
   /** Where the hover hint opens: beside a column, above a bar */
   hint: "left" | "top";
   /** An on/off switch rather than a place */
@@ -61,6 +63,7 @@ export function ColumnItem({
   badge,
   badgeTone = "amber",
   prominent,
+  danger,
   hint,
   toggle,
   bold,
@@ -83,10 +86,15 @@ export function ColumnItem({
           : selected
             ? "bg-black/8 dark:bg-white/16"
             : "hover:bg-black/5 active:bg-black/5 dark:hover:bg-white/8 dark:active:bg-white/8",
+        danger && "text-red-500 dark:text-red-300",
         className
       )}
     >
-      <Icon aria-hidden className="h-5 w-5" strokeWidth={bold ? 2.3 : 1.9} />
+      <Icon
+        aria-hidden
+        className={cn("h-5 w-5", danger && "fill-current")}
+        strokeWidth={bold ? 2.3 : 1.9}
+      />
       {!!badge && (
         <ItemBadge
           count={badge}

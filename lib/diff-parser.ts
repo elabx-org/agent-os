@@ -219,3 +219,11 @@ export function getDiffFileName(diff: ParsedDiff): string {
   }
   return diff.newFile || diff.oldFile;
 }
+
+/**
+ * Splits a multi-file `git diff` into one ParsedDiff per file
+ * (M2 contract: U2.2 implements it)
+ */
+export function parseMultiDiff(_diffText: string): ParsedDiff[] {
+  return [];
+}

@@ -102,6 +102,8 @@ test("runNav: the new actions reach their handlers", () => {
     ["projectSettings", "openProjectSettings"],
     ["newProject", "openNewProject"],
     ["start", "startNew"],
+    ["stop", "stopSession"],
+    ["closeSheet", "closeSheet"],
   ];
   for (const [action, handler] of cases) {
     reset();

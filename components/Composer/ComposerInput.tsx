@@ -23,7 +23,7 @@ type NativeProps = Omit<
   "value" | "onChange" | "onPaste" | "onSelect" | "className"
 >;
 
-interface ComposerInputProps extends NativeProps {
+export interface ComposerInputProps extends NativeProps {
   composer: ComposerEngine;
   /** Layout of the box (flex-1, order...) */
   className?: string;

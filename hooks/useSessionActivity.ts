@@ -5,6 +5,7 @@ import type { GitFile } from "@/lib/git-status";
 import type { SubagentInfo } from "@/lib/claude-subagents";
 import type { WorkflowInfo } from "@/lib/claude-workflows";
 import type { PermissionPrompt } from "@/lib/permission-prompt";
+import type { PlanState } from "@/lib/claude-plan";
 import type { SessionStatus } from "@/components/views/types";
 import {
   fromSessionStatus,
@@ -29,6 +30,10 @@ export interface SessionActivity {
   workflows: { list: WorkflowInfo[]; running: number };
   devServer?: DevServer;
   pr?: { number: number; url: string; status: string; title?: string };
+  /** Claude's plan (lib/claude-plan.ts, GET /plan), with `rail` or `plan` (M2) */
+  plan?: PlanState | null;
+  /** Context tokens, as "41k tokens" in the Live activity (M2) */
+  tokens?: number | null;
 }
 
 // Claude Code's tool lines ("● Bash(npm run build)") and spinner
@@ -145,7 +150,16 @@ function sameDir(a: string, b: string): boolean {
  */
 export function useSessionActivity(
   session: Session | undefined,
-  { active = true, rail = false }: { active?: boolean; rail?: boolean } = {}
+  {
+    active = true,
+    rail = false,
+    plan: _plan = false,
+  }: {
+    active?: boolean;
+    rail?: boolean;
+    /** Also read the plan and tokens without the rest of the rail (M2) */
+    plan?: boolean;
+  } = {}
 ): SessionActivity {
   const id = session?.id ?? "";
   const dir = session?.working_directory ?? "";
