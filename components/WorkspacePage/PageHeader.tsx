@@ -3,6 +3,9 @@
 import type { ReactNode } from "react";
 import { ChevronLeft } from "lucide-react";
 import { backPage } from "@/stores/workspacePage";
+import { useIsNative } from "@/hooks/useIsNative";
+import { useLayoutMode } from "@/hooks/useLayoutMode";
+import { nativeCaps } from "@/lib/native-bridge";
 import { cn } from "@/lib/utils";
 
 interface PageHeaderProps {
@@ -11,6 +14,12 @@ interface PageHeaderProps {
   subtitle?: ReactNode;
   /** Buttons on the right (Start, Save, + New) */
   actions?: ReactNode;
+  /**
+   * The mocks' large title (Closed-Project): no bar, the title at 34px with
+   * the subtitle row under it, in the page's own padding and scroll. Back
+   * only where no column or bar holds it
+   */
+  large?: boolean;
   className?: string;
 }
 
@@ -22,8 +31,42 @@ export function PageHeader({
   title,
   subtitle,
   actions,
+  large,
   className,
 }: PageHeaderProps) {
+  const native = useIsNative();
+  const mode = useLayoutMode();
+  if (large) {
+    // The phone's tab bar has no back; the desktop shell keeps none either
+    const back = native
+      ? !nativeCaps().column
+      : mode === "phone" || mode === "desktop";
+    return (
+      <header className={cn("flex shrink-0 flex-col", className)}>
+        {back && (
+          <button
+            type="button"
+            onClick={backPage}
+            aria-label="Back"
+            className="text-muted-foreground active:bg-accent mb-1 -ml-2 flex h-11 w-11 items-center justify-center rounded-full"
+          >
+            <ChevronLeft className="h-5 w-5" />
+          </button>
+        )}
+        <div className="flex min-w-0 items-end justify-between gap-3">
+          <h1 className="t-large min-w-0 [overflow-wrap:anywhere]">{title}</h1>
+          {actions && (
+            <div className="flex shrink-0 items-center gap-2">{actions}</div>
+          )}
+        </div>
+        {subtitle && (
+          <div className="text-muted-foreground mt-1.5 flex min-w-0 items-center gap-2 text-[14px]">
+            {subtitle}
+          </div>
+        )}
+      </header>
+    );
+  }
   return (
     <header
       className={cn(

@@ -11,9 +11,6 @@ import { displayTitle } from "@/hooks/useSessionTitles";
 import { useSnapshot } from "valtio";
 import { openNew } from "@/stores/newSurface";
 import { mobileNavStore } from "@/stores/mobileNav";
-import { runNav } from "@/lib/nav-actions";
-import { nativeCaps } from "@/lib/native-bridge";
-import { useIsNative } from "@/hooks/useIsNative";
 import type { SessionStatus } from "@/components/views/types";
 import type { Session } from "@/lib/db";
 import { cn } from "@/lib/utils";
@@ -79,7 +76,6 @@ export function MissionControl({
   projectsView,
 }: MissionControlProps) {
   const mode = useLayoutMode();
-  const native = useIsNative();
   const { homeTab } = useSnapshot(mobileNavStore);
   const wide = isWide(mode);
   const now = useNowItems(sessions, sessionStatuses);
@@ -158,6 +154,8 @@ export function MissionControl({
     </div>
   );
 
+  // Projects draws its own title, padding and (in the iOS app before it
+  // takes the column) its way back
   if (homeTab === "projects" && projectsView)
     return (
       <div
@@ -166,24 +164,7 @@ export function MissionControl({
           wide ? "bg-page" : "bg-background"
         )}
       >
-        <div className={cn("flex shrink-0 flex-col gap-3.5 pb-2", PAD[mode])}>
-          {/* The web column and bars have Back (the phone's tab bar Now);
-              the iOS app's own bar has neither until it takes the column */}
-          {native && !nativeCaps().column && (
-            <button
-              type="button"
-              onClick={() => runNav("back")}
-              aria-label="Back to Now"
-              className="text-muted-foreground active:bg-accent -mb-2 -ml-2 flex h-11 w-11 items-center justify-center rounded-full"
-            >
-              <ChevronLeft className="h-5 w-5" />
-            </button>
-          )}
-          <h1 className="t-large">Projects</h1>
-        </div>
-        <div className="min-h-0 flex-1 pb-[var(--home-pad-b,0px)]">
-          {projectsView}
-        </div>
+        {projectsView}
       </div>
     );
 
