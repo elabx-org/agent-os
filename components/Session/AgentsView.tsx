@@ -1,6 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { useSnapshot } from "valtio";
 import { ChevronLeft } from "lucide-react";
 import type { Session } from "@/lib/db";
@@ -16,6 +22,8 @@ import {
   useSpreadPages,
 } from "@/components/views/SessionSpread";
 import { mobileNavActions, mobileNavStore } from "@/stores/mobileNav";
+import { postureStore } from "@/stores/posture";
+import { FOLD_CLEAR } from "@/hooks/useHinge";
 import { openSubagent } from "@/stores/agentOpen";
 import { agentTreeStore, selectNode, setDetailOpen } from "@/stores/agentTree";
 import { AgentTree } from "./AgentTree";
@@ -69,7 +77,18 @@ export function AgentsView({
   const ref = useRef<HTMLDivElement>(null);
   const pages = useSpreadPages(ref, useSpreadFold());
   const desktop = mode === "desktop" && !native;
-  const posture = desktop ? "desktop" : pages ? "open" : "closed";
+  const { fold } = useSnapshot(postureStore);
+  const halfFolded = !desktop && !pages && fold?.axis === "horizontal";
+  // Half folded the hinge runs across the view: the tree above it, the
+  // picked agent's detail below, nothing in the bend
+  const hinge = useHingeRows(ref, halfFolded ? fold : null);
+  const posture = desktop
+    ? "desktop"
+    : pages
+      ? "open"
+      : hinge
+        ? "tabletop"
+        : "closed";
 
   const node = selectedNode(tree, selected[session.id]);
   const crumbs = tree && node ? crumbsFor(tree, node.id) : [];
@@ -160,6 +179,31 @@ export function AgentsView({
       </div>
     );
 
+  if (posture === "tabletop" && hinge)
+    return (
+      <div
+        ref={ref}
+        aria-label="Agents"
+        className={cn("flex h-full min-h-0 w-full flex-col", className)}
+      >
+        <div className="flex min-h-0 flex-none" style={{ height: hinge.top }}>
+          <AgentTree
+            session={session}
+            tree={tree}
+            isLoading={isLoading}
+            variant="closed"
+            selectedId={node?.id ?? null}
+            onSelect={onTreeSelect}
+            className="w-full pt-[18px] pr-2 pb-3 pl-5"
+          />
+        </div>
+        <div aria-hidden className="flex-none" style={{ height: hinge.gap }} />
+        <div className="flex min-h-0 flex-1 flex-col pt-3 pr-2 pb-4 pl-5">
+          {detail ?? noDetail}
+        </div>
+      </div>
+    );
+
   return (
     <div
       ref={ref}
@@ -219,4 +263,34 @@ export function AgentsView({
       )}
     </div>
   );
+}
+
+/**
+ * Half folded: how tall the part of the view above the hinge is, and the
+ * gap across it (the hinge and its clearance), from where the view starts
+ */
+function useHingeRows(
+  ref: React.RefObject<HTMLDivElement | null>,
+  fold: { start: number; end: number } | null
+): { top: number; gap: number } | null {
+  const [rows, setRows] = useState<{ top: number; gap: number } | null>(null);
+  const start = fold?.start;
+  const end = fold?.end;
+  useLayoutEffect(() => {
+    if (start === undefined || end === undefined) return setRows(null);
+    const measure = () => {
+      const el = ref.current;
+      if (!el) return;
+      const top = Math.max(
+        0,
+        start - FOLD_CLEAR - el.getBoundingClientRect().top
+      );
+      const gap = end - start + FOLD_CLEAR * 2;
+      setRows((r) => (r?.top === top && r.gap === gap ? r : { top, gap }));
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [ref, start, end]);
+  return rows;
 }

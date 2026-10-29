@@ -197,10 +197,15 @@ export function defaultSelection(tree: AgentTreeResponse): string | null {
     }
   };
   walk(tree.children);
+  // An agent with a detail to show before a fork or worker (O-Tree)
+  const ranked = [
+    ...all.filter(hasDetail),
+    ...all.filter((n) => !hasDetail(n)),
+  ];
   return (
-    all.find((n) => n.state === "work")?.id ??
-    all.find((n) => n.state === "needs")?.id ??
-    all[0]?.id ??
+    ranked.find((n) => n.state === "work")?.id ??
+    ranked.find((n) => n.state === "needs")?.id ??
+    ranked[0]?.id ??
     null
   );
 }

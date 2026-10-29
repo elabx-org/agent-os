@@ -239,6 +239,12 @@ test("defaultSelection: the first working agent, else asking, else any", () => {
     "agent:explore"
   );
   assert.equal(defaultSelection({ ...TREE, children: [] }), null);
+  // A working fork listed first still yields to a working agent
+  const busyFork = { ...fork, state: "work" as const };
+  assert.equal(
+    defaultSelection({ ...TREE, children: [busyFork, ...TREE.children] }),
+    "agent:undo"
+  );
 });
 
 test("what a tap does: forks open their session, agents their detail", () => {
