@@ -19,6 +19,7 @@ import {
 } from "./status-detector";
 import { tmuxNameOf } from "./session-launch";
 import { latest } from "./session-watch";
+import { isHandingOff } from "./handing-off";
 
 const execFileAsync = promisify(execFile);
 
@@ -294,9 +295,16 @@ export function classifyScreen(input: ScreenInput): Readiness {
     : classifyOther(input, plain);
 }
 
-export async function readiness(session: Session): Promise<Readiness> {
+export async function readiness(
+  session: Session,
+  /** The handoff's own reads of its source */
+  options: { duringHandoff?: boolean } = {}
+): Promise<Readiness> {
   // Handed off (M4): its tmux ended, nothing goes in until it is resumed
   if (session.paused_at) return hold("paused");
+  // Being handed off: no new turn until it is done (or given up)
+  if (!options.duringHandoff && isHandingOff(session.id))
+    return hold("handing_off");
   const name = tmuxNameOf(session);
   try {
     // display-message prints nothing (and succeeds) for a missing target

@@ -4,6 +4,7 @@ import { useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Session } from "@/lib/db";
 import type {
+  HandoffError,
   HandoffPreview,
   HandoffRequest,
   HandoffResult,
@@ -17,6 +18,17 @@ import { agentName } from "@/components/a/Avatar";
 import { handoffRefusalText } from "@/components/Session/switch-model";
 import { claudeStateKeys } from "./useClaudeState";
 import { queueKeys } from "./useQueue";
+
+/** A refused action: the route's status and body, the mapped text as message */
+export class HandoffRequestError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly body: HandoffError | null
+  ) {
+    super(message);
+  }
+}
 
 export const handoffKeys = {
   preview: (sessionId: string) => ["handoff-preview", sessionId] as const,
@@ -71,7 +83,13 @@ export function useHandoff(session: Session, open: boolean): UseHandoff {
         throw new Error("Couldn't reach the server");
       });
       const json = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(handoffRefusalText(res.status, json, name));
+      if (!res.ok) {
+        throw new HandoffRequestError(
+          handoffRefusalText(res.status, json, name),
+          res.status,
+          json
+        );
+      }
       return json as T;
     },
     [sessionId, name]

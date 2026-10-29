@@ -1,28 +1,22 @@
 "use client";
 
 import { useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { CirclePause, Loader2 } from "lucide-react";
 import { Avatar, agentAvatar, agentName } from "@/components/a/Avatar";
 import { confirmAction } from "@/components/ui/confirm";
-import { sessionKeys } from "@/data/sessions/keys";
 import { useSessionsQuery } from "@/data/sessions/queries";
+import { HandoffRequestError, useHandoff } from "@/hooks/useHandoff";
 import { displayTitle, useListTitles } from "@/hooks/useSessionTitles";
-import { fetchAsUser, refusalText } from "@/lib/client/user-fetch";
 import type { Session } from "@/lib/db";
-import type {
-  HandoffError,
-  ResumePausedRequest,
-  ResumePausedResult,
-} from "@/lib/handoff-types";
 import { successorOf } from "@/lib/paused";
 import { cn } from "@/lib/utils";
 
 /**
  * Where a paused (handed-off) session's composer was: "Paused · handed off
  * to Codex", Open that session, and Resume here (resume-paused, warns when
- * the successor still runs in the same folder)
+ * the successor still runs in the same folder). Codex and Gemini keep no
+ * conversation to resume: theirs is "Start fresh here"
  */
 export interface PausedBarProps {
   session: Session;
@@ -45,7 +39,6 @@ export function PausedBar({
   onOpenSuccessor,
   className,
 }: PausedBarProps) {
-  const queryClient = useQueryClient();
   const sessions = useSessionsQuery().data?.sessions ?? NO_SESSIONS;
   const successor = successorOf(session, sessions);
   const titles = useListTitles(successor ? [successor] : NO_SESSIONS);
@@ -54,6 +47,8 @@ export function PausedBar({
     : null;
   const agent = successor ? agentName(successor.agent_type) : null;
   const [resuming, setResuming] = useState(false);
+  const { resumePaused } = useHandoff(session, false);
+  const resumes = (session.agent_type || "claude") === "claude";
 
   const openSuccessor = () => {
     if (!successor) return;
@@ -61,50 +56,35 @@ export function PausedBar({
     else showSession(successor);
   };
 
-  const post = (body: ResumePausedRequest) =>
-    fetchAsUser(`/api/sessions/${session.id}/resume-paused`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-
   const resume = async () => {
     if (resuming) return;
     setResuming(true);
     try {
-      let res = await post({});
-      let data = (await res.json().catch(() => ({}))) as
-        | ResumePausedResult
-        | HandoffError;
-      // The session it went to still works here: both would edit the files
-      if (
-        res.status === 409 &&
-        "reason" in data &&
-        data.reason === "successor_live"
-      ) {
-        const liveId = data.successorId;
+      let result;
+      try {
+        result = await resumePaused();
+      } catch (error) {
+        // The session it went to still works here: both would edit the files
+        if (
+          !(error instanceof HandoffRequestError) ||
+          error.body?.reason !== "successor_live"
+        )
+          throw error;
+        const liveId = error.body.successorId;
         const live =
           (liveId && sessions.find((s) => s.id === liveId)) || successor;
-        const who = live ? displayTitle(live, titles).title : "The new session";
+        const who = live
+          ? `${agentName(live.agent_type)} ("${displayTitle(live, titles).title}")`
+          : "The new session";
         const ok = await confirmAction({
-          title: `Resume ${session.name}?`,
+          title: resumes ? "Resume here anyway?" : "Start fresh here anyway?",
           message: `${who} still works in this folder; both would edit the same files.`,
-          confirmLabel: "Resume anyway",
+          confirmLabel: resumes ? "Resume anyway" : "Start anyway",
         });
         if (!ok) return;
-        res = await post({ force: true });
-        data = (await res.json().catch(() => ({}))) as
-          | ResumePausedResult
-          | HandoffError;
+        result = await resumePaused(true);
       }
-      if (!res.ok || !("session" in data))
-        throw new Error(
-          res.status === 501
-            ? "Resuming isn't available yet"
-            : refusalText(data as HandoffError)
-        );
-      await queryClient.invalidateQueries({ queryKey: sessionKeys.list() });
-      showSession(data.session);
+      showSession(result.session);
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : "Couldn't resume the session"
@@ -153,7 +133,7 @@ export function PausedBar({
           )}
         >
           {resuming && <Loader2 className="h-4 w-4 animate-spin" />}
-          Resume here
+          {resumes ? "Resume here" : "Start fresh here"}
         </button>
       </div>
     </div>

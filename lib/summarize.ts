@@ -7,6 +7,7 @@
  */
 
 import { execFile, spawn } from "child_process";
+import os from "os";
 import { promisify } from "util";
 import type { Session } from "./db";
 import type { SessionSummary } from "./handoff-types";
@@ -275,8 +276,12 @@ function conversationText(items: readonly ChatItem[]): string {
     : text;
 }
 
-/** `claude -p`, the conversation on stdin; null on any failure */
-function condense(conversation: string, cwd: string): Promise<string | null> {
+/**
+ * `claude -p`, the conversation on stdin; null on any failure. Run outside
+ * the session's folder: its own transcript would be the newest there, and
+ * the status poll would take its id for the session
+ */
+function condense(conversation: string): Promise<string | null> {
   const prompt =
     "Summarize this coding-agent conversation for another agent taking it over, in under 300 words: what was asked, what was done, the current state and what is left. Be specific; name files.";
   return new Promise((resolve) => {
@@ -291,7 +296,7 @@ function condense(conversation: string, cwd: string): Promise<string | null> {
     let child: ReturnType<typeof spawn>;
     try {
       child = spawn("claude", ["-p", prompt], {
-        cwd,
+        cwd: os.tmpdir(),
         stdio: ["pipe", "pipe", "ignore"],
       });
     } catch {
@@ -357,13 +362,15 @@ export async function buildSummary(
   const finish = (
     text: string,
     plan: PlanState | null,
-    source: SessionSummary["source"]
+    source: SessionSummary["source"],
+    empty = false
   ): SessionSummary => ({
     text,
     tokens: estimateTokens(text),
     filesChanged: files.map((f) => f.path),
     plan: plan ? { done: plan.done, total: plan.total } : null,
     source,
+    empty,
   });
 
   const extract = items ? extractConversation(items) : null;
@@ -378,7 +385,7 @@ export async function buildSummary(
       items && hasConversation
         ? conversationText(items)
         : await captureScrollback(session);
-    const condensed = input.trim() ? await condense(input, cwd) : null;
+    const condensed = input.trim() ? await condense(input) : null;
     if (condensed) {
       const plan = extract?.plan ?? null;
       const text = formatHandoff({
@@ -426,5 +433,5 @@ export async function buildSummary(
         },
     plan,
   });
-  return finish(text, plan, "scrollback");
+  return finish(text, plan, "scrollback", !scrollback && !plan);
 }

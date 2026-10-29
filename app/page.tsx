@@ -247,6 +247,8 @@ function HomeContent() {
         permissionMode: session.permission_mode,
         continueSession: session.continue_session,
         model: session.model,
+        modelPinned: !!session.model_pinned,
+        effort: session.effort,
         initialPrompt: initialPrompt || undefined,
         worktreeName: nativeWorktreeName,
       });

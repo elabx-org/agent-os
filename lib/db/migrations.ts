@@ -446,6 +446,9 @@ const migrations: Migration[] = [
       addColumnIfMissing(db, "sessions", "handoff_from_session_id", "TEXT");
       addColumnIfMissing(db, "sessions", "handoff_to_session_id", "TEXT");
       addColumnIfMissing(db, "sessions", "effort", "TEXT");
+      // 1: the model was picked, so --model goes even for "sonnet" (which
+      // otherwise stands for Claude's own default)
+      addColumnIfMissing(db, "sessions", "model_pinned", "INTEGER");
     }),
   },
 ];

@@ -97,9 +97,17 @@ export async function POST(
     const cwd = (await getTmuxCwd(tmuxNameOf(session))) || sessionCwd(session);
 
     // The transcript (found without a pane too, under CLAUDE_CONFIG_DIR),
-    // else the pane's scrollback; condensed with `claude -p`. Never throws:
-    // with neither, it still carries the folder, files changed and plan
-    const { text: summary } = await buildSummary(session, { useModel: true });
+    // else the pane's scrollback; condensed with `claude -p`. Never throws;
+    // with neither (and no plan) there is nothing to summarize
+    const { text: summary, empty } = await buildSummary(session, {
+      useModel: true,
+    });
+    if (empty) {
+      return NextResponse.json(
+        { error: "No conversation found to summarize" },
+        { status: 400 }
+      );
+    }
 
     // Create a new session with the summary as context
     let newSession: Session | null = null;

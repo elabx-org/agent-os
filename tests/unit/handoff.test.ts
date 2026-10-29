@@ -182,6 +182,7 @@ function fakes(over: Partial<import("../../lib/handoff").HandoffDeps> = {}) {
     filesChanged: ["a.ts", "b.ts"],
     plan: { done: 3, total: 5 },
     source: "transcript",
+    empty: false,
   };
   const deps: import("../../lib/handoff").HandoffDeps = {
     db: db.getDb(),
@@ -287,6 +288,40 @@ describe("switchModel", () => {
     assert.equal(row("a")!.effort, "xhigh");
   });
 
+  test("an effort-only change sends no /model and keeps the model", async () => {
+    const f = fakes();
+    const s = addSession("a", { model: "opus[1m]" });
+    f.running.add("a");
+    const r = await mod.createHandoff(f.deps).switchModel(s, { effort: "low" });
+    assert.equal(r.model, null);
+    assert.equal(r.item?.text, "/effort low");
+    assert.deepEqual(
+      f.queue.map((q) => q.text),
+      ["/effort low"]
+    );
+    assert.equal(row("a")!.model, "opus[1m]");
+    assert.equal(row("a")!.effort, "low");
+  });
+
+  test("a model pick is pinned, so --model sonnet goes on launch", async () => {
+    const f = fakes({ queueOn: () => false });
+    const s = addSession("a");
+    await mod.createHandoff(f.deps).switchModel(s, { model: "sonnet" });
+    const r = row("a")!;
+    assert.equal(r.model_pinned, 1);
+    const flags = providers.claudeProvider.buildFlags({
+      model: r.model!,
+      modelPinned: !!r.model_pinned,
+    });
+    assert.ok(flags.includes("--model sonnet"));
+    // An unpicked "sonnet" stays Claude's own default
+    assert.ok(
+      !providers.claudeProvider
+        .buildFlags({ model: "sonnet" })
+        .some((f) => f.startsWith("--model"))
+    );
+  });
+
   test("Claude only", async () => {
     const s = addSession("a", { agent_type: "codex" });
     const r = await refusal(
@@ -336,6 +371,56 @@ describe("handoff", () => {
       "remember r",
       "kill r",
     ]);
+  });
+
+  test("holds the source throughout and drops what was queued for it", async () => {
+    const holds: string[] = [];
+    const f = fakes({
+      holdSource: (id, on) => holds.push(`${on ? "hold" : "release"} ${id}`),
+    });
+    const s = addSession("h");
+    f.running.add("h");
+    f.deps.enqueue("h", { text: "next ask", kind: "message", origin: "user" });
+    await mod.createHandoff(f.deps).handoff(s, { agentType: "codex" });
+    assert.deepEqual(holds, ["hold h", "release h"]);
+    assert.deepEqual(
+      f.queue.filter((q) => q.sessionId === "h").map((q) => q.status),
+      ["cancelled"]
+    );
+  });
+
+  test("a turn started during the handoff: the new session is dropped", async () => {
+    let busyNow = false;
+    const f = fakes({
+      readiness: async (x) =>
+        x.id === "t" && busyNow
+          ? { ready: false, holdReason: "busy" }
+          : { ready: true, holdReason: null },
+      sendSummary: async () => {
+        busyNow = true;
+      },
+    });
+    const s = addSession("t");
+    f.running.add("t");
+    const r = await refusal(
+      mod.createHandoff(f.deps).handoff(s, { agentType: "codex" })
+    );
+    assert.equal(r.reason, "busy");
+    assert.equal(row("t")!.paused_at, null);
+    assert.ok(f.log.some((l) => l.startsWith("discard")));
+    assert.ok(!f.log.includes("kill t"));
+  });
+
+  test("a non-Claude source's terminal is kept before it ends", async () => {
+    const f = fakes();
+    f.deps.keepHistory = async (x) => {
+      f.log.push(`keep ${x.id}`);
+    };
+    const s = addSession("k", { agent_type: "codex" });
+    f.running.add("k");
+    await mod.createHandoff(f.deps).handoff(s, { agentType: "claude" });
+    const keep = f.log.indexOf("keep k");
+    assert.ok(keep >= 0 && keep < f.log.indexOf("kill k"));
   });
 
   test("busy source: refused, nothing created", async () => {
@@ -394,14 +479,15 @@ describe("handoff", () => {
     assert.ok(f.log.some((l) => l.startsWith("discard")));
   });
 
-  test("an empty summary is refused", async () => {
+  test("nothing to carry over is refused", async () => {
     const f = fakes({
       summarize: async () => ({
-        text: " ",
-        tokens: 0,
+        text: "# Handoff\n\nNo transcript or terminal history",
+        tokens: 9,
         filesChanged: [],
         plan: null,
-        source: "transcript",
+        source: "scrollback",
+        empty: true,
       }),
     });
     const s = addSession("a");
@@ -440,6 +526,18 @@ describe("resumePaused", () => {
     const ok = await h.resumePaused(s, { force: true });
     assert.equal(ok.session.paused_at, null);
     assert.deepEqual(f.log, ["launch claude a"]);
+  });
+
+  test("forcing never starts a blank Claude", async () => {
+    const f = fakes();
+    addSession("b");
+    const s = addSession("a", { paused_at: 5, handoff_to_session_id: "b" });
+    f.running.add("b");
+    const r = await refusal(
+      mod.createHandoff(f.deps).resumePaused(s, { force: true })
+    );
+    assert.equal(r.reason, "no_transcript");
+    assert.equal(row("a")!.paused_at, 5);
   });
 
   test("a failed launch keeps it paused", async () => {

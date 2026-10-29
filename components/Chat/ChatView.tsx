@@ -28,6 +28,7 @@ import {
 } from "@/components/Composer";
 import { ComposerCard } from "@/components/Composer/ComposerCard";
 import { PausedBar } from "@/components/Session/PausedBar";
+import { PausedHistory } from "@/components/Session/PausedHistory";
 import { isPaused } from "@/lib/handoff-types";
 import {
   RewindSheet,
@@ -107,6 +108,7 @@ export function ChatView({
   const status = statuses[session.id]?.status;
   // Handed off to another agent: its tmux ended, the chat stays readable
   const paused = isPaused(session);
+  const pausedOther = paused && (session.agent_type || "claude") !== "claude";
   const { rows, results } = useMemo(() => buildRows(items), [items]);
 
   // Each turn's card after the reply that ended it (flag `snapshots`)
@@ -535,7 +537,18 @@ export function ChatView({
                 conversation…
               </div>
             )}
-            {state === "missing" && (
+            {/* Handed off: no terminal to open. Codex and Gemini keep no
+                transcript, so theirs as it was at the handoff */}
+            {state === "missing" &&
+              paused &&
+              (pausedOther ? (
+                <PausedHistory session={session} />
+              ) : (
+                <div className="text-muted-foreground py-8 text-sm">
+                  No Claude Code conversation was found for this session.
+                </div>
+              ))}
+            {state === "missing" && !paused && (
               <div className="text-muted-foreground py-8 text-sm">
                 No Claude Code conversation found for this session.{" "}
                 <button

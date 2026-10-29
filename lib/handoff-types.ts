@@ -40,7 +40,8 @@ export function isPaused(
 
 /** POST /api/sessions/[id]/model (Claude sessions only) */
 export interface ModelSwitchRequest {
-  model: ClaudeModelAlias;
+  /** Left out when only the effort changes (no /model is sent then) */
+  model?: ClaudeModelAlias;
   effort?: EffortLevel;
 }
 
@@ -52,11 +53,12 @@ export interface ModelSwitchRequest {
 export type EffortApplies = "now" | "next_launch";
 
 export interface ModelSwitchResult {
-  /** The queued `/model <alias>` command (kind='command': sent only at idle) */
+  /** The first queued command, `/model` or `/effort` (kind='command': sent only at idle) */
   item: QueueItem | null;
   /** False when the queue isn't on for this session: the command was not queued */
   queued: boolean;
-  model: ClaudeModelAlias;
+  /** Null when only the effort changed */
+  model: ClaudeModelAlias | null;
   effort: EffortLevel | null;
   effortApplies: EffortApplies | null;
 }
@@ -129,4 +131,6 @@ export interface SessionSummary {
   plan: { done: number; total: number } | null;
   /** Where it came from: the Claude transcript, `claude -p`, or the pane */
   source: "transcript" | "model" | "scrollback";
+  /** Neither a conversation nor terminal history: nothing to carry over */
+  empty: boolean;
 }

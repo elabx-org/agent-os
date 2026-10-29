@@ -44,6 +44,8 @@ export interface Session {
   handoff_from_session_id: string | null;
   handoff_to_session_id: string | null;
   effort: string | null;
+  // 1 when the model was picked (sheet, handoff): --model even for "sonnet"
+  model_pinned: number | null;
 }
 
 /** What an agent tried on a session's permissions (lib/agent-actions.ts) */

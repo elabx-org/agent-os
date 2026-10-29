@@ -12,7 +12,7 @@ import {
   getSessionIdFromName,
 } from "@/lib/providers/registry";
 import { getDb } from "@/lib/db";
-import { projectDirFor } from "@/lib/claude-transcript";
+import { projectDirFor, readClaudeSessionMeta } from "@/lib/claude-transcript";
 
 const execAsync = promisify(exec);
 
@@ -130,6 +130,11 @@ async function getClaudeSessionId(sessionName: string): Promise<string | null> {
     return envId;
   }
 
+  // What the pane's own Claude says (by its pid) before the folder's newest
+  // transcript, which may be another session's in the same folder
+  const meta = await readClaudeSessionMeta(sessionName);
+  if (meta) return meta.sessionId;
+
   const cwd = await getTmuxSessionCwd(sessionName);
   if (cwd) {
     return getClaudeSessionIdFromFiles(cwd);
@@ -233,7 +238,7 @@ export async function GET() {
       "UPDATE sessions SET updated_at = datetime('now') WHERE id = ?"
     );
     const updateClaudeIdStmt = db.prepare(
-      "UPDATE sessions SET claude_session_id = ? WHERE id = ? AND (claude_session_id IS NULL OR claude_session_id != ?)"
+      "UPDATE sessions SET claude_session_id = ? WHERE id = ? AND paused_at IS NULL AND (claude_session_id IS NULL OR claude_session_id != ?)"
     );
 
     for (const id of sessionsToUpdate) {

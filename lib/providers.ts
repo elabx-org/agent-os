@@ -54,6 +54,7 @@ export interface BuildFlagsOptions {
   allowBypassCycle?: boolean; // Full access joins Claude's Shift+Tab cycle (Labs)
   continueSession?: boolean; // Continue last session in working directory
   model?: string;
+  modelPinned?: boolean; // sessions.model_pinned: passed even when "sonnet"
   effort?: string | null; // Claude --effort (sessions.effort, lib/handoff-types.ts EffortLevel)
   initialPrompt?: string; // Initial prompt to send to agent
   worktreeName?: string; // If set, use provider's native worktree flag with this name
@@ -111,10 +112,11 @@ export const claudeProvider: AgentProvider = {
     }
 
     // "sonnet" is what the server stores when none was chosen, which has
-    // always meant Claude's own default; the pattern keeps it shell-safe
+    // always meant Claude's own default, unless it was picked (M4); the
+    // pattern keeps it shell-safe
     if (
       options.model &&
-      options.model !== "sonnet" &&
+      (options.model !== "sonnet" || options.modelPinned) &&
       def.modelFlag &&
       /^[\w.-]+$/.test(options.model)
     ) {

@@ -80,9 +80,10 @@ export function SwitchSheet({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         className={cn(
-          "sheet-surface bg-[var(--sheet)]",
-          // Half folded (tabletop): on the base, below the hinge
-          "[html[data-fold=horizontal]_&]:top-[calc(var(--fold-end)+0.5rem)] [html[data-fold=horizontal]_&]:max-h-none",
+          "sheet-surface bg-[var(--sheet)] pb-[max(16px,env(safe-area-inset-bottom))]",
+          // Half folded (tabletop): on the base, below the hinge, full width
+          // so the handoff's details fit above the button
+          "[html[data-fold=horizontal]_&]:top-[calc(var(--fold-end)+0.5rem)] [html[data-fold=horizontal]_&]:mx-0 [html[data-fold=horizontal]_&]:max-h-none [html[data-fold=horizontal]_&]:w-auto [html[data-fold=horizontal]_&]:max-w-none",
           // Book pose without the app (globals.css sets left): the right page
           "[html[data-fold=vertical]_&]:right-0 [html[data-fold=vertical]_&]:mx-0 [html[data-fold=vertical]_&]:w-auto [html[data-fold=vertical]_&]:max-w-none",
           // The open Duo lying flat: on the right page, clear of the hinge
@@ -203,20 +204,13 @@ function SwitchBody({
     paused: isPaused(session),
   });
   const caption = modelRowCaption({ source, picked: agent, pickedName });
-  // Without a known model, effort alone can't be sent (`/model` needs one)
-  const sendModel = model ?? current.alias;
-  const disabled =
-    sending || action.disabled || (action.kind === "model" && !sendModel);
+  const disabled = sending || action.disabled;
 
   const confirmSwitch = (r: ModelSwitchResult) => {
     const what = modelChanged
       ? (modelLabel ?? r.model)
       : `${effortLabel(effort!)} effort`;
     if (!r.queued) toast(`${what} from the session's next start`);
-    else if (effortChanged && r.effortApplies === "next_launch")
-      toast(
-        `${modelChanged ? `Switching to ${what}` : "Effort is saved"}: effort applies from the next start`
-      );
     else toast(`Switching to ${what} between turns`);
   };
 
@@ -233,9 +227,11 @@ function SwitchBody({
         toast(`Handed off to ${pickedName}`);
         onClose();
         onHandedOff?.(result.session);
-      } else if (action.kind === "model" && sendModel) {
+      } else if (action.kind === "model") {
+        // Only what changed: an unchanged model sends no `/model`, which
+        // would drop a variant like Opus (1M context) to the plain alias
         const result = await switchModel({
-          model: sendModel,
+          ...(modelChanged && model ? { model } : {}),
           ...(effortChanged && effort ? { effort } : {}),
         });
         haptic("success");
@@ -253,7 +249,7 @@ function SwitchBody({
   const files = preview?.filesChanged ?? 0;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 pt-1">
+    <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 pt-1 [html[data-fold=horizontal]_&]:gap-2.5">
       <div className="flex items-baseline justify-between gap-3">
         <SheetTitle className="t-title text-[20px] leading-tight font-bold tracking-normal">
           Agent and model
@@ -297,7 +293,7 @@ function SwitchBody({
               <span className="max-w-full truncate font-semibold">
                 {p.label}
               </span>
-              <span className="text-muted-foreground max-w-full truncate text-[11px]">
+              <span className="text-muted-foreground max-w-full truncate text-[11px] [html[data-fold=horizontal]_&]:hidden">
                 {p.caption}
               </span>
             </button>
@@ -316,7 +312,7 @@ function SwitchBody({
           <div
             role="group"
             aria-label="Effort"
-            className="seg bg-card min-w-0 flex-1 justify-between rounded-3xl"
+            className="seg min-w-0 flex-1 justify-between rounded-3xl bg-[var(--sheet-fill)]"
           >
             {efforts.map((level) => (
               <button
@@ -336,7 +332,15 @@ function SwitchBody({
           </div>
         </div>
         {caption && (
-          <p className="text-muted-foreground text-[13px]">{caption}</p>
+          <p
+            className={cn(
+              "text-muted-foreground text-[13px]",
+              // Half folded the dimmed row says enough without it
+              !modelOn && "[html[data-fold=horizontal]_&]:hidden"
+            )}
+          >
+            {caption}
+          </p>
         )}
       </div>
 
@@ -384,8 +388,10 @@ function SwitchBody({
         </div>
 
         {agent !== source && (
-          <div className="bg-card flex flex-col gap-2.5 rounded-2xl px-3.5 py-3">
-            <p className="text-foreground/90 text-sm">
+          <div className="flex flex-col gap-2.5 rounded-2xl bg-[var(--sheet-fill)] px-3.5 py-3">
+            {/* Half folded the button and "Switching is a handoff" say
+                it, and the details must fit above the button */}
+            <p className="text-foreground/90 text-sm [html[data-fold=horizontal]_&]:hidden">
               {pickedName} starts a new session in the same folder with a
               summary of this one.
             </p>

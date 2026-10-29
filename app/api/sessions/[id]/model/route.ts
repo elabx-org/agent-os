@@ -8,10 +8,11 @@ import {
   type ModelSwitchResult,
 } from "@/lib/handoff-types";
 
-// POST /api/sessions/[id]/model {model, effort?} - ModelSwitchResult.
-// The user's only. Claude sessions: `/model <alias>` (and `/effort
-// <level>`) go through the queue as commands, sent only at idle; with the
-// queue off or the session stopped they apply at its next launch.
+// POST /api/sessions/[id]/model {model?, effort?} - ModelSwitchResult.
+// The user's only. Claude sessions: `/model <alias>` and `/effort <level>`,
+// each only when picked, go through the queue as commands, sent only at
+// idle; with the queue off or the session stopped they apply at its next
+// launch.
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -29,10 +30,16 @@ export async function POST(
     return NextResponse.json({ error: "Session not found" }, { status: 404 });
   }
   const body = await request.json().catch(() => null);
-  const model: unknown = body?.model;
+  const model: unknown = body?.model ?? undefined;
   const effort: unknown = body?.effort ?? undefined;
-  if (!isClaudeModelAlias(model)) {
+  if (model !== undefined && !isClaudeModelAlias(model)) {
     return NextResponse.json({ error: "Unknown model" }, { status: 400 });
+  }
+  if (model === undefined && effort === undefined) {
+    return NextResponse.json(
+      { error: "Pick a model or an effort" },
+      { status: 400 }
+    );
   }
   if (effort !== undefined && !isEffortLevel(effort)) {
     return NextResponse.json(

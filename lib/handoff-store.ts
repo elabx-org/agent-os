@@ -6,22 +6,27 @@
 
 import type Database from "better-sqlite3";
 
-/** The model (and the effort, when given) for the next turn or launch */
+/**
+ * The model the user picked (pinned: launched with --model even when it is
+ * "sonnet") and/or the effort, for the next turn or launch. Undefined
+ * leaves that one as it is
+ */
 export function setModelEffort(
   db: Database.Database,
   sessionId: string,
-  model: string,
+  model: string | undefined,
   effort?: string | null
 ): void {
-  if (effort === undefined) {
+  if (model !== undefined) {
     db.prepare(
-      `UPDATE sessions SET model = ?, updated_at = datetime('now') WHERE id = ?`
+      `UPDATE sessions SET model = ?, model_pinned = 1, updated_at = datetime('now') WHERE id = ?`
     ).run(model, sessionId);
-    return;
   }
-  db.prepare(
-    `UPDATE sessions SET model = ?, effort = ?, updated_at = datetime('now') WHERE id = ?`
-  ).run(model, effort, sessionId);
+  if (effort !== undefined) {
+    db.prepare(
+      `UPDATE sessions SET effort = ?, updated_at = datetime('now') WHERE id = ?`
+    ).run(effort, sessionId);
+  }
 }
 
 /** The session a new one was handed off from */

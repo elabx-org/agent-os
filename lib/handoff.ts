@@ -54,6 +54,8 @@ import {
 } from "./queue/store";
 import type { EnqueueResult, QueueItem } from "./queue/types";
 import { readiness, type Readiness } from "./session-ready";
+import { clearHandingOff, markHandingOff } from "./handing-off";
+import { savePausedHistory } from "./paused-history";
 import { isRunning, launchSession, tmuxNameOf } from "./session-launch";
 import { buildSummary } from "./summarize";
 import { sendText } from "./tmux-send";
@@ -92,6 +94,16 @@ export interface HandoffDeps {
   launch(session: Session): Promise<boolean>;
   /** Ends the session's tmux */
   kill(session: Session): Promise<void>;
+  /**
+   * Holds the source while it is handed off: readiness() says not ready
+   * to anyone else, so no queued or direct send starts a turn
+   */
+  holdSource?(sessionId: string, on: boolean): void;
+  /**
+   * Keeps a non-Claude source's terminal history before its tmux ends: it
+   * has no transcript, so this is what its paused view shows
+   */
+  keepHistory?(session: Session): Promise<void>;
   summarize(session: Session): Promise<SessionSummary>;
   /** Types the summary in as the new session's first message; throws if not sent */
   sendSummary(session: Session, text: string): Promise<void>;
@@ -132,6 +144,8 @@ export interface SuccessorFields {
   name: string;
   agentType: string;
   model: string | null;
+  /** Picked (or inherited picked): launched with --model even for "sonnet" */
+  modelPinned: boolean;
   effort: EffortLevel | null;
   workingDirectory: string;
   permissionMode: Mode | null;
@@ -158,10 +172,14 @@ export function successorFields(
   const def = getProviderDefinition(agentType);
 
   let model: string | null = null;
-  if (request.model) model = request.model;
-  else if (agentType === "claude") {
-    model =
-      source.agent_type === "claude" && source.model ? source.model : "sonnet";
+  let modelPinned = false;
+  if (request.model) {
+    model = request.model;
+    modelPinned = true;
+  } else if (agentType === "claude") {
+    const fromClaude = source.agent_type === "claude" && !!source.model;
+    model = fromClaude ? source.model : "sonnet";
+    modelPinned = fromClaude && !!source.model_pinned;
   }
   const effort =
     agentType === "claude" &&
@@ -194,6 +212,7 @@ export function successorFields(
     name: source.name,
     agentType,
     model,
+    modelPinned,
     effort,
     workingDirectory,
     permissionMode,
@@ -247,9 +266,10 @@ export function createSuccessor(
           id
         );
     }
-    if (fields.model && fields.effort) {
-      setModelEffort(db, id, fields.model, fields.effort);
+    if (fields.model && fields.modelPinned) {
+      setModelEffort(db, id, fields.model);
     }
+    if (fields.effort) setModelEffort(db, id, undefined, fields.effort);
     setHandoffFrom(db, id, source.id);
   })();
   return getSession(db, id)!;
@@ -280,14 +300,20 @@ export function createHandoff(deps: HandoffDeps) {
         reason: "not_claude",
       });
     }
-    if (!isClaudeModelAlias(request.model)) {
+    // Either may be left out: an effort-only change never sends /model
+    // (it would drop a variant such as opus[1m] back to the plain alias)
+    const model = request.model;
+    if (model !== undefined && !isClaudeModelAlias(model)) {
       throw new HandoffRefused(400, { error: "Unknown model" });
     }
     if (request.effort !== undefined && !isEffortLevel(request.effort)) {
       throw new HandoffRefused(400, { error: "Unknown effort level" });
     }
+    if (model === undefined && request.effort === undefined) {
+      throw new HandoffRefused(400, { error: "Pick a model or an effort" });
+    }
     const effort = request.effort ?? null;
-    setModelEffort(deps.db, session.id, request.model, request.effort);
+    setModelEffort(deps.db, session.id, model, request.effort);
 
     // Running and taking queued commands: both go in at its next idle.
     // Otherwise they apply with --model/--effort when it next starts
@@ -299,30 +325,38 @@ export function createHandoff(deps: HandoffDeps) {
       return {
         item: null,
         queued: false,
-        model: request.model,
+        model: model ?? null,
         effort,
         effortApplies: effort ? "next_launch" : null,
       };
     }
+    // A new pick replaces a pending one of the same kind only
     for (const stale of staleCommands(deps.listQueue(session.id))) {
-      deps.cancelItem(session.id, stale.id);
+      const isModel = stale.text.startsWith("/model ");
+      if (isModel ? model !== undefined : effort !== null) {
+        deps.cancelItem(session.id, stale.id);
+      }
     }
-    const item = deps.enqueue(session.id, {
-      text: `/model ${request.model}`,
-      kind: "command",
-      origin: "user",
-    });
-    if (effort) {
-      deps.enqueue(session.id, {
-        text: `/effort ${effort}`,
+    let item: QueueItem | null = null;
+    if (model !== undefined) {
+      item = deps.enqueue(session.id, {
+        text: `/model ${model}`,
         kind: "command",
         origin: "user",
       });
     }
+    if (effort) {
+      const effortItem = deps.enqueue(session.id, {
+        text: `/effort ${effort}`,
+        kind: "command",
+        origin: "user",
+      });
+      item ??= effortItem;
+    }
     return {
       item,
       queued: true,
-      model: request.model,
+      model: model ?? null,
       effort,
       effortApplies: effort ? "now" : null,
     };
@@ -367,17 +401,16 @@ export function createHandoff(deps: HandoffDeps) {
       });
     }
     inFlight.add(source.id);
+    // Held from here, so nothing queued or sent starts a turn meanwhile
+    deps.holdSource?.(source.id, true);
+    const busy = () =>
+      new HandoffRefused(409, { error: "Between turns only", reason: "busy" });
     try {
       const running = await deps.isRunning(source);
-      if (running && !(await deps.readiness(source)).ready) {
-        throw new HandoffRefused(409, {
-          error: "Between turns only",
-          reason: "busy",
-        });
-      }
+      if (running && !(await deps.readiness(source)).ready) throw busy();
 
       const summary = await deps.summarize(source);
-      if (!summary.text.trim()) {
+      if (summary.empty || !summary.text.trim()) {
         throw new HandoffRefused(400, {
           error: "Nothing to hand off yet",
           reason: "no_transcript",
@@ -391,6 +424,15 @@ export function createHandoff(deps: HandoffDeps) {
         const ready = await waitReady(successor, deps.now() + READY_TIMEOUT_MS);
         if (!ready) throw new Error("The new session didn't reach its prompt");
         await deps.sendSummary(successor, summary.text);
+        // A turn started meanwhile anyway (typed into its terminal, or a
+        // message sent just before the hold): it would be cut off, and its
+        // work isn't in the summary
+        if (running && !(await sourceStillIdle(source))) throw busy();
+        if (running && deps.keepHistory) {
+          await deps.keepHistory(source).catch((error) => {
+            console.error("[handoff] keeping the terminal history:", error);
+          });
+        }
         if (running && deps.rememberTranscript) {
           await deps.rememberTranscript(source).catch((error) => {
             console.error("[handoff] keeping the transcript id:", error);
@@ -412,6 +454,11 @@ export function createHandoff(deps: HandoffDeps) {
           console.error("[handoff] ending the source's tmux:", error);
         });
       }
+      // What was still queued for it was meant for the session as it was,
+      // not for whenever it is resumed
+      for (const item of deps.listQueue(source.id)) {
+        if (item.status === "pending") deps.cancelItem(source.id, item.id);
+      }
       if (fields.autoApprove) deps.announceFullAccess(successor);
       return {
         newSessionId: successor.id,
@@ -419,7 +466,16 @@ export function createHandoff(deps: HandoffDeps) {
       };
     } finally {
       inFlight.delete(source.id);
+      deps.holdSource?.(source.id, false);
     }
+  }
+
+  /** Ready, and nothing of its queue being typed in */
+  async function sourceStillIdle(source: Session): Promise<boolean> {
+    if (deps.listQueue(source.id).some((i) => i.status === "sending")) {
+      return false;
+    }
+    return (await deps.readiness(source)).ready;
   }
 
   async function handoffPreview(session: Session): Promise<HandoffPreview> {
@@ -467,8 +523,8 @@ export function createHandoff(deps: HandoffDeps) {
         successorId: successor.id,
       });
     }
+    // `force` answers the warning above only: never a blank Claude
     if (
-      !request.force &&
       (session.agent_type || "claude") === "claude" &&
       !session.claude_session_id
     ) {
@@ -553,7 +609,7 @@ const liveDeps = (): HandoffDeps => ({
   now: Date.now,
   sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
   isRunning,
-  readiness,
+  readiness: (session) => readiness(session, { duringHandoff: true }),
   launch: (session) => launchSession(session),
   kill: async (session) => {
     await execFileAsync("tmux", [
@@ -561,6 +617,11 @@ const liveDeps = (): HandoffDeps => ({
       "-t",
       `=${tmuxNameOf(session)}`,
     ]);
+  },
+  holdSource: (id, on) => (on ? markHandingOff(id) : clearHandingOff(id)),
+  keepHistory: async (session) => {
+    if ((session.agent_type || "claude") === "claude") return;
+    await savePausedHistory(session);
   },
   summarize: (session) => buildSummary(session),
   sendSummary: sendSummaryLive,

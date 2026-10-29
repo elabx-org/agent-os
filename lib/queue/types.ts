@@ -34,7 +34,8 @@ export type HoldReason =
   | "typing"
   | "unknown"
   | "limited"
-  | "paused";
+  | "paused"
+  | "handing_off";
 
 export interface QueueItem {
   id: number;
