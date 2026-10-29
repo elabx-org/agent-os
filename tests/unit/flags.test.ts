@@ -31,8 +31,14 @@ after(() => {
   fs.rmSync(tmp, { recursive: true, force: true });
 });
 
-const readMirror = () =>
+const readMirrorFile = () =>
   JSON.parse(fs.readFileSync(flags.flagsMirrorFile(), "utf8"));
+
+/** The mirror's flags, without the per-session overrides */
+const readMirror = () => {
+  const { sessions: _sessions, ...rest } = readMirrorFile();
+  return rest;
+};
 
 const storedValue = () => {
   const row = db.queries
@@ -147,5 +153,60 @@ describe("getFlags / setFlags", () => {
     assert.ok(shared.__agentosFlags);
     shared.__agentosFlags.at -= 6000;
     assert.equal(flags.getFlag("chatDefault"), false);
+  });
+});
+
+describe("per-session overrides", () => {
+  test("parseFlagSessions keeps known flags' string ids", () => {
+    assert.deepEqual(flags.parseFlagSessions(null), {});
+    assert.deepEqual(
+      flags.parseFlagSessions({
+        queue: ["a", 1, "b"],
+        snapshots: "a",
+        chatDefault: ["a"],
+      }),
+      { queue: ["a", "b"] }
+    );
+  });
+
+  test("a flag off everywhere can be on for listed sessions", () => {
+    flags.setFlags({ queue: false, snapshots: false });
+    flags.setFlagSessions({ queue: ["s1"] });
+    assert.equal(flags.flagOnFor("queue", "s1"), true);
+    assert.equal(flags.flagOnFor("queue", "s2"), false);
+    assert.equal(flags.flagOnFor("snapshots", "s1"), false);
+    assert.equal(flags.getFlag("queue"), false, "the global flag stays off");
+    assert.deepEqual(readMirrorFile().sessions, { queue: ["s1"] });
+    // On everywhere covers every session
+    flags.setFlags({ queue: true });
+    assert.equal(flags.flagOnFor("queue", "s2"), true);
+    flags.setFlags({ queue: false });
+  });
+
+  test("rejects other flags and bad lists without saving", () => {
+    const before = flags.getFlagSessions();
+    assert.throws(
+      () => flags.setFlagSessions({ chatDefault: ["s1"] } as never),
+      /No per-session override/
+    );
+    assert.throws(
+      () => flags.setFlagSessions({ queue: "s1" } as never),
+      /list of ids/
+    );
+    assert.deepEqual(flags.getFlagSessions(), before);
+  });
+
+  test("AGENTOS_DISABLE_TICKERS drops the overrides too", () => {
+    flags.setFlagSessions({ snapshots: ["s1"] });
+    process.env.AGENTOS_DISABLE_TICKERS = "1";
+    try {
+      flags.setFlags({});
+      assert.equal(flags.flagOnFor("snapshots", "s1"), false);
+      assert.deepEqual(readMirrorFile().sessions, {});
+    } finally {
+      delete process.env.AGENTOS_DISABLE_TICKERS;
+    }
+    flags.setFlags({});
+    assert.equal(flags.flagOnFor("snapshots", "s1"), true);
   });
 });

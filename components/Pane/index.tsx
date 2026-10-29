@@ -4,6 +4,7 @@ import { useRef, useCallback, useEffect, memo, useState, useMemo } from "react";
 import dynamic from "next/dynamic";
 import { usePanes } from "@/contexts/PaneContext";
 import { useViewport } from "@/hooks/useViewport";
+import { useLayoutMode } from "@/hooks/useLayoutMode";
 import type {
   TerminalHandle,
   TerminalScrollState,
@@ -25,13 +26,18 @@ import {
   Group as ResizablePanelGroup,
   Separator as ResizablePanelHandle,
 } from "react-resizable-panels";
-import { GitDrawer } from "@/components/GitDrawer";
 import { ShellDrawer } from "@/components/ShellDrawer";
 import { useSnapshot } from "valtio";
 import { fileOpenStore, fileOpenActions } from "@/stores/fileOpen";
 import { mobileNavStore, mobileNavActions } from "@/stores/mobileNav";
 import { focusStore } from "@/stores/focus";
-import { getSessionView, setSessionView } from "@/lib/session-views";
+import {
+  getSessionView,
+  openingView,
+  setSessionView,
+} from "@/lib/session-views";
+import { useFlag } from "@/hooks/useFlags";
+import { usePaneChrome } from "@/components/Session/usePaneChrome";
 import { takePaneLaunch } from "@/stores/beside";
 import { ActivityStrip } from "@/components/Session/ActivityStrip";
 import { isNative } from "@/lib/native-bridge";
@@ -85,6 +91,7 @@ export const Pane = memo(function Pane({
   onSelectSession,
 }: PaneProps) {
   const { isMobile } = useViewport();
+  const layoutMode = useLayoutMode();
   const {
     focusedPaneId,
     canSplit,
@@ -178,31 +185,69 @@ export const Pane = memo(function Pane({
   const { railShown } = useSnapshot(mobileNavStore);
   const { on: focusOn } = useSnapshot(focusStore);
   const [deckShown, setDeckShown] = useState(false);
+  // The column's Stop and working state; a header that says the activity
+  const chrome = usePaneChrome({ session, isFocused, paneCount });
   const showStrip =
     !!session &&
     (viewMode === "chat" || viewMode === "terminal") &&
     !focusOn &&
     !railShown &&
-    !deckShown;
+    !deckShown &&
+    !chrome.headerHasActivity;
   // The strip or the rail (beside the focused pane) lists its agents already
   const agentsShown = showStrip || (railShown && isFocused);
 
   // Reset view mode and file editor when session changes
+  const chatDefault = useFlag("chatDefault");
+  // The view a session opened in by default: not one you chose, so not
+  // remembered until you change it
+  const defaultedRef = useRef<ViewMode | null>(null);
   useEffect(() => {
     // A remount (folding) shows the same session: keep its view
     const previous = paneSessions.get(paneId);
     paneSessions.set(paneId, session?.id);
     if (previous === session?.id) return;
-    // Each session opens in the view you last used there (terminal at first)
-    setViewMode((session && getSessionView(session.id)) || "terminal");
+    // Each session opens in the view you last used there, else chat for
+    // Claude (flag chatDefault) or the terminal
+    const next = session
+      ? openingView(session.id, session.agent_type, chatDefault)
+      : "terminal";
+    defaultedRef.current = next;
+    setViewMode(next);
     fileEditor.reset();
   }, [session?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // The flags load after the first render: a session opened before they
+  // did, still in the terminal it got by default, opens its chat then
+  useEffect(() => {
+    if (!chatDefault || !session || getSessionView(session.id)) return;
+    const next = openingView(session.id, session.agent_type, true);
+    if (next === viewMode || viewMode !== "terminal") return;
+    defaultedRef.current = next;
+    setViewMode(next);
+  }, [chatDefault]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Opened in chat by default, but nothing has been said yet: the terminal
+  // is where there's something to see
+  const chatEmpty = useCallback(() => {
+    if (defaultedRef.current !== "chat") return;
+    defaultedRef.current = "terminal";
+    setViewMode((mode) => (mode === "chat" ? "terminal" : mode));
+  }, [setViewMode]);
 
   // Remember a change of view; a switch of session alone isn't one
   const viewSessionId = useRef(session?.id);
   viewSessionId.current = session?.id;
+  const viewMounted = useRef(false);
   useEffect(() => {
     const id = viewSessionId.current;
+    // Nor is the view a pane mounts with, or the one it opened in
+    if (!viewMounted.current) {
+      viewMounted.current = true;
+      return;
+    }
+    if (viewMode === defaultedRef.current) return;
+    defaultedRef.current = null;
     if (id && (viewMode === "terminal" || viewMode === "chat"))
       setSessionView(id, viewMode);
   }, [viewMode]);
@@ -233,7 +278,11 @@ export const Pane = memo(function Pane({
   const { request: navRequest } = useSnapshot(mobileNavStore);
 
   useEffect(() => {
-    if (isFocused) mobileNavStore.viewMode = viewMode;
+    if (!isFocused) return;
+    mobileNavStore.viewMode = viewMode;
+    // Where the closed column's "Back to session" returns from Changes or Files
+    if (viewMode === "chat" || viewMode === "terminal")
+      mobileNavStore.conversationView = viewMode;
   }, [isFocused, viewMode]);
 
   // The column badges Changes with the focused session's changed files
@@ -263,6 +312,8 @@ export const Pane = memo(function Pane({
       if (navRequest.sessionId !== session?.id) return;
     }
     if (navRequest.mode === "terminal" || session?.working_directory) {
+      // Asked for, so not a default an empty chat swaps for the terminal
+      defaultedRef.current = null;
       setViewMode(navRequest.mode);
     }
     mobileNavActions.clearRequest();
@@ -420,7 +471,11 @@ export const Pane = memo(function Pane({
     <div
       className={cn(
         "flex h-full w-full flex-col overflow-hidden",
-        !isMobile && "rounded-lg shadow-lg shadow-black/10 dark:shadow-black/30",
+        !isMobile &&
+          (chrome.variant === "card"
+            ? // Desk-Beside: each session on its own card
+              "border-hair rounded-[20px] border"
+            : "rounded-lg shadow-lg shadow-black/10 dark:shadow-black/30"),
         // Two or more on screen: the one you type into is marked
         paneCount > 1 && isFocused && "ring-primary/60 ring-1 ring-inset"
       )}
@@ -438,6 +493,9 @@ export const Pane = memo(function Pane({
           onTabAdd={() => addTab(paneId)}
         />
       )}
+      {/* E-Git, E-Files: on the Duo those pages carry their own title, and
+          the column goes back; a phone keeps the header's way back */}
+      {!(layoutMode !== "phone" && layoutMode !== "desktop" && (viewMode === "git" || viewMode === "files")) && (
       <SessionTitleBar
         session={session}
         projects={projects}
@@ -460,6 +518,7 @@ export const Pane = memo(function Pane({
         onSplitVertical={() => splitVertical(paneId)}
         onClose={() => close(paneId)}
       />
+      )}
       {showStrip && session && <ActivityStrip session={session} />}
 
       {/* Content Area - Mobile: simple flex, Desktop: resizable panels */}
@@ -527,6 +586,7 @@ export const Pane = memo(function Pane({
               hideAgentsBar={agentsShown}
               onOpenTerminal={() => setViewMode("terminal")}
               onDeck={setDeckShown}
+              onEmpty={chatEmpty}
             />
           )}
 
@@ -534,6 +594,8 @@ export const Pane = memo(function Pane({
           {session?.working_directory && (
             <div className={viewMode === "files" ? "h-full" : "hidden"}>
               <FileExplorer
+                sessionId={session.id}
+                active={isFocused && viewMode === "files"}
                 workingDirectory={session.working_directory}
                 fileEditor={fileEditor}
               />
@@ -544,6 +606,8 @@ export const Pane = memo(function Pane({
           {session?.working_directory && (
             <div className={viewMode === "git" ? "h-full" : "hidden"}>
               <GitPanel
+                sessionId={session.id}
+                active={isFocused && viewMode === "git"}
                 workingDirectory={session.working_directory}
                 projectId={currentProject?.id}
                 repositories={projectRepositories}
@@ -650,6 +714,7 @@ export const Pane = memo(function Pane({
                       hideAgentsBar={agentsShown}
                       onOpenTerminal={() => setViewMode("terminal")}
                       onDeck={setDeckShown}
+                      onEmpty={chatEmpty}
                     />
                   )}
 
@@ -657,6 +722,8 @@ export const Pane = memo(function Pane({
                   {session?.working_directory && (
                     <div className={viewMode === "files" ? "h-full" : "hidden"}>
                       <FileExplorer
+                        sessionId={session.id}
+                        active={isFocused && viewMode === "files"}
                         workingDirectory={session.working_directory}
                         fileEditor={fileEditor}
                       />
@@ -667,6 +734,8 @@ export const Pane = memo(function Pane({
                   {viewMode === "git" && session?.working_directory && (
                     <div className="h-full">
                       <GitPanel
+                        sessionId={session.id}
+                        active={isFocused && viewMode === "git"}
                         workingDirectory={session.working_directory}
                         projectId={currentProject?.id}
                         repositories={projectRepositories}
@@ -721,6 +790,7 @@ export const Pane = memo(function Pane({
               <ResizablePanelHandle className="bg-border/30 hover:bg-primary/30 active:bg-primary/50 w-px cursor-col-resize transition-colors" />
               <ResizablePanel defaultSize={30} minSize={10}>
                 <GitPanel
+                  sessionId={session.id}
                   workingDirectory={session.working_directory}
                   projectId={currentProject?.id}
                   repositories={projectRepositories}

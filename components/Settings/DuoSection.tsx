@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useSnapshot } from "valtio";
-import { ChevronRight } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import {
   duoPreviewStore,
@@ -12,28 +11,29 @@ import {
 import {
   DUO_LAYOUT_OPTIONS,
   Segmented,
-  ToolbarSettings,
 } from "@/components/Terminal/ToolbarSettings";
 import { useToolbarPreferences } from "@/components/Terminal/toolbar-config";
 import { SettingGroup, SettingRow } from "./SettingGroup";
 
-/** iPhone Duo only (the iOS app): the closed-screen layout on trial, the
-    open Duo's controls and the keys */
+/** iPhone Duo only (the iOS app): the classic session header and the open
+    Duo's controls. The keys are Settings → Keys */
 export function DuoSection() {
   const { on } = useSnapshot(duoPreviewStore);
   // The open display's layout never loaded it
   useEffect(loadDuoPreview, []);
   const { preferences, updatePreferences } = useToolbarPreferences();
-  const [keysOpen, setKeysOpen] = useState(false);
 
   return (
     <>
       <SettingGroup>
         <SettingRow
-          label="Closed layout: title in the page (trial)"
-          hint="On the outer display, the session's title in the page instead of a header band"
+          label="Classic session header"
+          hint="A header band with back and ⋯ over the session, instead of its title in the page"
         >
-          <Switch checked={on} onCheckedChange={setDuoPreview} />
+          <Switch
+            checked={!on}
+            onCheckedChange={(classic) => setDuoPreview(!classic)}
+          />
         </SettingRow>
       </SettingGroup>
       <SettingGroup>
@@ -60,23 +60,7 @@ export function DuoSection() {
               </span>
             )}
         </div>
-        <SettingRow as="div" label="Keys" hint="Each context's key row">
-          <button
-            type="button"
-            onClick={() => setKeysOpen(true)}
-            aria-label="Customise the keys"
-            className="text-muted-foreground active:bg-accent hover:bg-accent -mr-1.5 grid h-[34px] w-[34px] place-items-center rounded-lg"
-          >
-            <ChevronRight className="h-5 w-5" />
-          </button>
-        </SettingRow>
       </SettingGroup>
-      <ToolbarSettings
-        open={keysOpen}
-        onClose={() => setKeysOpen(false)}
-        preferences={preferences}
-        onUpdate={updatePreferences}
-      />
     </>
   );
 }

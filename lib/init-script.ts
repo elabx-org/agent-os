@@ -34,7 +34,7 @@ tmux bind-key -T copy-mode WheelUpPane send-keys -X -N 5 scroll-up 2>/dev/null
 tmux bind-key -T copy-mode WheelDownPane send-keys -X -N 5 scroll-down 2>/dev/null
 tmux bind-key -T copy-mode-vi WheelUpPane send-keys -X -N 5 scroll-up 2>/dev/null
 tmux bind-key -T copy-mode-vi WheelDownPane send-keys -X -N 5 scroll-down 2>/dev/null
-# No status line: Agent-OS's header already names the session, and on a phone
+# No status line: AgentOS's header already names the session, and on a phone
 # the keyboard leaves few enough rows
 tmux set-option status off 2>/dev/null
 tmux bind-key m display-menu -T "Tmux" -x R -y P "Copy Mode" c copy-mode "Paste Buffer" p paste-buffer "" "" "" "Split Horizontal" h "split-window -h" "Split Vertical" v "split-window -v" "" "" "" "Kill Pane" x "confirm-before kill-pane" 2>/dev/null

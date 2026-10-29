@@ -14,7 +14,7 @@ const VIEWS: Record<string, NavAction> = {
 
 const KEYS: Record<string, NavAction> = {
   ".": "focus",
-  k: "find",
+  k: "search",
   i: "inbox",
   n: "new",
   ",": "settings",
@@ -27,7 +27,7 @@ const IN_TEXT: NavAction[] = [
   "git",
   "files",
   "focus",
-  "find",
+  "search",
 ];
 
 export function isMacLike(): boolean {
@@ -35,14 +35,12 @@ export function isMacLike(): boolean {
   return /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent);
 }
 
-/** The hint the control column shows on hover, e.g. "⌘2" or "Ctrl+2" */
-export function shortcutHint(action: NavAction): string | null {
+/** The key for an action, e.g. "2" or "K" */
+export function shortcutKey(action: NavAction): string | null {
   const key = Object.entries({ ...VIEWS, ...KEYS }).find(
     ([, a]) => a === action
   )?.[0];
-  if (!key) return null;
-  const label = key.toUpperCase();
-  return isMacLike() ? `⌘${label}` : `Ctrl+${label}`;
+  return key ? key.toUpperCase() : null;
 }
 
 function fromTerminal(target: EventTarget | null): boolean {

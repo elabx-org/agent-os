@@ -30,7 +30,7 @@ targets:
     info:
       path: App/Info.plist
       properties:
-        CFBundleDisplayName: Agent-OS
+        CFBundleDisplayName: AgentOS
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         UILaunchScreen:
@@ -48,14 +48,14 @@ targets:
         NSAppTransportSecurity:
           NSAllowsArbitraryLoadsInWebContent: true
         NSMicrophoneUsageDescription: Dictate prompts to your coding sessions.
-        NSFaceIDUsageDescription: Unlock Agent-OS with Face ID.
+        NSFaceIDUsageDescription: Unlock AgentOS with Face ID.
         NSCameraUsageDescription: Attach photos to your coding sessions.
         NSPhotoLibraryUsageDescription: Attach images to your coding sessions.
         # agentos://session/<id> opens a session (ntfy notifications link here)
         CFBundleURLTypes:
           - CFBundleURLName: org.elabx.agentos
             CFBundleURLSchemes: [agentos]
-        # "Open in Agent-OS" from the share sheet and Files: the file is
+        # "Open in AgentOS" from the share sheet and Files: the file is
         # attached to the focused session (useSharedFiles in the web app)
         CFBundleDocumentTypes:
           - CFBundleTypeName: File

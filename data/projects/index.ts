@@ -7,4 +7,6 @@ export {
   useDeleteProject,
   useRenameProject,
   useUpdateProject,
+  useUpdateProjectPlacement,
+  useMergedTodayQuery,
 } from "./queries";

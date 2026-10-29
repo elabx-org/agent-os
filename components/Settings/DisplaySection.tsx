@@ -1,143 +1,217 @@
 "use client";
 
-import { useState } from "react";
-import { useTheme } from "next-themes";
-import { Check, ChevronRight, Monitor } from "lucide-react";
-import { TextSizeControl } from "@/components/TextSizeControl";
-import {
-  DARK_THEMES,
-  LIGHT_THEMES,
-  buildTheme,
-  parseTheme,
-  type ThemeMode,
-  type ThemeOption,
-} from "@/lib/theme-config";
+import type { CSSProperties, ReactNode } from "react";
+import { Check } from "lucide-react";
+import { useLayoutMode } from "@/hooks/useLayoutMode";
+import { useSyncedLook } from "@/hooks/useSyncedLook";
+import { ACCENTS, ACCENT_LABELS, type Accent, type LookMode } from "@/lib/look";
+import { MODE_LABEL } from "@/lib/look-sync";
+import { MAX_OFFSET, MIN_OFFSET, offsetLabel } from "@/lib/display-density";
 import { cn } from "@/lib/utils";
-import { SettingGroup } from "./SettingGroup";
+import { useTerminalFont } from "@/hooks/useTerminalFont";
+import { TERMINAL_FONTS, type TerminalFont } from "@/lib/terminal-font";
+import { SettingGroup, SettingRow, Toggle } from "./SettingGroup";
 import { BackgroundChoice } from "./BackgroundChoice";
 
-/** "Dark · Graphite", for the theme row and the section list */
-export function themeLabel(theme: string | undefined): string {
-  const { mode, variant } = parseTheme(theme || "system");
-  if (mode === "system") return "System";
-  const list = mode === "dark" ? DARK_THEMES : LIGHT_THEMES;
-  const option = list.find((t) => t.id === variant);
-  return `${mode === "dark" ? "Dark" : "Light"} · ${option?.label ?? variant}`;
-}
+const GUTTERS =
+  "ml-[var(--settings-gutter-l,20px)] mr-[var(--settings-gutter-r,20px)]";
 
 /**
- * Text size for this display, and the theme as a list that opens in place:
- * no nested menus, so it works by touch.
+ * Appearance (light, dark, automatic), the accent, the text size for this
+ * display and whether every device shares them (E-Display).
  */
 export function DisplaySection() {
-  const { theme, setTheme } = useTheme();
-  const [themesOpen, setThemesOpen] = useState(false);
-  const { mode, variant } = parseTheme(theme || "system");
+  const { look, setLook } = useSyncedLook();
+  const layout = useLayoutMode();
+  const accentHex = ACCENT_LABELS[look.accent].hex;
 
   return (
-    <SettingGroup>
-      {/* Its own label, at the size of the other rows */}
-      <div className="[&>div>span:first-child]:text-foreground flex min-h-[50px] items-center px-3.5 py-1.5 [&>div]:flex-1 [&>div>span:first-child]:text-sm">
-        <TextSizeControl />
-      </div>
-      <button
-        type="button"
-        aria-expanded={themesOpen}
-        onClick={() => setThemesOpen((o) => !o)}
-        className="active:bg-accent flex min-h-[50px] w-full items-center gap-3 px-3.5 py-1.5 text-left"
+    <div className="flex flex-col gap-3.5">
+      <div
+        role="radiogroup"
+        aria-label="Appearance"
+        className={cn("grid grid-cols-3 gap-2.5", GUTTERS)}
       >
-        <span className="min-w-0 flex-1">
-          <span className="block text-sm">Theme</span>
-          <span className="text-muted-foreground block truncate text-xs">
-            {themeLabel(theme)}
-          </span>
-        </span>
-        <ChevronRight
-          aria-hidden="true"
-          className={cn(
-            "text-muted-foreground h-4 w-4 transition-transform",
-            themesOpen && "rotate-90"
-          )}
-        />
-      </button>
-      {themesOpen && (
-        <div role="radiogroup" aria-label="Theme" className="py-1">
-          <ThemeChoice
-            label="System"
-            description="Follows this device's light or dark setting"
-            icon={Monitor}
-            active={mode === "system"}
-            onSelect={() => setTheme("system")}
+        {(["light", "dark", "system"] as const).map((mode) => (
+          <ModeTile
+            key={mode}
+            mode={mode}
+            accent={accentHex}
+            active={look.mode === mode}
+            onSelect={() => setLook({ mode })}
           />
-          <ThemeList
-            title="Dark"
-            mode="dark"
-            options={DARK_THEMES}
-            current={mode === "dark" ? variant : null}
-            onSelect={setTheme}
-          />
-          <ThemeList
-            title="Light"
-            mode="light"
-            options={LIGHT_THEMES}
-            current={mode === "light" ? variant : null}
-            onSelect={setTheme}
-          />
+        ))}
+      </div>
+
+      <Card className="gap-3">
+        <span className="text-[16px] font-medium">Accent</span>
+        <div
+          role="radiogroup"
+          aria-label="Accent"
+          className="flex flex-wrap items-center gap-3.5"
+        >
+          {ACCENTS.map((accent) => (
+            <Swatch
+              key={accent}
+              accent={accent}
+              active={look.accent === accent}
+              onSelect={() => setLook({ accent })}
+            />
+          ))}
         </div>
-      )}
-      <BackgroundChoice />
-    </SettingGroup>
+      </Card>
+
+      <Card className="gap-2.5">
+        <div className="flex items-center justify-between">
+          <span className="text-[16px] font-medium">Text size</span>
+          <span className="text-muted-foreground text-[14px]">
+            {offsetLabel(look.textSize)}
+          </span>
+        </div>
+        <div className="flex items-center gap-3">
+          <span aria-hidden="true" className="text-[13px]">
+            A
+          </span>
+          <TextSizeSlider
+            value={look.textSize}
+            onChange={(textSize) => setLook({ textSize })}
+          />
+          <span aria-hidden="true" className="text-[20px]">
+            A
+          </span>
+        </div>
+      </Card>
+
+      <TerminalFontCard />
+
+      <SettingGroup className="my-0">
+        <SettingRow
+          label="Same look on all devices"
+          hint={`Off: this ${layout === "desktop" ? "device" : "phone"} keeps its own`}
+        >
+          <Toggle
+            checked={look.synced}
+            onCheckedChange={(synced) => setLook({ synced })}
+            aria-label="Same look on all devices"
+          />
+        </SettingRow>
+        <BackgroundChoice />
+      </SettingGroup>
+    </div>
   );
 }
 
-function ThemeList({
-  title,
-  mode,
-  options,
-  current,
-  onSelect,
+/** The terminal's typeface, the same on every device; its size follows Text size */
+function TerminalFontCard() {
+  const { font, save } = useTerminalFont();
+  return (
+    <Card className="gap-1 px-0 pb-1.5">
+      <span className="px-3.5 text-[16px] font-medium">Terminal font</span>
+      <span className="text-muted-foreground px-3.5 text-[13px]">
+        The same on every device. Its size follows Text size.
+      </span>
+      <div
+        role="radiogroup"
+        aria-label="Terminal font"
+        className="divide-hair mt-1.5 divide-y"
+      >
+        {(Object.keys(TERMINAL_FONTS) as TerminalFont[]).map((id) => {
+          const { name, note } = TERMINAL_FONTS[id];
+          const on = font === id;
+          const family = `"${name}", monospace`;
+          return (
+            <button
+              key={id}
+              type="button"
+              role="radio"
+              aria-checked={on}
+              onClick={() => save(id)}
+              className="flex min-h-[52px] w-full items-center gap-3 px-3.5 py-2 text-left"
+            >
+              <span className="flex min-w-0 flex-col">
+                <span className="text-[16px]" style={{ fontFamily: family }}>
+                  {name}
+                </span>
+                <span className="text-muted-foreground text-[13px]">
+                  {note}
+                </span>
+              </span>
+              <span
+                aria-hidden="true"
+                className="text-muted-foreground ml-auto text-[13px] whitespace-nowrap"
+                // As the terminal draws it: no joined symbols
+                style={{ fontFamily: family, fontVariantLigatures: "none" }}
+              >
+                0O 1lI {"{}"} {"->"}
+              </span>
+              <Check
+                aria-hidden="true"
+                className={cn(
+                  "text-primary h-5 w-5 shrink-0",
+                  !on && "invisible"
+                )}
+              />
+            </button>
+          );
+        })}
+      </div>
+    </Card>
+  );
+}
+
+function Card({
+  children,
+  className,
 }: {
-  title: string;
-  mode: Exclude<ThemeMode, "system">;
-  options: ThemeOption[];
-  current: string | null;
-  onSelect: (theme: string) => void;
+  children: ReactNode;
+  className?: string;
 }) {
   return (
-    <>
-      <div className="text-muted-foreground px-3.5 pt-3 pb-1 text-[11.5px] font-semibold tracking-[.07em] uppercase">
-        {title}
-      </div>
-      {options.map((option) => (
-        <ThemeChoice
-          key={option.id}
-          label={option.label}
-          description={option.description}
-          icon={option.icon}
-          preview={option.preview}
-          active={current === option.id}
-          onSelect={() => onSelect(buildTheme(mode, option.id))}
-        />
-      ))}
-    </>
+    <div
+      className={cn(
+        "bg-card flex flex-col rounded-[20px] p-3.5",
+        GUTTERS,
+        className
+      )}
+    >
+      {children}
+    </div>
   );
 }
 
-function ThemeChoice({
-  label,
-  description,
-  icon: Icon,
-  preview,
+/** A small picture of each appearance; Automatic is half of each */
+const PREVIEW: Record<
+  LookMode,
+  { background: string; line: string; border?: string }
+> = {
+  light: {
+    background: "#F2F2F7",
+    line: "#D1D1D6",
+    border: "rgba(0,0,0,.08)",
+  },
+  dark: { background: "#000", line: "#2C2C30" },
+  system: {
+    background: "linear-gradient(90deg,#F2F2F7 50%,#000 50%)",
+    line: "#8E8E93",
+  },
+};
+
+function ModeTile({
+  mode,
+  accent,
   active,
   onSelect,
 }: {
-  label: string;
-  description: string;
-  icon: ThemeOption["icon"];
-  preview?: ThemeOption["preview"];
+  mode: LookMode;
+  accent: string;
   active: boolean;
   onSelect: () => void;
 }) {
+  const preview = PREVIEW[mode];
+  const line = (width: string, background: string): CSSProperties => ({
+    width,
+    background,
+  });
   return (
     <button
       type="button"
@@ -145,33 +219,88 @@ function ThemeChoice({
       aria-checked={active}
       onClick={onSelect}
       className={cn(
-        "flex min-h-[48px] w-full items-center gap-3 px-3.5 py-1.5 text-left",
-        active ? "bg-secondary" : "active:bg-accent"
+        "bg-card flex flex-col items-center justify-center gap-1.5 rounded-2xl border-[1.5px] px-1 py-3 text-[13px]",
+        active
+          ? "border-primary dark:border-meter bg-[var(--row-sel)]"
+          : "border-transparent"
       )}
     >
-      <Icon className="text-muted-foreground h-4 w-4 shrink-0" />
-      <span className="min-w-0 flex-1">
-        <span className="block text-sm">{label}</span>
-        <span className="text-muted-foreground block truncate text-xs">
-          {description}
-        </span>
-      </span>
-      {preview && (
-        <span aria-hidden="true" className="flex shrink-0 gap-1">
-          <span
-            className="border-border/50 h-4 w-6 rounded-sm border"
-            style={{ backgroundColor: preview.background }}
-          />
-          <span
-            className="border-border/50 h-4 w-6 rounded-sm border"
-            style={{ backgroundColor: preview.accent }}
-          />
-        </span>
-      )}
-      <Check
+      <span
         aria-hidden="true"
-        className={cn("text-primary h-4 w-4 shrink-0", !active && "invisible")}
-      />
+        className="flex h-[54px] w-full flex-col gap-[5px] rounded-[10px] p-2"
+        style={{
+          background: preview.background,
+          border: preview.border ? `1px solid ${preview.border}` : undefined,
+        }}
+      >
+        <span className="h-1.5 rounded-[3px]" style={line("60%", accent)} />
+        <span
+          className="h-1.5 rounded-[3px]"
+          style={line("100%", preview.line)}
+        />
+        <span
+          className="h-1.5 rounded-[3px]"
+          style={line("70%", preview.line)}
+        />
+      </span>
+      {MODE_LABEL[mode]}
     </button>
+  );
+}
+
+function Swatch({
+  accent,
+  active,
+  onSelect,
+}: {
+  accent: Accent;
+  active: boolean;
+  onSelect: () => void;
+}) {
+  const { label, hex } = ACCENT_LABELS[accent];
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={active}
+      aria-label={label}
+      onClick={onSelect}
+      className="h-[34px] w-[34px] shrink-0 rounded-full"
+      style={{
+        background: hex,
+        boxShadow: active
+          ? `0 0 0 2px hsl(var(--card)), 0 0 0 4px ${hex}`
+          : undefined,
+      }}
+    />
+  );
+}
+
+/** A− … A+ as one slider: the violet track up to the step, a white thumb */
+function TextSizeSlider({
+  value,
+  onChange,
+}: {
+  value: number;
+  onChange: (value: number) => void;
+}) {
+  const pct = ((value - MIN_OFFSET) / (MAX_OFFSET - MIN_OFFSET)) * 100;
+  return (
+    <input
+      type="range"
+      min={MIN_OFFSET}
+      max={MAX_OFFSET}
+      step={1}
+      value={value}
+      onChange={(e) => onChange(Number(e.target.value))}
+      aria-label="Text size for this display"
+      aria-valuetext={offsetLabel(value)}
+      className="h-6 min-w-0 flex-1 cursor-pointer appearance-none bg-transparent [--fill:hsl(var(--primary))] dark:[--fill:hsl(var(--meter))] [&::-moz-range-thumb]:h-6 [&::-moz-range-thumb]:w-6 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-white [&::-moz-range-thumb]:shadow-[0_2px_6px_rgba(0,0,0,.25)] [&::-moz-range-track]:h-1 [&::-moz-range-track]:rounded-sm [&::-moz-range-track]:bg-[image:var(--track)] [&::-webkit-slider-runnable-track]:h-1 [&::-webkit-slider-runnable-track]:rounded-sm [&::-webkit-slider-runnable-track]:bg-[image:var(--track)] [&::-webkit-slider-thumb]:-mt-2.5 [&::-webkit-slider-thumb]:h-6 [&::-webkit-slider-thumb]:w-6 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:shadow-[0_2px_6px_rgba(0,0,0,.25)]"
+      style={
+        {
+          "--track": `linear-gradient(to right, var(--fill) ${pct}%, hsl(var(--foreground) / 0.1) ${pct}%)`,
+        } as CSSProperties
+      }
+    />
   );
 }

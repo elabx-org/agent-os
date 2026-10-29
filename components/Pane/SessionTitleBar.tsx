@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { useMemo, useRef } from "react";
 import { flushSync } from "react-dom";
 import { useSnapshot } from "valtio";
 import { toast } from "sonner";
@@ -21,6 +21,9 @@ import {
   Minimize2,
   ArrowLeftRight,
   Columns2,
+  FolderOpen,
+  Activity,
+  MessageSquare,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -39,7 +42,10 @@ import { focusStore } from "@/stores/focus";
 import { displayTitle, useListTitles } from "@/hooks/useSessionTitles";
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
 import { useIsNative } from "@/hooks/useIsNative";
+import { besidePills, useSpreadPanes } from "@/components/views/SessionSpread";
 import { usePanes } from "@/contexts/PaneContext";
+import { useLayoutMode } from "@/hooks/useLayoutMode";
+import { DesktopLiveButton } from "./DesktopViewSwitch";
 import { BesideItems } from "@/components/BesideItems";
 import { useReplyPage } from "@/components/ReplyContext/store";
 import {
@@ -47,8 +53,18 @@ import {
   STATE_TEXT_CLASS,
   STATE_WORD,
   fromSessionStatus,
-  type AgentState,
 } from "@/lib/agent-state";
+import { useGitStatus } from "@/data/git/queries";
+import {
+  Crumb,
+  DesktopHeader,
+  FoldHeader,
+  PageHeader,
+  PaneCardHeader,
+  type HeaderInfo,
+} from "@/components/Session/SessionHeader";
+import { addedLines } from "@/components/Session/activity-format";
+import { headerVariant } from "@/lib/session-views";
 
 interface SessionTitleBarProps {
   session: Session | null | undefined;
@@ -96,7 +112,8 @@ function visibleInput(pane: Element): HTMLTextAreaElement | null {
 /**
  * The session's header: back, its title and a crumb, and ⋯. Views switch
  * from the control column, so nothing here changes what the pane shows
- * except the less used ones (Workers, the drawers).
+ * except the less used ones (Workers, the drawers). The desktop shell has
+ * no column: there the views switch here.
  */
 export function SessionTitleBar({
   session,
@@ -123,11 +140,14 @@ export function SessionTitleBar({
   const native = useIsNative();
   const { statuses, railActive, railWidth, nativeKeyboard } =
     useSnapshot(mobileNavStore);
-  // The iOS app's closed-screen trial: a bigger title, as a page has
+  // The title in the page (the default); off, the classic header band
   const { on: duoPreview } = useSnapshot(duoPreviewStore);
   const focus = useSnapshot(focusStore);
-  const { paneCount, canSplitDown, swap } = usePanes();
-  const pageTitle = duoPreview && railActive && isMobile;
+  const { paneCount, canSplitDown } = usePanes();
+  // Open-Beside: the session pill above names the page and the column holds
+  // the actions, so this bar steps aside
+  const pilled =
+    useSpreadPanes()?.mode === "fold" && !!session && besidePills();
   const titles = useListTitles(session ? [session] : []);
   const { copy } = useCopyToClipboard();
 
@@ -146,9 +166,39 @@ export function SessionTitleBar({
   ].filter(Boolean);
 
   const wide = !isMobile;
+  // The desktop shell has no column, so its views switch in this bar
+  const layout = useLayoutMode();
   const hasFolder = !!session?.working_directory;
   // Plain phones get the column as a bottom bar, which has no room for it
   const settingsHere = isMobile && !native && railWidth === 0;
+
+  const variant = headerVariant({
+    hasSession: !!session,
+    layout,
+    native,
+    paneCount,
+    titleInPage: duoPreview,
+    columnShown: railActive,
+  });
+  const info: HeaderInfo | null =
+    session && state
+      ? {
+          session,
+          title,
+          project:
+            projectName && projectName !== "Uncategorized" ? projectName : null,
+          state,
+        }
+      : null;
+  // Desk-Chat's "Changes +59" and branch, from the folder's shared poll
+  const { data: git } = useGitStatus(session?.working_directory ?? "", {
+    enabled: variant === "desktop",
+  });
+  const added = useMemo(
+    () =>
+      git ? addedLines([...git.staged, ...git.unstaged, ...git.untracked]) : 0,
+    [git]
+  );
 
   // Typing with the keyboard up swaps the header for one slim line. The web
   // marks a short docked keyboard on <html> (useKeyboardInset); the iOS app
@@ -157,6 +207,7 @@ export function SessionTitleBar({
   // The open Duo's right page answers the turn on the left one
   const replyPage = useReplyPage(session?.id);
   const slimRef = useRef<HTMLDivElement>(null);
+  const pageSlim = variant === "page" || variant === "large";
   const peek =
     session && (viewMode === "terminal" || viewMode === "chat")
       ? viewMode
@@ -173,91 +224,291 @@ export function SessionTitleBar({
     input.setSelectionRange(input.value.length, input.value.length);
   };
 
-  return (
-    <>
-      <div
-        ref={slimRef}
-        className={cn(
-          "border-border/60 bg-background shrink-0 border-b pr-[calc(0.5rem+var(--safe-right,env(safe-area-inset-right)))] pl-[calc(0.75rem+env(safe-area-inset-left))] [html[data-native]_&]:pt-[env(safe-area-inset-top)]",
-          nativeTyping
-            ? "block"
-            : "hidden [html[data-keyboard-compact]_&]:block"
+  const iconButton = cn(
+    "text-muted-foreground hover:bg-accent hover:text-foreground flex h-9 w-9 shrink-0 items-center justify-center rounded-md",
+    TOUCH_TARGET
+  );
+  // The new headers keep Focus, Files and Changes here; their segments
+  // show Chat and Terminal (the desktop's Changes too)
+  const newHeader = variant !== "classic";
+
+  const besideMenu = (
+    <DropdownMenu modal={false}>
+      <DropdownMenuTrigger asChild>
+        {variant === "desktop" ? (
+          <button
+            type="button"
+            className="pill pill-secondary pill-sm data-[state=open]:bg-accent shrink-0"
+          >
+            <Columns2 aria-hidden className="h-4 w-4" />
+            <span className="@max-[760px]/bar:hidden">Open beside</span>
+          </button>
+        ) : (
+          <button
+            type="button"
+            aria-label="Split"
+            className={cn(iconButton, "data-[state=open]:bg-accent")}
+          >
+            <Columns2 className="h-[18px] w-[18px]" />
+          </button>
         )}
-      >
-        <div className="flex h-[26px] items-center gap-1.5 text-[12.5px]">
-          {state && (
-            <span
-              role="img"
-              aria-label={STATE_WORD[state]}
-              className={cn(
-                "h-[7px] w-[7px] shrink-0 rounded-full",
-                STATE_DOT_CLASS[state]
-              )}
-            />
-          )}
-          {replyPage && (
-            <span className="text-muted-foreground shrink-0 text-[10px] font-medium tracking-[0.08em] uppercase">
-              Your reply ·
-            </span>
-          )}
-          <span className="min-w-0 truncate font-semibold">{title}</span>
-          {idLabel && !replyPage && (
-            <span className="text-muted-foreground shrink-0">· {idLabel}</span>
-          )}
-          {peek && (
-            <div
-              role="group"
-              aria-label="View"
-              className="bg-secondary ml-auto flex shrink-0 gap-0.5 rounded-lg p-0.5 text-[11px]"
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="min-w-[260px]">
+        <BesideItems exclude={session ? [session.id] : undefined} />
+        {!native && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem disabled={!canSplit} onSelect={onSplitHorizontal}>
+              <SplitSquareHorizontal className="h-4 w-4" />
+              Split right
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              disabled={!canSplitDown}
+              onSelect={onSplitVertical}
             >
-              {(["terminal", "chat"] as const).map((mode) => (
-                <button
-                  key={mode}
-                  type="button"
-                  aria-pressed={peek === mode}
-                  // Keep the box focused so the keyboard doesn't drop first
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => peekTo(mode)}
-                  className={cn(
-                    "relative rounded-md px-2 py-0.5 leading-4 after:absolute after:-inset-x-0.5 after:-inset-y-3 after:content-['']",
-                    peek === mode
-                      ? "bg-accent text-foreground"
-                      : "text-muted-foreground"
-                  )}
-                >
-                  {mode === "terminal" ? "Terminal" : "Chat"}
-                </button>
-              ))}
-            </div>
+              <SplitSquareVertical className="h-4 w-4" />
+              Split down
+            </DropdownMenuItem>
+          </>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+
+  const moreMenu = (
+    <DropdownMenu modal={false}>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          aria-label="More"
+          className={cn(
+            iconButton,
+            "data-[state=open]:bg-accent",
+            newHeader && "rounded-full"
           )}
-        </div>
+        >
+          <MoreHorizontal className="h-5 w-5" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="min-w-[200px]">
+        {newHeader && session && (
+          <>
+            {variant !== "desktop" && hasFolder && (
+              <DropdownMenuItem onSelect={() => onViewModeChange("git")}>
+                <GitBranch className="h-4 w-4" />
+                Changes
+              </DropdownMenuItem>
+            )}
+            {hasFolder && (
+              <DropdownMenuItem onSelect={() => onViewModeChange("files")}>
+                <FolderOpen className="h-4 w-4" />
+                Files
+              </DropdownMenuItem>
+            )}
+            {variant !== "fold" && (
+              <DropdownMenuItem onSelect={() => runNav("focus")}>
+                {focus.on ? (
+                  <Minimize2 className="h-4 w-4" />
+                ) : (
+                  <Maximize2 className="h-4 w-4" />
+                )}
+                {focus.on ? "Leave Focus" : "Focus"}
+              </DropdownMenuItem>
+            )}
+            {variant === "card" && (
+              <>
+                {/* No rail beside two panes, nor a strip under them */}
+                <DropdownMenuItem onSelect={() => runNav("live")}>
+                  <Activity className="h-4 w-4" />
+                  Live activity
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => runNav("beside")}>
+                  <Columns2 className="h-4 w-4" />
+                  Open beside
+                </DropdownMenuItem>
+              </>
+            )}
+            <DropdownMenuSeparator />
+          </>
+        )}
+        {/* A plain phone has no column: its views are reached from here */}
+        {!newHeader && layout === "phone" && session && hasFolder && (
+          <>
+            {(viewMode === "git" || viewMode === "files") && (
+              <DropdownMenuItem
+                onSelect={() =>
+                  onViewModeChange(mobileNavStore.conversationView)
+                }
+              >
+                <MessageSquare className="h-4 w-4" />
+                Back to session
+              </DropdownMenuItem>
+            )}
+            {viewMode !== "git" && (
+              <DropdownMenuItem onSelect={() => onViewModeChange("git")}>
+                <GitBranch className="h-4 w-4" />
+                Changes
+              </DropdownMenuItem>
+            )}
+            {viewMode !== "files" && (
+              <DropdownMenuItem onSelect={() => onViewModeChange("files")}>
+                <FolderOpen className="h-4 w-4" />
+                Files
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuSeparator />
+          </>
+        )}
+        {workerCount > 0 && (
+          <DropdownMenuItem
+            onSelect={() =>
+              onViewModeChange(viewMode === "workers" ? "terminal" : "workers")
+            }
+          >
+            <Users className="h-4 w-4" />
+            <span className="flex-1">
+              {viewMode === "workers" ? "Hide workers" : "Workers"}
+            </span>
+            <span className="text-muted-foreground text-xs">{workerCount}</span>
+          </DropdownMenuItem>
+        )}
+        {/* Changes is a view too; the drawer keeps it beside the others */}
+        {wide && !native && hasFolder && onGitDrawerToggle && (
+          <DropdownMenuItem onSelect={onGitDrawerToggle}>
+            <GitBranch className="h-4 w-4" />
+            {gitDrawerOpen ? "Hide changes drawer" : "Changes drawer"}
+          </DropdownMenuItem>
+        )}
+        {wide && hasFolder && onShellDrawerToggle && (
+          <DropdownMenuItem onSelect={onShellDrawerToggle}>
+            <SquareTerminal className="h-4 w-4" />
+            {shellDrawerOpen ? "Hide shell drawer" : "Shell drawer"}
+          </DropdownMenuItem>
+        )}
+        {session && (
+          <DropdownMenuItem
+            onSelect={async () => {
+              if (await copy(session.id)) toast.success("Session ID copied");
+              else toast.error("Couldn't copy the session ID");
+            }}
+          >
+            <Copy className="h-4 w-4" />
+            Copy session ID
+          </DropdownMenuItem>
+        )}
+        {hasAttachedTmux && (
+          <DropdownMenuItem onSelect={onDetach}>
+            <Unplug className="h-4 w-4" />
+            Detach from tmux
+          </DropdownMenuItem>
+        )}
+        {wide && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={onTabAdd}>
+              <Plus className="h-4 w-4" />
+              New tab
+            </DropdownMenuItem>
+            <DropdownMenuItem disabled={!canClose} onSelect={onClose}>
+              <X className="h-4 w-4" />
+              Close pane
+            </DropdownMenuItem>
+          </>
+        )}
+        {settingsHere && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={() => runNav("settings")}>
+              <Settings className="h-4 w-4" />
+              Settings
+            </DropdownMenuItem>
+          </>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+
+  // Hidden while typing (the slim line stands in) and beside the pills
+  const hidden = nativeTyping || pilled;
+  let header: React.ReactNode;
+  if (info && variant === "desktop")
+    header = (
+      <div className={cn(hidden && "hidden")}>
+        <DesktopHeader
+          info={info}
+          branch={git?.branch ?? session?.branch_name}
+          added={added}
+          viewMode={viewMode}
+          onViewModeChange={onViewModeChange}
+          dimmed={wide && !isFocused}
+          actions={
+            <>
+              <DesktopLiveButton />
+              {besideMenu}
+              {moreMenu}
+            </>
+          }
+        />
       </div>
+    );
+  else if (info && variant === "card")
+    header = (
+      <div className={cn(hidden && "hidden", !isFocused && "opacity-80")}>
+        <PaneCardHeader
+          info={info}
+          viewMode={viewMode}
+          onViewModeChange={onViewModeChange}
+          menu={moreMenu}
+          onClose={paneCount > 1 ? onClose : undefined}
+        />
+      </div>
+    );
+  else if (info && variant === "fold")
+    header = (
+      <div className={cn(hidden && "hidden")}>
+        <FoldHeader
+          info={info}
+          viewMode={viewMode}
+          onViewModeChange={onViewModeChange}
+          menu={moreMenu}
+        />
+      </div>
+    );
+  else if (info && (variant === "page" || variant === "large"))
+    header = (
+      <div className={cn(hidden && "hidden")}>
+        <PageHeader
+          info={info}
+          size={
+            variant === "large"
+              ? "large"
+              : viewMode === "terminal"
+                ? "compact"
+                : "title"
+          }
+        />
+      </div>
+    );
+  else
+    header = (
       <div
         className={cn(
-          "native-top-inset kb-compact-hide border-border/60 bg-background flex items-center gap-1.5 border-b py-1.5 pr-[calc(0.5rem+var(--safe-right,env(safe-area-inset-right)))] pl-[calc(0.25rem+env(safe-area-inset-left))]",
+          "native-top-inset kb-compact-hide border-border/60 bg-background @container/bar flex items-center gap-1.5 border-b py-1.5 pr-[calc(0.5rem+var(--safe-right,env(safe-area-inset-right)))] pl-[calc(0.25rem+env(safe-area-inset-left))]",
           wide && !isFocused && "opacity-70",
-          nativeTyping && "hidden"
+          hidden && "hidden"
         )}
       >
         <button
           type="button"
           onClick={() => runNav("sessions")}
           aria-label="Sessions"
-          className={cn(
-            "text-muted-foreground hover:bg-accent hover:text-foreground flex h-9 w-9 shrink-0 items-center justify-center rounded-md",
-            TOUCH_TARGET
-          )}
+          className={iconButton}
         >
           <ChevronLeft className="h-5 w-5" />
         </button>
 
         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <span
-            className={cn(
-              "truncate leading-tight font-semibold",
-              pageTitle ? "text-xl font-bold" : "text-[15px]"
-            )}
-          >
+          <span className="truncate text-[15px] leading-tight font-semibold">
             {title}
           </span>
           {state && (
@@ -277,9 +528,8 @@ export function SessionTitleBar({
             aria-label={focus.on ? "Leave Focus" : "Focus"}
             aria-pressed={focus.on}
             className={cn(
-              "hover:bg-accent hover:text-foreground flex h-9 w-9 shrink-0 items-center justify-center rounded-md",
-              focus.on ? "text-primary" : "text-muted-foreground",
-              TOUCH_TARGET
+              iconButton,
+              focus.on && "text-primary hover:text-primary"
             )}
           >
             {focus.on ? (
@@ -293,155 +543,131 @@ export function SessionTitleBar({
         {native && wide && paneCount === 2 && (
           <button
             type="button"
-            onClick={swap}
+            onClick={() => runNav("swap")}
             aria-label="Swap sides"
-            className={cn(
-              "text-muted-foreground hover:bg-accent hover:text-foreground flex h-9 w-9 shrink-0 items-center justify-center rounded-md",
-              TOUCH_TARGET
-            )}
+            className={iconButton}
           >
             <ArrowLeftRight className="h-[18px] w-[18px]" />
           </button>
         )}
-        {wide && (
-          <DropdownMenu modal={false}>
-            <DropdownMenuTrigger asChild>
-              <button
-                type="button"
-                aria-label="Split"
-                className={cn(
-                  "text-muted-foreground hover:bg-accent hover:text-foreground data-[state=open]:bg-accent flex h-9 w-9 shrink-0 items-center justify-center rounded-md",
-                  TOUCH_TARGET
-                )}
-              >
-                <Columns2 className="h-[18px] w-[18px]" />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="min-w-[260px]">
-              <BesideItems exclude={session ? [session.id] : undefined} />
-              {!native && (
-                <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    disabled={!canSplit}
-                    onSelect={onSplitHorizontal}
-                  >
-                    <SplitSquareHorizontal className="h-4 w-4" />
-                    Split right
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    disabled={!canSplitDown}
-                    onSelect={onSplitVertical}
-                  >
-                    <SplitSquareVertical className="h-4 w-4" />
-                    Split down
-                  </DropdownMenuItem>
-                </>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
+        {wide && besideMenu}
         {wide && paneCount > 1 && (
           <button
             type="button"
             onClick={onClose}
             aria-label="Close this side"
-            className={cn(
-              "text-muted-foreground hover:bg-accent hover:text-foreground flex h-9 w-9 shrink-0 items-center justify-center rounded-md",
-              TOUCH_TARGET
-            )}
+            className={iconButton}
           >
             <X className="h-[18px] w-[18px]" />
           </button>
         )}
-
-        <DropdownMenu modal={false}>
-          <DropdownMenuTrigger asChild>
-            <button
-              type="button"
-              aria-label="More"
-              className={cn(
-                "text-muted-foreground hover:bg-accent hover:text-foreground data-[state=open]:bg-accent flex h-9 w-9 shrink-0 items-center justify-center rounded-md",
-                TOUCH_TARGET
-              )}
-            >
-              <MoreHorizontal className="h-5 w-5" />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="min-w-[200px]">
-            {workerCount > 0 && (
-              <DropdownMenuItem
-                onSelect={() =>
-                  onViewModeChange(
-                    viewMode === "workers" ? "terminal" : "workers"
-                  )
-                }
-              >
-                <Users className="h-4 w-4" />
-                <span className="flex-1">
-                  {viewMode === "workers" ? "Hide workers" : "Workers"}
-                </span>
-                <span className="text-muted-foreground text-xs">
-                  {workerCount}
-                </span>
-              </DropdownMenuItem>
-            )}
-            {/* Changes is a view too; the drawer keeps it beside the others */}
-            {wide && !native && hasFolder && onGitDrawerToggle && (
-              <DropdownMenuItem onSelect={onGitDrawerToggle}>
-                <GitBranch className="h-4 w-4" />
-                {gitDrawerOpen ? "Hide changes drawer" : "Changes drawer"}
-              </DropdownMenuItem>
-            )}
-            {wide && hasFolder && onShellDrawerToggle && (
-              <DropdownMenuItem onSelect={onShellDrawerToggle}>
-                <SquareTerminal className="h-4 w-4" />
-                {shellDrawerOpen ? "Hide shell drawer" : "Shell drawer"}
-              </DropdownMenuItem>
-            )}
-            {session && (
-              <DropdownMenuItem
-                onSelect={async () => {
-                  if (await copy(session.id))
-                    toast.success("Session ID copied");
-                  else toast.error("Couldn't copy the session ID");
-                }}
-              >
-                <Copy className="h-4 w-4" />
-                Copy session ID
-              </DropdownMenuItem>
-            )}
-            {hasAttachedTmux && (
-              <DropdownMenuItem onSelect={onDetach}>
-                <Unplug className="h-4 w-4" />
-                Detach from tmux
-              </DropdownMenuItem>
-            )}
-            {wide && (
-              <>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onSelect={onTabAdd}>
-                  <Plus className="h-4 w-4" />
-                  New tab
-                </DropdownMenuItem>
-                <DropdownMenuItem disabled={!canClose} onSelect={onClose}>
-                  <X className="h-4 w-4" />
-                  Close pane
-                </DropdownMenuItem>
-              </>
-            )}
-            {settingsHere && (
-              <>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onSelect={() => runNav("settings")}>
-                  <Settings className="h-4 w-4" />
-                  Settings
-                </DropdownMenuItem>
-              </>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
+        {moreMenu}
       </div>
+    );
+
+  return (
+    <>
+      <div
+        ref={slimRef}
+        className={cn(
+          "bg-background shrink-0 pr-[calc(0.5rem+var(--safe-right,env(safe-area-inset-right)))] [html[data-native]_&]:pt-[env(safe-area-inset-top)]",
+          // The title in the page keeps its crumb and title (Closed-Terminal)
+          pageSlim
+            ? "pl-[calc(1.25rem+env(safe-area-inset-left))]"
+            : "border-border/60 border-b pl-[calc(0.75rem+env(safe-area-inset-left))]",
+          nativeTyping
+            ? "block"
+            : "hidden [html[data-keyboard-compact]_&]:block"
+        )}
+      >
+        {pageSlim && info ? (
+          <div className="flex items-center gap-2 pt-2 pb-1.5">
+            <div className="flex min-w-0 flex-1 flex-col">
+              <Crumb info={info} className="text-[13px] leading-tight" />
+              <span className="truncate text-[15px] leading-snug font-semibold">
+                {title}
+              </span>
+            </div>
+            {peek && (
+              <div
+                role="group"
+                aria-label="View"
+                className="bg-secondary ml-auto flex shrink-0 gap-0.5 rounded-lg p-0.5 text-[11px]"
+              >
+                {(["chat", "terminal"] as const).map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    aria-pressed={peek === mode}
+                    // Keep the box focused so the keyboard doesn't drop first
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => peekTo(mode)}
+                    className={cn(
+                      "relative rounded-md px-2 py-0.5 leading-4 after:absolute after:-inset-x-0.5 after:-inset-y-3 after:content-['']",
+                      peek === mode
+                        ? "bg-accent text-foreground"
+                        : "text-muted-foreground"
+                    )}
+                  >
+                    {mode === "terminal" ? "Terminal" : "Chat"}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="flex h-[26px] items-center gap-1.5 text-[12.5px]">
+            {state && (
+              <span
+                role="img"
+                aria-label={STATE_WORD[state]}
+                className={cn(
+                  "h-[7px] w-[7px] shrink-0 rounded-full",
+                  STATE_DOT_CLASS[state]
+                )}
+              />
+            )}
+            {replyPage && (
+              <span className="text-muted-foreground shrink-0 text-[10px] font-medium tracking-[0.08em] uppercase">
+                Your reply ·
+              </span>
+            )}
+            <span className="min-w-0 truncate font-semibold">{title}</span>
+            {idLabel && !replyPage && (
+              <span className="text-muted-foreground shrink-0">
+                · {idLabel}
+              </span>
+            )}
+            {peek && (
+              <div
+                role="group"
+                aria-label="View"
+                className="bg-secondary ml-auto flex shrink-0 gap-0.5 rounded-lg p-0.5 text-[11px]"
+              >
+                {(["chat", "terminal"] as const).map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    aria-pressed={peek === mode}
+                    // Keep the box focused so the keyboard doesn't drop first
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => peekTo(mode)}
+                    className={cn(
+                      "relative rounded-md px-2 py-0.5 leading-4 after:absolute after:-inset-x-0.5 after:-inset-y-3 after:content-['']",
+                      peek === mode
+                        ? "bg-accent text-foreground"
+                        : "text-muted-foreground"
+                    )}
+                  >
+                    {mode === "terminal" ? "Terminal" : "Chat"}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+      {header}
     </>
   );
 }

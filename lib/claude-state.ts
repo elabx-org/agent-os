@@ -4,7 +4,7 @@ import path from "path";
 
 /*
  * Claude Code's own view of a session, recorded as it runs: every Claude
- * session Agent-OS starts gets a status line wrapper and command hooks
+ * session AgentOS starts gets a status line wrapper and command hooks
  * (scripts/agentos-statusline.mjs, scripts/agentos-hook.mjs) that write to
  * $AGENT_OS_HOME/claude-state/<session id>/. The UI reads it instead of
  * parsing the screen for the permission mode, model, context and cost.
@@ -86,13 +86,18 @@ function stateDir(sessionId: string): string {
   return path.join(stateRoot(), sessionId);
 }
 
+/** Where a session's hooks write (turn journal: lib/turns.ts) */
+export function claudeStateDir(sessionId: string): string | null {
+  return SESSION_ID.test(sessionId) ? stateDir(sessionId) : null;
+}
+
 function quote(s: string): string {
   return `'${s.replace(/'/g, "'\\''")}'`;
 }
 
 /**
  * Copies the scripts next to the state, so running sessions keep working
- * while Agent-OS updates itself in place
+ * while AgentOS updates itself in place
  */
 function installScripts(): { hook: string; statusLine: string } {
   const bin = path.join(stateRoot(), "bin");
@@ -114,6 +119,9 @@ function installScripts(): { hook: string; statusLine: string } {
     }
     return to;
   };
+  // The hook runs it for turn snapshots; installed first so a new hook
+  // never looks for it in vain
+  copy("agentos-snapshot.mjs");
   return {
     hook: copy("agentos-hook.mjs"),
     statusLine: copy("agentos-statusline.mjs"),
@@ -275,6 +283,17 @@ function readLine(file: string): string | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * When Claude's hooks last wrote this session's state (ms), or null: any
+ * hook event after a send means Claude took the message in
+ */
+export function claudeHookAt(sessionId: string): number | null {
+  if (!SESSION_ID.test(sessionId)) return null;
+  const file = readJson(path.join(stateDir(sessionId), "state.json"));
+  const at = obj(file?.data)?.updated_at;
+  return typeof at === "number" ? at : null;
 }
 
 /** What the session's hooks and status line last recorded */

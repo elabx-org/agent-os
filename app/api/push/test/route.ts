@@ -7,7 +7,7 @@ import { sendPush } from "@/lib/push/send";
 export async function POST() {
   const message = {
     kind: "test" as const,
-    title: "Agent-OS",
+    title: "AgentOS",
     body: "Notifications work. You'll hear from here when a session needs you or finishes.",
   };
   const report = await sendPush(message);

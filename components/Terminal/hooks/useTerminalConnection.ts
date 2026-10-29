@@ -13,12 +13,16 @@ import type {
 import {
   createTerminal,
   updateTerminalDensity,
+  updateTerminalFont,
   updateTerminalTheme,
 } from "./terminal-init";
 import { setupTouchScroll } from "./touch-scroll";
 import { createWebSocketConnection } from "./websocket-connection";
 import { setupResizeHandlers } from "./resize-handlers";
+import { remeasureWhenFontsReady, terminalFontReady } from "../font-ready";
+import { subscribe } from "valtio";
 import { DENSITY_EVENT } from "@/lib/display-density";
+import { terminalFontStore } from "@/lib/terminal-font";
 import { BACKGROUND_EVENT } from "@/lib/background";
 
 export type { TerminalScrollState } from "./useTerminalConnection.types";
@@ -57,6 +61,10 @@ export function useTerminalConnection({
   const initialScrollStateRef = useRef(initialScrollState);
   const selectModeRef = useRef(selectMode);
   selectModeRef.current = selectMode;
+  // Read when the terminal opens; a later change is applied in place below,
+  // so it never disposes the terminal and opens a second socket
+  const themeRef = useRef(theme);
+  themeRef.current = theme;
   const onLongPressRef = useRef(onLongPress);
   onLongPressRef.current = onLongPress;
 
@@ -179,15 +187,17 @@ export function useTerminalConnection({
     let cleanupResizeHandlers: (() => void) | null = null;
     let cleanupWebSocket: (() => void) | null = null;
     let cleanupTerminal: (() => void) | null = null;
+    let cleanupFontWait: (() => void) | null = null;
+    let connectTimeout: ReturnType<typeof setTimeout> | undefined;
 
-    const connectTimeout = setTimeout(() => {
+    const connect = (fontReady: boolean) => {
       if (cancelled || !terminalRef.current) return;
 
       // Initialize terminal with copy/paste callbacks
       const { term, fitAddon, searchAddon, cleanup } = createTerminal(
         terminalRef.current,
         isMobile,
-        theme,
+        themeRef.current,
         {
           onPaste: async () => {
             try {
@@ -283,11 +293,28 @@ export function useTerminalConnection({
         isMobile,
         sendResize: wsManager.sendResize,
       });
-    }, 150);
+
+      // Opened on the fallback font: measure again once it's in (a hidden
+      // terminal refits when shown)
+      if (!fontReady) {
+        cleanupFontWait = remeasureWhenFontsReady(term, () => {
+          if (!term.element?.offsetParent) return;
+          fitAddon.fit();
+          wsManager.sendResize(term.cols, term.rows);
+        });
+      }
+    };
+
+    // The first fit measures the cells: wait for the terminal font first
+    void terminalFontReady().then((fontReady) => {
+      if (!cancelled)
+        connectTimeout = setTimeout(() => connect(fontReady), 150);
+    });
 
     return () => {
       cancelled = true;
       clearTimeout(connectTimeout);
+      cleanupFontWait?.();
       intentionalCloseRef.current = true;
 
       // Save scroll state before unmount
@@ -325,7 +352,7 @@ export function useTerminalConnection({
       fitAddonRef.current = null;
       searchAddonRef.current = null;
     };
-  }, [isMobile, terminalRef, theme]);
+  }, [isMobile, terminalRef]);
 
   // Follow the display's text size: fold/unfold and the A−/A+ control
   useEffect(() => {
@@ -343,6 +370,22 @@ export function useTerminalConnection({
     window.addEventListener(DENSITY_EVENT, update);
     return () => window.removeEventListener(DENSITY_EVENT, update);
   }, [isMobile]);
+
+  // Follow the terminal font (Settings → Display), from any device
+  useEffect(
+    () =>
+      subscribe(terminalFontStore, () => {
+        const term = xtermRef.current;
+        const fitAddon = fitAddonRef.current;
+        if (!term || !fitAddon) return;
+        updateTerminalFont(term, fitAddon, (cols, rows) => {
+          if (wsRef.current?.readyState === WebSocket.OPEN) {
+            wsRef.current.send(JSON.stringify({ type: "resize", cols, rows }));
+          }
+        });
+      }),
+    []
+  );
 
   // Handle theme changes dynamically
   useEffect(() => {

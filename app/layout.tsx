@@ -1,22 +1,33 @@
 import type { Metadata, Viewport } from "next";
-import { IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
+import { IBM_Plex_Mono, Inter, JetBrains_Mono } from "next/font/google";
 import { AppToaster } from "@/components/AppToaster";
 import { Providers } from "@/components/Providers";
 import { DENSITY_BOOT_SCRIPT } from "@/lib/display-density";
 import { BACKGROUND_BOOT_SCRIPT } from "@/lib/background";
+import { LOOK_BOOT_SCRIPT } from "@/lib/look";
 import "./globals.css";
 
-// IBM Plex: the Duo redesign's type (variable names kept for globals.css)
-const geistSans = IBM_Plex_Sans({
+// Inter and JetBrains Mono: the modern look's type (variable names kept for
+// globals.css). The terminal asks for "JetBrains Mono" by name and waits for
+// it before measuring its cells (components/Terminal/font-ready.ts).
+const geistSans = Inter({
   variable: "--font-geist-sans",
   subsets: ["latin"],
-  weight: ["400", "500", "600"],
+  weight: ["400", "500", "600", "700"],
 });
 
-const geistMono = IBM_Plex_Mono({
+const geistMono = JetBrains_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
   weight: ["400", "500"],
+});
+
+// The terminal's other font (Settings → Display), fetched only when chosen
+const plexMono = IBM_Plex_Mono({
+  variable: "--font-plex-mono",
+  subsets: ["latin"],
+  weight: ["400", "600"],
+  preload: false,
 });
 
 export const metadata: Metadata = {
@@ -52,51 +63,13 @@ export default function RootLayout({
       <head>
         {/* Per-display text size, set before paint */}
         <script dangerouslySetInnerHTML={{ __html: DENSITY_BOOT_SCRIPT }} />
-        {/* Theme initialization script - prevents flash of unstyled content */}
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `
-              (function() {
-                try {
-                  // Get theme from localStorage (where next-themes stores it)
-                  const theme = localStorage.getItem('theme') || 'dark';
-                  const root = document.documentElement;
-
-                  // Handle system theme
-                  let actualTheme = theme;
-                  if (theme === 'system') {
-                    const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-                    actualTheme = isDark ? 'dark' : 'light';
-                  }
-
-                  // Parse compound themes like "dark-warm" or "light-default"
-                  const parts = actualTheme.split('-');
-                  const mode = parts[0];
-                  const variant = parts[1];
-
-                  // Apply theme class
-                  root.classList.remove('light', 'dark');
-                  root.classList.add(mode === 'dark' || mode === 'light' ? mode : 'dark');
-
-                  // Apply variant as data attribute
-                  // "deep" and "default" are base themes - no data attribute needed
-                  root.removeAttribute('data-theme-variant');
-                  if (variant && variant !== 'default' && variant !== 'deep') {
-                    root.setAttribute('data-theme-variant', variant);
-                  }
-                } catch (e) {
-                  // Fallback to dark mode if anything fails
-                  document.documentElement.classList.add('dark');
-                }
-              })();
-            `,
-          }}
-        />
+        {/* Mode class and accent before paint; maps pre-redesign themes */}
+        <script dangerouslySetInnerHTML={{ __html: LOOK_BOOT_SCRIPT }} />
         {/* This device's own background, if any, over the theme's */}
         <script dangerouslySetInnerHTML={{ __html: BACKGROUND_BOOT_SCRIPT }} />
       </head>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} font-sans antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} ${plexMono.variable} font-sans antialiased`}
       >
         <Providers>{children}</Providers>
         <AppToaster />

@@ -5,6 +5,7 @@ import {
   deleteProject,
   toggleProjectExpanded,
   getProject,
+  setProjectPlacement,
 } from "@/lib/projects";
 import {
   parseProjectHooks,
@@ -50,7 +51,20 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       gitSyncInterval,
       instructions,
       hooks,
+      pinned,
+      groupName,
     } = body;
+
+    if (
+      groupName !== undefined &&
+      groupName !== null &&
+      (typeof groupName !== "string" || groupName.trim().length > 40)
+    ) {
+      return NextResponse.json(
+        { error: "groupName must be a string of at most 40 characters" },
+        { status: 400 }
+      );
+    }
 
     if (hooks !== undefined) {
       const list = parseProjectHooks(hooks);
@@ -88,6 +102,15 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       const db = getDb();
       db.prepare("UPDATE projects SET git_sync_interval = ? WHERE id = ?")
         .run(gitSyncInterval, id);
+    }
+
+    // The Projects page's Pinned and groups (Uncategorized stays put)
+    if (typeof pinned === "boolean" || groupName !== undefined) {
+      setProjectPlacement(id, {
+        pinned: typeof pinned === "boolean" ? pinned : undefined,
+        groupName:
+          groupName === undefined ? undefined : groupName?.trim() || null,
+      });
     }
 
     // Update other fields if provided

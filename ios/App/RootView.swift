@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// The page with Agent-OS's navigation in the system bar. Built with the
+/// The page with AgentOS's navigation in the system bar. Built with the
 /// iOS 27.1 SDK, the bar goes vertical in the iPhone Duo's right-hand column
 /// under the status glyphs; elsewhere it is the usual top bar.
 struct RootView: View {
@@ -119,7 +119,7 @@ struct ColumnToolbarItem: ToolbarContent {
     let gap: Bool
     let wide: Bool
 
-    /// The page's accent, else Agent-OS purple (#7C3AED)
+    /// The page's accent, else AgentOS purple (#7C3AED)
     private var accent: Color {
         model.accentColor ?? Color(red: 0x7C / 255, green: 0x3A / 255, blue: 0xED / 255)
     }
@@ -195,6 +195,9 @@ struct AmberBadge: View {
 /// ⋯ as a native menu: what the web's More offers on this surface, then the
 /// app's own Reload and Server
 struct ColumnMoreMenu: View {
+    /// What the menu lists anyway
+    static let listed: Set<String> = ["inbox", "beside", "projects", "settings"]
+
     let model: AppModel
     let item: ColumnEntry
     let wide: Bool
@@ -215,6 +218,10 @@ struct ColumnMoreMenu: View {
             }
             if inSession && (model.pageWide ?? wide) && model.surface != "beside" {
                 Button("Open beside", systemImage: "rectangle.split.2x1") { model.nav("beside") }
+            }
+            // What the column leaves out; the menu already lists some
+            ForEach(model.more.filter { !Self.listed.contains($0.id) }, id: \.id) { entry in
+                Button(entry.label, systemImage: entry.symbolName) { model.nav(entry.id) }
             }
             Button("Projects", systemImage: "folder") { model.nav("projects") }
             Button("Settings", systemImage: "gearshape") { model.nav("settings") }

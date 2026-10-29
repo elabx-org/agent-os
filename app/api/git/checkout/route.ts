@@ -6,6 +6,7 @@ import {
   checkoutBranch,
   getBranchList,
 } from "@/lib/git-status";
+import { forgetBranchInfo } from "@/lib/git-branch-info";
 
 /**
  * POST /api/git/checkout
@@ -75,6 +76,7 @@ export async function POST(request: NextRequest) {
 
     checkoutBranch(path, branch);
 
+    forgetBranchInfo(path);
     return NextResponse.json({
       success: true,
       branch,

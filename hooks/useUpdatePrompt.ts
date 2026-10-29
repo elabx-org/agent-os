@@ -37,7 +37,7 @@ export function useUpdatePrompt() {
       if (!loaded) loaded = build.id;
       else if (build.id !== loaded) {
         shown = true;
-        toast("Agent-OS updated", {
+        toast("AgentOS updated", {
           id: "update",
           description: build.version
             ? `Reload to use v${build.version}.`

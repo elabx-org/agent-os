@@ -111,7 +111,7 @@ export const statusConfig: Record<
     icon: <Circle className="h-2 w-2 fill-current" />,
   },
   running: {
-    color: "text-blue-400",
+    color: "text-work",
     label: "running",
     word: "Working",
     icon: <Loader2 className="h-3 w-3 animate-spin" />,

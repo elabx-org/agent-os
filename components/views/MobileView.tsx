@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, type CSSProperties } from "react";
 import { useSnapshot } from "valtio";
 import { SessionList } from "@/components/SessionList";
 import { ProjectList } from "@/components/Projects";
@@ -14,8 +14,11 @@ import type { ViewProps } from "./types";
 import { fileOpenActions } from "@/stores/fileOpen";
 import { mobileNavStore } from "@/stores/mobileNav";
 import { ControlColumn } from "@/components/ControlColumn";
+import { LiveSheet } from "@/components/ControlColumn/LiveSheet";
 import { useSideRail } from "@/hooks/useSideRail";
-import { isNative } from "@/lib/native-bridge";
+import { useLayoutMode } from "@/hooks/useLayoutMode";
+import { isNative, nativeCaps } from "@/lib/native-bridge";
+import { setHome } from "@/stores/surface";
 import { loadDuoPreview } from "@/stores/duoPreview";
 import { cn } from "@/lib/utils";
 import { WorkspacePage } from "@/components/WorkspacePage";
@@ -45,10 +48,24 @@ export function MobileView(props: ViewProps) {
     setStartDevServerProjectId,
     renderPane,
   } = props;
+  const native = isNative();
+  const mode = useLayoutMode();
   // The iOS app puts this navigation in the system's own bar
-  const railWidth = useSideRail(!isNative());
-  // A phone in a browser has no system column, so the column is a bottom bar
-  const showBar = !railWidth && !isNative();
+  const railWidth = useSideRail(!native);
+  // Without a system column the column is a bar: the tabletop's on the base,
+  // else the phone's tab bar. Inside the app only for builds that draw the
+  // column from the spec (they hide theirs where the page draws a bar)
+  const bar: "hbar" | "tabs" | null =
+    native && !nativeCaps().column
+      ? null
+      : mode === "tabletop"
+        ? "hbar"
+        : railWidth
+          ? null
+          : !native || mode === "phone"
+            ? "tabs"
+            : null;
+  const showBar = !!bar;
 
   useEffect(loadDuoPreview, []);
 
@@ -77,6 +94,14 @@ export function MobileView(props: ViewProps) {
       mobileNavStore.homeOpen = false;
     };
   }, [sidebarOpen, pageOpen]);
+
+  // The home itself, for the surface (a page over it is the page)
+  useEffect(() => {
+    setHome(sidebarOpen);
+    return () => {
+      setHome(false);
+    };
+  }, [sidebarOpen]);
 
   const { request: viewRequest } = useSnapshot(mobileNavStore);
   // Picking a view in the column or bar leaves the home for the session
@@ -133,25 +158,36 @@ export function MobileView(props: ViewProps) {
     !railWidth && "pr-[env(safe-area-inset-right)]",
     !showBar && "pb-[env(safe-area-inset-bottom)]"
   );
+  // The tab bar floats: the layer goes under it, so the pane doesn't show
+  // around the glass, and its content stops above it
   const layerStyle = railWidth
     ? { right: railWidth }
-    : showBar
-      ? { bottom: "var(--control-bar-h, 0px)" }
-      : undefined;
+    : bar === "tabs"
+      ? { paddingBottom: "var(--control-bar-h, 0px)" }
+      : showBar
+        ? { bottom: "var(--control-bar-h, 0px)" }
+        : undefined;
+
+  // The home scrolls on under the glass (E-iPhone): its list pads itself
+  // with --home-pad-b instead
+  const homeStyle =
+    !railWidth && bar === "tabs"
+      ? ({ "--home-pad-b": "var(--control-bar-h, 0px)" } as CSSProperties)
+      : layerStyle;
 
   return (
     <main
       className="bg-background flex h-dvh flex-col overflow-hidden"
       style={railWidth ? { paddingRight: railWidth } : undefined}
     >
-      {railWidth > 0 && (
+      {railWidth > 0 && !bar && (
         <ControlColumn variant="column" sideRailWidth={railWidth} />
       )}
       {/* The home: a page of its own rather than a drawer, the same in the
           app and a browser. The column or bar stays beside it */}
       {sidebarOpen && (
         // Out of reach while a page covers it
-        <div className={layerClass} style={layerStyle} inert={pageOpen}>
+        <div className={layerClass} style={homeStyle} inert={pageOpen}>
           <MissionControl
             sessions={sessions}
             sessionStatuses={sessionStatuses}
@@ -186,7 +222,8 @@ export function MobileView(props: ViewProps) {
       <div className="min-h-0 w-full flex-1" inert={pageOpen}>
         <PaneLayout renderPane={renderPane} />
       </div>
-      {showBar && <ControlColumn variant="bar" />}
+      {bar && <ControlColumn variant={bar} />}
+      <LiveSheet session={activeSession} />
 
       {/* Dialogs */}
       <NewSurfaceHost

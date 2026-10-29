@@ -1,18 +1,26 @@
 "use client";
 
 import { useEffect } from "react";
+import { subscribe } from "valtio";
 import { subscribeKey } from "valtio/utils";
+import { columnOrderStore } from "@/stores/columnOrder";
 import {
   isNative,
+  nativeCaps,
   onNativeEvent,
   postToNative,
   themeAccent,
+  type NativeState,
 } from "@/lib/native-bridge";
 import { runNav } from "@/lib/nav-actions";
 import { mobileNavStore } from "@/stores/mobileNav";
 import { settingsPageStore } from "@/stores/settingsPage";
 import { workspacePageStore } from "@/stores/workspacePage";
 import { focusStore } from "@/stores/focus";
+import { newSurfaceStore } from "@/stores/newSurface";
+import { surfaceStore } from "@/stores/surface";
+import { layoutStore } from "@/hooks/useLayoutMode";
+import { nativeColumn } from "@/components/ControlColumn/columnState";
 import { startClientLog } from "@/lib/client-log";
 
 interface NativeBridgeOptions {
@@ -73,8 +81,11 @@ export function useNativeBridge({ waitingCount }: NativeBridgeOptions) {
 
   useEffect(() => {
     if (!isNative()) return;
-    const report = () =>
-      postToNative({
+    // App builds that draw the column get it, with what it's for
+    const column = nativeCaps().column;
+    let last = "";
+    const report = () => {
+      const state: NativeState = {
         type: "state",
         viewMode: mobileNavStore.viewMode,
         waiting: waitingCount,
@@ -88,7 +99,14 @@ export function useNativeBridge({ waitingCount }: NativeBridgeOptions) {
         scheme: document.documentElement.classList.contains("light")
           ? "light"
           : "dark",
-      });
+        ...(column && nativeColumn()),
+      };
+      // Many stores feed it: send only what changed
+      const json = JSON.stringify(state);
+      if (json === last) return;
+      last = json;
+      postToNative(state);
+    };
     report();
     const stops = [
       subscribeKey(mobileNavStore, "viewMode", report),
@@ -97,12 +115,28 @@ export function useNativeBridge({ waitingCount }: NativeBridgeOptions) {
       subscribeKey(settingsPageStore, "open", report),
       subscribeKey(workspacePageStore, "page", report),
       subscribeKey(focusStore, "on", report),
+      ...(column
+        ? [
+            subscribeKey(mobileNavStore, "homeOpen", report),
+            subscribeKey(mobileNavStore, "homeTab", report),
+            subscribeKey(mobileNavStore, "inboxOpen", report),
+            subscribeKey(mobileNavStore, "liveOpen", report),
+            subscribeKey(mobileNavStore, "nativeKeyboard", report),
+            subscribeKey(newSurfaceStore, "open", report),
+            subscribeKey(surfaceStore, "home", report),
+            subscribeKey(surfaceStore, "paneCount", report),
+            subscribeKey(surfaceStore, "searchOpen", report),
+            subscribeKey(settingsPageStore, "detail", report),
+            subscribeKey(layoutStore, "mode", report),
+            subscribe(columnOrderStore, report),
+          ]
+        : []),
     ];
     // A theme change repaints the page: tell the app the new colours
     const themes = new MutationObserver(report);
     themes.observe(document.documentElement, {
       attributes: true,
-      attributeFilter: ["class", "data-theme", "data-theme-variant", "style"],
+      attributeFilter: ["class", "data-theme", "data-accent", "style"],
     });
     return () => {
       stops.forEach((stop) => stop());

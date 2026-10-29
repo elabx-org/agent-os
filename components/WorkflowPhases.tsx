@@ -116,7 +116,7 @@ function WorkflowPhase({
           {finished ? (
             <span className={STATE_TEXT_CLASS.done}>✓</span>
           ) : current ? (
-            <span className="text-blue-500">›</span>
+            <span className="text-work">›</span>
           ) : (
             number
           )}
@@ -150,7 +150,7 @@ function AgentMark({ status }: { status: WorkflowAgent["status"] }) {
         status === "done"
           ? STATE_TEXT_CLASS.done
           : status === "running"
-            ? "text-blue-500"
+            ? "text-work"
             : "text-muted-foreground"
       )}
     >
@@ -258,7 +258,7 @@ export function WorkflowCard({
                   n < done
                     ? "bg-emerald-500"
                     : n === i && run.status === "running"
-                      ? "bg-blue-500"
+                      ? "bg-work"
                       : "bg-secondary"
                 )}
               />

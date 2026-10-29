@@ -28,7 +28,7 @@ async function refusal(res: Response): Promise<string> {
   if (body?.error === "user_only")
     return body.reason === "no_proof"
       ? "Reload to confirm it's you"
-      : "Only you can change this, in Agent-OS";
+      : "Only you can change this, in AgentOS";
   return body?.error ?? "Couldn't change the permission mode";
 }
 

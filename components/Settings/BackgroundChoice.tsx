@@ -2,50 +2,48 @@
 
 import { useEffect, useState } from "react";
 import { useTheme } from "next-themes";
-import { Check, ChevronRight } from "lucide-react";
+import { Check } from "lucide-react";
 import {
   BACKGROUND_EVENT,
   DARK_PRESETS,
   DARK_SWATCHES,
   LIGHT_PRESETS,
   LIGHT_SWATCHES,
-  backgroundHex,
   getBackground,
   isHex,
   setBackground,
   type BackgroundMode,
 } from "@/lib/background";
-import { DARK_THEMES, LIGHT_THEMES, parseTheme } from "@/lib/theme-config";
 import { cn } from "@/lib/utils";
+import { Chevron } from "./SettingGroup";
+
+/** The look's own page colour in each mode (--background) */
+const PLAIN: Record<BackgroundMode, string> = {
+  dark: "#000000",
+  light: "#F2F2F7",
+};
 
 /**
- * The page background for the mode on screen: the theme's own, a preset, or
- * any colour. Cards and borders follow it; the accent and text don't change.
+ * The page background for the mode on screen: plain (the look's own), a
+ * preset, or any colour. Cards and borders follow it; the accent and text
+ * don't change. A row of Display's group that opens in place.
  */
 export function BackgroundChoice() {
-  const { theme, resolvedTheme } = useTheme();
+  const { resolvedTheme } = useTheme();
   const [open, setOpen] = useState(false);
-  const { mode: resolved, variant } = parseTheme(resolvedTheme || "dark");
-  const mode: BackgroundMode = resolved === "light" ? "light" : "dark";
+  const mode: BackgroundMode = resolvedTheme?.startsWith("light")
+    ? "light"
+    : "dark";
   const choice = useBackground(mode);
   const [draft, setDraft] = useState("");
 
   const presets = mode === "dark" ? DARK_PRESETS : LIGHT_PRESETS;
   const swatches = mode === "dark" ? DARK_SWATCHES : LIGHT_SWATCHES;
-  const themes = mode === "dark" ? DARK_THEMES : LIGHT_THEMES;
-  // "dark-purple" or, for System, the variant the theme string names
-  const themeVariant =
-    parseTheme(theme || "dark").mode === "system"
-      ? variant
-      : parseTheme(theme || "dark").variant;
-  const own =
-    themes.find((t) => t.id === themeVariant)?.preview?.background ??
-    themes[0]?.preview?.background;
+  const own = PLAIN[mode];
   const custom = isHex(choice) ? choice : null;
-  const current = backgroundHex(mode, choice) ?? own;
   const label =
     choice === "default"
-      ? "Theme default"
+      ? "Plain"
       : (presets.find((p) => p.id === choice)?.label ?? choice.toUpperCase());
 
   const choose = (next: string) => setBackground(mode, next);
@@ -57,28 +55,19 @@ export function BackgroundChoice() {
         type="button"
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
-        className="active:bg-accent flex min-h-[50px] w-full items-center gap-3 px-3.5 py-1.5 text-left"
+        className="row active:bg-accent w-full text-left"
       >
-        <span className="min-w-0 flex-1">
-          <span className="block text-sm">Background</span>
-          <span className="text-muted-foreground block truncate text-xs">
-            {label}
-          </span>
+        <span className="min-w-0 flex-1 text-[15px]">Background</span>
+        <span className="text-muted-foreground max-w-[10rem] truncate text-[14px]">
+          {label}
         </span>
-        <Swatch color={current} />
-        <ChevronRight
-          aria-hidden="true"
-          className={cn(
-            "text-muted-foreground h-4 w-4 transition-transform",
-            open && "rotate-90"
-          )}
-        />
+        <Chevron className={cn("transition-transform", open && "rotate-90")} />
       </button>
       {open && (
         <div role="radiogroup" aria-label="Background" className="py-1">
           <Choice
-            label="Theme default"
-            description="The theme's own background"
+            label="Plain"
+            description="The look's own background"
             color={own}
             active={choice === "default"}
             onSelect={() => choose("default")}
@@ -163,7 +152,7 @@ function Swatch({ color }: { color?: string }) {
   return (
     <span
       aria-hidden="true"
-      className="border-border h-5 w-5 shrink-0 rounded-full border"
+      className="border-hair h-5 w-5 shrink-0 rounded-full border"
       style={{
         background:
           color ??
@@ -194,7 +183,7 @@ function Choice({
       onClick={onSelect}
       className={cn(
         "flex min-h-[48px] w-full items-center gap-3 px-3.5 py-1.5 text-left",
-        active ? "bg-secondary" : "active:bg-accent"
+        active ? "bg-[var(--row-sel)]" : "active:bg-accent"
       )}
     >
       <Swatch color={color} />

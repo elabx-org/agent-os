@@ -1,5 +1,5 @@
 /**
- * Talks to the native iOS app (ios/) when Agent-OS runs inside it.
+ * Talks to the native iOS app (ios/) when AgentOS runs inside it.
  *
  * The app injects `window.agentosNative` before the page loads and owns the
  * navigation (the system's vertical bar on iPhone Duo) and the keyboard's
@@ -11,6 +11,8 @@ import type { PaneViewMode } from "@/stores/mobileNav";
 import type { Fold } from "@/stores/posture";
 import type { NavAction } from "@/lib/nav-actions";
 import type { WorkspacePageKind } from "@/stores/workspacePage";
+import type { ColumnItem } from "@/lib/column-spec";
+import type { Surface } from "@/stores/surface";
 
 export type NativeNavAction = NavAction;
 
@@ -31,7 +33,7 @@ export type NativeEvent =
   | { type: "posture"; fold: Fold | null }
   /** Open a session: a tapped notification or an agentos://session/<id> link */
   | { type: "open"; sessionId: string }
-  /** A file shared to the app ("Open in Agent-OS"), for the focused session */
+  /** A file shared to the app ("Open in AgentOS"), for the focused session */
   | { type: "file"; file: SharedFile }
   /** The minimised Safari pages changed; `closed`: one just closed (Undo) */
   | { type: "browser"; count: number; closed?: BrowserPage };
@@ -67,7 +69,26 @@ export interface NativeState {
   /** The theme's accent (--primary) as rgb(), for the app's own controls */
   accent?: string;
   scheme?: "light" | "dark";
+  /** What fills the screen (older app builds ignore it) */
+  surface?: Surface;
+  /**
+   * The column for this surface (lib/column-spec.ts), for app builds that
+   * draw it (agentosNative.column). Only ever sent to those builds; an
+   * explicit [] hides the native column, absent keeps the fixed one
+   */
+  column?: NativeColumnItem[];
+  /** The column's first item is back */
+  canGoBack?: boolean;
+  /** The live activity is showing: More offers Hide live activity */
+  liveOpen?: boolean;
+  /** A wide layout (open Duo, book, desktop): More offers Open beside */
+  wide?: boolean;
+  /** What the person took out of this column (Settings → Control column), for More */
+  more?: NativeColumnItem[];
 }
+
+/** A column item as the app gets it: the SF Symbol, not the web icon */
+export type NativeColumnItem = Omit<ColumnItem, "icon">;
 
 export const NATIVE_EVENT = "agentos-native";
 
@@ -85,6 +106,8 @@ declare global {
       open?: string;
       /** A file shared to the app before the page was ready */
       file?: SharedFile;
+      /** The app draws the column from NativeState.column (the M14 build) */
+      column?: boolean;
     };
     webkit?: {
       messageHandlers?: Record<string, { postMessage: (msg: unknown) => void }>;
@@ -94,6 +117,22 @@ declare global {
 
 export function isNative(): boolean {
   return typeof window !== "undefined" && !!window.agentosNative;
+}
+
+/** What this app build can do; all false in a browser */
+export interface NativeCaps {
+  /**
+   * Draws NativeState.column, and hides its bar for an empty one: the page
+   * then draws its own tab bar or tabletop bar. Without it the web draws no
+   * bar inside the app
+   */
+  column: boolean;
+}
+
+export function nativeCaps(): NativeCaps {
+  return {
+    column: typeof window !== "undefined" && !!window.agentosNative?.column,
+  };
 }
 
 /**

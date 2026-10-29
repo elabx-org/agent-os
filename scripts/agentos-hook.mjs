@@ -1,15 +1,22 @@
 #!/usr/bin/env node
 /*
- * Agent-OS: Claude Code command hook that records what the session is doing
+ * AgentOS: Claude Code command hook that records what the session is doing
  * (permission mode, tool, pending permission, busy) for the web UI.
  *
  * Usage: agentos-hook.mjs <state dir>, hook input JSON on stdin. Appends one
  * line per event to events.jsonl and keeps the latest of each in state.json.
  * Never prints anything and always exits 0: stdout from some events would
  * reach Claude, and a failure here must never change what Claude does.
+ *
+ * With the `snapshots` flag on (flags.json next to claude-state/, globally or
+ * for this session) it also marks turn boundaries through
+ * agentos-snapshot.mjs: the pre snapshot on UserPromptSubmit (capped at 3s),
+ * edited paths on PostToolUse, the post snapshot detached on Stop.
  */
+import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const MAX_LINES = 500;
 const KEEP_LINES = 250;
@@ -47,7 +54,7 @@ function readJson(file) {
 }
 
 // Not { recursive: true }: Node can spin forever on it in some filesystems.
-// The state dir's parent is made by Agent-OS; make it again if it's gone.
+// The state dir's parent is made by AgentOS; make it again if it's gone.
 function ensureDir(dir) {
   for (const d of [path.dirname(dir), dir]) {
     try {
@@ -215,11 +222,64 @@ function record(dir, input) {
   }
 }
 
+const SNAPSHOT_SCRIPT = path.join(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "agentos-snapshot.mjs"
+);
+const PRE_CAP_MS = 3000;
+
+/** The flag mirror lives in $AGENT_OS_HOME, two up from the state dir */
+function snapshotsOn(dir) {
+  const flags = readJson(path.join(dir, "..", "..", "flags.json"));
+  if (!flags || typeof flags !== "object") return false;
+  if (flags.snapshots === true) return true;
+  const ids = flags.sessions?.snapshots;
+  return Array.isArray(ids) && ids.includes(path.basename(dir));
+}
+
+async function markTurn(dir, input) {
+  const event = input.hook_event_name;
+  if (
+    event !== "UserPromptSubmit" &&
+    event !== "PostToolUse" &&
+    event !== "Stop"
+  )
+    return;
+  if (!snapshotsOn(dir)) return;
+  if (event === "UserPromptSubmit") {
+    spawnSync(
+      process.execPath,
+      [SNAPSHOT_SCRIPT, "pre", dir, String(PRE_CAP_MS - 300)],
+      {
+        input: JSON.stringify(input),
+        stdio: ["pipe", "ignore", "ignore"],
+        timeout: PRE_CAP_MS,
+        killSignal: "SIGKILL",
+      }
+    );
+  } else if (event === "Stop") {
+    spawn(process.execPath, [SNAPSHOT_SCRIPT, "post", dir], {
+      detached: true,
+      stdio: "ignore",
+    }).unref();
+  } else {
+    const { recordTouched } = await import(pathToFileURL(SNAPSHOT_SCRIPT).href);
+    recordTouched(dir, input);
+  }
+}
+
 try {
   const dir = process.argv[2];
   const input = JSON.parse(fs.readFileSync(0, "utf8") || "{}");
-  if (dir && input && typeof input === "object") record(dir, input);
+  if (dir && input && typeof input === "object") {
+    try {
+      record(dir, input);
+    } catch {
+      // Recording is best effort
+    }
+    await markTurn(dir, input);
+  }
 } catch {
-  // Recording is best effort
+  // So are turns
 }
 process.exit(0);

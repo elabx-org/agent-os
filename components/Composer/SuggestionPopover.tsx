@@ -5,8 +5,7 @@ import { cn } from "@/lib/utils";
 import type { Suggestion } from "./useComposer";
 
 /** Glass-like, as the + menu; ComposerPopover places it */
-export const POPOVER =
-  "bg-background/70 border-border overflow-hidden rounded-2xl border p-1.5 shadow-[inset_0_1px_0_hsl(var(--foreground)/0.08),0_12px_30px_rgb(0_0_0/0.35)] backdrop-blur-xl backdrop-saturate-150";
+export const POPOVER = "glass overflow-hidden rounded-[20px] p-1.5";
 
 export const GROUP_HEADING =
   "text-muted-foreground/80 px-2.5 pt-1.5 pb-0.5 text-[10px] font-semibold tracking-[0.08em] uppercase";
@@ -38,7 +37,8 @@ export function SuggestionPopover({
   }, [selected]);
 
   return (
-    <div className={POPOVER}>
+    // E-Composer: full-width rows on the glass, hairlines between them
+    <div className={cn(POPOVER, "p-0")}>
       <div
         ref={listRef}
         id={id}
@@ -61,16 +61,20 @@ export function SuggestionPopover({
               onMouseEnter={() => onHover(i)}
               onClick={() => onChoose(item)}
               className={cn(
-                "flex min-h-9 w-full items-baseline gap-2 rounded-[10px] px-2.5 py-1.5 text-left pointer-coarse:min-h-11 pointer-coarse:py-3",
-                i === selected ? "bg-muted" : "active:bg-muted"
+                "flex min-h-11 w-full items-center gap-2.5 px-3.5 py-2 text-left text-sm",
+                i > 0 && !item.group && "border-t border-[var(--hair)]",
+                i === selected ? "bg-primary/18" : "active:bg-muted"
               )}
             >
               <code
                 className={cn(
-                  "text-foreground font-mono text-[13px]",
+                  "font-mono text-sm",
+                  i === selected
+                    ? "text-[#6D28D9] dark:text-[#C4B5FD]"
+                    : "text-foreground",
                   kind === "at"
                     ? "min-w-0 flex-1 truncate text-left [direction:rtl]"
-                    : "shrink-0"
+                    : "min-w-[84px] shrink-0"
                 )}
               >
                 {/* rtl keeps a long path's file name in view */}
@@ -78,7 +82,7 @@ export function SuggestionPopover({
               </code>
               <span
                 className={cn(
-                  "text-muted-foreground truncate text-xs",
+                  "text-muted-foreground truncate",
                   kind === "at" ? "shrink-0" : "min-w-0 flex-1"
                 )}
               >
