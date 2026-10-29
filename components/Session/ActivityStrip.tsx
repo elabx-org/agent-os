@@ -70,7 +70,7 @@ export function ActivityStrip({
           {needs ? (
             <span className="h-2 w-2 rounded-full bg-amber-400 shadow-[0_0_0_3px_rgba(242,176,30,.18)]" />
           ) : state === "work" ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-500" />
+            <Loader2 className="text-work h-3.5 w-3.5 animate-spin" />
           ) : (
             <span
               className={cn(

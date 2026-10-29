@@ -337,9 +337,8 @@ function Patch({ lines, all }: { lines: string[]; all: boolean }) {
             className={cn(
               "flex gap-2 px-3",
               line[0] === "+" &&
-                "bg-blue-400/12 text-blue-700 dark:text-blue-200",
-              line[0] === "-" &&
-                "bg-amber-400/10 text-amber-700 dark:text-amber-200",
+                "bg-emerald-400/10 text-emerald-700 dark:text-emerald-300",
+              line[0] === "-" && "bg-red-400/10 text-red-700 dark:text-red-300",
               line[0] !== "+" && line[0] !== "-" && "text-muted-foreground"
             )}
           >
@@ -388,8 +387,8 @@ function ToolRow({ tool, result }: { tool: ToolItem; result?: ResultItem }) {
         )}
         {result && !result.isError && hasDiff && (
           <span className="shrink-0 font-mono text-xs">
-            <span className="text-blue-400">+{result.added}</span>{" "}
-            <span className="text-amber-400">−{result.removed}</span>
+            <span className="text-emerald-400">+{result.added}</span>{" "}
+            <span className="text-red-400">−{result.removed}</span>
           </span>
         )}
       </button>

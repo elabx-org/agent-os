@@ -84,6 +84,10 @@
   .group-card .row + .row {
     border-top: 1px solid var(--hair);
   }
+  /* A touch quieter than other hairlines on black */
+  .dark .group-card .row + .row {
+    border-top-color: rgba(255, 255, 255, 0.06);
+  }
   .row.sel {
     background: var(--row-sel);
   }
@@ -117,7 +121,7 @@
     padding: 0 14px;
     border-radius: 18px;
     font-size: 14px;
-    color: hsl(var(--muted-foreground));
+    color: hsl(var(--foreground) / 0.8);
   }
   .seg > button[aria-pressed="true"] {
     background: hsl(var(--foreground) / 0.14);

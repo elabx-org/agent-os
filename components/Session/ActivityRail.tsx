@@ -300,7 +300,7 @@ function NowBlock({
     return (
       <div className="grid gap-2 px-2 pb-1">
         <BigState
-          mark={<Loader2 className="h-4 w-4 animate-spin text-blue-500" />}
+          mark={<Loader2 className="text-work h-4 w-4 animate-spin" />}
           elapsed={elapsed}
         >
           {now.label}
@@ -571,7 +571,7 @@ function IndeterminateBar() {
   }, []);
   return (
     <div className="bg-secondary h-1 overflow-hidden rounded-full">
-      <span ref={ref} className="block h-full w-2/5 rounded-full bg-blue-500" />
+      <span ref={ref} className="bg-work block h-full w-2/5 rounded-full" />
     </div>
   );
 }
