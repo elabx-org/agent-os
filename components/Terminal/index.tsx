@@ -51,11 +51,12 @@ import {
   showsQueued,
 } from "./queued-messages";
 import type { ClaudeKey } from "@/components/Composer/ClaudeStateBar";
-import { DeckActions } from "@/components/DeckActions";
+import { DeckActions, DeckAnswers } from "@/components/DeckActions";
+import { NeedsYouCard } from "@/components/Chat/NeedsYouCard";
 import { DeckStateLine } from "@/components/DeckStateLine";
 import { DeckContext } from "@/components/ReplyContext/ContextPanel";
-import { InboxItem } from "@/components/Inbox";
 import { useSessionPrompt } from "@/data/prompts/queries";
+import { useQueue } from "@/hooks/useQueue";
 import { useNarrowScreen } from "@/hooks/useNarrowScreen";
 import { usePortrait } from "@/hooks/usePortrait";
 import {
@@ -537,13 +538,18 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
 
     // Claude Code treats input arriving with a newline as a paste, so Enter
     // goes separately after the text has been taken
-    // What the composer sent while Claude was busy: Claude queues it
+    // What the composer sent while Claude was busy: Claude queues it. Not
+    // with the server queue on: the composer never types into a busy Claude
     const queuedRef = useRef<string[]>([]);
+    // Hidden tabs don't poll: the composer only sends from the active one
+    const serverQueue = useQueue(draftId ?? "", {
+      enabled: !!draftId && active,
+    }).enabled;
     const sendFromComposer = useCallback(
       (text: string) => {
         const term = xtermRef.current;
         // Added to what's already waiting, if anything is
-        if (text && term)
+        if (text && term && !serverQueue)
           queuedRef.current = !isClaudeBusy(term)
             ? []
             : hasQueued(term)
@@ -567,7 +573,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
         };
         setTimeout(confirm, 900);
       },
-      [sendInput, sendPaste, xtermRef]
+      [sendInput, sendPaste, xtermRef, serverQueue]
     );
 
     // With the composer on, xterm's keyboard is off, so a tap on the terminal
@@ -1378,26 +1384,43 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
                   }
             }
           >
-            {deckAnswer ? (
-              <ul className="min-h-0 flex-1 overflow-y-auto px-3 pt-2 pb-3">
-                <InboxItem
-                  session={session}
-                  onOpen={scrollToBottom}
-                  questionsOnly
-                />
-              </ul>
-            ) : (
-              <>
-                {tabletopBase && draftId && (
+            {/* Fold-Terminal: the answers (else Stop, Changes, Chat), the
+                key grid under them, the room left above the composer */}
+            {deckAnswer && draftId && session ? (
+              <DeckAnswers
+                sessionId={draftId}
+                className="px-5 pt-2"
+                permission={
+                  <div className="min-h-0 shrink overflow-y-auto px-5 pt-2">
+                    <NeedsYouCard
+                      session={session}
+                      variant="inline"
+                      onOpenTerminal={scrollToBottom}
+                    />
+                  </div>
+                }
+                fallback={
                   <DeckActions
                     sessionId={draftId}
                     status={deckStatus}
                     view="terminal"
-                    className="px-3 pt-2"
+                    className="px-5 pt-2"
                   />
-                )}
-                {tabletopBase && <div className="min-h-0 flex-1" />}
-              </>
+                }
+              />
+            ) : (
+              tabletopBase &&
+              draftId && (
+                <DeckActions
+                  sessionId={draftId}
+                  status={deckStatus}
+                  view="terminal"
+                  className="px-5 pt-2"
+                />
+              )
+            )}
+            {tabletopBase && (
+              <div className="min-h-0 flex-1" style={{ order: 3 }} />
             )}
             {/* Ordered rather than moved, so the composer never remounts */}
             <div

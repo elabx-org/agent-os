@@ -166,8 +166,8 @@ interface SessionCache {
   updatedAt: number;
 }
 
-// Content analysis helpers
-function checkBusyIndicators(content: string): boolean {
+// Content analysis helpers (also lib/session-ready.ts)
+export function checkBusyIndicators(content: string): boolean {
   const lines = content.split("\n");
   // Focus on last 10 lines to avoid old scrollback false positives
   const recentContent = lines.slice(-10).join("\n").toLowerCase();
@@ -193,7 +193,7 @@ function checkBusyIndicators(content: string): boolean {
   return false;
 }
 
-function checkWaitingPatterns(content: string): boolean {
+export function checkWaitingPatterns(content: string): boolean {
   const lines = content.split("\n");
   const recentLines = lines.slice(-5).join("\n");
   if (WAITING_PATTERNS.some((p) => p.test(recentLines))) return true;

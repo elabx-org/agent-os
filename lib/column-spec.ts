@@ -24,6 +24,8 @@ export interface ColumnItem {
   selected?: boolean;
   /** A separator before this item */
   sep?: true;
+  /** Drawn red: Stop (N-Queue, E-Live) */
+  danger?: boolean;
 }
 
 /** What the spec reads besides the surface and the posture */
@@ -42,6 +44,10 @@ export interface ColumnContext {
   native?: boolean;
   /** The live activity is showing (the column's Live item is on) */
   liveOpen?: boolean;
+  /** The session in view is working: closed, Stop ends its column (N-Queue) */
+  working?: boolean;
+  /** A sheet over the session other than Live activity (N-Undo's undo) */
+  sheet?: "undo" | null;
 }
 
 type Base = Pick<ColumnItem, "id" | "symbol" | "icon" | "label">;
@@ -124,6 +130,13 @@ const BASE = {
     label: "Swap sides",
   },
   more: { id: "more", symbol: "ellipsis", icon: "Ellipsis", label: "More" },
+  stop: { id: "stop", symbol: "stop.fill", icon: "Square", label: "Interrupt" },
+  closeSheet: {
+    id: "closeSheet",
+    symbol: "xmark",
+    icon: "X",
+    label: "Close",
+  },
   sort: {
     id: "sort",
     symbol: "arrow.up.arrow.down",
@@ -183,12 +196,13 @@ function inbox(ctx: ColumnContext, extra: Partial<ColumnItem> = {}) {
   });
 }
 
-function changes(ctx: ColumnContext) {
+function changes(ctx: ColumnContext, extra: Partial<ColumnItem> = {}) {
   const badge = ctx.focus ? 0 : ctx.changes;
   return item(BASE.git, {
     badge,
     badgeTone: badge ? "neutral" : undefined,
     selected: ctx.viewMode === "git",
+    ...extra,
   });
 }
 
@@ -199,8 +213,32 @@ function otherView(ctx: ColumnContext, extra: Partial<ColumnItem> = {}) {
     : item(BASE.chat, { label: "Show chat", ...extra });
 }
 
+/**
+ * The closed Duo's column under a sheet: close | Stop while it works
+ * (E-Live), close | Changes over the undo sheet (N-Undo); null when no
+ * sheet is up
+ */
+function sheetColumn(ctx: ColumnContext): ColumnItem[] | null {
+  if (ctx.sheet === "undo")
+    return [item(BASE.closeSheet), changes(ctx, { selected: false, ...sep })];
+  if (ctx.liveOpen)
+    return [
+      item(BASE.closeSheet),
+      ...(ctx.working ? [item(BASE.stop, { danger: true, ...sep })] : []),
+    ];
+  return null;
+}
+
 /** Closed-Chat / Open-Changes: back | the other view, Changes, Files, Live | More */
-function sessionColumn(ctx: ColumnContext, compact: boolean): ColumnItem[] {
+function sessionColumn(
+  ctx: ColumnContext,
+  compact: boolean,
+  closed = false
+): ColumnItem[] {
+  if (closed) {
+    const sheet = sheetColumn(ctx);
+    if (sheet) return sheet;
+  }
   if (compact)
     // Closed-Terminal, keyboard up: what fits above it
     return [
@@ -208,6 +246,15 @@ function sessionColumn(ctx: ColumnContext, compact: boolean): ColumnItem[] {
       otherView(ctx, sep),
       changes(ctx),
       item(BASE.more),
+    ];
+  if (closed && ctx.working)
+    // N-Queue: while it works, Stop takes More's place
+    return [
+      item(BASE.back),
+      otherView(ctx, sep),
+      changes(ctx),
+      item(BASE.live, { selected: ctx.liveOpen }),
+      item(BASE.stop, { danger: true, ...sep }),
     ];
   return [
     item(BASE.back),
@@ -300,7 +347,11 @@ export function columnFor(
     case "now":
       return wide && ctx.viewMode ? nowWithSession(ctx) : nowColumn(ctx);
     case "session":
-      return sessionColumn(ctx, mode === "duo-closed" && ctx.keyboardUp);
+      return sessionColumn(
+        ctx,
+        mode === "duo-closed" && ctx.keyboardUp,
+        mode === "duo-closed"
+      );
     case "beside":
       return wide
         ? [
@@ -314,7 +365,11 @@ export function columnFor(
             item(BASE.live, { selected: ctx.liveOpen }),
             item(BASE.more, sep),
           ]
-        : sessionColumn(ctx, mode === "duo-closed" && ctx.keyboardUp);
+        : sessionColumn(
+            ctx,
+            mode === "duo-closed" && ctx.keyboardUp,
+            mode === "duo-closed"
+          );
     case "settings":
       // Drilled into a section on the closed Duo (E-Display); list | detail
       // elsewhere keeps both up, so there's nothing to go back to

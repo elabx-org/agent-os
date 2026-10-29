@@ -144,6 +144,45 @@ test("columnFor: keyboard up compacts the closed session column (Closed-Terminal
   );
 });
 
+test("columnFor: working, the closed column ends with Stop (N-Queue)", () => {
+  const ctx = { ...CTX, working: true };
+  const items = columnFor("session", "duo-closed", ctx);
+  assert.equal(fmt(items), "back | terminal git[3n] live | stop");
+  assert.equal(items.at(-1)?.danger, true);
+  assert.equal(items.at(-1)?.symbol, "stop.fill");
+  // Elsewhere the column keeps More
+  assert.equal(
+    fmt(columnFor("session", "duo-open", ctx)),
+    "back | terminal git[3n] files live | more"
+  );
+});
+
+test("columnFor: a sheet over the closed session (E-Live, N-Undo)", () => {
+  assert.equal(
+    fmt(
+      columnFor("session", "duo-closed", {
+        ...CTX,
+        liveOpen: true,
+        working: true,
+      })
+    ),
+    "closeSheet | stop"
+  );
+  assert.equal(
+    fmt(columnFor("session", "duo-closed", { ...CTX, liveOpen: true })),
+    "closeSheet"
+  );
+  assert.equal(
+    fmt(columnFor("session", "duo-closed", { ...CTX, sheet: "undo" })),
+    "closeSheet | git[3n]"
+  );
+  // The open Duo shows Live activity as its rail: no sheet column
+  assert.equal(
+    fmt(columnFor("session", "duo-open", { ...CTX, liveOpen: true })),
+    "back | terminal git[3n] files live(on) | more"
+  );
+});
+
 test("columnFor: the bar selects the view showing (Fold-Chat, Fold-Terminal)", () => {
   assert.equal(
     fmt(

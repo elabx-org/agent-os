@@ -93,11 +93,12 @@ export function AdaptiveKey({
       }}
       onClick={(e) => e.stopPropagation()}
       className={cn(
-        "relative flex h-[40px] min-w-[40px] touch-none items-center justify-center gap-1.5 rounded-xl px-2 text-[13px] font-medium select-none",
-        k.danger
-          ? "border border-red-500/40 bg-red-500/15 text-red-400"
-          : "bg-secondary text-secondary-foreground",
-        !flicking && "active:bg-primary active:text-primary-foreground"
+        // The M2 terminal key (Closed-Terminal): 42px, Esc red text, ^C red
+        "tkey relative h-[42px] min-w-[40px] touch-none gap-1.5 rounded-xl px-2 text-[13px] font-medium select-none",
+        k.danger && "danger",
+        k.id === "esc" && "esc",
+        !flicking &&
+          "active:bg-primary active:text-primary-foreground active:bg-none"
       )}
     >
       <span>{k.label}</span>

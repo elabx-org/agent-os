@@ -58,6 +58,7 @@ export function ColumnItems({ items, orientation }: ColumnItemsProps) {
       badge: item.badge,
       badgeTone: item.badgeTone,
       prominent: item.prominent,
+      danger: item.danger,
       bold: item.id === "back",
       toggle: TOGGLES.includes(item.id),
       ariaLabel: other

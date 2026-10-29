@@ -24,7 +24,7 @@ interface ControlColumnProps {
   /**
    * column: a vertical capsule, placed by the parent (or by sideRailWidth);
    * hbar: the tabletop's centred bar (HBar); tabs: the phone's tab bar and
-   * New button (TabBar), or in a session the bar of views
+   * New button (TabBar), none inside a session
    */
   variant: "column" | "hbar" | "tabs";
   /**
@@ -49,12 +49,13 @@ export function ControlColumn({
   return <Column sideRailWidth={sideRailWidth} className={className} />;
 }
 
-/** A phone: the tab bar over the home and its pages, the views in a session */
+/**
+ * A phone: the tab bar over the home and its pages. Inside a session the
+ * composer takes its place (E-iPhone); the header has back and the views
+ */
 function PhoneBar({ className }: { className?: string }) {
   const surface = useSurface();
-  return surface === "session" || surface === "beside" ? (
-    <HBar className={className} />
-  ) : (
+  return surface === "session" || surface === "beside" ? null : (
     <TabBar className={className} />
   );
 }

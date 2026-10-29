@@ -7,13 +7,14 @@
  */
 
 import path from "path";
-import { exec, execFile } from "child_process";
+import { execFile } from "child_process";
 import { promisify } from "util";
-import { statusDetector, type SessionStatus } from "../status-detector";
 import {
-  getManagedSessionPattern,
-  getSessionIdFromName,
-} from "../providers/registry";
+  onEdge,
+  startSessionWatch,
+  wantWatch,
+  type WatchEdge,
+} from "../session-watch";
 import { getDb, queries, type Project, type Session } from "../db";
 import { parsePermissionPrompt } from "../permission-prompt";
 import { findTranscript, readTranscript } from "../claude-transcript";
@@ -27,38 +28,15 @@ import { sendPush, type PushMessage } from "./send";
 import { recordNotification, setDelivered } from "./history";
 import { tickersDisabled } from "../flags";
 
-const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
 
-const POLL_MS = 3000;
 /** `claude agents` is slow, so background agents get a loop of their own */
 const AGENT_POLL_MS = 10_000;
 /** Work shorter than this ending is not worth a "finished" */
 const MIN_WORK_MS = 20_000;
 
-interface Track {
-  /** The status acted on, after it read the same twice in a row */
-  stable: SessionStatus;
-  candidate: SessionStatus;
-  runningSince: number | null;
-}
-
-const tracks = new Map<string, Track>();
-
 /** A push, plus the project the history files it under */
 type Event = PushMessage & { projectName?: string };
-
-async function managedSessions(): Promise<string[]> {
-  const pattern = getManagedSessionPattern();
-  try {
-    const { stdout } = await execAsync(
-      "tmux list-sessions -F '#{session_name}' 2>/dev/null || true"
-    );
-    return stdout.split("\n").filter((name) => pattern.test(name));
-  } catch {
-    return [];
-  }
-}
 
 async function prompt(tmuxName: string) {
   try {
@@ -138,53 +116,32 @@ async function message(
   };
 }
 
-async function poll(): Promise<void> {
+/**
+ * What a stable change to "waiting" announces: needsYou when a permission
+ * prompt is up (one can appear without a working spell before it), else
+ * finished, but only after at least MIN_WORK_MS of work
+ */
+export function edgeKind(
+  edge: WatchEdge,
+  hasPrompt: boolean
+): "needsYou" | "finished" | null {
+  if (edge.to !== "waiting") return null;
+  if (hasPrompt) return "needsYou";
+  if (edge.from !== "running" || edge.workedMs < MIN_WORK_MS) return null;
+  return "finished";
+}
+
+async function onWatchEdge(edge: WatchEdge): Promise<void> {
+  if (edge.to !== "waiting") return;
   const config = readPushConfig();
   const channels = config.ntfy.enabled || config.apns.enabled;
-  const names = await managedSessions();
-  const seen = new Set<string>();
+  const kind = edgeKind(edge, (await prompt(edge.tmuxName)) !== null);
+  if (!kind) return;
+  const msg = await message(edge.tmuxName, edge.sessionId, kind);
+  if (!msg) return;
 
-  for (const tmuxName of names) {
-    seen.add(tmuxName);
-    const status = await statusDetector.getStatus(tmuxName);
-    const track = tracks.get(tmuxName);
-    if (!track) {
-      // First sight (or a server restart): learn, don't announce
-      tracks.set(tmuxName, {
-        stable: status,
-        candidate: status,
-        runningSince: status === "running" ? Date.now() : null,
-      });
-      continue;
-    }
-    if (status !== track.candidate) {
-      track.candidate = status;
-      continue;
-    }
-    if (status === track.stable) continue;
-
-    const before = track.stable;
-    const workedMs = track.runningSince ? Date.now() - track.runningSince : 0;
-    track.stable = status;
-    track.runningSince = status === "running" ? Date.now() : null;
-
-    if (status !== "waiting") continue;
-    // A permission prompt can appear without a working spell before it
-    const p = await prompt(tmuxName);
-    const kind = p ? "needsYou" : "finished";
-    if (kind === "finished" && (before !== "running" || workedMs < MIN_WORK_MS))
-      continue;
-    const id = getSessionIdFromName(tmuxName);
-    const msg = await message(tmuxName, id, kind);
-    if (!msg) continue;
-
-    // The history keeps it even when nothing is sent
-    announce(msg, channels && config.events[kind] && !isWatching(id));
-  }
-
-  for (const name of tracks.keys()) {
-    if (!seen.has(name)) tracks.delete(name);
-  }
+  // The history keeps it even when nothing is sent
+  announce(msg, channels && config.events[kind] && !isWatching(edge.sessionId));
 }
 
 /** Records the event, then sends it when `push` */
@@ -328,6 +285,11 @@ function every(ms: number, fn: () => Promise<void>) {
 
 export function startPushWatcher(): void {
   if (process.env.AGENTOS_DISABLE_PUSH === "1" || tickersDisabled()) return;
-  every(POLL_MS, poll);
+  // The sessions come from the one shared poll (lib/session-watch.ts)
+  onEdge((edge) => {
+    onWatchEdge(edge).catch((error) => console.error("[push] watcher:", error));
+  });
+  wantWatch(() => true);
+  startSessionWatch();
   every(AGENT_POLL_MS, pollAgents);
 }

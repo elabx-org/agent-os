@@ -31,7 +31,13 @@ import { useSnapshot } from "valtio";
 import { fileOpenStore, fileOpenActions } from "@/stores/fileOpen";
 import { mobileNavStore, mobileNavActions } from "@/stores/mobileNav";
 import { focusStore } from "@/stores/focus";
-import { getSessionView, setSessionView } from "@/lib/session-views";
+import {
+  getSessionView,
+  openingView,
+  setSessionView,
+} from "@/lib/session-views";
+import { useFlag } from "@/hooks/useFlags";
+import { usePaneChrome } from "@/components/Session/usePaneChrome";
 import { takePaneLaunch } from "@/stores/beside";
 import { ActivityStrip } from "@/components/Session/ActivityStrip";
 import { isNative } from "@/lib/native-bridge";
@@ -178,31 +184,69 @@ export const Pane = memo(function Pane({
   const { railShown } = useSnapshot(mobileNavStore);
   const { on: focusOn } = useSnapshot(focusStore);
   const [deckShown, setDeckShown] = useState(false);
+  // The column's Stop and working state; a header that says the activity
+  const chrome = usePaneChrome({ session, isFocused, paneCount });
   const showStrip =
     !!session &&
     (viewMode === "chat" || viewMode === "terminal") &&
     !focusOn &&
     !railShown &&
-    !deckShown;
+    !deckShown &&
+    !chrome.headerHasActivity;
   // The strip or the rail (beside the focused pane) lists its agents already
   const agentsShown = showStrip || (railShown && isFocused);
 
   // Reset view mode and file editor when session changes
+  const chatDefault = useFlag("chatDefault");
+  // The view a session opened in by default: not one you chose, so not
+  // remembered until you change it
+  const defaultedRef = useRef<ViewMode | null>(null);
   useEffect(() => {
     // A remount (folding) shows the same session: keep its view
     const previous = paneSessions.get(paneId);
     paneSessions.set(paneId, session?.id);
     if (previous === session?.id) return;
-    // Each session opens in the view you last used there (terminal at first)
-    setViewMode((session && getSessionView(session.id)) || "terminal");
+    // Each session opens in the view you last used there, else chat for
+    // Claude (flag chatDefault) or the terminal
+    const next = session
+      ? openingView(session.id, session.agent_type, chatDefault)
+      : "terminal";
+    defaultedRef.current = next;
+    setViewMode(next);
     fileEditor.reset();
   }, [session?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // The flags load after the first render: a session opened before they
+  // did, still in the terminal it got by default, opens its chat then
+  useEffect(() => {
+    if (!chatDefault || !session || getSessionView(session.id)) return;
+    const next = openingView(session.id, session.agent_type, true);
+    if (next === viewMode || viewMode !== "terminal") return;
+    defaultedRef.current = next;
+    setViewMode(next);
+  }, [chatDefault]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Opened in chat by default, but nothing has been said yet: the terminal
+  // is where there's something to see
+  const chatEmpty = useCallback(() => {
+    if (defaultedRef.current !== "chat") return;
+    defaultedRef.current = "terminal";
+    setViewMode((mode) => (mode === "chat" ? "terminal" : mode));
+  }, [setViewMode]);
 
   // Remember a change of view; a switch of session alone isn't one
   const viewSessionId = useRef(session?.id);
   viewSessionId.current = session?.id;
+  const viewMounted = useRef(false);
   useEffect(() => {
     const id = viewSessionId.current;
+    // Nor is the view a pane mounts with, or the one it opened in
+    if (!viewMounted.current) {
+      viewMounted.current = true;
+      return;
+    }
+    if (viewMode === defaultedRef.current) return;
+    defaultedRef.current = null;
     if (id && (viewMode === "terminal" || viewMode === "chat"))
       setSessionView(id, viewMode);
   }, [viewMode]);
@@ -263,6 +307,8 @@ export const Pane = memo(function Pane({
       if (navRequest.sessionId !== session?.id) return;
     }
     if (navRequest.mode === "terminal" || session?.working_directory) {
+      // Asked for, so not a default an empty chat swaps for the terminal
+      defaultedRef.current = null;
       setViewMode(navRequest.mode);
     }
     mobileNavActions.clearRequest();
@@ -420,7 +466,11 @@ export const Pane = memo(function Pane({
     <div
       className={cn(
         "flex h-full w-full flex-col overflow-hidden",
-        !isMobile && "rounded-lg shadow-lg shadow-black/10 dark:shadow-black/30",
+        !isMobile &&
+          (chrome.variant === "card"
+            ? // Desk-Beside: each session on its own card
+              "border-hair rounded-[20px] border"
+            : "rounded-lg shadow-lg shadow-black/10 dark:shadow-black/30"),
         // Two or more on screen: the one you type into is marked
         paneCount > 1 && isFocused && "ring-primary/60 ring-1 ring-inset"
       )}
@@ -527,6 +577,7 @@ export const Pane = memo(function Pane({
               hideAgentsBar={agentsShown}
               onOpenTerminal={() => setViewMode("terminal")}
               onDeck={setDeckShown}
+              onEmpty={chatEmpty}
             />
           )}
 
@@ -650,6 +701,7 @@ export const Pane = memo(function Pane({
                       hideAgentsBar={agentsShown}
                       onOpenTerminal={() => setViewMode("terminal")}
                       onDeck={setDeckShown}
+                      onEmpty={chatEmpty}
                     />
                   )}
 

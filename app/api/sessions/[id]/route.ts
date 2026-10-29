@@ -6,6 +6,8 @@ import { deleteWorktree, isAgentOSWorktree } from "@/lib/worktrees";
 import { releasePort } from "@/lib/ports";
 import { killWorker } from "@/lib/orchestration";
 import { runInBackground } from "@/lib/async-operations";
+import { clearQueue } from "@/lib/queue/store";
+import { pruneSessionTurns } from "@/lib/turns";
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -113,6 +115,18 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
   }
 }
 
+/** Its queued messages, turn rows and snapshot refs (in the background) */
+function dropSessionData(session: Session) {
+  try {
+    clearQueue(session.id);
+  } catch (error) {
+    console.error(`Failed to clear the queue of ${session.id}:`, error);
+  }
+  pruneSessionTurns(session).catch((error) =>
+    console.error(`Failed to prune the turns of ${session.id}:`, error)
+  );
+}
+
 // DELETE /api/sessions/[id] - Delete session
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
   try {
@@ -134,6 +148,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       }
       queries.detachForks(db).run(worker.id);
       queries.deleteSession(db).run(worker.id);
+      dropSessionData(worker);
     }
 
     // Release port if this session had one assigned
@@ -145,6 +160,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     queries.detachForks(db).run(id);
     queries.deleteSession(db).run(id);
     queries.deleteDraft(db).run(id);
+    dropSessionData(existing);
 
     // Clean up worktree in background (non-blocking)
     if (existing.worktree_path && isAgentOSWorktree(existing.worktree_path)) {

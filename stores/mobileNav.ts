@@ -35,6 +35,10 @@ export const mobileNavStore = proxy<{
   homeTab: "now" | "projects";
   /** The column's Live activity: the rail on the open Duo's right page, else a sheet */
   liveOpen: boolean;
+  /** The session in view is working (the closed column's Stop, M2) */
+  working: boolean;
+  /** A sheet over the session other than Live activity (N-Undo, M2) */
+  sheet: "undo" | null;
 }>({
   viewMode: "terminal",
   request: null,
@@ -49,6 +53,8 @@ export const mobileNavStore = proxy<{
   homeOpen: false,
   homeTab: "now",
   liveOpen: false,
+  working: false,
+  sheet: null,
 });
 
 export const mobileNavActions = {

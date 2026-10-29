@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { queries } from "@/lib/db/queries";
-import { FLAGS_PREFERENCE_KEY, setFlags, type Flags } from "@/lib/flags";
+import { FLAG_SESSIONS_PREFERENCE_KEY, FLAGS_PREFERENCE_KEY, setFlagSessions, setFlags, type FlagSessions, type Flags } from "@/lib/flags";
 import { requireUser } from "@/lib/user-proof";
 
 export async function GET(request: Request) {
@@ -38,6 +38,19 @@ export async function PUT(request: Request) {
       }
       try {
         return NextResponse.json({ success: true, value: setFlags((value ?? {}) as Partial<Flags>) });
+      } catch (error) {
+        return NextResponse.json({ error: (error as Error).message }, { status: 400 });
+      }
+    }
+
+    // Per-session overrides of the same flags: the user's call too
+    if (key === FLAG_SESSIONS_PREFERENCE_KEY) {
+      const proof = requireUser(request);
+      if (!proof.ok) {
+        return NextResponse.json({ error: "user_only", reason: proof.reason }, { status: 403 });
+      }
+      try {
+        return NextResponse.json({ success: true, value: setFlagSessions((value ?? {}) as FlagSessions) });
       } catch (error) {
         return NextResponse.json({ error: (error as Error).message }, { status: 400 });
       }
