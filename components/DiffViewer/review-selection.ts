@@ -9,6 +9,7 @@ import type { ReactNode } from "react";
 import type { DiffLine, ParsedDiff } from "@/lib/diff-parser";
 import type { LayoutMode } from "@/hooks/useLayoutMode";
 import type { LineRange, ReviewSide } from "@/lib/review-types";
+import { hunkLines } from "./diff-format";
 
 /** A gutter hit: the line and where it is */
 export interface LineHit {
@@ -24,13 +25,21 @@ export interface LineSelection extends LineRange {
   anchor: number;
 }
 
-/** A line's side and number: deletions are the old file's, the rest the new one's */
+/**
+ * A line's side and number: deletions are the old file's, the rest the new
+ * one's. A context line with no new number (SplitDiff's left column passes
+ * it so) counts as the old file's. Header lines have no number.
+ */
 export function sideOf(line: DiffLine): {
   side: ReviewSide;
   line: number | null;
 } {
-  void line;
-  throw new Error("M12 contract stub: sideOf");
+  if (line.type === "header") return { side: "new", line: null };
+  if (line.type === "deletion")
+    return { side: "old", line: line.oldLineNumber };
+  if (line.newLineNumber === null && line.oldLineNumber !== null)
+    return { side: "old", line: line.oldLineNumber };
+  return { side: "new", line: line.newLineNumber };
 }
 
 /**
@@ -41,9 +50,50 @@ export function nextSelection(
   prev: LineSelection | null,
   hit: LineHit
 ): LineSelection | null {
-  void prev;
-  void hit;
-  throw new Error("M12 contract stub: nextSelection");
+  const { side, line } = sideOf(hit.line);
+  if (line === null) return prev;
+  if (hit.extend && prev && prev.path === hit.path && prev.side === side)
+    return {
+      path: prev.path,
+      side,
+      startLine: Math.min(prev.anchor, line),
+      endLine: Math.max(prev.anchor, line),
+      anchor: prev.anchor,
+    };
+  return { path: hit.path, side, startLine: line, endLine: line, anchor: line };
+}
+
+/**
+ * A gutter tap as DiffReview reads it: a tap on the only selected line
+ * clears it; on touch, a second tap on the same file and side extends the
+ * single selected line to a range (no shift key there); otherwise as
+ * nextSelection
+ */
+export function tapSelection(
+  prev: LineSelection | null,
+  hit: LineHit,
+  touch: boolean
+): LineSelection | null {
+  const { side, line } = sideOf(hit.line);
+  const single =
+    !!prev &&
+    prev.path === hit.path &&
+    prev.side === side &&
+    prev.startLine === prev.endLine;
+  if (!hit.extend && single && line === prev!.startLine) return null;
+  if (!hit.extend && touch && single)
+    return nextSelection(prev, { ...hit, extend: true });
+  return nextSelection(prev, hit);
+}
+
+/** The range alone, without the anchor (what a comment stores) */
+export function rangeOf(sel: LineSelection): LineRange {
+  return {
+    path: sel.path,
+    side: sel.side,
+    startLine: sel.startLine,
+    endLine: sel.endLine,
+  };
 }
 
 /** Whether a rendered line is inside the selection */
@@ -52,17 +102,38 @@ export function isSelected(
   path: string,
   line: DiffLine
 ): boolean {
-  void sel;
-  void path;
-  void line;
-  throw new Error("M12 contract stub: isSelected");
+  if (!sel || sel.path !== path) return false;
+  const at = sideOf(line);
+  return (
+    at.line !== null &&
+    at.side === sel.side &&
+    at.line >= sel.startLine &&
+    at.line <= sel.endLine
+  );
 }
 
-/** The selected lines' text from the diff (the comment's quote) */
+/**
+ * The selected lines' text from the diff (the comment's quote), in diff
+ * order, without the +/- signs: on the new side the additions and context
+ * lines, on the old side the deletions and context lines
+ */
 export function quoteOf(diff: ParsedDiff, range: LineRange): string {
-  void diff;
-  void range;
-  throw new Error("M12 contract stub: quoteOf");
+  const out: string[] = [];
+  for (const hunk of diff.hunks) {
+    for (const line of hunkLines(hunk)) {
+      const n =
+        range.side === "old"
+          ? line.type === "addition"
+            ? null
+            : line.oldLineNumber
+          : line.type === "deletion"
+            ? null
+            : line.newLineNumber;
+      if (n !== null && n >= range.startLine && n <= range.endLine)
+        out.push(line.content);
+    }
+  }
+  return out.join("\n");
 }
 
 /** How many lines (the bar's "2 lines") */
