@@ -4,9 +4,13 @@ import { useSnapshot } from "valtio";
 import {
   WIDE,
   columnFor,
+  columnKindFor,
+  moreItems,
   type ColumnContext,
   type ColumnItem,
+  type ColumnOrder,
 } from "@/lib/column-spec";
+import { columnOrderStore } from "@/stores/columnOrder";
 import type { NativeColumnItem } from "@/lib/native-bridge";
 import { layoutStore, type LayoutMode } from "@/hooks/useLayoutMode";
 import { mobileNavStore } from "@/stores/mobileNav";
@@ -35,6 +39,7 @@ interface ColumnSources {
   sheet: ColumnContext["sheet"];
   changesOpen: boolean;
   native: boolean;
+  order: ColumnOrder;
 }
 
 function contextFrom(s: ColumnSources): ColumnContext {
@@ -52,6 +57,7 @@ function contextFrom(s: ColumnSources): ColumnContext {
     working: s.working,
     sheet: s.sheet,
     changesOpen: s.changesOpen,
+    order: s.order,
   };
 }
 
@@ -67,6 +73,7 @@ export function useColumn(
   const { detail: settingsDetail } = useSnapshot(settingsPageStore);
   const { mode } = useSnapshot(layoutStore);
   const surface = useSurface();
+  const { order } = useSnapshot(columnOrderStore);
   const ctx = contextFrom({
     homeOpen: nav.homeOpen,
     newOpen,
@@ -82,6 +89,7 @@ export function useColumn(
     sheet: nav.sheet,
     changesOpen: nav.changesOpen,
     native,
+    order: order as ColumnOrder,
   });
   return { surface, mode, items: columnFor(surface, mode, ctx) };
 }
@@ -101,6 +109,7 @@ export function nativeColumn(): {
   canGoBack: boolean;
   liveOpen: boolean;
   wide: boolean;
+  more: NativeColumnItem[];
 } {
   const surface = currentSurface();
   const mode = layoutStore.mode;
@@ -122,8 +131,10 @@ export function nativeColumn(): {
       sheet: mobileNavStore.sheet,
       changesOpen: mobileNavStore.changesOpen,
       native: true,
+      order: columnOrderStore.order,
     })
   );
+  const kind = columnKindFor(surface, mode);
   const column = PAGE_BARS.includes(mode)
     ? []
     : items.map(({ icon: _icon, ...rest }) => rest);
@@ -133,5 +144,10 @@ export function nativeColumn(): {
     canGoBack: items[0]?.id === "back",
     liveOpen: mobileNavStore.liveOpen,
     wide: WIDE.includes(mode),
+    more: kind
+      ? moreItems(kind, columnOrderStore.order, mobileNavStore.viewMode).map(
+          ({ icon: _icon, ...rest }) => rest
+        )
+      : [],
   };
 }

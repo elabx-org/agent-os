@@ -50,6 +50,73 @@ export interface ColumnContext {
   sheet?: "undo" | null;
   /** The open Duo's Changes page shows beside the conversation (Open-Changes) */
   changesOpen?: boolean;
+  /** The person's own order (Settings → Control column); none keeps the default */
+  order?: ColumnOrder;
+}
+
+/**
+ * The columns a person can arrange (Settings → Control column): a session's,
+ * two side by side, and Now's. Back stays first and More (Now: Settings)
+ * last; what's taken out is offered in More.
+ */
+export type ColumnKind = "session" | "beside" | "now";
+
+/** What can go between them; "view" is the other conversation view */
+export type ColumnSlot =
+  | "view"
+  | "git"
+  | "files"
+  | "live"
+  | "inbox"
+  | "new"
+  | "search"
+  | "beside"
+  | "swap"
+  | "projects";
+
+export type ColumnOrder = Partial<Record<ColumnKind, ColumnSlot[]>>;
+
+export const COLUMN_DEFAULTS: Record<ColumnKind, ColumnSlot[]> = {
+  session: ["view", "git", "files", "live"],
+  beside: ["beside", "swap", "live"],
+  now: ["new", "inbox", "projects", "search"],
+};
+
+/** Everything each column can hold, defaults first */
+export const COLUMN_CHOICES: Record<ColumnKind, ColumnSlot[]> = {
+  session: [
+    ...COLUMN_DEFAULTS.session,
+    "inbox",
+    "new",
+    "search",
+    "beside",
+    "projects",
+  ],
+  beside: [...COLUMN_DEFAULTS.beside, "git", "files", "inbox", "new", "search"],
+  now: [...COLUMN_DEFAULTS.now],
+};
+
+/** The saved order for a column, cleaned of anything it can't hold; null: the default */
+export function savedOrder(
+  kind: ColumnKind,
+  order: ColumnOrder | undefined
+): ColumnSlot[] | null {
+  const saved = order?.[kind];
+  if (!Array.isArray(saved)) return null;
+  const choices = COLUMN_CHOICES[kind];
+  return saved.filter(
+    (slot, i) => choices.includes(slot) && saved.indexOf(slot) === i
+  );
+}
+
+/** What the column leaves out, for More to offer */
+export function hiddenSlots(
+  kind: ColumnKind,
+  order: ColumnOrder | undefined
+): ColumnSlot[] {
+  const saved = savedOrder(kind, order);
+  if (!saved) return [];
+  return COLUMN_CHOICES[kind].filter((slot) => !saved.includes(slot));
 }
 
 type Base = Pick<ColumnItem, "id" | "symbol" | "icon" | "label">;
@@ -290,6 +357,79 @@ function viewColumn(ctx: ColumnContext): ColumnItem[] | null {
   return null;
 }
 
+/** One slot of an arranged column, as that column draws it */
+function slotItem(
+  slot: ColumnSlot,
+  kind: ColumnKind,
+  ctx: ColumnContext
+): ColumnItem {
+  switch (slot) {
+    case "view":
+      return otherView(ctx);
+    case "git":
+      return changes(ctx);
+    case "files":
+      return item(BASE.files, { selected: ctx.viewMode === "files" });
+    case "live":
+      return item(BASE.live, { selected: ctx.liveOpen });
+    case "inbox":
+      return kind === "now"
+        ? inbox(ctx, { selected: !ctx.focus && ctx.needsYou > 0 })
+        : inbox(ctx);
+    case "new":
+      return item(BASE.new, { prominent: true });
+    case "search":
+      return item(BASE.search);
+    case "beside":
+      return kind === "beside"
+        ? item(BASE.beside, { label: "Side by side", selected: true })
+        : item(BASE.beside);
+    case "swap":
+      return item(BASE.swap);
+    case "projects":
+      return item(BASE.projects);
+  }
+}
+
+/** What the column leaves out, as items for More (most menus skip ones they already list) */
+export function moreItems(
+  kind: ColumnKind,
+  order: ColumnOrder | undefined,
+  viewMode: ColumnContext["viewMode"] = null
+): ColumnItem[] {
+  const ctx: ColumnContext = {
+    viewMode,
+    needsYou: 0,
+    changes: 0,
+    focus: false,
+    keyboardUp: false,
+    paneCount: 1,
+    canGoBack: false,
+  };
+  return hiddenSlots(kind, order).map((slot) => {
+    const {
+      sep: _sep,
+      selected: _selected,
+      prominent: _prominent,
+      ...rest
+    } = slotItem(slot, kind, ctx);
+    return rest;
+  });
+}
+
+/** The arranged slots between the pinned ends, the first one set apart from back */
+function arranged(
+  kind: ColumnKind,
+  slots: ColumnSlot[],
+  ctx: ColumnContext,
+  afterBack: boolean
+): ColumnItem[] {
+  return slots.map((slot, i) => {
+    const it = slotItem(slot, kind, ctx);
+    return i === 0 && afterBack ? { ...it, sep: true } : it;
+  });
+}
+
 /** Closed-Chat / Open-Changes: back | the other view, Changes, Files, Live | More */
 function sessionColumn(
   ctx: ColumnContext,
@@ -299,6 +439,20 @@ function sessionColumn(
   if (closed) {
     const own = sheetColumn(ctx) ?? viewColumn(ctx);
     if (own) return own;
+  }
+  const own = savedOrder("session", ctx.order);
+  if (own) {
+    // The keyboard up keeps the first two; while it works Stop takes More's place
+    const slots = compact ? own.slice(0, 2) : own;
+    const last =
+      closed && ctx.working && !compact
+        ? item(BASE.stop, { danger: true, ...sep })
+        : item(BASE.more, compact ? {} : sep);
+    return [
+      item(BASE.back, compact ? { label: "Back" } : {}),
+      ...arranged("session", slots, ctx, true),
+      last,
+    ];
   }
   if (compact)
     // Closed-Terminal, keyboard up: what fits above it
@@ -329,6 +483,23 @@ function sessionColumn(
 
 /** Fold-Chat / Fold-Terminal: the view showing, Changes, Files, Live | Needs you, More */
 function sessionBar(ctx: ColumnContext): ColumnItem[] {
+  const own = savedOrder("session", ctx.order);
+  if (own) {
+    // The bar has no back: the view showing stands where "view" was put
+    const shown = own.map((slot) =>
+      slot === "view"
+        ? ctx.viewMode === "terminal"
+          ? item(BASE.terminal, { selected: true })
+          : item(BASE.chat, { selected: ctx.viewMode === "chat" })
+        : slotItem(slot, "session", ctx)
+    );
+    const needs = !ctx.focus && ctx.needsYou > 0 && !own.includes("inbox");
+    return [
+      ...shown,
+      ...(needs ? [inbox(ctx, sep)] : []),
+      item(BASE.more, needs ? {} : sep),
+    ];
+  }
   const conversation =
     ctx.viewMode === "terminal"
       ? item(BASE.terminal, { selected: true })
@@ -359,6 +530,9 @@ function tabs(surface: Surface, ctx: ColumnContext): ColumnItem[] {
 
 /** Main: New / Needs you / Projects / Find | Settings */
 function nowColumn(ctx: ColumnContext): ColumnItem[] {
+  const own = savedOrder("now", ctx.order);
+  if (own)
+    return [...arranged("now", own, ctx, false), item(BASE.settings, sep)];
   return [
     item(BASE.new, { prominent: true }),
     // No Now item here: what needs you leads the page, so it's the one on
@@ -381,6 +555,17 @@ function nowWithSession(ctx: ColumnContext): ColumnItem[] {
     item(BASE.search, sep),
     item(BASE.more),
   ];
+}
+
+/** The arranged column a surface shows, if any (More offers what it leaves out) */
+export function columnKindFor(
+  surface: Surface,
+  mode: LayoutMode
+): ColumnKind | null {
+  if (surface === "session") return "session";
+  if (surface === "beside") return WIDE.includes(mode) ? "beside" : "session";
+  if (surface === "now") return "now";
+  return null;
 }
 
 /** Layouts with room for two pages: More offers Open beside */
@@ -415,6 +600,12 @@ export function columnFor(
         mode === "duo-closed"
       );
     case "beside":
+      if (wide && savedOrder("beside", ctx.order))
+        return [
+          item(BASE.back),
+          ...arranged("beside", savedOrder("beside", ctx.order)!, ctx, true),
+          item(BASE.more, sep),
+        ];
       return wide
         ? [
             item(BASE.back),
@@ -470,4 +661,20 @@ export function columnFor(
     case "search":
       return [item(BASE.back)];
   }
+}
+
+/** A slot as Settings lists it: its web icon and name */
+export function slotLabel(slot: ColumnSlot): { icon: string; label: string } {
+  if (slot === "view")
+    return { icon: "MessageSquare", label: "Terminal / Chat" };
+  const base = slotItem(slot, "session", {
+    viewMode: null,
+    needsYou: 0,
+    changes: 0,
+    focus: false,
+    keyboardUp: false,
+    paneCount: 1,
+    canGoBack: false,
+  });
+  return { icon: base.icon, label: base.label };
 }
