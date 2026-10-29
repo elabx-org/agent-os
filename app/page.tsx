@@ -483,12 +483,17 @@ function HomeContent() {
   useSurfaceSource({
     paneCount: getAllPaneIds(paneState.layout).length,
     searchOpen: showQuickSwitcher,
+    behind: !!focusedActiveTab?.sessionId,
   });
   useEffect(loadFocus, []);
   const lastBesideRef = useRef(0);
   useEffect(
     () =>
       registerNavHandlers({
+        resume: () => {
+          closePage();
+          setSidebarOpen(false);
+        },
         // On a phone a page covers the home: leave it for the home
         openSessions: () =>
           isMobile && closePage()

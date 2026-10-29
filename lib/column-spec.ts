@@ -50,6 +50,8 @@ export interface ColumnContext {
   sheet?: "undo" | null;
   /** The open Duo's Changes page shows beside the conversation (Open-Changes) */
   changesOpen?: boolean;
+  /** A session waits behind Now (closed Duo, tabletop): Now leads with back to it */
+  behind?: boolean;
   /** The person's own order (Settings → Control column); none keeps the default */
   order?: ColumnOrder;
 }
@@ -196,6 +198,12 @@ const BASE = {
     symbol: "arrow.left.arrow.right",
     icon: "ArrowRightLeft",
     label: "Swap sides",
+  },
+  resume: {
+    id: "resume",
+    symbol: "chevron.left",
+    icon: "ChevronLeft",
+    label: "Back to session",
   },
   more: { id: "more", symbol: "ellipsis", icon: "Ellipsis", label: "More" },
   stop: { id: "stop", symbol: "stop.fill", icon: "Square", label: "Interrupt" },
@@ -425,7 +433,7 @@ function arranged(
 ): ColumnItem[] {
   return slots.map((slot, i) => {
     const it = slotItem(slot, kind, ctx);
-    return i === 0 && afterBack ? { ...it, sep: true } : it;
+    return i === 0 && afterBack ? { ...it, sep: true as const } : it;
   });
 }
 
@@ -527,28 +535,30 @@ function tabs(surface: Surface, ctx: ColumnContext): ColumnItem[] {
   ];
 }
 
-/** Main: New / Needs you / Projects / Find | Settings */
-/** The iOS app's More after Settings: its Live activity, Focus, Reload and Server */
-function appMore(ctx: ColumnContext): ColumnItem[] {
-  return ctx.native ? [item(BASE.more)] : [];
-}
-
+/**
+ * Main: New / Needs you / Projects / Find | Settings. In the iOS app the end
+ * is More, whose menu holds Settings with Focus, Reload and Server; with a
+ * session behind Now, back to it leads
+ */
 function nowColumn(ctx: ColumnContext): ColumnItem[] {
   const own = savedOrder("now", ctx.order);
-  if (own)
-    return [
-      ...arranged("now", own, ctx, false),
-      item(BASE.settings, sep),
-      ...appMore(ctx),
-    ];
+  const slots = own
+    ? arranged("now", own, ctx, false)
+    : [
+        item(BASE.new, { prominent: true }),
+        // No Now item here: what needs you leads the page, so it's the one on
+        inbox(ctx, { selected: !ctx.focus && ctx.needsYou > 0 }),
+        item(BASE.projects),
+        item(BASE.search),
+      ];
+  const back = ctx.behind ? [item(BASE.resume)] : [];
+  const end = ctx.native ? item(BASE.more, sep) : item(BASE.settings, sep);
   return [
-    item(BASE.new, { prominent: true }),
-    // No Now item here: what needs you leads the page, so it's the one on
-    inbox(ctx, { selected: !ctx.focus && ctx.needsYou > 0 }),
-    item(BASE.projects),
-    item(BASE.search),
-    item(BASE.settings, sep),
-    ...appMore(ctx),
+    ...back,
+    ...slots.map((it, i) =>
+      i === 0 && back.length ? { ...it, sep: true as const } : it
+    ),
+    end,
   ];
 }
 
@@ -601,7 +611,9 @@ export function columnFor(
 
   switch (surface) {
     case "now":
-      return wide && ctx.viewMode ? nowWithSession(ctx) : nowColumn(ctx);
+      if (wide && ctx.viewMode) return nowWithSession(ctx);
+      // Wide, Now is a page beside the session: nothing to go back to
+      return nowColumn(wide ? { ...ctx, behind: false } : ctx);
     case "session":
       return sessionColumn(
         ctx,
