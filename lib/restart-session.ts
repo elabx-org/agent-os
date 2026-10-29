@@ -2,6 +2,7 @@
 
 import { toast } from "sonner";
 import { confirmAction } from "@/components/ui/confirm";
+import { fetchAsUser, refusalText } from "@/lib/client/user-fetch";
 import type { Session } from "@/lib/db";
 
 /**
@@ -22,13 +23,13 @@ export async function restartSession(
   });
   if (!ok) return;
   try {
-    const res = await fetch(`/api/sessions/${session.id}/restart`, {
+    const res = await fetchAsUser(`/api/sessions/${session.id}/restart`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ whenIdle }),
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "Restart failed");
+    if (!res.ok) throw new Error(refusalText(data));
     window.dispatchEvent(
       new CustomEvent("agentos-session-restarted", {
         detail: { session: data.session },

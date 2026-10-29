@@ -381,7 +381,7 @@ server.registerTool(
   "send_message",
   {
     description:
-      "Type a message into a running session and press Enter, as if you sent it from Agent-OS. Refused while the session is waiting for permission: only the user can answer that.",
+      "Type a message into a running session and press Enter, as if you sent it from Agent-OS. Refused while the session is waiting for permission (only the user can answer that), and for a session with full access unless yours has it too.",
     inputSchema: {
       session: z.string().describe("Session id, id prefix or name"),
       text: z.string().describe("The message"),

@@ -5,7 +5,7 @@ import { Loader2, SquareTerminal, Users } from "lucide-react";
 import { PermissionCard } from "@/components/Composer/PermissionCard";
 import { KindBadge } from "@/components/rows/AgentRow";
 import { useAnswerPrompt, useSessionPrompt } from "@/data/prompts/queries";
-import { useReplyContext } from "@/hooks/useReplyContext";
+import { useReplyContextState } from "@/hooks/useReplyContext";
 import {
   isAnswerableQuestion,
   KIND_STYLE,
@@ -61,12 +61,22 @@ export function InboxItem({
   /** "div" when it isn't inside a list */
   as?: "li" | "div";
 }) {
-  const { data: prompt, isLoading } = useSessionPrompt(session.id);
+  const { data: prompt, isLoading: promptLoading } = useSessionPrompt(
+    session.id
+  );
   const { answer, answering, error } = useAnswerPrompt(session.id);
-  // Classified as the server's guard does: unclear means permission
-  const context = useReplyContext(session.id, !!prompt);
-  const question = !!prompt && isAnswerableQuestion(context, prompt);
-  const permission = prompt && !question ? { tool: null, prompt } : null;
+  // Classified as the server's guard does: unclear means permission. Until
+  // the context is in, it's neither card (not a permission card that turns
+  // into a question)
+  const { context, loading: contextLoading } = useReplyContextState(
+    session.id,
+    !!prompt
+  );
+  const isLoading = promptLoading || (!!prompt && contextLoading);
+  const question =
+    !!prompt && !contextLoading && isAnswerableQuestion(context, prompt);
+  const permission =
+    prompt && !contextLoading && !question ? { tool: null, prompt } : null;
 
   if (questionsOnly && !prompt) return null;
 

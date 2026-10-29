@@ -50,3 +50,11 @@ export async function fetchAsUser(
   // Still refused: the caller shows "Reload to confirm it's you"
   return fetch(input, init);
 }
+
+/** A route's error in words; user_only survived fetchAsUser's retry */
+export function refusalText(body: { error?: string; reason?: string }): string {
+  if (body.error !== "user_only") return body.error ?? "Something went wrong";
+  return body.reason === "no_proof"
+    ? "Reload to confirm it's you"
+    : "Only you can do this, in Agent-OS";
+}

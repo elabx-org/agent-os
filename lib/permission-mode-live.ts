@@ -8,7 +8,7 @@ import { execFile } from "child_process";
 import { promisify } from "util";
 import type { Session } from "@/lib/db";
 import { readClaudeScreen } from "@/lib/claude-screen";
-import { readScreenPrompt } from "@/lib/agent-origin";
+import { agentMayAnswer, readScreenPrompt } from "@/lib/agent-origin";
 import { tmuxNameOf } from "@/lib/session-launch";
 import { cycleToMode, normalizeMode, type Mode } from "@/lib/permission-mode";
 
@@ -78,14 +78,26 @@ export async function applyModeLive(
 }
 
 /**
- * Answers the permission request on screen "Yes" (its first allow option),
- * as the user's tap on the card would. False when there was none.
+ * Answers the permission request on screen "Yes", as the user's tap on the
+ * card would: only the option the card showed (same index and label, an
+ * allow), and only on a permission request, so a confirm that comes after
+ * the prompt changed can't answer a different one. False when it didn't.
  */
-export async function allowPendingPrompt(session: Session): Promise<boolean> {
+export async function allowPendingPrompt(
+  session: Session,
+  shown: { index: number; label: string }
+): Promise<boolean> {
   const target = tmuxNameOf(session);
   const prompt = await readScreenPrompt(target).catch(() => null);
-  const option = prompt?.options.find((o) => o.kind === "allow");
-  if (!prompt || !option) return false;
+  const option = prompt?.options[shown.index];
+  if (
+    !prompt ||
+    option?.kind !== "allow" ||
+    option.label !== shown.label ||
+    (await agentMayAnswer(session, prompt))
+  ) {
+    return false;
+  }
   const delta = option.index - prompt.selected;
   const moves = Array(Math.abs(delta)).fill(delta > 0 ? "Down" : "Up");
   if (moves.length) {

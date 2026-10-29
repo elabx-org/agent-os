@@ -51,11 +51,12 @@ function addSession(
   db: Database.Database,
   id: string,
   autoApprove: number,
-  mode: string | null = null
+  mode: string | null = null,
+  agentType = "claude"
 ) {
   db.prepare(
-    `INSERT INTO sessions (id, name, auto_approve) VALUES (?, ?, ?)`
-  ).run(id, id, autoApprove);
+    `INSERT INTO sessions (id, name, auto_approve, agent_type) VALUES (?, ?, ?, ?)`
+  ).run(id, id, autoApprove, agentType);
   if (mode) {
     db.prepare(`UPDATE sessions SET permission_mode = ? WHERE id = ?`).run(
       mode,
@@ -116,9 +117,14 @@ describe("migrations 22 and 23", () => {
     unapply(db);
     addSession(db, "yolo", 1);
     addSession(db, "plain", 0);
+    addSession(db, "codex", 1, null, "codex");
+    addSession(db, "gemini", 1, null, "gemini");
     quietly(() => runMigrations(db));
     assert.equal(modeOf(db, "yolo"), "bypassPermissions");
     assert.equal(modeOf(db, "plain"), null);
+    // Codex's auto-approve is the sandboxed --full-auto: it stays that
+    assert.equal(modeOf(db, "codex"), "auto");
+    assert.equal(modeOf(db, "gemini"), "bypassPermissions");
     assert.ok(applied(db).includes(22));
     assert.ok(applied(db).includes(23));
   });

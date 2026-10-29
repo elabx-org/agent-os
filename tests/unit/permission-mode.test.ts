@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { Session } from "@/lib/db";
 import {
+  MODES,
   capForAgent,
   cycleToMode,
   effectiveMode,
@@ -32,6 +33,17 @@ test("effectiveMode: stored, else auto_approve, else manual", () => {
   assert.equal(
     effectiveMode(session({ permission_mode: null, auto_approve: true })),
     "bypassPermissions"
+  );
+  // Codex's auto-approve flag is the sandboxed --full-auto
+  assert.equal(
+    effectiveMode(
+      session({
+        agent_type: "codex",
+        permission_mode: null,
+        auto_approve: true,
+      })
+    ),
+    "auto"
   );
   // SQLite hands back 0/1
   assert.equal(
@@ -96,6 +108,17 @@ test("flagsFor table", () => {
   assert.deepEqual(flagsFor("claude", null), []);
 });
 
+test("flagsFor never offers bypass through the Shift+Tab cycle", () => {
+  for (const agent of ["claude", "codex", "gemini"] as const) {
+    for (const mode of MODES) {
+      assert.ok(
+        !flagsFor(agent, mode).join(" ").includes("allow-dangerously"),
+        `${agent} ${mode}`
+      );
+    }
+  }
+});
+
 test("permissionFlags: NULL mode keeps the old auto-approve behaviour", () => {
   assert.deepEqual(permissionFlags("claude", {}), []);
   assert.deepEqual(permissionFlags("claude", { autoApprove: true }), [
@@ -158,6 +181,11 @@ test("buildFlags: backfilled full access launches as before", () => {
   assert.equal(
     codexProvider.buildFlags({ permissionMode: "manual" }).join(" "),
     "-a untrusted"
+  );
+  // Codex's backfill is "auto": still sandboxed, as before
+  assert.deepEqual(
+    codexProvider.buildFlags({ autoApprove: true, permissionMode: "auto" }),
+    codexProvider.buildFlags({ autoApprove: true })
   );
 });
 

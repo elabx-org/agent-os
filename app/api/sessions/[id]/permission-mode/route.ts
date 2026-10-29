@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { queries, getDb, type Session } from "@/lib/db";
-import { isAgentOrigin } from "@/lib/agent-origin";
-import { AGENT_ACTOR_HEADER, recordAgentAction } from "@/lib/agent-actions";
-import { requireUser } from "@/lib/user-proof";
+import { forgetRetried, recordRefusal } from "@/lib/agent-actions";
+import {
+  announceFullAccess,
+  recordAllowed,
+  requester,
+  userOnly,
+} from "@/lib/permission-guard";
 import { isRunning } from "@/lib/session-launch";
 import {
   effectiveMode,
@@ -12,15 +16,12 @@ import {
   type Mode,
   type PermissionModeState,
   type SetPermissionModeResult,
-  type UserOnlyError,
 } from "@/lib/permission-mode";
 import {
   allowPendingPrompt,
   applyModeLive,
   readLiveMode,
 } from "@/lib/permission-mode-live";
-import { recordNotification, setDelivered } from "@/lib/push/history";
-import { sendPush } from "@/lib/push/send";
 
 function getSession(id: string): Session | null {
   return (queries.getSession(getDb()).get(id) as Session | undefined) ?? null;
@@ -33,41 +34,6 @@ function canApplyLive(session: Session, running: boolean): boolean {
     session.agent_type === "claude" &&
     parseLaunchCaps(session.launch_caps).allowBypassCycle
   );
-}
-
-/** Audit, never in the way of the answer */
-function audit(
-  request: NextRequest,
-  sessionId: string,
-  allowed: boolean,
-  detail: string
-) {
-  try {
-    recordAgentAction({
-      actorTmux: request.headers.get(AGENT_ACTOR_HEADER),
-      targetSessionId: sessionId,
-      action: "permission_mode",
-      allowed,
-      detail,
-    });
-  } catch (error) {
-    console.error("Error recording agent action:", error);
-  }
-}
-
-/** A push and a history entry, so a switch nobody meant is seen */
-function announceFullAccess(session: Session) {
-  const msg = {
-    kind: "finished" as const,
-    title: "Full access switched on",
-    body: `${session.name} won't ask before acting`,
-    sessionId: session.id,
-  };
-  const entry = recordNotification(msg);
-  if (process.env.AGENTOS_DISABLE_PUSH === "1") return;
-  sendPush(msg)
-    .then((report) => setDelivered(entry.id, report))
-    .catch(() => {});
 }
 
 // GET /api/sessions/[id]/permission-mode - PermissionModeState
@@ -91,11 +57,16 @@ export async function GET(
   return NextResponse.json(state);
 }
 
-// POST /api/sessions/[id]/permission-mode {mode, allowPending?} -
+// POST /api/sessions/[id]/permission-mode {mode, allowPending?, prompt?} -
 // SetPermissionModeResult. Full access, answering the pending request and
-// any step up from the current mode are the user's (requireUser); agents
-// may only lower it. A running Claude session switches at once where its
-// Shift+Tab cycle allows, else from its next launch (permission_pending).
+// any step up from the current mode are the user's (requireUser). An agent
+// that says so may lower the stored mode, which applies at its next launch:
+// no keys are pressed in a session for an agent. A request with neither
+// proof nor agent markers is refused (it may be the user's stale tab, which
+// re-proves and retries). With proof, a running Claude session switches at
+// once where its Shift+Tab cycle allows, else from its next launch
+// (permission_pending). allowPending answers only the request the card
+// showed (`prompt`: its allow option's index and label).
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -104,6 +75,15 @@ export async function POST(
   const body = await request.json().catch(() => ({}));
   const mode = normalizeMode(body.mode);
   const allowPending = body.allowPending === true;
+  const shown =
+    body.prompt &&
+    typeof body.prompt.index === "number" &&
+    typeof body.prompt.label === "string"
+      ? {
+          index: body.prompt.index as number,
+          label: body.prompt.label as string,
+        }
+      : null;
   if (!mode) {
     return NextResponse.json({ error: "Unknown mode" }, { status: 400 });
   }
@@ -113,29 +93,36 @@ export async function POST(
   }
 
   const current = effectiveMode(session);
-  const detail = allowPending ? `${mode} + allow` : mode;
-  const fromAgent =
-    isAgentOrigin(request) || request.headers.has(AGENT_ACTOR_HEADER);
-  if (
-    mode === "bypassPermissions" ||
-    allowPending ||
-    isEscalation(mode, current)
-  ) {
-    const proof = requireUser(request);
-    if (!proof.ok) {
-      // Without agent markers it's the user's tab with a stale cookie, which
-      // retries through the iframe; not worth a "tried and was blocked" line
-      if (fromAgent || proof.reason === "cross_site") {
-        audit(request, id, false, detail);
-      }
-      const error: UserOnlyError = { error: "user_only", reason: proof.reason };
-      return NextResponse.json(error, { status: 403 });
-    }
-  } else if (fromAgent) {
-    audit(request, id, true, detail);
+  const audit = {
+    targetSessionId: id,
+    action: "permission_mode" as const,
+    detail: allowPending ? `${mode} + allow` : mode,
+  };
+  const who = requester(request);
+  const userOnlyChange =
+    mode === "bypassPermissions" || allowPending || isEscalation(mode, current);
+  if (who.by !== "user" && (userOnlyChange || who.by === null)) {
+    recordRefusal(request, audit);
+    return userOnly(who.reason);
   }
+  if (who.by === "agent") {
+    // Lowering, stored only: never keys in another session for an agent
+    recordAllowed(request, audit);
+    queries
+      .updateSessionPermissionMode(getDb())
+      .run(mode, null, mode === "bypassPermissions" ? 1 : 0, id);
+    const running = await isRunning(session);
+    const result: SetPermissionModeResult = {
+      mode,
+      pending: null,
+      appliedNow: false,
+      needsRestart: running,
+    };
+    return NextResponse.json(result);
+  }
+  forgetRetried(id, "permission_mode");
 
-  if (allowPending && (await allowPendingPrompt(session))) {
+  if (allowPending && shown && (await allowPendingPrompt(session, shown))) {
     // The dialog goes before the footer is back
     await new Promise((r) => setTimeout(r, 300));
   }

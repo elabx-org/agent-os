@@ -18,6 +18,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useClaudeState } from "@/hooks/useClaudeState";
 import { useSharedPoll } from "@/hooks/useSharedPoll";
+import { fetchAsUser } from "@/lib/client/user-fetch";
 import { readClaudeScreen, type ClaudeScreen } from "@/lib/claude-screen";
 import type { ClaudeState, ClaudeTool } from "@/lib/claude-state";
 import type { Session } from "@/lib/db";
@@ -112,7 +113,7 @@ export function useClaudeLive({
     (key: ClaudeKey, times = 1) => {
       if (sendKey) return sendKey(key, times);
       if (!sessionId) return;
-      fetch(`/api/sessions/${sessionId}/keys`, {
+      fetchAsUser(`/api/sessions/${sessionId}/keys`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ key, times }),

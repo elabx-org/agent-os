@@ -47,6 +47,8 @@ export interface SetPermissionModeRequest {
   mode: Mode;
   /** Also answer the pending permission request "Yes" (user only) */
   allowPending?: boolean;
+  /** The allow option the card showed; allowPending answers only that */
+  prompt?: { index: number; label: string };
 }
 
 /** POST /api/sessions/[id]/permission-mode response */
@@ -72,12 +74,15 @@ export function normalizeMode(value: unknown): Mode | null {
   return MODES.includes(value as Mode) ? (value as Mode) : null;
 }
 
-/** The stored mode, else derived from auto_approve, else "manual" */
+/**
+ * The stored mode, else what auto_approve launches with (Codex's flag is
+ * the sandboxed --full-auto, so "auto"), else "manual"
+ */
 export function effectiveMode(session: Session): Mode {
-  return (
-    normalizeMode(session.permission_mode) ??
-    (session.auto_approve ? "bypassPermissions" : "manual")
-  );
+  const stored = normalizeMode(session.permission_mode);
+  if (stored) return stored;
+  if (!session.auto_approve) return "manual";
+  return session.agent_type === "codex" ? "auto" : "bypassPermissions";
 }
 
 /** Whether `mode` lets the agent do more than `than` */

@@ -32,13 +32,16 @@ export function useSessionPrompt(
   return query;
 }
 
-/** Picks an option of the session's prompt, then rereads the prompt */
+/**
+ * Picks an option of the session's prompt, then rereads the prompt;
+ * answer() resolves to whether it was taken
+ */
 export function useAnswerPrompt(sessionId: string) {
   const queryClient = useQueryClient();
   const [answering, setAnswering] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const answer = async (option: PromptOption) => {
+  const answer = async (option: PromptOption): Promise<boolean> => {
     setAnswering(option.index);
     setError(null);
     try {
@@ -55,8 +58,10 @@ export function useAnswerPrompt(sessionId: string) {
             : (body.error ?? "Couldn't answer")
         );
       }
+      return res.ok;
     } catch {
       setError("Couldn't reach the server");
+      return false;
     } finally {
       setAnswering(null);
       queryClient.invalidateQueries({

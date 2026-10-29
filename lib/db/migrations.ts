@@ -342,8 +342,10 @@ const migrations: Migration[] = [
       addColumnIfMissing(db, "sessions", "permission_mode", "TEXT");
       addColumnIfMissing(db, "sessions", "permission_pending", "TEXT");
       addColumnIfMissing(db, "sessions", "launch_caps", "TEXT");
+      // Codex's auto-approve flag is --full-auto (sandboxed), i.e. "auto";
+      // every other agent's is its full access flag
       db.exec(
-        `UPDATE sessions SET permission_mode = 'bypassPermissions' WHERE auto_approve = 1 AND permission_mode IS NULL`
+        `UPDATE sessions SET permission_mode = CASE WHEN agent_type = 'codex' THEN 'auto' ELSE 'bypassPermissions' END WHERE auto_approve = 1 AND permission_mode IS NULL`
       );
     }),
   },

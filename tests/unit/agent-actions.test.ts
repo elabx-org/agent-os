@@ -5,9 +5,13 @@ import { createSchema } from "../../lib/db/schema";
 import { runMigrations } from "../../lib/db/migrations";
 import {
   agentActor,
+  agentActorSessionId,
   AGENT_ACTOR_HEADER,
+  forgetRetried,
+  hasAgentMarkers,
   listAgentActions,
   recordAgentAction,
+  recordRefusal,
 } from "../../lib/agent-actions";
 
 function freshDb() {
@@ -184,4 +188,48 @@ test("record: never throws (the audit must not fail the request)", () => {
       db
     )
   );
+});
+
+const req = (headers: Record<string, string> = {}) =>
+  new Request("http://localhost/", { headers });
+
+test("hasAgentMarkers: either header", () => {
+  assert.equal(hasAgentMarkers(req()), false);
+  assert.equal(hasAgentMarkers(req({ "x-agentos-origin": "Agent" })), true);
+  assert.equal(
+    hasAgentMarkers(req({ [AGENT_ACTOR_HEADER]: "claude-x" })),
+    true
+  );
+});
+
+test("agentActorSessionId: the actor's session, if it's one of ours", () => {
+  const db = freshDb();
+  const actor = (tmux: string) =>
+    agentActorSessionId(req({ [AGENT_ACTOR_HEADER]: tmux }), db);
+  assert.equal(actor("claude-conductor"), "conductor");
+  assert.equal(actor("codex-worker"), "worker");
+  assert.equal(actor("claude-nobody"), null);
+  assert.equal(agentActorSessionId(req(), db), null);
+});
+
+test("forgetRetried: drops the user's own refused first try, not an agent's", () => {
+  const db = freshDb();
+  const row = {
+    targetSessionId: "target",
+    action: "prompt_answer" as const,
+    detail: "Yes",
+  };
+  // No markers: the user's stale tab, or an agent that left them off
+  recordRefusal(req(), row, db);
+  recordRefusal(req({ [AGENT_ACTOR_HEADER]: "claude-conductor" }), row, db);
+  // Another action and an old one stay
+  recordRefusal(req(), { ...row, action: "keys" }, db);
+  recordAgentAction({ ...row, allowed: false, at: Date.now() - 60_000 }, db);
+  forgetRetried("target", "prompt_answer", db);
+  const left = listAgentActions("target", 0, db);
+  assert.deepEqual(left.map((a) => [a.action, a.actorSessionId]).sort(), [
+    ["keys", null],
+    ["prompt_answer", null],
+    ["prompt_answer", "conductor"],
+  ]);
 });

@@ -195,3 +195,42 @@ test("issueUserProof: keeps a Set-Cookie already on the response", () => {
   assert.equal(cookies[0], "a=1");
   assert.ok(cookies[1].startsWith(`${USER_PROOF_COOKIE}=`));
 });
+
+// Browsers send no Sec-Fetch-* to a plain http origin (a LAN address)
+test("plain http: the Origin match stands in for Sec-Fetch-Site", () => {
+  const cookie = `${USER_PROOF_COOKIE}=${userSecret()}`;
+  assert.deepEqual(
+    requireUser(post({ host: HOST, origin: `http://${HOST}`, cookie })),
+    { ok: true }
+  );
+  assert.deepEqual(
+    requireUser(post({ host: HOST, origin: "http://evil.test", cookie })),
+    { ok: false, reason: "cross_site" }
+  );
+  // Behind https every browser sends it, so its absence fails
+  assert.deepEqual(
+    requireUser(
+      post({
+        host: HOST,
+        origin: `http://${HOST}`,
+        cookie,
+        "x-forwarded-proto": "https",
+      })
+    ),
+    { ok: false, reason: "cross_site" }
+  );
+});
+
+test("plain http: issueUserProof only on a navigation (upgrade request, wants HTML)", () => {
+  const plain = (headers: Record<string, string>) =>
+    ({
+      method: "GET",
+      headers: { host: HOST, ...headers },
+      socket: {},
+    }) as never;
+  const nav = { "upgrade-insecure-requests": "1", accept: "text/html,*/*" };
+  assert.equal(issued(plain(nav)).length, 1);
+  assert.deepEqual(issued(plain({ accept: "text/html" })), []);
+  assert.deepEqual(issued(plain({ ...nav, "x-agentos-origin": "agent" })), []);
+  assert.deepEqual(issued(plain({ ...nav, "x-forwarded-proto": "https" })), []);
+});

@@ -99,8 +99,8 @@ export function PermissionCard({
   const canSwitch = !note && mode.state?.mode !== "bypassPermissions";
 
   const choose = async (option: PromptOption) => {
+    if (!(await answer(option))) return;
     if (option.kind === "allow" || option.kind === "always") haptic("success");
-    await answer(option);
     onAnswered?.();
   };
 
@@ -113,10 +113,12 @@ export function PermissionCard({
       destructive: true,
     });
     if (!ok) return;
+    const allow = prompt?.options.find((o) => o.kind === "allow");
     try {
       const result = await mode.setMode({
         mode: "bypassPermissions",
         allowPending: true,
+        prompt: allow && { index: allow.index, label: allow.label },
       });
       const next = fullAccessNote(result, claude);
       setSwitched(next);

@@ -5,11 +5,17 @@ import { queries, getDb, type Session } from "@/lib/db";
 import type { PermissionPrompt } from "@/lib/permission-prompt";
 import {
   agentMayAnswer,
-  isAgentOrigin,
+  PERMISSION_RELOAD,
   PERMISSION_USER_ONLY,
   readScreenPrompt as readPrompt,
 } from "@/lib/agent-origin";
-import { agentActor, recordAgentAction } from "@/lib/agent-actions";
+import {
+  agentActor,
+  forgetRetried,
+  hasAgentMarkers,
+  recordAgentAction,
+  recordRefusal,
+} from "@/lib/agent-actions";
 import { requireUser } from "@/lib/user-proof";
 
 const execFileAsync = promisify(execFile);
@@ -45,8 +51,8 @@ export async function GET(
 // The label must still match, so a stale tap can't answer a different prompt.
 // Without proof that it's the user (lib/user-proof.ts), including every
 // request from an agent (x-agentos-origin: agent), only a question can be
-// answered: permission requests are the user's. Agents' answers and refused
-// attempts go to agent_actions, for the permission card.
+// answered: permission requests are the user's. Agents' answers and every
+// refused attempt go to agent_actions, for the permission card.
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -76,28 +82,40 @@ export async function POST(
     );
   }
 
-  const fromAgent = isAgentOrigin(request);
   const proof = requireUser(request);
   if (!proof.ok) {
     const audit = {
-      actorTmux: agentActor(request),
       targetSessionId: session.id,
       action: "prompt_answer" as const,
       detail: label,
     };
     // Classified as the Needs you card does; can't tell means permission
     if (!(await agentMayAnswer(session, prompt))) {
-      // no_proof is the user's own tab with a cookie from before a restart:
-      // the client re-proves and retries, so it isn't an agent's attempt
-      if (proof.reason !== "no_proof") {
-        recordAgentAction({ ...audit, allowed: false });
-      }
+      // Recorded even without agent markers; the user's stale tab re-proves
+      // and its retry takes the line back
+      recordRefusal(request, audit);
       return NextResponse.json(
-        { error: PERMISSION_USER_ONLY, permission: true, reason: proof.reason },
+        {
+          // Tabs from before a deploy don't re-prove: they show this as is
+          error:
+            proof.reason === "no_proof"
+              ? PERMISSION_RELOAD
+              : PERMISSION_USER_ONLY,
+          permission: true,
+          reason: proof.reason,
+        },
         { status: 403 }
       );
     }
-    if (fromAgent) recordAgentAction({ ...audit, allowed: true });
+    if (hasAgentMarkers(request)) {
+      recordAgentAction({
+        ...audit,
+        actorTmux: agentActor(request),
+        allowed: true,
+      });
+    }
+  } else {
+    forgetRetried(session.id, "prompt_answer");
   }
 
   // Move the ❯ cursor to the option, then confirm. Works for numbered and

@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb, queries, type Session } from "@/lib/db";
 import { launchSession } from "@/lib/session-launch";
+import { effectiveMode } from "@/lib/permission-mode";
+import { grantFullAccess, requester, userOnly } from "@/lib/permission-guard";
 
 // POST /api/sessions/[id]/launch - Start the session's agent in tmux without
 // a page attached: { initialPrompt? }. { started: false } if already running.
+// With full access, only the user may give it an initialPrompt.
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -16,6 +19,18 @@ export async function POST(
   const { initialPrompt } = (await request.json().catch(() => ({}))) as {
     initialPrompt?: string;
   };
+  // A task for a session with full access is the user's to give
+  // (lib/permission-guard.ts); it starts idle without one
+  if (initialPrompt?.trim() && effectiveMode(session) === "bypassPermissions") {
+    const who = requester(request);
+    const { refuse } = grantFullAccess(request, who, {
+      targetSessionId: session.id,
+      action: "send_keys",
+      detail: initialPrompt.trim(),
+    });
+    // An agent isn't capped here: there's nothing less to give it
+    if (who.by !== "user") return refuse ?? userOnly(who.reason);
+  }
   try {
     const started = await launchSession(
       session,
