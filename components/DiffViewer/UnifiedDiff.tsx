@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
-import { ChevronDown, ChevronRight, Plus, Minus } from "lucide-react";
+import { Fragment, useState } from "react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { ParsedDiff, DiffHunk, DiffLine } from "@/lib/diff-parser";
+import type { ParsedDiff, DiffLine } from "@/lib/diff-parser";
+import { diffBody, hunkLines, lineNumberOf, lineText } from "./diff-format";
 
 interface UnifiedDiffProps {
   diff: ParsedDiff;
@@ -12,14 +13,29 @@ interface UnifiedDiffProps {
   onToggle?: () => void;
   /** Wrap long lines instead of scrolling sideways, for narrow screens */
   wrap?: boolean;
+  /** The file's header row (name, +N −N); off where a card draws its own */
+  header?: boolean;
+  /** A gutter with each line's number (the mocks have none) */
+  lineNumbers?: boolean;
+  /** Makes each line a button (M12's line comments) */
+  onLineClick?: (line: DiffLine, hunkIndex: number) => void;
+  className?: string;
 }
 
+/**
+ * One file's diff on a card (Open-Changes, D-Diff): a header that folds it,
+ * then its lines in the mock's green and red, each with its own sign
+ */
 export function UnifiedDiff({
   diff,
   fileName,
   expanded = true,
   onToggle,
   wrap = false,
+  header = true,
+  lineNumbers = false,
+  onLineClick,
+  className,
 }: UnifiedDiffProps) {
   const [localExpanded, setLocalExpanded] = useState(expanded);
   const isExpanded = onToggle ? expanded : localExpanded;
@@ -32,182 +48,134 @@ export function UnifiedDiff({
     }
   };
 
+  const lines = (
+    <DiffLines
+      diff={diff}
+      wrap={wrap}
+      lineNumbers={lineNumbers}
+      onLineClick={onLineClick}
+    />
+  );
+  if (!header) return <div className={className}>{lines}</div>;
+
   return (
-    <div className="border-border overflow-hidden rounded-lg border">
-      {/* File header */}
+    <div className={cn("tools", className)}>
       <button
+        type="button"
         onClick={handleToggle}
-        className={cn(
-          "flex w-full items-center gap-2 px-3 py-2.5 text-sm",
-          "bg-muted/50 hover:bg-muted text-left transition-colors",
-          "min-h-[44px]" // Mobile touch target
-        )}
+        aria-expanded={isExpanded}
+        className="flex min-h-11 w-full items-center gap-2.5 px-3.5 text-left text-[13px]"
       >
         {isExpanded ? (
-          <ChevronDown className="text-muted-foreground h-4 w-4 flex-shrink-0" />
+          <ChevronDown className="text-muted-foreground h-4 w-4 shrink-0" />
         ) : (
-          <ChevronRight className="text-muted-foreground h-4 w-4 flex-shrink-0" />
+          <ChevronRight className="text-muted-foreground h-4 w-4 shrink-0" />
         )}
-
-        <span className="flex-1 truncate font-mono text-xs">{fileName}</span>
-
-        {/* Stats */}
-        <span className="flex flex-shrink-0 items-center gap-2 text-xs">
-          {diff.additions > 0 && (
-            <span className="flex items-center gap-0.5 text-blue-400">
-              <Plus className="h-3 w-3" />
-              {diff.additions}
-            </span>
-          )}
-          {diff.deletions > 0 && (
-            <span className="flex items-center gap-0.5 text-amber-400">
-              <Minus className="h-3 w-3" />
-              {diff.deletions}
-            </span>
-          )}
-        </span>
+        <span className="min-w-0 flex-1 truncate font-mono">{fileName}</span>
+        {!diff.isBinary && (
+          <DiffCounts added={diff.additions} removed={diff.deletions} />
+        )}
       </button>
-
-      {/* Diff content */}
-      {isExpanded && (
-        <div className={wrap ? undefined : "overflow-x-auto"}>
-          {diff.isBinary ? (
-            <div className="text-muted-foreground px-4 py-8 text-center text-sm">
-              Binary file not shown
-            </div>
-          ) : diff.hunks.length === 0 ? (
-            <div className="text-muted-foreground px-4 py-8 text-center text-sm">
-              No changes
-            </div>
-          ) : (
-            <div className="font-mono text-xs">
-              {diff.hunks.map((hunk, index) => (
-                <Hunk key={index} hunk={hunk} wrap={wrap} />
-              ))}
-            </div>
-          )}
-        </div>
-      )}
+      {isExpanded && lines}
     </div>
   );
 }
 
-interface HunkProps {
-  hunk: DiffHunk;
-  wrap: boolean;
+/** +38 −9 in mono 12px, green and red */
+export function DiffCounts({
+  added,
+  removed,
+}: {
+  added: number;
+  removed: number;
+}) {
+  return (
+    <span className="flex shrink-0 gap-2">
+      <span className="n-add text-xs">+{added}</span>
+      {removed > 0 && <span className="n-del text-xs">−{removed}</span>}
+    </span>
+  );
 }
 
-function Hunk({ hunk, wrap }: HunkProps) {
-  return (
-    <div>
-      {/* Hunk header */}
-      <div className="border-border border-y bg-blue-500/10 px-3 py-1 text-xs text-blue-400">
-        {hunk.header}
-      </div>
+interface DiffLinesProps {
+  diff: ParsedDiff;
+  wrap?: boolean;
+  lineNumbers?: boolean;
+  onLineClick?: (line: DiffLine, hunkIndex: number) => void;
+}
 
-      {/* Lines */}
-      <table
-        className={cn("w-full border-collapse", wrap && "table-fixed")}
-      >
-        <tbody>
-          {hunk.lines.map((line, index) => (
-            <DiffLineRow key={index} line={line} wrap={wrap} />
+/**
+ * The lines alone: each hunk's @@ header as a context line, then its lines.
+ * Unwrapped, the block scrolls sideways on its own and every line's colour
+ * runs to the longest one, so the page never widens.
+ */
+export function DiffLines({
+  diff,
+  wrap = false,
+  lineNumbers = false,
+  onLineClick,
+}: DiffLinesProps) {
+  const { caption, hunks } = diffBody(diff);
+  const lineClass = wrap && "whitespace-pre-wrap [overflow-wrap:anywhere]";
+  const gutter = (n: number | null) =>
+    lineNumbers && (
+      <span className="mr-3 inline-block w-7 text-right text-[var(--code-gutter)] select-none">
+        {n ?? ""}
+      </span>
+    );
+
+  return (
+    <div className={wrap ? undefined : "overflow-x-auto overscroll-x-contain"}>
+      <div className={cn("mini-diff", wrap ? "w-full" : "w-max min-w-full")}>
+        {caption && <div className={cn("dl-ctx", lineClass)}>{caption}</div>}
+        {hunks &&
+          diff.hunks.map((hunk, h) => (
+            <Fragment key={h}>
+              {/* The @@ line stays one line even when the code wraps */}
+              <div className={cn("dl-ctx", wrap && "truncate")}>
+                {gutter(null)}
+                {hunk.header}
+              </div>
+              {hunkLines(hunk).map((line, i) => {
+                const cls = cn(lineTone(line.type), lineClass);
+                const body = (
+                  <>
+                    {gutter(lineNumberOf(line))}
+                    {lineText(line)}
+                  </>
+                );
+                return onLineClick ? (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => onLineClick(line, h)}
+                    className={cn(
+                      cls,
+                      "block w-full cursor-pointer text-left hover:shadow-[inset_3px_0_0_hsl(var(--meter))] focus-visible:shadow-[inset_3px_0_0_hsl(var(--meter))] focus-visible:outline-none"
+                    )}
+                  >
+                    {body}
+                  </button>
+                ) : (
+                  <div key={i} className={cls}>
+                    {body}
+                  </div>
+                );
+              })}
+            </Fragment>
           ))}
-        </tbody>
-      </table>
+      </div>
     </div>
   );
 }
 
-interface DiffLineRowProps {
-  line: DiffLine;
-  wrap: boolean;
-}
-
-function DiffLineRow({ line, wrap }: DiffLineRowProps) {
-  const bgColor = getLineBgColor(line.type);
-  const textColor = getLineTextColor(line.type);
-
-  // Skip header lines in the main content
-  if (line.type === "header") {
-    return null;
-  }
-
-  return (
-    <tr className={cn("hover:bg-muted/30", bgColor)}>
-      {/* Old line number */}
-      <td
-        className={cn(
-          "text-muted-foreground border-border/50 border-r px-2 py-0.5 text-right align-top tabular-nums select-none",
-          wrap ? "w-10 px-1" : "w-12"
-        )}
-      >
-        {line.oldLineNumber || ""}
-      </td>
-
-      {/* New line number */}
-      <td
-        className={cn(
-          "text-muted-foreground border-border/50 border-r px-2 py-0.5 text-right align-top tabular-nums select-none",
-          wrap ? "w-10 px-1" : "w-12"
-        )}
-      >
-        {line.newLineNumber || ""}
-      </td>
-
-      {/* Line marker */}
-      <td
-        className={cn(
-          "w-6 px-1 py-0.5 text-center align-top select-none",
-          textColor
-        )}
-      >
-        {getLineMarker(line.type)}
-      </td>
-
-      {/* Content */}
-      <td
-        className={cn(
-          "px-2 py-0.5",
-          wrap ? "whitespace-pre-wrap [overflow-wrap:anywhere]" : "whitespace-pre",
-          textColor
-        )}
-      >
-        {line.content || " "}
-      </td>
-    </tr>
-  );
-}
-
-function getLineBgColor(type: DiffLine["type"]): string {
+function lineTone(type: DiffLine["type"]): string {
   switch (type) {
     case "addition":
-      return "bg-blue-400/12";
+      return "dl-add";
     case "deletion":
-      return "bg-amber-400/10";
+      return "dl-del";
     default:
-      return "";
-  }
-}
-
-function getLineTextColor(type: DiffLine["type"]): string {
-  switch (type) {
-    case "addition":
-      return "text-blue-700 dark:text-blue-200";
-    case "deletion":
-      return "text-amber-700 dark:text-amber-200";
-    default:
-      return "text-foreground";
-  }
-}
-
-function getLineMarker(type: DiffLine["type"]): string {
-  switch (type) {
-    case "addition":
-      return "+";
-    case "deletion":
-      return "-";
-    default:
-      return "";
+      return "dl-ctx";
   }
 }

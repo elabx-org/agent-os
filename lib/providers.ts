@@ -102,7 +102,7 @@ export const claudeProvider: AgentProvider = {
       flags.push(def.continueFlag);
     }
 
-    // Read once at start; a path Agent-OS wrote, so quoting is enough
+    // Read once at start; a path AgentOS wrote, so quoting is enough
     if (options.systemPromptFile) {
       flags.push(`--append-system-prompt-file '${options.systemPromptFile}'`);
     }

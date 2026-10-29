@@ -85,7 +85,7 @@ export async function POST(request: NextRequest) {
       continueSession = false,
       // Initial prompt to send when session starts
       initialPrompt = null,
-      // Start it now, with nobody watching (agents driving Agent-OS)
+      // Start it now, with nobody watching (agents driving AgentOS)
       launch = false,
     } = body;
 

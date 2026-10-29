@@ -88,9 +88,9 @@ export async function buildProjectNote(
   );
 
   const you = session
-    ? `You are the Agent-OS session "${session.name}", working in ${folderOf(session)}, in the user's project "${project.name}".`
-    : `You are an Agent-OS session in the user's project "${project.name}".`;
-  const sections = [`# Agent-OS project: ${project.name}`, you];
+    ? `You are the AgentOS session "${session.name}", working in ${folderOf(session)}, in the user's project "${project.name}".`
+    : `You are an AgentOS session in the user's project "${project.name}".`;
+  const sections = [`# AgentOS project: ${project.name}`, you];
 
   if (instructions) {
     sections.push(
@@ -142,7 +142,7 @@ export function syncInstructionsFile(project: Project | undefined): void {
  * goes to Claude with the message; otherwise it prints nothing.
  */
 const INSTRUCTIONS_HOOK = `#!/bin/bash
-# Agent-OS: pass changed project instructions to a running session
+# AgentOS: pass changed project instructions to a running session
 dir="$(dirname "$0")"
 cur="$dir/instructions/$1.md"
 seen="$dir/seen/$2.md"

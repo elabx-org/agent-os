@@ -20,7 +20,7 @@ const POLL_MS = 3000;
 
 export interface WatchEdge {
   tmuxName: string;
-  /** The Agent-OS session id (getSessionIdFromName) */
+  /** The AgentOS session id (getSessionIdFromName) */
   sessionId: string;
   /** The stable status before; null on first sight (never an edge) */
   from: SessionStatus;

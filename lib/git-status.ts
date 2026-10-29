@@ -1,4 +1,4 @@
-import { execSync } from "child_process";
+import { execFileSync, execSync } from "child_process";
 import { unlinkSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
@@ -39,6 +39,45 @@ export interface GitStatus {
   staged: GitFile[];
   unstaged: GitFile[];
   untracked: GitFile[];
+}
+
+/** Above this many new files a new folder stays one entry */
+const UNTRACKED_CAP = 500;
+
+/**
+ * Lists each new file instead of its new folder, unless that would be more
+ * than UNTRACKED_CAP files (an un-ignored node_modules or build output)
+ */
+function expandUntrackedFolders(workingDir: string, untracked: GitFile[]) {
+  const folders = untracked.filter((f) => f.path.endsWith("/"));
+  if (!folders.length) return;
+  let files: string[];
+  try {
+    files = execFileSync(
+      "git",
+      // Status paths are relative to the repo root, wherever cwd is
+      [
+        "ls-files",
+        "-z",
+        "--others",
+        "--exclude-standard",
+        "--full-name",
+        "--",
+        ...folders.map((f) => `:(top)${f.path}`),
+      ],
+      { cwd: workingDir, encoding: "utf-8", maxBuffer: 1024 * 1024, timeout: 5000 }
+    )
+      .split("\0")
+      .filter(Boolean);
+  } catch {
+    // Too many to list (ENOBUFS) or git failed: keep the folders
+    return;
+  }
+  if (files.length > UNTRACKED_CAP) return;
+  const kept = untracked.filter((f) => !f.path.endsWith("/"));
+  untracked.length = 0;
+  untracked.push(...kept);
+  for (const path of files) untracked.push({ path, status: "untracked", staged: false });
 }
 
 /**
@@ -120,6 +159,7 @@ export function getGitStatus(workingDir: string): GitStatus {
       }
     }
 
+    expandUntrackedFolders(workingDir, untracked);
     addLineCounts(workingDir, staged, "--cached");
     addLineCounts(workingDir, unstaged, "");
 
@@ -270,18 +310,25 @@ export function unstageAll(workingDir: string): void {
  */
 export function discardChanges(workingDir: string, filePath: string): void {
   // Check if file is tracked by git
+  let tracked = true;
   try {
-    execSync(`git ls-files --error-unmatch "${filePath}"`, {
+    execFileSync("git", ["ls-files", "--error-unmatch", "--", filePath], {
       cwd: workingDir,
       encoding: "utf-8",
       stdio: "pipe",
     });
-    // File is tracked - use checkout
-    execSync(`git checkout -- "${filePath}"`, {
+  } catch {
+    tracked = false;
+  }
+  if (tracked) {
+    // A failed checkout (index.lock held by the agent's git) is an error,
+    // never a reason to delete a tracked file
+    execFileSync("git", ["checkout", "--", filePath], {
       cwd: workingDir,
       encoding: "utf-8",
+      stdio: "pipe",
     });
-  } catch {
+  } else {
     // File is untracked - delete it
     unlinkSync(join(workingDir, filePath));
   }

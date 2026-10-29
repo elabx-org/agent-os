@@ -5,6 +5,7 @@ import {
   getRemoteUrl,
   syncBranch,
 } from "@/lib/git-status";
+import { forgetBranchInfo } from "@/lib/git-branch-info";
 
 /**
  * POST /api/git/sync
@@ -38,6 +39,7 @@ export async function POST(request: NextRequest) {
 
     const result = syncBranch(path);
 
+    forgetBranchInfo(path);
     return NextResponse.json({
       success: true,
       ...result,

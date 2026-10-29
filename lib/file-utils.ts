@@ -2,6 +2,8 @@
  * Client-safe file utilities (no Node.js dependencies)
  */
 
+import type { GitBadge } from "./git-types";
+
 export interface FileNode {
   name: string;
   path: string;
@@ -9,6 +11,10 @@ export interface FileNode {
   size?: number;
   extension?: string;
   children?: FileNode[];
+  /** With ?git=1: the file's git badge (E-Files), absent when clean */
+  git?: GitBadge;
+  /** With ?git=1: a folder with changes somewhere inside (its amber dot) */
+  dirty?: boolean;
 }
 
 /**
