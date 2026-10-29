@@ -265,6 +265,20 @@ describe("handleLimitEdge", () => {
     });
   });
 
+  test("busy before its resume went: the resume is dropped, no resumed", async () => {
+    const w = world({ screen: screen("session-limit.txt") });
+    await watch.handleLimitEdge(edge("running", "idle"), deps(w));
+    store.setPolicy("s1", "at_reset", "continue");
+    const dropped: string[] = [];
+    await watch.handleLimitEdge(edge("idle", "running"), {
+      ...deps(w),
+      dropResumes: (id) => (dropped.push(id), 1),
+    });
+    assert.deepEqual(dropped, ["s1"]);
+    assert.equal(row("s1").limited_at, null);
+    assert.equal(w.sent.length, 1);
+  });
+
   test("working again without at_reset clears quietly", async () => {
     const w = world({ screen: screen("session-limit.txt") });
     await watch.handleLimitEdge(edge("running", "idle"), deps(w));

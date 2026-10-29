@@ -29,6 +29,7 @@ import {
   usageResetFor,
   type DetectedLimit,
 } from "./detect";
+import { queueStore } from "../queue/store";
 import { limitStore, type LimitStore } from "./store";
 import { limitKindLabel, limitStateOf, type LimitKind } from "./types";
 
@@ -65,6 +66,12 @@ export interface LimitWatchDeps {
   /** Records the event; sends it when its event toggle is on */
   notify(message: Notify, event: "limited" | "resumed"): void;
   now(): number;
+  /**
+   * Cancels the session's pending resume items; how many there were. Busy
+   * again without them (the user went on): a scheduled "continue" would
+   * land in a session that already continued
+   */
+  dropResumes?(sessionId: string): number;
 }
 
 async function capture(tmuxName: string): Promise<string[] | null> {
@@ -119,7 +126,17 @@ function defaultDeps(): LimitWatchDeps {
     store: limitStore(),
     notify,
     now: Date.now,
+    dropResumes,
   };
+}
+
+function dropResumes(sessionId: string): number {
+  const queue = queueStore();
+  const pending = queue
+    .listQueue(sessionId)
+    .filter((i) => i.kind === "resume" && i.status === "pending");
+  for (const item of pending) queue.cancelItem(sessionId, item.id);
+  return pending.length;
 }
 
 /** "Claude hit the session limit · resets 3:40 pm" */
@@ -187,7 +204,9 @@ export async function handleLimitEdge(
   if (edge.to === "running") {
     const session = deps.session(edge.sessionId);
     if (!session || session.limited_at === null) return;
-    const resumedAtReset = session.resume_policy === "at_reset";
+    // Still pending: this turn isn't the resume, the user went on first
+    const dropped = deps.dropResumes?.(session.id) ?? 0;
+    const resumedAtReset = session.resume_policy === "at_reset" && !dropped;
     deps.store.clearLimited(session.id);
     if (resumedAtReset) {
       const kind = limitStateOf(session).kind;
