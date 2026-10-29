@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /*
- * Agent-OS: Claude Code command hook that records what the session is doing
+ * AgentOS: Claude Code command hook that records what the session is doing
  * (permission mode, tool, pending permission, busy) for the web UI.
  *
  * Usage: agentos-hook.mjs <state dir>, hook input JSON on stdin. Appends one
@@ -54,7 +54,7 @@ function readJson(file) {
 }
 
 // Not { recursive: true }: Node can spin forever on it in some filesystems.
-// The state dir's parent is made by Agent-OS; make it again if it's gone.
+// The state dir's parent is made by AgentOS; make it again if it's gone.
 function ensureDir(dir) {
   for (const d of [path.dirname(dir), dir]) {
     try {

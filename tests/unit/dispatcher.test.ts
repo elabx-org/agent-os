@@ -221,11 +221,11 @@ describe("dispatcher", () => {
 
   test("the undo notice rides on the next message, attachments after", async () => {
     const h = harness();
-    store.setUndoNotice("s1", "[Agent-OS: undone]");
+    store.setUndoNotice("s1", "[AgentOS: undone]");
     add("s1", "carry on", { attachments: ["/tmp/a.png"] });
     await h.d.service("s1");
     assert.deepEqual(h.sent, [
-      { id: "s1", text: "[Agent-OS: undone] carry on /tmp/a.png" },
+      { id: "s1", text: "[AgentOS: undone] carry on /tmp/a.png" },
     ]);
     assert.equal(store.getUndoNotice("s1"), null);
   });

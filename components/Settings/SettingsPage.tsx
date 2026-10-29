@@ -137,7 +137,7 @@ function VersionLine({ className }: { className?: string }) {
         className
       )}
     >
-      {data?.version && `Agent-OS ${data.version}`}
+      {data?.version && `AgentOS ${data.version}`}
       {data?.version && app && " · "}
       {app && `iOS app ${app}`}
     </p>

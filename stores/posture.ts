@@ -13,7 +13,7 @@ export interface Fold {
 
 export const postureStore = proxy<{ fold: Fold | null }>({ fold: null });
 
-/** Agent-OS reads the fold from: the iOS app, Safari's Viewport Segments API, or ?fold=h */
+/** AgentOS reads the fold from: the iOS app, Safari's Viewport Segments API, or ?fold=h */
 export function setFold(fold: Fold | null) {
   const current = postureStore.fold;
   if (

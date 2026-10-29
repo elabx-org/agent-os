@@ -1,5 +1,5 @@
 /**
- * Requests from agents driving Agent-OS (the MCP server, scripts/agentos-mcp.mjs)
+ * Requests from agents driving AgentOS (the MCP server, scripts/agentos-mcp.mjs)
  * carry this header. Permission decisions stay with the user: agent-origin
  * requests can answer a question but not a permission request, and can't
  * start sessions that skip permission prompts.
@@ -24,11 +24,11 @@ export { isAnswerableQuestion };
 export const AGENT_ORIGIN_HEADER = "x-agentos-origin";
 
 export const PERMISSION_USER_ONLY =
-  "Permission requests can only be answered by the user in Agent-OS. Ask the user.";
+  "Permission requests can only be answered by the user in AgentOS. Ask the user.";
 
 /** The refusal a tab from before a deploy shows (no cookie from this boot) */
 export const PERMISSION_RELOAD =
-  "Agent-OS was updated. Reload it to answer this; permission requests are the user's.";
+  "AgentOS was updated. Reload it to answer this; permission requests are the user's.";
 
 export function isAgentOrigin(request: Request): boolean {
   return request.headers.get(AGENT_ORIGIN_HEADER)?.toLowerCase() === "agent";

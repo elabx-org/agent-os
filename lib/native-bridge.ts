@@ -1,5 +1,5 @@
 /**
- * Talks to the native iOS app (ios/) when Agent-OS runs inside it.
+ * Talks to the native iOS app (ios/) when AgentOS runs inside it.
  *
  * The app injects `window.agentosNative` before the page loads and owns the
  * navigation (the system's vertical bar on iPhone Duo) and the keyboard's
@@ -33,7 +33,7 @@ export type NativeEvent =
   | { type: "posture"; fold: Fold | null }
   /** Open a session: a tapped notification or an agentos://session/<id> link */
   | { type: "open"; sessionId: string }
-  /** A file shared to the app ("Open in Agent-OS"), for the focused session */
+  /** A file shared to the app ("Open in AgentOS"), for the focused session */
   | { type: "file"; file: SharedFile }
   /** The minimised Safari pages changed; `closed`: one just closed (Undo) */
   | { type: "browser"; count: number; closed?: BrowserPage };
