@@ -132,6 +132,9 @@ function MoreMenu(props: MoreProps) {
             {liveOpen ? "Hide live activity" : "Live activity"}
           </DropdownMenuItem>
         )}
+        {inSession && (
+          <DropdownMenuItem onSelect={go("scripts")}>Scripts</DropdownMenuItem>
+        )}
         {inSession && wide && surface !== "beside" && (
           <DropdownMenuItem onSelect={go("beside")}>
             Open beside

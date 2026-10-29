@@ -10,6 +10,8 @@ import {
   parseShortcut,
 } from "@/lib/script-shortcuts";
 import { openScripts } from "@/stores/scriptsSheet";
+import { navStore, registerNavHandlers } from "@/lib/nav-actions";
+import { workspacePageStore } from "@/stores/workspacePage";
 
 function fromTerminal(target: EventTarget | null): boolean {
   return target instanceof Element && !!target.closest(".xterm");
@@ -55,6 +57,21 @@ export function useScriptShortcuts(
   latest.current = { scripts: data?.config.scripts, run, projectId, sessionId };
 
   const hasShortcuts = !!data?.config.scripts?.some((s) => s.shortcut);
+
+  // ⋯ → Scripts over a session: the session's project (a project page
+  // keeps its own, nav-actions' default)
+  useEffect(() => {
+    if (!projectId || projectId === "uncategorized") return;
+    const fallback = navStore.openScripts;
+    return registerNavHandlers({
+      openScripts: () => {
+        const page = workspacePageStore.page;
+        if (page?.kind === "project" || page?.kind === "projectSettings")
+          return fallback();
+        openScripts(projectId, sessionId);
+      },
+    });
+  }, [projectId, sessionId]);
 
   useEffect(() => {
     if (!hasShortcuts) return;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { Code } from "lucide-react";
 import { CONFIG_FILE, type AgentOsConfig } from "@/lib/project-config-types";
 import { cn } from "@/lib/utils";
@@ -41,6 +41,19 @@ export function ConfigPreview({
     [base, config]
   );
   const chip = diffChip(diff);
+  // The first added line in view, about a third down (D-Config)
+  const pre = useRef<HTMLPreElement>(null);
+  const firstAdded = diff.lines.findIndex((l) => l.added);
+  useEffect(() => {
+    const el = pre.current;
+    const line = el?.querySelector<HTMLElement>("[data-added]");
+    if (!el || !line) return;
+    const top =
+      line.getBoundingClientRect().top -
+      el.getBoundingClientRect().top +
+      el.scrollTop;
+    el.scrollTop = Math.max(0, top - el.clientHeight / 3);
+  }, [firstAdded]);
 
   return (
     <section
@@ -67,6 +80,7 @@ export function ConfigPreview({
         preview the app.
       </p>
       <pre
+        ref={pre}
         className="min-h-0 overflow-auto rounded-l-2xl py-3 font-mono text-[12px] leading-[21px]"
         style={{ background: "var(--diff-bg)" }}
       >
@@ -74,6 +88,7 @@ export function ConfigPreview({
           {diff.lines.map((line, i) => (
             <span
               key={i}
+              data-added={line.added ? "" : undefined}
               className={cn("flex pr-3", line.added && "bg-[var(--add-bg)]")}
             >
               <span

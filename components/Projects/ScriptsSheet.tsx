@@ -450,7 +450,9 @@ export function ScriptsSheet({
         style={
           beside
             ? {
+                left: 0,
                 right: railWidth,
+                width: "auto",
                 maxWidth: "none",
                 maxHeight: "calc(100dvh - 64px)",
               }

@@ -199,6 +199,7 @@ export function ProjectSettingsPage({ page }: PageProps<"projectSettings">) {
         // lines it adds show as they're typed
         <aside
           aria-label=".agent-os.json preview"
+          data-config-preview=""
           className={cn(
             "border-border hidden w-[440px] flex-none flex-col overflow-hidden border-l py-5 pl-2 @[1100px]/settings:flex",
             scriptEdit && "relative z-[60]"

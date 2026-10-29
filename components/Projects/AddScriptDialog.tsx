@@ -1,6 +1,13 @@
 "use client";
 
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  useLayoutEffect,
+} from "react";
 import { GitBranch, Loader2, X } from "lucide-react";
 import {
   Dialog,
@@ -187,13 +194,29 @@ export function AddScriptDialog({
   const editing = !!initial;
   const title = editing ? "Edit script" : "Add script";
 
+  // D-Config: beside the file preview the dialog keeps to the page on its
+  // left, so the lines it adds stay in view
+  const [besideAt, setBesideAt] = useState<number | null>(null);
+  useLayoutEffect(() => {
+    if (!open || isTouch) return setBesideAt(null);
+    const aside = document.querySelector("[data-config-preview]");
+    const left = aside?.getBoundingClientRect().left ?? 0;
+    setBesideAt(aside && left > 600 ? left : null);
+  }, [open, isTouch]);
+
   return (
     <Dialog open={open} onOpenChange={(o) => !busy && onOpenChange(o)}>
       <DialogContent
         className={cn(
           "flex max-h-[90vh] flex-col gap-5 overflow-y-auto sm:max-w-[520px] lg:max-w-[748px]",
-          !isTouch && "rounded-[28px] border-0 bg-[var(--sheet)] p-8"
+          !isTouch && "rounded-[28px] border-0 bg-[var(--sheet)] p-8",
+          besideAt !== null && "gap-4 px-6 py-[22px] lg:max-w-[540px]"
         )}
+        style={
+          besideAt !== null
+            ? { left: besideAt / 2, width: Math.min(540, besideAt - 48) }
+            : undefined
+        }
       >
         <DialogTitle className="t-title pr-10">{title}</DialogTitle>
         <DialogDescription className="sr-only">
@@ -259,7 +282,7 @@ export function AddScriptDialog({
                       "text-foreground border-[hsl(var(--meter))] bg-[hsl(var(--primary)/0.16)]"
                   )}
                 >
-                  <ScriptIcon icon={name} size={20} />
+                  <ScriptIcon icon={name} size={22} plain />
                 </button>
               ))}
             </div>
@@ -284,7 +307,7 @@ export function AddScriptDialog({
                     type="button"
                     aria-pressed={runIn === value}
                     onClick={() => setRunIn(value)}
-                    className="min-w-0 flex-1 truncate px-2"
+                    className="min-w-0 flex-auto truncate px-2.5 text-[15px]"
                   >
                     {label}
                   </button>

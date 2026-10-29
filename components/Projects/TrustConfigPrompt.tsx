@@ -1,5 +1,6 @@
 "use client";
 
+import { useProjectsQuery } from "@/data/projects";
 import { useCallback, useRef, useState, type ReactNode } from "react";
 import { Loader2, ShieldAlert } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -176,6 +177,9 @@ export function useEnsureTrusted(projectId: string | null | undefined): {
   prompt: ReactNode;
 } {
   const qc = useQueryClient();
+  const projectName = useProjectsQuery().data?.find(
+    (p) => p.id === projectId
+  )?.name;
   const [asking, setAsking] = useState<ProjectConfigResponse | null>(null);
   const resolver = useRef<((trusted: boolean) => void) | null>(null);
 
@@ -219,7 +223,7 @@ export function useEnsureTrusted(projectId: string | null | undefined): {
     asking && projectId ? (
       <TrustConfigPrompt
         projectId={projectId}
-        projectName={folderName(asking.path)}
+        projectName={projectName ?? folderName(asking.path)}
         hash={asking.hash}
         config={asking.config}
         open

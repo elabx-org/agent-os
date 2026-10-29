@@ -55,13 +55,25 @@ export function ScriptIcon({
   icon,
   size = 40,
   className,
+  plain = false,
 }: {
   icon?: ScriptIconName | string;
   /** px, default 40 */
   size?: number;
+  /** The glyph alone, in the text colour (D-Config's icon grid) */
+  plain?: boolean;
   className?: string;
 }) {
   const { Icon, tile } = iconFor(icon);
+  if (plain)
+    return (
+      <Icon
+        aria-hidden
+        className={cn("flex-none", className)}
+        style={{ width: size, height: size }}
+        strokeWidth={1.9}
+      />
+    );
   // The mocks' .sq: a 30px tile has 8px corners and a 16px glyph
   return (
     <span
