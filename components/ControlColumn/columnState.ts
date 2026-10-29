@@ -13,6 +13,7 @@ import { mobileNavStore } from "@/stores/mobileNav";
 import { newSurfaceStore } from "@/stores/newSurface";
 import { focusStore } from "@/stores/focus";
 import { settingsPageStore } from "@/stores/settingsPage";
+import { workspacePageStore } from "@/stores/workspacePage";
 import {
   currentSurface,
   surfaceStore,
@@ -35,6 +36,7 @@ interface ColumnSources {
   sheet: ColumnContext["sheet"];
   changesOpen: boolean;
   native: boolean;
+  projectSettings: boolean;
 }
 
 function contextFrom(s: ColumnSources): ColumnContext {
@@ -51,6 +53,7 @@ function contextFrom(s: ColumnSources): ColumnContext {
     liveOpen: s.liveOpen,
     working: s.working,
     sheet: s.sheet,
+    projectSettings: s.projectSettings,
     changesOpen: s.changesOpen,
   };
 }
@@ -66,6 +69,7 @@ export function useColumn(
   const { paneCount } = useSnapshot(surfaceStore);
   const { detail: settingsDetail } = useSnapshot(settingsPageStore);
   const { mode } = useSnapshot(layoutStore);
+  const { page } = useSnapshot(workspacePageStore);
   const surface = useSurface();
   const ctx = contextFrom({
     homeOpen: nav.homeOpen,
@@ -82,6 +86,7 @@ export function useColumn(
     sheet: nav.sheet,
     changesOpen: nav.changesOpen,
     native,
+    projectSettings: page?.kind === "projectSettings",
   });
   return { surface, mode, items: columnFor(surface, mode, ctx) };
 }
@@ -122,6 +127,7 @@ export function nativeColumn(): {
       sheet: mobileNavStore.sheet,
       changesOpen: mobileNavStore.changesOpen,
       native: true,
+      projectSettings: workspacePageStore.page?.kind === "projectSettings",
     })
   );
   const column = PAGE_BARS.includes(mode)

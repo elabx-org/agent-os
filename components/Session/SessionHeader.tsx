@@ -16,6 +16,8 @@ import { PlanChip } from "@/components/Chat/PlanChip";
 import { useSessionActivity } from "@/hooks/useSessionActivity";
 import { openLiveSheet, StatusCardButton } from "./ActivityStrip";
 import { canSwitch, ModelChip } from "./ModelChip";
+import { PermissionChip } from "./PermissionChip";
+import { isPaused } from "@/lib/handoff-types";
 import { formatAge, workingLine } from "./activity-format";
 
 /** What every header says about the session */
@@ -152,18 +154,34 @@ export function PageHeader({
           <Crumb info={info} state={!cards || state !== "work"} />
         </div>
       )}
-      <h1
+      {/* N-PermMode: the shield chip at the title's right, 10px from it */}
+      <div
         className={cn(
-          "min-w-0 truncate",
-          size === "compact"
-            ? "t-head mt-0.5 leading-tight"
-            : chip
-              ? "t-title mt-2"
-              : "t-title mt-1"
+          "flex min-w-0 items-center gap-2.5",
+          size === "compact" ? "mt-0.5" : chip ? "mt-2" : "mt-1"
         )}
       >
-        {info.title}
-      </h1>
+        <h1
+          className={cn(
+            "min-w-0 flex-1 truncate",
+            size === "compact" ? "t-head leading-tight" : "t-title"
+          )}
+        >
+          {info.title}
+        </h1>
+        {/* Handed off: no running agent to set a mode on */}
+        {!isPaused(session) && (
+          <PermissionChip
+            session={session}
+            variant="header"
+            // The terminal gets the room: a 28px chip that takes a 44px tap
+            className={cn(
+              size === "compact" &&
+                "relative -my-1 h-7 rounded-full px-2.5 text-xs after:absolute after:inset-x-0 after:-inset-y-2 after:content-['']"
+            )}
+          />
+        )}
+      </div>
       {cards && plan && plan.total > 0 ? (
         <PlanChip plan={plan} onOpen={openLiveSheet} className="mt-2.5" />
       ) : (

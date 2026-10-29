@@ -676,6 +676,7 @@ export function ChatView({
               <ComposerCard
                 composer={composer}
                 sessionId={session.id}
+                session={session}
                 agentName="Claude"
                 inlinePlus={mode === "desktop"}
                 queue={queue}

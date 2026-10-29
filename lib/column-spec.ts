@@ -46,8 +46,11 @@ export interface ColumnContext {
   liveOpen?: boolean;
   /** The session in view is working: closed, Stop ends its column (N-Queue) */
   working?: boolean;
-  /** A sheet over the session other than Live activity (N-Undo's undo) */
-  sheet?: "undo" | "switch" | null;
+  /** A sheet over the session other than Live activity (N-Undo,
+      N-Switch, N-PermMode, N-Scripts) */
+  sheet?: "undo" | "switch" | "permissions" | "scripts" | null;
+  /** The project surface shows the project's settings (N-Config, M3) */
+  projectSettings?: boolean;
   /** The open Duo's Changes page shows beside the conversation (Open-Changes) */
   changesOpen?: boolean;
 }
@@ -139,6 +142,12 @@ const BASE = {
     icon: "X",
     label: "Close",
   },
+  done: {
+    id: "done",
+    symbol: "checkmark",
+    icon: "Check",
+    label: "Done",
+  },
   sort: {
     id: "sort",
     symbol: "arrow.up.arrow.down",
@@ -174,6 +183,18 @@ const BASE = {
     symbol: "ellipsis",
     icon: "Ellipsis",
     label: "Project actions",
+  },
+  scripts: {
+    id: "scripts",
+    symbol: "play",
+    icon: "Play",
+    label: "Run a script",
+  },
+  viewConfig: {
+    id: "viewConfig",
+    symbol: "chevron.left.forwardslash.chevron.right",
+    icon: "Code",
+    label: "View .agent-os.json",
   },
   pull: {
     id: "pull",
@@ -247,20 +268,39 @@ function otherView(ctx: ColumnContext, extra: Partial<ColumnItem> = {}) {
 
 /**
  * The closed Duo's column under a sheet: close | Stop while it works
- * (E-Live), close | Changes over the undo sheet (N-Undo); null when no
- * sheet is up
+ * (E-Live), close | Changes over the undo sheet (N-Undo), close | Done
+ * over the permissions sheet (N-PermMode); null when no sheet is up
  */
 function sheetColumn(ctx: ColumnContext): ColumnItem[] | null {
+  if (ctx.sheet === "scripts") return scriptsColumn();
   if (ctx.sheet === "undo")
     return [item(BASE.closeSheet), changes(ctx, { selected: false, ...sep })];
   // N-Switch: the close alone
   if (ctx.sheet === "switch") return [item(BASE.closeSheet)];
+  if (ctx.sheet === "permissions")
+    return [
+      item(BASE.closeSheet),
+      item(BASE.done, { prominent: true, ...sep }),
+    ];
   if (ctx.liveOpen)
     return [
       item(BASE.closeSheet),
       ...(ctx.working ? [item(BASE.stop, { danger: true, ...sep })] : []),
     ];
   return null;
+}
+
+/** N-Scripts: close | the project's settings, where the scripts are edited */
+function scriptsColumn(): ColumnItem[] {
+  return [
+    item(BASE.closeSheet),
+    item(BASE.projectSettings, {
+      symbol: "gearshape",
+      icon: "Settings",
+      label: "Edit scripts",
+      sep: true,
+    }),
+  ];
 }
 
 /**
@@ -403,6 +443,9 @@ export function columnFor(
   const inSession = surface === "session" || surface === "beside";
   // The phone's tab bar holds the home's places; in a session the phone
   // gets the tabletop's bar of views
+  // N-Scripts over a project page too (over a session, sessionColumn has it)
+  if (mode === "duo-closed" && !inSession && ctx.sheet === "scripts")
+    return scriptsColumn();
   if (mode === "phone" && !inSession) return tabs(surface, ctx);
   if ((mode === "phone" || mode === "tabletop") && inSession)
     return sessionBar(ctx);
@@ -451,6 +494,13 @@ export function columnFor(
         item(BASE.sort),
       ];
     case "project":
+      // N-Config: back | run a script, the file
+      if (ctx.projectSettings)
+        return [
+          item(BASE.back, { label: "Back" }),
+          item(BASE.scripts, sep),
+          item(BASE.viewConfig),
+        ];
       return [
         item(BASE.back, { label: "Back" }),
         item(BASE.new, { prominent: true, sep: true }),

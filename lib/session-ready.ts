@@ -18,6 +18,8 @@ import {
   type SessionStatus,
 } from "./status-detector";
 import { tmuxNameOf } from "./session-launch";
+import { limitStateOf } from "./limits/types";
+import { getFlags } from "./flags";
 import { latest } from "./session-watch";
 import { isHandingOff } from "./handing-off";
 
@@ -305,6 +307,10 @@ export async function readiness(
   // Being handed off: no new turn until it is done (or given up)
   if (!options.duringHandoff && isHandingOff(session.id))
     return hold("handing_off");
+  // Hit a usage limit that hasn't reset: anything typed would bounce
+  // (flag `limits` is its kill switch)
+  if (getFlags().limits && limitStateOf(session).limited)
+    return hold("limited");
   const name = tmuxNameOf(session);
   try {
     // display-message prints nothing (and succeeds) for a missing target

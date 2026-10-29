@@ -46,6 +46,14 @@ export interface Session {
   effort: string | null;
   // 1 when the model was picked (sheet, handoff): --model even for "sonnet"
   model_pinned: number | null;
+  // Usage limit (migration 29, lib/limits): when it hit one (ms), when it
+  // resets (ms, null when unknown), which one (LimitKind)
+  limited_at: number | null;
+  limited_until: number | null;
+  limit_kind: string | null;
+  // What happens at the reset (ResumePolicy) and the text typed then
+  resume_policy: string | null;
+  resume_text: string | null;
 }
 
 /** What an agent tried on a session's permissions (lib/agent-actions.ts) */

@@ -5,18 +5,30 @@
  */
 
 import type { Session } from "./db/types";
-import { fromSessionStatus, type AgentState } from "./agent-state";
+import {
+  fromSessionStatus,
+  sessionState as limitAwareState,
+  type AgentState,
+} from "./agent-state";
 import { isPaused } from "./handoff-types";
 
-/** A session's state: paused whatever its tmux says, else from its status */
+/**
+ * A session's state: paused whatever its tmux says, else limited while it
+ * is listed as limited (M6), else from its status
+ */
 export function sessionState(
-  session: Pick<Session, "paused_at"> | null | undefined,
+  session:
+    | (Pick<Session, "paused_at"> & Parameters<typeof limitAwareState>[0])
+    | null
+    | undefined,
   status: string | null | undefined,
   /** What a missing status means at that call site */
   fallback = "idle"
 ): AgentState {
   if (isPaused(session)) return "paused";
-  return fromSessionStatus(status ?? fallback);
+  return session
+    ? limitAwareState(session, status ?? fallback)
+    : fromSessionStatus(status ?? fallback);
 }
 
 /** The session it was handed to, while it is still listed */

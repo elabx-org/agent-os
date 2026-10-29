@@ -40,25 +40,26 @@ test("nowSubline: zero parts are left out", () => {
 test("nowSubline: every part, in order", () => {
   assert.equal(
     nowSubline({ needs: 3, working: 1, limited: 1, settledToday: 2 }),
-    "3 need you · 1 working · 1 limited · 2 settled today"
+    "3 need you · 1 limited · 1 working · 2 settled today"
   );
 });
 
 test("nowSubline: every combination joins the non-zero parts", () => {
   const words = [
     (n: number) => `${n} ${n === 1 ? "needs" : "need"} you`,
-    (n: number) => `${n} working`,
     (n: number) => `${n} limited`,
+    (n: number) => `${n} working`,
     (n: number) => `${n} settled today`,
   ];
   for (let mask = 0; mask < 16; mask++) {
-    const n = [1, 2, 3, 4].map((v, i) => (mask & (1 << i) ? v : 0));
+    // In line order: needs, limited, working, settled
+    const n = [1, 3, 2, 4].map((v, i) => (mask & (1 << i) ? v : 0));
     const expected = n.flatMap((v, i) => (v ? [words[i](v)] : [])).join(" · ");
     assert.equal(
       nowSubline({
         needs: n[0],
-        working: n[1],
-        limited: n[2],
+        limited: n[1],
+        working: n[2],
         settledToday: n[3],
       }),
       expected || "All quiet"

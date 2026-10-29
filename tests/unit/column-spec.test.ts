@@ -243,6 +243,10 @@ test("columnFor: a sheet over the closed session (E-Live, N-Undo)", () => {
     fmt(columnFor("session", "duo-closed", { ...CTX, sheet: "switch" })),
     "closeSheet"
   );
+  assert.equal(
+    fmt(columnFor("session", "duo-closed", { ...CTX, sheet: "permissions" })),
+    "closeSheet | done*"
+  );
   // The open Duo shows Live activity as its rail: no sheet column
   assert.equal(
     fmt(columnFor("session", "duo-open", { ...CTX, liveOpen: true })),
@@ -359,4 +363,30 @@ test("columnFor: every icon has a component on the web", () => {
   for (const [surface, mode] of TABLE)
     for (const i of columnFor(surface, mode, CTX))
       assert.notEqual(columnIcon(i.icon), Circle, `${i.id}: ${i.icon}`);
+});
+
+test("columnFor: Scripts sheet and project settings (N-Scripts, N-Config)", () => {
+  const scripts = { ...CTX, sheet: "scripts" as const };
+  assert.equal(
+    fmt(columnFor("session", "duo-closed", scripts)),
+    "closeSheet | projectSettings"
+  );
+  assert.equal(
+    fmt(columnFor("project", "duo-closed", scripts)),
+    "closeSheet | projectSettings"
+  );
+  const gear = columnFor("session", "duo-closed", scripts)[1];
+  assert.equal(gear.icon, "Settings");
+  assert.equal(gear.symbol, "gearshape");
+  // The open Duo and desktop show it as a dialog: the column stays
+  assert.equal(
+    fmt(columnFor("project", "desktop", scripts)),
+    "back | new* search | projectSettings"
+  );
+  for (const mode of ["duo-closed", "duo-open", "desktop"] as LayoutMode[]) {
+    const items = columnFor("project", mode, { ...CTX, projectSettings: true });
+    assert.equal(fmt(items), "back | scripts viewConfig");
+    for (const i of items)
+      assert.notEqual(columnIcon(i.icon), Circle, `${i.id}: ${i.icon}`);
+  }
 });

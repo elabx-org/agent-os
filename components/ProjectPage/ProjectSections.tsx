@@ -396,13 +396,8 @@ export function RunningSection({
   );
 }
 
-/**
- * M3's project scripts (N-Scripts) go here, between Running and Merged
- * today; nothing until then
- */
-export function ProjectScripts(_props: { project: ProjectWithDevServers }) {
-  return null;
-}
+/** M3's project scripts, between Running and Merged today */
+export { ProjectScripts } from "@/components/Projects/ProjectScripts";
 
 /** Pull requests merged today: violet number and title, each to GitHub */
 export function MergedTodaySection({ prs }: { prs: MergedPr[] }) {

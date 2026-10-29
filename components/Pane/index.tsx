@@ -44,6 +44,7 @@ import { ActivityStrip } from "@/components/Session/ActivityStrip";
 import { isNative } from "@/lib/native-bridge";
 import { useSharedFiles } from "@/hooks/useSharedFiles";
 import { useGitStatus } from "@/data/git/queries";
+import { useTerminalRunRequest } from "@/stores/scriptTerminal";
 
 // Dynamic imports for client-only components with loading states
 const Terminal = dynamic(
@@ -156,6 +157,11 @@ export const Pane = memo(function Pane({
     : null;
   // Handed off (M4): no terminal to attach or launch, its chat stays
   const sessionPaused = isPaused(session);
+  // M3: a script for this session's shell drawer opens it
+  const terminalRun = useTerminalRunRequest(session?.id);
+  useEffect(() => {
+    if (terminalRun) setShellDrawerOpen(true);
+  }, [terminalRun]);
 
   // File editor state - lifted here so it persists across view switches
   const fileEditor = useFileEditor();
@@ -796,6 +802,7 @@ export const Pane = memo(function Pane({
                       open={true}
                       onOpenChange={setShellDrawerOpen}
                       workingDirectory={session.working_directory}
+                      sessionId={session.id}
                     />
                   </ResizablePanel>
                 </>

@@ -347,6 +347,8 @@ export function useNewSessionForm({
     setWorkingDirectory,
     projectId,
     agentType,
+    // Not remembered as the last agent (a project's .agent-os.json default)
+    setAgentType,
     skipPermissions,
     continueSession,
     useTmux,

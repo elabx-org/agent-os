@@ -24,6 +24,7 @@ import {
   FolderOpen,
   Activity,
   ArrowRightLeft,
+  Play,
   MessageSquare,
 } from "lucide-react";
 import {
@@ -55,6 +56,7 @@ import {
   STATE_WORD,
 } from "@/lib/agent-state";
 import { sessionState } from "@/lib/paused";
+import { isPaused } from "@/lib/handoff-types";
 import { useGitStatus } from "@/data/git/queries";
 import {
   Crumb,
@@ -68,6 +70,12 @@ import { addedLines } from "@/components/Session/activity-format";
 import { canSwitch, ModelChip } from "@/components/Session/ModelChip";
 import { SwitchSheet } from "@/components/Session/SwitchSheet";
 import { headerVariant } from "@/lib/session-views";
+import { openScripts } from "@/stores/scriptsSheet";
+import {
+  PermissionChip,
+  PermissionMenuItem,
+} from "@/components/Session/PermissionChip";
+import { PermissionSheetHost } from "@/components/Session/PermissionSheet";
 
 interface SessionTitleBarProps {
   session: Session | null | undefined;
@@ -249,6 +257,10 @@ export function SessionTitleBar({
   // The new headers keep Focus, Files and Changes here; their segments
   // show Chat and Terminal (the desktop's Changes too)
   const newHeader = variant !== "classic";
+  // N-PermMode's chip sits by the title in the page and on the desktop bar
+  const chipInHeader =
+    !!info &&
+    (variant === "desktop" || variant === "page" || variant === "large");
 
   const besideMenu = (
     <DropdownMenu modal={false}>
@@ -309,6 +321,10 @@ export function SessionTitleBar({
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="min-w-[200px]">
+        {/* The headers without the shield chip reach the sheet here */}
+        {session && !chipInHeader && (
+          <PermissionMenuItem session={session} separator />
+        )}
         {newHeader && session && (
           <>
             {variant !== "desktop" && hasFolder && (
@@ -403,6 +419,14 @@ export function SessionTitleBar({
             {gitDrawerOpen ? "Hide changes drawer" : "Changes drawer"}
           </DropdownMenuItem>
         )}
+        {session?.project_id && session.project_id !== "uncategorized" && (
+          <DropdownMenuItem
+            onSelect={() => openScripts(session.project_id!, session.id)}
+          >
+            <Play className="h-4 w-4" />
+            Scripts
+          </DropdownMenuItem>
+        )}
         {wide && hasFolder && onShellDrawerToggle && (
           <DropdownMenuItem onSelect={onShellDrawerToggle}>
             <SquareTerminal className="h-4 w-4" />
@@ -482,6 +506,15 @@ export function SessionTitleBar({
                   open={switchOpen}
                   onOpen={switcher.onOpen}
                   className="max-w-[220px] @max-[640px]/bar:hidden"
+                />
+              )}
+              {/* Handed off: no running agent to set a mode on */}
+              {!isPaused(info.session) && (
+                <PermissionChip
+                  session={info.session}
+                  variant="header"
+                  // A crowded bar keeps the shield alone, so the subtitle keeps the state
+                  className="h-9 rounded-full @max-[900px]/bar:px-2.5 @max-[900px]/bar:[&>[data-chip-label]]:hidden"
                 />
               )}
               <DesktopLiveButton />
@@ -718,6 +751,7 @@ export function SessionTitleBar({
           onHandedOff={openHandedOff}
         />
       )}
+      {session && <PermissionSheetHost session={session} />}
     </>
   );
 }

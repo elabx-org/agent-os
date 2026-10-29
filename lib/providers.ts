@@ -16,6 +16,7 @@ import {
 } from "./providers/registry";
 import { permissionFlags } from "./permission-mode";
 import { isEffortLevel } from "./handoff-types";
+import { isSafeModelName } from "./model-name";
 
 export type AgentType = ProviderId;
 
@@ -196,8 +197,8 @@ export const codexProvider: AgentProvider = {
     // The session's permission mode, else the registry's auto-approve flag
     flags.push(...permissionFlags(def.id, options));
 
-    if (options.model && def.modelFlag) {
-      flags.push(`${def.modelFlag} ${options.model}`);
+    if (options.model && def.modelFlag && isSafeModelName(options.model)) {
+      flags.push(`${def.modelFlag} '${options.model}'`);
     }
 
     // Initial prompt (positional argument for Codex)
@@ -302,8 +303,8 @@ export const geminiProvider: AgentProvider = {
     // The session's permission mode, else the registry's auto-approve flag
     flags.push(...permissionFlags(def.id, options));
 
-    if (options.model && def.modelFlag) {
-      flags.push(`${def.modelFlag} ${options.model}`);
+    if (options.model && def.modelFlag && isSafeModelName(options.model)) {
+      flags.push(`${def.modelFlag} '${options.model}'`);
     }
 
     // Initial prompt (uses -p flag)
@@ -359,8 +360,8 @@ export const aiderProvider: AgentProvider = {
     // The session's permission mode, else the registry's auto-approve flag
     flags.push(...permissionFlags(def.id, options));
 
-    if (options.model && def.modelFlag) {
-      flags.push(`${def.modelFlag} ${options.model}`);
+    if (options.model && def.modelFlag && isSafeModelName(options.model)) {
+      flags.push(`${def.modelFlag} '${options.model}'`);
     }
 
     return flags;
@@ -406,8 +407,8 @@ export const cursorProvider: AgentProvider = {
     // The session's permission mode, else the registry's auto-approve flag
     flags.push(...permissionFlags(def.id, options));
 
-    if (options.model && def.modelFlag) {
-      flags.push(`${def.modelFlag} ${options.model}`);
+    if (options.model && def.modelFlag && isSafeModelName(options.model)) {
+      flags.push(`${def.modelFlag} '${options.model}'`);
     }
 
     return flags;
@@ -454,8 +455,8 @@ export const clineProvider: AgentProvider = {
     // The session's permission mode, else the registry's auto-approve flag
     flags.push(...permissionFlags(def.id, options));
 
-    if (options.model && def.modelFlag) {
-      flags.push(`${def.modelFlag} ${options.model}`);
+    if (options.model && def.modelFlag && isSafeModelName(options.model)) {
+      flags.push(`${def.modelFlag} '${options.model}'`);
     }
 
     // Initial prompt (positional argument for Cline)

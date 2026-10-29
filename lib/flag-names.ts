@@ -6,12 +6,14 @@
 export const FLAG_NAMES = [
   "queue",
   "snapshots",
+  "limits",
   "autoResume",
   "autoSettle",
   "searchIndex",
   "prPoller",
   "chatDefault",
   "liveFullAccess",
+  "modeAtIdle",
 ] as const;
 
 export type FlagName = (typeof FLAG_NAMES)[number];
@@ -22,21 +24,25 @@ export type Flags = Record<FlagName, boolean>;
 export const TICKER_FLAGS: readonly FlagName[] = [
   "queue",
   "snapshots",
+  "limits",
   "autoResume",
   "autoSettle",
   "searchIndex",
   "prPoller",
+  "modeAtIdle",
 ];
 
 export const FLAG_DEFAULTS: Flags = {
   queue: false,
   snapshots: false,
+  limits: false,
   autoResume: false,
   autoSettle: false,
   searchIndex: false,
   prPoller: false,
   chatDefault: false,
   liveFullAccess: false,
+  modeAtIdle: false,
 };
 
 export const FLAGS_PREFERENCE_KEY = "flags";
@@ -81,6 +87,10 @@ export const FLAG_LABELS: Record<FlagName, { label: string; hint: string }> = {
     label: "Turn snapshots",
     hint: "Records each turn's changes so it can be undone",
   },
+  limits: {
+    label: "Usage limits",
+    hint: "Marks sessions that hit a usage limit and holds messages until it resets",
+  },
   autoResume: {
     label: "Auto-resume",
     hint: "Resumes sessions when a usage limit resets",
@@ -104,6 +114,10 @@ export const FLAG_LABELS: Record<FlagName, { label: string; hint: string }> = {
   liveFullAccess: {
     label: "Instant full access",
     hint: "Full access joins Shift+Tab, so an agent could switch it on. New sessions only",
+  },
+  modeAtIdle: {
+    label: "Permission changes wait for the turn",
+    hint: "A mode picked mid-turn applies when the turn ends. Off applies it at once",
   },
 };
 
