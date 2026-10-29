@@ -442,10 +442,11 @@ export function FileExplorer({
   if (wide) {
     body = (
       <div className="flex h-full w-full">
-        {/* D-Files' sidebar: project, branch, search, tree */}
+        {/* D-Files' sidebar: project, branch, search, tree; on the open Duo
+            it takes the left page and the code the right one */}
         <aside
           aria-label="Files"
-          className="flex h-full w-[300px] flex-shrink-0 flex-col gap-2.5 border-r border-[var(--hair)] px-2 py-4"
+          className="flex h-full w-[300px] flex-shrink-0 flex-col gap-2.5 border-r border-[var(--hair)] px-2 py-4 [html[data-hinge]_&]:w-[calc(var(--hinge-x)-var(--fold-clear))] [html[data-hinge]_&]:border-r-0"
         >
           <div className="flex min-w-0 items-center justify-between gap-2 px-2">
             <span className="t-head truncate">{baseName(projectRoot)}</span>
@@ -474,7 +475,7 @@ export function FileExplorer({
         </aside>
 
         {/* Tabs, actions, the code */}
-        <main className="@container/code flex h-full min-w-0 flex-1 flex-col px-4 pt-3 pb-4">
+        <main className="@container/code flex h-full min-w-0 flex-1 flex-col px-4 pt-3 pb-4 [html[data-hinge]_&]:ml-[calc(2*var(--fold-clear))]">
           {activeFile ? (
             <>
               <div className="flex min-w-0 items-end gap-2">
