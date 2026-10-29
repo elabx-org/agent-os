@@ -9,7 +9,7 @@ import { NewSurfaceHost } from "@/components/New/NewSurface";
 import { ProjectSettingsHost } from "@/components/Projects/ProjectSettingsDialog";
 import { StartServerDialog } from "@/components/DevServers/StartServerDialog";
 import { PaneLayout } from "@/components/PaneLayout";
-import { QuickSwitcher } from "@/components/QuickSwitcher";
+import { SearchHost } from "@/components/Search/SearchHost";
 import type { ViewProps } from "./types";
 import { fileOpenActions } from "@/stores/fileOpen";
 import { mobileNavStore } from "@/stores/mobileNav";
@@ -232,7 +232,7 @@ export function MobileView(props: ViewProps) {
         onCreateProject={handleCreateProject}
       />
       <ProjectSettingsHost />
-      <QuickSwitcher
+      <SearchHost
         sessions={sessions}
         open={showQuickSwitcher}
         onOpenChange={setShowQuickSwitcher}
