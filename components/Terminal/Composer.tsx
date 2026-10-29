@@ -1,15 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState, type MutableRefObject } from "react";
-import { ArrowUp } from "lucide-react";
+import type { MutableRefObject } from "react";
 import { cn } from "@/lib/utils";
 import { useSessionsQuery } from "@/data/sessions";
-import {
-  ComposerChips,
-  ComposerInput,
-  ComposerPopover,
-  useComposer,
-} from "@/components/Composer";
+import { useComposer } from "@/components/Composer";
+import { ComposerCard } from "@/components/Composer/ComposerCard";
 import {
   QueuedMessages,
   StrayInput,
@@ -18,15 +13,17 @@ import {
   type ClaudeKey,
 } from "@/components/Composer/ClaudeStateBar";
 import { ReplyContextBar } from "@/components/ReplyContext";
-import { VideoPills } from "@/components/Composer/VideoPills";
-import { sendWithVideos, videosFor } from "@/stores/videoUploads";
+import { useQueue } from "@/hooks/useQueue";
+import {
+  getProviderDefinition,
+  isValidProviderId,
+} from "@/lib/providers/registry";
 import type { SpreadPages } from "@/components/views/SessionSpread";
 import { ComposerPlusMenu, type ComposerTools } from "./ComposerPlusMenu";
 
-const MAX_ROWS = 5;
-/** A one-line box: the 44px buttons, the capsule's padding and border, and
-    its margin. Growing up, the box keeps this much room in the row. */
-const ONE_LINE_PX = 70;
+/** A one-line box: the 52px capsule and its margin. Growing up, the box
+    keeps this much room in the row. */
+const ONE_LINE_PX = 64;
 
 interface ComposerProps {
   value: string;
@@ -106,7 +103,6 @@ export function Composer({
     cwd: session?.working_directory,
     claude: session?.agent_type === "claude",
   });
-  const { textareaRef, display } = composer;
   // Claude's state: the queue, rewind and the box's keys follow it
   const live = useClaudeLive({
     sessionId,
@@ -115,164 +111,22 @@ export function Composer({
     readScreen,
     sendKey: onClaudeKey,
   });
-  // Once the text needs a second line, the buttons move under it and the
-  // text gets the whole width. It stays that way until the box is empty, so
-  // the wider box fitting the text on one line again doesn't flip it back.
-  const [stacked, setStacked] = useState(false);
-  // On a page of its own the box keeps its row
-  const stack = stacked && !pages;
-
-  // Grow with content up to MAX_ROWS, then scroll
-  useEffect(() => {
-    const el = textareaRef.current;
-    if (!el) return;
-    el.style.height = "auto";
-    const style = getComputedStyle(el);
-    const lineHeight = parseFloat(style.lineHeight) || 20;
-    const paddingY =
-      parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
-    if (!display) setStacked(false);
-    else if (!stacked && el.scrollHeight > lineHeight * 1.5 + paddingY)
-      setStacked(true);
-    const padding = el.offsetHeight - el.clientHeight + 16;
-    el.style.height = `${Math.min(el.scrollHeight, lineHeight * MAX_ROWS + padding)}px`;
-  }, [display, stacked]);
+  // The server queue, when it's on for this session; off, the old send
+  // (and the terminal keeps its own record of what Claude holds)
+  const queue = useQueue(sessionId ?? "", { enabled: !!sessionId && active });
+  const agentName = !session
+    ? "the agent"
+    : session.agent_type === "claude"
+      ? "Claude"
+      : isValidProviderId(session.agent_type)
+        ? getProviderDefinition(session.agent_type).name
+        : session.agent_type;
 
   // A snippet, file path or dictation joins what's typed, a space apart
   const insert = (text: string) => {
     if (!text) return;
     composer.insert(text, true);
   };
-
-  // The text as it is when a message waiting on a video's frames goes
-  const textRef = useRef(composer.text);
-  textRef.current = composer.text;
-  const clear = () => {
-    onChange("");
-    composer.sent();
-  };
-
-  const send = () => {
-    // With a video: its frames first, once they're ready
-    if (sessionId && videosFor(sessionId).length) {
-      sendWithVideos(sessionId, () => textRef.current, onSend, clear);
-      return;
-    }
-    // The draft holds the pills' full text: that's what goes
-    onSend(composer.text);
-    clear();
-  };
-
-  const sendButton = (
-    <button
-      type="button"
-      onMouseDown={(e) => e.preventDefault()}
-      onClick={send}
-      // The one accent control on screen, also when it just presses Enter
-      className="bg-primary text-primary-foreground flex h-[44px] w-[44px] flex-shrink-0 touch-manipulation items-center justify-center rounded-full active:opacity-80"
-      aria-label={value ? "Send" : "Press Enter"}
-      title={value ? "Send" : "Press Enter"}
-    >
-      <ArrowUp className="h-5 w-5" />
-    </button>
-  );
-
-  const box = (
-    // z-10: the capsule's backdrop blur makes it a layer of its own, which
-    // otherwise sits under xterm's canvases, so taps on the + menu and the
-    // pickers that open above the box went to the terminal
-    // Two rows: the box ends where the left page does (less its margin)
-    <div
-      className="relative z-10 mx-2.5 my-1.5"
-      style={pages ? { width: pages.left - 10 } : undefined}
-      onTouchEnd={(e) => e.stopPropagation()}
-    >
-      <ComposerPopover composer={composer} />
-      <RewindSheet live={live} cwd={composer.cwd} />
-      <QueuedMessages
-        live={live}
-        known={getQueued?.()}
-        onEdit={onEditQueued}
-        onCancel={onCancelQueued}
-      />
-      {stray && onMoveStray && onClearStray && (
-        <StrayInput text={stray} onMove={onMoveStray} onClear={onClearStray} />
-      )}
-      {/* What's being answered, and the passages quoted to answer */}
-      <ReplyContextBar
-        composer={composer}
-        sessionId={sessionId}
-        view="terminal"
-      />
-      {sessionId && <VideoPills draft={sessionId} />}
-      <ComposerChips composer={composer} />
-      <div
-        className={cn(
-          // Glass-like capsule, as the control column
-          "bg-background/70 border-border flex items-end gap-1.5 rounded-[28px] border p-1.5 shadow-[inset_0_1px_0_hsl(var(--foreground)/0.08)] backdrop-blur-xl backdrop-saturate-150",
-          stack && "flex-wrap"
-        )}
-      >
-        <ComposerPlusMenu
-          onPhoto={onPhoto}
-          videoDraft={sessionId}
-          onInsert={insert}
-          onSelectText={onSelectText}
-          onTypeInTerminal={onTypeInTerminal}
-          onHistory={
-            composer.claude && composer.cwd
-              ? () => composer.setHistoryOpen(true)
-              : undefined
-          }
-          onRewind={live.claude ? () => live.setRewindOpen(true) : undefined}
-          hidden={noPlus}
-          toolsRef={toolsRef}
-        />
-        <ComposerInput
-          composer={composer}
-          onKeyDown={(e) => {
-            if (live.onKeyDown(e)) return;
-            // Return sends, Shift+Return adds a line. On the on-screen keyboard
-            // the keybar's newline key adds a line instead.
-            if (
-              e.key === "Enter" &&
-              !e.shiftKey &&
-              !e.nativeEvent.isComposing
-            ) {
-              e.preventDefault();
-              send();
-            }
-          }}
-          data-composer=""
-          enterKeyHint="send"
-          placeholder="Type into the terminal"
-          autoCapitalize="sentences"
-          className={cn("flex-1", stack && "order-first basis-full")}
-        />
-        {stack && <span className="flex-1" aria-hidden="true" />}
-        {!pages && extra}
-        {!pages && sendButton}
-      </div>
-      {/* No copy of Claude's state line here: the terminal shows Claude's
-          own, and the keys have Shift+Tab and Esc (Chat view keeps it) */}
-      {pages && (
-        // On the right page, level with the box: the keybar toggle and send
-        // at the far end
-        <div
-          className="absolute bottom-0 flex items-end gap-1.5 py-1.5"
-          style={{
-            left: `calc(100% + ${pages.gutter}px)`,
-            width: pages.right - 10,
-          }}
-        >
-          <div className="ml-auto flex shrink-0 items-end gap-1.5">
-            {extra}
-            {sendButton}
-          </div>
-        </div>
-      )}
-    </div>
-  );
 
   // The same elements either way: growUp flips with the layout (the
   // keyboard coming up can change it), and a remounted box loses focus,
@@ -287,7 +141,78 @@ export function Composer({
       <div
         className={cn(growUp && "bg-background absolute inset-x-0 bottom-0")}
       >
-        {box}
+        <ComposerCard
+          composer={composer}
+          sessionId={sessionId ?? ""}
+          agentName={agentName}
+          queue={queue}
+          onSendDirect={onSend}
+          // Nothing typed: Enter, as the terminal's own key
+          onEmptySend={() => onSend("")}
+          placeholder="Type into the terminal"
+          live={live}
+          // The terminal draws Claude's mode; history is in the +
+          modePill={false}
+          history={false}
+          pages={pages}
+          // z-10: the glass's backdrop blur makes it a layer of its own,
+          // which otherwise sits under xterm's canvases, so taps on the +
+          // menu and the pickers that open above the box went to the
+          // terminal. Two rows: the box ends where the left page does
+          className="z-10 mx-2.5 my-1.5"
+          inputProps={{
+            inputClassName: "max-h-36",
+            // The terminal tells its own focus from the composer's by this
+            ...({ "data-composer": "" } as object),
+          }}
+          plus={
+            <ComposerPlusMenu
+              onPhoto={onPhoto}
+              videoDraft={sessionId}
+              onInsert={insert}
+              onSelectText={onSelectText}
+              onTypeInTerminal={onTypeInTerminal}
+              onHistory={
+                composer.claude && composer.cwd
+                  ? () => composer.setHistoryOpen(true)
+                  : undefined
+              }
+              onRewind={
+                live.claude ? () => live.setRewindOpen(true) : undefined
+              }
+              hidden={noPlus}
+              toolsRef={toolsRef}
+            />
+          }
+          trailing={extra}
+          above={
+            <>
+              <RewindSheet live={live} cwd={composer.cwd} />
+              {/* The queue on: QueueCard in the card shows what waits */}
+              {!queue.enabled && (
+                <QueuedMessages
+                  live={live}
+                  known={getQueued?.()}
+                  onEdit={onEditQueued}
+                  onCancel={onCancelQueued}
+                />
+              )}
+              {stray && onMoveStray && onClearStray && (
+                <StrayInput
+                  text={stray}
+                  onMove={onMoveStray}
+                  onClear={onClearStray}
+                />
+              )}
+              {/* What's being answered, and the passages quoted to answer */}
+              <ReplyContextBar
+                composer={composer}
+                sessionId={sessionId}
+                view="terminal"
+              />
+            </>
+          }
+        />
       </div>
     </div>
   );

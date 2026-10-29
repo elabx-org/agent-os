@@ -255,6 +255,13 @@ const MODE_LABEL: Record<
   },
 };
 
+/** A permission mode's icon and colours, for the composer's mode pill */
+export function modeTone(
+  mode: string | null | undefined
+): { icon: React.ReactNode; className: string } | undefined {
+  return mode ? MODE_LABEL[mode] : undefined;
+}
+
 /**
  * What the user's own status line prints, or model · context · cost from the
  * JSON Claude last gave it when they have none

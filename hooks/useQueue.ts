@@ -1,11 +1,26 @@
 "use client";
 
+import { useCallback, useMemo } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useSharedPoll } from "@/hooks/useSharedPoll";
+import { fetchAsUser } from "@/lib/client/user-fetch";
+import {
+  QUEUE_OFF,
+  QueueRequestError,
+  moveItem,
+  patchItem,
+  queueErrorText,
+  removeItem,
+  upsertItem,
+} from "@/components/Composer/queue-model";
 import type {
+  EditQueueItemRequest,
   EditQueueItemResult,
   EnqueueRequest,
   EnqueueResult,
   HoldReason,
   QueueItem,
+  QueueState,
 } from "@/lib/queue/types";
 
 export const queueKeys = {
@@ -40,28 +55,188 @@ export interface UseQueue {
   dropNotice: () => Promise<void>;
 }
 
-const notImplemented = () => Promise.reject(new Error("Not implemented"));
+/** Busy or with something waiting: the queue changes by the second */
+const ACTIVE_MS = 2000;
+const IDLE_MS = 5000;
+/** Off: only to notice the flag being switched on */
+const OFF_MS = 30000;
 
-// M2 contract: the shape only; U2.4 implements it over useSharedPoll
-// (GET /api/sessions/[id]/queue, 2s while there are items or it is held)
+async function fetchQueue(sessionId: string): Promise<QueueState> {
+  const res = await fetch(`/api/sessions/${sessionId}/queue`);
+  // No queue route (an older server) or no such session: the old send
+  if (res.status === 501 || res.status === 404) return QUEUE_OFF;
+  // Anything else keeps what was last known rather than guessing "off"
+  if (!res.ok) throw new Error(`Queue: ${res.status}`);
+  return (await res.json()) as QueueState;
+}
 
-/** A session's server queue */
+/** A user action on the queue; rejects with the refusal in words */
+async function request<T>(
+  url: string,
+  method: string,
+  body?: unknown
+): Promise<T> {
+  const res = await fetchAsUser(url, {
+    method,
+    headers: body ? { "Content-Type": "application/json" } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const json = (await res.json().catch(() => null)) as {
+    error?: string;
+    reason?: string;
+  } | null;
+  if (!res.ok)
+    throw new QueueRequestError(
+      queueErrorText(res.status, json),
+      res.status,
+      json?.error ?? null
+    );
+  return json as T;
+}
+
+/**
+ * A session's server queue (GET /api/sessions/[id]/queue), polled every 2s
+ * while something waits or the session is held, 5s otherwise. The actions
+ * change the cached state at once and put it back if the server refuses.
+ * Whether a message goes now or waits is always the server's call
+ */
 export function useQueue(
-  _sessionId: string,
-  _options: { enabled?: boolean } = {}
+  sessionId: string,
+  { enabled = true }: { enabled?: boolean } = {}
 ): UseQueue {
-  return {
-    items: [],
-    notice: null,
-    ready: false,
-    holdReason: null,
-    enabled: false,
-    isLoading: false,
-    send: notImplemented,
-    enqueue: notImplemented,
-    edit: notImplemented,
-    move: notImplemented,
-    cancel: notImplemented,
-    dropNotice: notImplemented,
-  };
+  const queryClient = useQueryClient();
+  const key = queueKeys.session(sessionId);
+  const on = enabled && !!sessionId;
+  const { data, isLoading } = useQuery({
+    queryKey: key,
+    queryFn: () => fetchQueue(sessionId),
+    enabled: on,
+  });
+  const state = data ?? QUEUE_OFF;
+  const ms = !state.enabled
+    ? OFF_MS
+    : state.items.length || !state.ready
+      ? ACTIVE_MS
+      : IDLE_MS;
+  useSharedPoll(key, ms, on);
+
+  const base = `/api/sessions/${sessionId}/queue`;
+
+  /** Applies `change` now; on a refusal the state goes back as it was */
+  const optimistic = useCallback(
+    async <T>(
+      change: ((s: QueueState) => QueueState) | null,
+      run: () => Promise<T>,
+      settle?: (s: QueueState, result: T) => QueueState
+    ): Promise<T> => {
+      const queryKey = queueKeys.session(sessionId);
+      await queryClient.cancelQueries({ queryKey });
+      const before = queryClient.getQueryData<QueueState>(queryKey);
+      if (before && change) queryClient.setQueryData(queryKey, change(before));
+      try {
+        const result = await run();
+        if (settle)
+          queryClient.setQueryData<QueueState>(queryKey, (s) =>
+            s ? settle(s, result) : s
+          );
+        return result;
+      } catch (e) {
+        if (before) queryClient.setQueryData(queryKey, before);
+        throw e;
+      } finally {
+        void queryClient.invalidateQueries({ queryKey });
+      }
+    },
+    [queryClient, sessionId]
+  );
+
+  const post = useCallback(
+    (
+      text: string,
+      sendNow: boolean,
+      options: Omit<EnqueueRequest, "text" | "sendNow"> = {}
+    ) => {
+      const body: EnqueueRequest = { text, ...options, sendNow };
+      return optimistic(
+        null,
+        () => request<EnqueueResult>(base, "POST", body),
+        // Queued: it shows at once, before the next poll
+        (s, { item, sent }) =>
+          sent || item.kind === "undo_notice"
+            ? s
+            : { ...s, items: upsertItem(s.items, item) }
+      );
+    },
+    [base, optimistic]
+  );
+
+  const send = useCallback<UseQueue["send"]>(
+    (text, options) => post(text, true, options),
+    [post]
+  );
+  const enqueue = useCallback<UseQueue["enqueue"]>(
+    (text, options) => post(text, false, options),
+    [post]
+  );
+
+  const edit = useCallback<UseQueue["edit"]>(
+    (itemId, text) =>
+      optimistic(
+        (s) => ({ ...s, items: patchItem(s.items, itemId, { text }) }),
+        () =>
+          request<EditQueueItemResult>(`${base}/${itemId}`, "PATCH", {
+            text,
+          } satisfies EditQueueItemRequest)
+      ),
+    [base, optimistic]
+  );
+
+  const move = useCallback<UseQueue["move"]>(
+    (itemId, position) =>
+      optimistic(
+        (s) => ({ ...s, items: moveItem(s.items, itemId, position) }),
+        () =>
+          request<EditQueueItemResult>(`${base}/${itemId}`, "PATCH", {
+            position,
+          } satisfies EditQueueItemRequest)
+      ),
+    [base, optimistic]
+  );
+
+  const cancel = useCallback<UseQueue["cancel"]>(
+    async (itemId) => {
+      await optimistic(
+        (s) => ({ ...s, items: removeItem(s.items, itemId) }),
+        () => request<{ ok: true }>(`${base}/${itemId}`, "DELETE")
+      );
+    },
+    [base, optimistic]
+  );
+
+  const noticeId = state.notice?.id;
+  const dropNotice = useCallback<UseQueue["dropNotice"]>(async () => {
+    if (noticeId === undefined) return;
+    await optimistic(
+      (s) => ({ ...s, notice: null }),
+      () => request<{ ok: true }>(`${base}/${noticeId}`, "DELETE")
+    );
+  }, [base, noticeId, optimistic]);
+
+  return useMemo(
+    () => ({
+      items: state.items,
+      notice: state.notice,
+      ready: state.ready,
+      holdReason: state.holdReason,
+      enabled: state.enabled,
+      isLoading: on && isLoading,
+      send,
+      enqueue,
+      edit,
+      move,
+      cancel,
+      dropNotice,
+    }),
+    [state, on, isLoading, send, enqueue, edit, move, cancel, dropNotice]
+  );
 }
