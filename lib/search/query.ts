@@ -75,8 +75,9 @@ export function messageSnippet(text: string, query: string): string {
   let at = parts.findIndex((p) => p.index + p.segment.length > first);
   if (at < 0) at = 0;
 
+  // The match stays near the start even when it's near the end of the
+  // message: a phone row shows about 40 characters before it clips
   let start = Math.max(0, at - SNIPPET_LEAD);
-  start = Math.min(start, parts.length - SNIPPET_CHARS);
   // Begin on a word when one starts close by
   if (start > 0) {
     for (let n = start; n < Math.min(at, start + 12); n++) {

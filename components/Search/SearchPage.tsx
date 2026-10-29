@@ -32,6 +32,7 @@ import { sessionState, shortAge } from "@/lib/agent-state";
 import { isNative, nativeCaps } from "@/lib/native-bridge";
 import { useLayoutMode } from "@/hooks/useLayoutMode";
 import { mobileNavStore } from "@/stores/mobileNav";
+import { postureStore } from "@/stores/posture";
 import { StateDot } from "@/components/a/StateDot";
 import { agentName } from "@/components/a/Avatar";
 import { Highlight } from "./Highlight";
@@ -71,6 +72,7 @@ function SearchLayer(props: SearchSurfaceProps) {
   const { sessions, onOpenChange, currentSessionId } = props;
   const mode = useLayoutMode();
   const { railWidth, statuses } = useSnapshot(mobileNavStore);
+  const { fold } = useSnapshot(postureStore);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<PageFilter>("all");
   const inputRef = useRef<HTMLInputElement>(null);
@@ -153,7 +155,11 @@ function SearchLayer(props: SearchSurfaceProps) {
           left: "calc(var(--hinge-x, 50%) + var(--fold-clear, 0px))",
           right: columnRight,
         }
-      : { left: 0, right: railWidth };
+      : mode === "tabletop" && fold?.axis === "horizontal"
+        ? // Half folded: the upper half, clear of the hinge; the keyboard
+          // and the base's bar stay below it
+          { left: 0, right: railWidth, bottom: "auto", height: fold.start }
+        : { left: 0, right: railWidth };
 
   // Beside a column the gap to it is the column's own (8px); else 20px
   // and the notch's inset

@@ -369,3 +369,12 @@ test("openSearchDb caches one handle per file", () => {
   closeSearchDb();
   assert.equal(a.open, false);
 });
+
+test("snippet: a match near the end of a long message stays near the start", () => {
+  const long = `${"word ".repeat(60)}the Undo toast and the fold`;
+  const snip = messageSnippet(long, "undo");
+  assert.ok(snip.startsWith("…"));
+  assert.ok(!snip.endsWith("…"));
+  const at = snip.toLowerCase().indexOf("undo");
+  assert.ok(at > 0 && at <= 30, `match at ${at}: ${snip}`);
+});
