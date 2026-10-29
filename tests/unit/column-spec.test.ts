@@ -242,6 +242,46 @@ test("columnFor: a sheet over the closed session (E-Live, N-Undo)", () => {
     fmt(columnFor("session", "duo-closed", { ...CTX, sheet: "undo" })),
     "closeSheet | git[3n]"
   );
+  // N-Switch: the close alone
+  assert.equal(
+    fmt(columnFor("session", "duo-closed", { ...CTX, sheet: "switch" })),
+    "closeSheet"
+  );
+  assert.equal(
+    fmt(columnFor("session", "duo-closed", { ...CTX, sheet: "permissions" })),
+    "closeSheet | done*"
+  );
+  // N-Worktree: close | Move session, over a session or a project's row
+  const move = { ...CTX, sheet: "move" as const };
+  assert.equal(
+    fmt(columnFor("session", "duo-closed", move)),
+    "closeSheet | done*"
+  );
+  assert.equal(
+    fmt(columnFor("project", "duo-closed", move)),
+    "closeSheet | done*"
+  );
+  assert.equal(
+    columnFor("session", "duo-closed", move)[1].label,
+    "Move session"
+  );
+  // On the open Duo too (the sheet stops at the web column)
+  assert.equal(
+    fmt(columnFor("session", "duo-open", move)),
+    "closeSheet | done*"
+  );
+  assert.equal(fmt(columnFor("session", "book", move)), "closeSheet | done*");
+  // Waiting for the turn: Cancel move, not prominent; nothing to do: × alone
+  const waiting = columnFor("session", "duo-closed", {
+    ...move,
+    sheetAction: "cancel",
+  });
+  assert.equal(fmt(waiting), "closeSheet | done");
+  assert.equal(waiting[1].label, "Cancel move");
+  assert.equal(
+    fmt(columnFor("session", "duo-closed", { ...move, sheetAction: "none" })),
+    "closeSheet"
+  );
   // The open Duo shows Live activity as its rail: no sheet column
   assert.equal(
     fmt(columnFor("session", "duo-open", { ...CTX, liveOpen: true })),
@@ -422,4 +462,140 @@ test("no saved order keeps the default column", () => {
     fmt(columnFor("session", "duo-closed", { ...CTX, order: {} })),
     fmt(columnFor("session", "duo-closed", CTX))
   );
+});
+
+test("columnFor: the closed agents view (N-Tree)", () => {
+  const ctx = {
+    ...CTX,
+    viewMode: "agents" as const,
+    agents: 7,
+    showFinished: true,
+  };
+  const items = columnFor("session", "duo-closed", ctx);
+  assert.equal(fmt(items), "back | showFinished(on) collapseAll");
+  assert.deepEqual(
+    items.map((i) => [i.label, i.icon]),
+    [
+      ["Back to live activity", "ChevronLeft"],
+      ["Show finished agents", "Eye"],
+      ["Collapse all", "ChevronsDownUp"],
+    ]
+  );
+  // While it works, Interrupt stops the session (not its workers), red
+  const working = columnFor("session", "duo-closed", { ...ctx, working: true });
+  assert.equal(fmt(working), "back | showFinished(on) collapseAll | stop");
+  assert.equal(working.at(-1)?.label, "Interrupt");
+  assert.equal(working.at(-1)?.danger, true);
+  // Finished hidden; everything folded: Expand all
+  const folded = columnFor("session", "duo-closed", {
+    ...ctx,
+    showFinished: false,
+    allCollapsed: true,
+  });
+  assert.equal(fmt(folded), "back | showFinished collapseAll");
+  assert.deepEqual(
+    [folded[2].label, folded[2].icon],
+    ["Expand all", "ChevronsUpDown"]
+  );
+  // An agent's detail over the tree: back to it
+  const detail = columnFor("session", "duo-closed", {
+    ...ctx,
+    agentDetail: true,
+  });
+  assert.equal(fmt(detail), "back");
+  assert.equal(detail[0].label, "Back to agents");
+  // The Live activity sheet over it keeps its own column
+  assert.equal(
+    fmt(columnFor("session", "duo-closed", { ...ctx, liveOpen: true })),
+    "closeSheet"
+  );
+});
+
+test("columnFor: Agents beside Files on the open Duo (O-Tree)", () => {
+  const open = columnFor("session", "duo-open", {
+    ...CTX,
+    viewMode: "agents",
+    agents: 7,
+  });
+  assert.equal(fmt(open), "back | chat git[3n] files agents(on) live | more");
+  assert.equal(open[0].label, "Back to session");
+  assert.deepEqual(
+    [open[4].label, open[4].symbol, open[4].icon],
+    ["Agents", "point.3.connected.trianglepath.dotted", "Workflow"]
+  );
+  // With agents, from the chat; with none, no item
+  assert.equal(
+    fmt(columnFor("session", "duo-open", { ...CTX, agents: 2 })),
+    "back | terminal git[3n] files agents live | more"
+  );
+  assert.equal(
+    fmt(columnFor("session", "duo-open", { ...CTX, agents: 0 })),
+    "back | terminal git[3n] files live | more"
+  );
+  // The closed chat column stays as Closed-Chat: Agents is in Live activity
+  assert.equal(
+    fmt(columnFor("session", "duo-closed", { ...CTX, agents: 2 })),
+    "back | terminal git[3n] files live | more"
+  );
+});
+
+test("columnFor: the tabletop and phone bars add Agents while there are any", () => {
+  assert.equal(
+    fmt(columnFor("session", "tabletop", { ...CTX, agents: 3 })),
+    "chat(on) git[3n] files agents live | inbox[2a] more"
+  );
+  assert.equal(
+    fmt(
+      columnFor("session", "phone", {
+        ...CTX,
+        viewMode: "agents",
+        agents: 3,
+      })
+    ),
+    "chat git[3n] files agents(on) live | inbox[2a] more"
+  );
+});
+
+test("columnFor: the agents items have web icons", () => {
+  const items = [
+    ...columnFor("session", "duo-closed", {
+      ...CTX,
+      viewMode: "agents",
+      working: true,
+    }),
+    ...columnFor("session", "duo-closed", {
+      ...CTX,
+      viewMode: "agents",
+      allCollapsed: true,
+    }),
+    ...columnFor("session", "duo-open", { ...CTX, agents: 1 }),
+  ];
+  for (const i of items)
+    assert.notEqual(columnIcon(i.icon), Circle, `${i.id}: ${i.icon}`);
+});
+
+test("columnFor: Scripts sheet and project settings (N-Scripts, N-Config)", () => {
+  const scripts = { ...CTX, sheet: "scripts" as const };
+  assert.equal(
+    fmt(columnFor("session", "duo-closed", scripts)),
+    "closeSheet | projectSettings"
+  );
+  assert.equal(
+    fmt(columnFor("project", "duo-closed", scripts)),
+    "closeSheet | projectSettings"
+  );
+  const gear = columnFor("session", "duo-closed", scripts)[1];
+  assert.equal(gear.icon, "Settings");
+  assert.equal(gear.symbol, "gearshape");
+  // The open Duo and desktop show it as a dialog: the column stays
+  assert.equal(
+    fmt(columnFor("project", "desktop", scripts)),
+    "back | new* search | projectSettings"
+  );
+  for (const mode of ["duo-closed", "duo-open", "desktop"] as LayoutMode[]) {
+    const items = columnFor("project", mode, { ...CTX, projectSettings: true });
+    assert.equal(fmt(items), "back | scripts viewConfig");
+    for (const i of items)
+      assert.notEqual(columnIcon(i.icon), Circle, `${i.id}: ${i.icon}`);
+  }
 });

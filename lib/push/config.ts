@@ -17,7 +17,15 @@ export interface PushDevice {
 }
 
 export interface PushConfig {
-  events: { needsYou: boolean; finished: boolean; backgroundFinished: boolean };
+  events: {
+    needsYou: boolean;
+    finished: boolean;
+    backgroundFinished: boolean;
+    /** A session hit its usage limit (M6) */
+    limited: boolean;
+    /** A limited session was resumed at its reset (M6) */
+    resumed: boolean;
+  };
   /** Where notification links open, e.g. https://agent.example.com */
   publicUrl: string;
   ntfy: { enabled: boolean; server: string; topic: string; token: string };
@@ -41,7 +49,13 @@ export const apnsKeyFile = () => path.join(agentOsHome(), "apns-key.p8");
 
 function defaults(): PushConfig {
   return {
-    events: { needsYou: true, finished: true, backgroundFinished: false },
+    events: {
+      needsYou: true,
+      finished: true,
+      backgroundFinished: false,
+      limited: true,
+      resumed: true,
+    },
     publicUrl: "",
     ntfy: {
       enabled: false,

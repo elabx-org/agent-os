@@ -9,12 +9,17 @@ import {
   STATE_WORD,
   type AgentState,
 } from "@/lib/agent-state";
+import { useSnapshot } from "valtio";
 import { runNav } from "@/lib/nav-actions";
-import type { PaneViewMode } from "@/stores/mobileNav";
+import { canonicalViewMode } from "@/lib/agent-views";
+import { mobileNavStore, type PaneViewMode } from "@/stores/mobileNav";
 import { Avatar, agentAvatar, agentName } from "@/components/a/Avatar";
 import { PlanChip } from "@/components/Chat/PlanChip";
 import { useSessionActivity } from "@/hooks/useSessionActivity";
 import { openLiveSheet, StatusCardButton } from "./ActivityStrip";
+import { canSwitch, ModelChip } from "./ModelChip";
+import { PermissionChip } from "./PermissionChip";
+import { isPaused } from "@/lib/handoff-types";
 import { formatAge, workingLine } from "./activity-format";
 
 /** What every header says about the session */
@@ -41,19 +46,28 @@ export function crumbState(state: AgentState): { word: string; cls: string } {
   }
 }
 
-/** "agent-os · Claude · main · Needs you"; `state: false` drops the word */
+/**
+ * "agent-os · Claude · main · Needs you"; `state: false` drops the word,
+ * `agent: false` the agent (the model chip beside it names it)
+ */
 export function Crumb({
   info,
   extra = [],
   state = true,
+  agent = true,
   className,
 }: {
   info: HeaderInfo;
   extra?: (string | null | undefined)[];
   state?: boolean;
+  agent?: boolean;
   className?: string;
 }) {
-  const parts = [info.project, agentName(info.session.agent_type), ...extra]
+  const parts = [
+    info.project,
+    agent ? agentName(info.session.agent_type) : null,
+    ...extra,
+  ]
     .filter(Boolean)
     .join(" · ");
   const { word, cls } = crumbState(info.state);
@@ -70,25 +84,36 @@ export function Crumb({
   );
 }
 
+/** The header's "Agent and model" chip and whether its sheet is up (M4) */
+export interface SwitchChipState {
+  open: boolean;
+  onOpen: () => void;
+}
+
 /**
  * The title in the page. `title` (Closed-Chat, N-Queue): the agent's
  * letter, "agent-os · Claude · Needs you", the 22px title, and under it the
  * plan, or while it works what it's doing; both open the Live activity.
  * `compact` (Closed-Terminal): the crumb and a 17px title, the terminal
  * gets the room. `large` (Open-Changes, the open Duo's page): the 22px
- * title alone; the activity strip under it has the rest
+ * title alone; the activity strip under it has the rest. With `switcher`
+ * (N-Switch), `title` and `large` lead with the "Claude · Opus 5.5" chip
+ * in place of the letter and the agent's name
  */
 export function PageHeader({
   info,
   size = "title",
+  switcher,
   className,
 }: {
   info: HeaderInfo;
   size?: "title" | "compact" | "large";
+  switcher?: SwitchChipState;
   className?: string;
 }) {
   const { session } = info;
   const cards = size === "title";
+  const chip = !!switcher && size !== "compact" && canSwitch(session);
   const activity = useSessionActivity(session, {
     active: cards,
     plan: cards,
@@ -104,25 +129,61 @@ export function PageHeader({
         className
       )}
     >
-      <div className="flex min-w-0 items-center gap-1.5 text-[13px]">
-        {cards && (
-          <Avatar
-            {...agentAvatar(session.agent_type)}
-            size="sm"
-            className="h-5 w-5 rounded-md text-[10px]"
+      {chip && switcher ? (
+        <div className="flex min-w-0 items-center gap-2 text-[13px]">
+          <ModelChip
+            session={session}
+            open={switcher.open}
+            onOpen={switcher.onOpen}
           />
-        )}
-        {/* Working is said by the card below */}
-        <Crumb info={info} state={!cards || state !== "work"} />
-      </div>
-      <h1
+          <Crumb
+            info={info}
+            agent={false}
+            state={!cards || state !== "work"}
+            className="shrink-[2]"
+          />
+        </div>
+      ) : (
+        <div className="flex min-w-0 items-center gap-1.5 text-[13px]">
+          {cards && (
+            <Avatar
+              {...agentAvatar(session.agent_type)}
+              size="sm"
+              className="h-5 w-5 rounded-md text-[10px]"
+            />
+          )}
+          {/* Working is said by the card below */}
+          <Crumb info={info} state={!cards || state !== "work"} />
+        </div>
+      )}
+      {/* N-PermMode: the shield chip at the title's right, 10px from it */}
+      <div
         className={cn(
-          "min-w-0 truncate",
-          size === "compact" ? "t-head mt-0.5 leading-tight" : "t-title mt-1"
+          "flex min-w-0 items-center gap-2.5",
+          size === "compact" ? "mt-0.5" : chip ? "mt-2" : "mt-1"
         )}
       >
-        {info.title}
-      </h1>
+        <h1
+          className={cn(
+            "min-w-0 flex-1 truncate",
+            size === "compact" ? "t-head leading-tight" : "t-title"
+          )}
+        >
+          {info.title}
+        </h1>
+        {/* Handed off: no running agent to set a mode on */}
+        {!isPaused(session) && (
+          <PermissionChip
+            session={session}
+            variant="header"
+            // The terminal gets the room: a 28px chip that takes a 44px tap
+            className={cn(
+              size === "compact" &&
+                "relative -my-1 h-7 rounded-full px-2.5 text-xs after:absolute after:inset-x-0 after:-inset-y-2 after:content-['']"
+            )}
+          />
+        )}
+      </div>
       {cards && plan && plan.total > 0 ? (
         <PlanChip plan={plan} onOpen={openLiveSheet} className="mt-2.5" />
       ) : (
@@ -208,6 +269,7 @@ export function FoldHeader({
   /** ⋯, for the rarer views and actions */
   menu?: ReactNode;
 }) {
+  const agentsView = canonicalViewMode(viewMode) === "agents";
   return (
     <header className="native-top-inset kb-compact-hide bg-background flex shrink-0 items-center gap-2.5 px-5 pt-4 pb-2">
       <button
@@ -225,10 +287,15 @@ export function FoldHeader({
         <Crumb info={info} className="text-xs leading-tight" />
       </div>
       <div className="ml-auto flex shrink-0 items-center gap-1.5">
+        {/* The agents view shows as the third, selected segment */}
         <ViewSeg
-          viewMode={viewMode}
+          viewMode={agentsView ? "agents" : viewMode}
           onViewModeChange={onViewModeChange}
-          views={CHAT_TERMINAL}
+          views={
+            agentsView
+              ? [...CHAT_TERMINAL, { mode: "agents", label: "Agents" }]
+              : CHAT_TERMINAL
+          }
           className="glass"
         />
         {menu}
@@ -237,9 +304,15 @@ export function FoldHeader({
   );
 }
 
+/** "1 agent", "7 agents" */
+export function agentsLabel(count: number): string {
+  return count === 1 ? "1 agent" : `${count} agents`;
+}
+
 /**
- * The desktop session header (Desk-Chat): the agent's tile, the title and
- * "agent-os · Claude · main · Needs you", the views centred, then
+ * The desktop session header (Desk-Chat, D-Tree): the agent's tile, the
+ * title and "agent-os · Claude · main · 7 agents · Needs you", the views
+ * (Chat | Terminal | Changes, and Agents once it has started any), then
  * `actions` (Open beside, ⋯)
  */
 export function DesktopHeader({
@@ -249,6 +322,7 @@ export function DesktopHeader({
   viewMode,
   onViewModeChange,
   dimmed,
+  agents,
   actions,
 }: {
   info: HeaderInfo;
@@ -258,8 +332,16 @@ export function DesktopHeader({
   viewMode: PaneViewMode;
   onViewModeChange: (mode: PaneViewMode) => void;
   dimmed?: boolean;
+  /**
+   * Agents the session started (its tree's total); by default the focused
+   * session's (the desktop header is the one pane's)
+   */
+  agents?: number;
   actions: ReactNode;
 }) {
+  const { agentCount } = useSnapshot(mobileNavStore);
+  const count = agents ?? agentCount;
+  const agentsView = canonicalViewMode(viewMode) === "agents";
   return (
     <header
       className={cn(
@@ -270,10 +352,15 @@ export function DesktopHeader({
       <Avatar {...agentAvatar(info.session.agent_type)} size="sm" />
       <div className="flex min-w-0 flex-1 flex-col">
         <span className="t-head truncate leading-tight">{info.title}</span>
-        <Crumb info={info} extra={[branch]} className="text-[13px]" />
+        <Crumb
+          info={info}
+          extra={[branch, count > 0 ? agentsLabel(count) : null]}
+          className="text-[13px]"
+        />
       </div>
       <ViewSeg
-        viewMode={viewMode}
+        // `workers` is the agents view too
+        viewMode={agentsView ? "agents" : viewMode}
         onViewModeChange={onViewModeChange}
         className="bg-card @max-[640px]/bar:hidden"
         views={[
@@ -287,6 +374,10 @@ export function DesktopHeader({
               </>
             ),
           },
+          // D-Tree: Agents once the session has started any
+          ...(count > 0 || agentsView
+            ? [{ mode: "agents" as const, label: "Agents" }]
+            : []),
         ]}
       />
       {actions}

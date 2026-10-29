@@ -38,6 +38,22 @@ export interface Session {
   permission_pending: string | null;
   // JSON LaunchCaps recorded at launch
   launch_caps: string | null;
+  // M4 handoff (migration 28): ms when handed off and its tmux ended; the
+  // session it came from / went to; Claude effort for the next launch
+  paused_at: number | null;
+  handoff_from_session_id: string | null;
+  handoff_to_session_id: string | null;
+  effort: string | null;
+  // 1 when the model was picked (sheet, handoff): --model even for "sonnet"
+  model_pinned: number | null;
+  // Usage limit (migration 29, lib/limits): when it hit one (ms), when it
+  // resets (ms, null when unknown), which one (LimitKind)
+  limited_at: number | null;
+  limited_until: number | null;
+  limit_kind: string | null;
+  // What happens at the reset (ResumePolicy) and the text typed then
+  resume_policy: string | null;
+  resume_text: string | null;
 }
 
 /** What an agent tried on a session's permissions (lib/agent-actions.ts) */
@@ -60,6 +76,8 @@ export interface SessionQueueRow {
   text: string;
   /** JSON string[] of file paths, or null */
   attachments: string | null;
+  /** JSON SessionAttachmentRef[] (M9, migration 31), or null */
+  sessions: string | null;
   origin: string; // lib/queue/types.ts QueueOrigin
   kind: string; // QueueKind
   status: string; // QueueStatus
@@ -67,6 +85,19 @@ export interface SessionQueueRow {
   created_at: number; // ms
   sent_at: number | null; // ms
   error: string | null;
+}
+
+/** A session's cached summary for @ attach (migration 31, lib/session-summaries.ts) */
+export interface SessionSummaryRow {
+  session_id: string;
+  /** What it was built from (transcript size + mtime, or scrollback time) */
+  basis: string;
+  text: string;
+  tokens: number;
+  /** lib/summarize.ts SessionSummary source */
+  source: string;
+  empty: number; // 0 or 1
+  created_at: number; // ms
 }
 
 /** One agent turn and its snapshot refs (migration 26, lib/turns.ts) */

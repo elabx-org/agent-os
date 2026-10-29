@@ -7,10 +7,12 @@ import { SectionTitle } from "@/components/a/SectionTitle";
 import { StateDot } from "@/components/a/StateDot";
 import { openBackgroundAgent } from "@/components/BackgroundAgents";
 import { DevServerRow } from "@/components/DevServers/DevServerCard";
+import { LimitedCard, LimitedRow } from "@/components/Chat/LimitedCard";
+import { limitView } from "@/components/Chat/limited-model";
 import { askLabel, InboxItem } from "@/components/Inbox";
 import { PROMPT_POLL_SLOW_MS, useSessionPrompt } from "@/data/prompts/queries";
 import { displayTitle } from "@/hooks/useSessionTitles";
-import { STATE_TEXT_CLASS } from "@/lib/agent-state";
+import { STATE_TEXT_CLASS, STATE_WORD } from "@/lib/agent-state";
 import { runNav } from "@/lib/nav-actions";
 import { openSubagent } from "@/stores/agentOpen";
 import { mobileNavActions } from "@/stores/mobileNav";
@@ -201,6 +203,57 @@ function BlockedCard({
   );
 }
 
+/**
+ * At a usage limit (N-Limited): a card with Resume at reset / Resume now /
+ * Snooze for each one still to decide, then one group of rows for those
+ * decided, "Will resume at 3:40 pm" or snoozed, each with Cancel
+ */
+export function LimitedSection({
+  now,
+  wide,
+  projectNames,
+  onOpenSession,
+}: Pick<SectionProps, "now" | "wide" | "projectNames" | "onOpenSession">) {
+  if (!now.limited.length) return null;
+  const decide: Session[] = [];
+  const decided: { session: Session; view: "scheduled" | "snoozed" }[] = [];
+  for (const session of now.limited) {
+    const view = limitView(session);
+    if (view === "card") decide.push(session);
+    else if (view) decided.push({ session, view });
+  }
+  if (!decide.length && !decided.length) return null;
+  const titleOf = (session: Session) => displayTitle(session, now.titles).title;
+
+  return (
+    <section className={cn("flex flex-col", wide ? "gap-3.5" : "gap-2")}>
+      <SectionTitle state={wide ? "limited" : undefined}>Limited</SectionTitle>
+      {decide.map((session) => (
+        <LimitedCard
+          key={session.id}
+          session={session}
+          projectName={projectOf(projectNames, session)}
+          title={titleOf(session)}
+          onOpen={() => onOpenSession(session)}
+        />
+      ))}
+      {decided.length > 0 && (
+        <GroupCard aria-label="Limited, resuming or snoozed">
+          {decided.map(({ session, view }) => (
+            <LimitedRow
+              key={session.id}
+              session={session}
+              title={titleOf(session)}
+              view={view}
+              onOpen={() => onOpenSession(session)}
+            />
+          ))}
+        </GroupCard>
+      )}
+    </section>
+  );
+}
+
 /** What's working, one grouped card: sessions, subagents, agents, servers */
 export function WorkingSection({
   now,
@@ -238,7 +291,8 @@ export function WorkingSection({
             title={displayTitle(session, now.titles).title}
             {...row(
               projectOf(projectNames, session),
-              sessionStatuses[session.id]?.lastLine?.trim() || "Working",
+              now.moves[session.id] ??
+                (sessionStatuses[session.id]?.lastLine?.trim() || "Working"),
               shortAge(session.updated_at)
             )}
             selected={session.id === selectedId}
@@ -375,16 +429,28 @@ export function QuietSection({
             className="min-h-12 py-2.5"
           />
         ))}
-        {loose.map((session) => (
-          <GroupRow
-            key={session.id}
-            leading={<Avatar {...agentAvatar(session.agent_type)} size="sm" />}
-            title={quietRow(displayTitle(session, now.titles).title)}
-            chevron
-            onClick={() => onOpenSession(session)}
-            className="min-h-12 py-2.5"
-          />
-        ))}
+        {loose.map((session) => {
+          // Paused (handed off): its own state word and where it went
+          const handoff = now.handoffs[session.id];
+          return (
+            <GroupRow
+              key={session.id}
+              leading={
+                <Avatar
+                  {...agentAvatar(session.agent_type)}
+                  size="sm"
+                  className={handoff ? "opacity-60" : undefined}
+                />
+              }
+              title={quietRow(displayTitle(session, now.titles).title)}
+              subtitle={handoff ?? now.moves[session.id]}
+              trailing={handoff ? STATE_WORD.paused : undefined}
+              chevron
+              onClick={() => onOpenSession(session)}
+              className="min-h-12 py-2.5"
+            />
+          );
+        })}
       </GroupCard>
     </section>
   );

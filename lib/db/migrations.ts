@@ -436,6 +436,89 @@ const migrations: Migration[] = [
       `);
     }),
   },
+  {
+    id: 27,
+    name: "add_script_runs_and_project_trust_tables",
+    up: atomic((db) => {
+      // A project script's runs (lib/script-runs.ts); status:
+      // running|passed|failed|stopped; times in epoch ms
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS script_runs (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL,
+          script_id TEXT NOT NULL,
+          command TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'running',
+          exit_code INTEGER,
+          pid INTEGER,
+          log_path TEXT,
+          started_at INTEGER NOT NULL,
+          finished_at INTEGER
+        )
+      `);
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_script_runs_project ON script_runs(project_id, script_id, started_at)`
+      );
+      // Config file hashes the user approved (lib/project-config.ts)
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS project_trust (
+          project_id TEXT NOT NULL,
+          config_hash TEXT NOT NULL,
+          trusted_at INTEGER NOT NULL,
+          PRIMARY KEY (project_id, config_hash)
+        )
+      `);
+    }),
+  },
+  {
+    id: 28,
+    name: "add_handoff_to_sessions",
+    up: atomic((db) => {
+      // M4: a session handed off to another agent stays listed, paused
+      // (tmux ended, transcript kept); effort is applied on the next launch
+      addColumnIfMissing(db, "sessions", "paused_at", "INTEGER");
+      addColumnIfMissing(db, "sessions", "handoff_from_session_id", "TEXT");
+      addColumnIfMissing(db, "sessions", "handoff_to_session_id", "TEXT");
+      addColumnIfMissing(db, "sessions", "effort", "TEXT");
+      // 1: the model was picked, so --model goes even for "sonnet" (which
+      // otherwise stands for Claude's own default)
+      addColumnIfMissing(db, "sessions", "model_pinned", "INTEGER");
+    }),
+  },
+  {
+    id: 29,
+    name: "add_usage_limit_to_sessions",
+    up: atomic((db) => {
+      // Usage-limit "Limited" state and its resume (lib/limits)
+      addColumnIfMissing(db, "sessions", "limited_at", "INTEGER");
+      addColumnIfMissing(db, "sessions", "limited_until", "INTEGER");
+      addColumnIfMissing(db, "sessions", "limit_kind", "TEXT");
+      addColumnIfMissing(db, "sessions", "resume_policy", "TEXT");
+      addColumnIfMissing(db, "sessions", "resume_text", "TEXT");
+    }),
+  },
+  {
+    id: 31,
+    name: "add_session_summaries",
+    up: atomic((db) => {
+      // Attach a session with @ (M9): its summary, cached until the
+      // transcript grows (lib/session-summaries.ts)
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS session_summaries (
+          session_id TEXT PRIMARY KEY,
+          basis TEXT NOT NULL,
+          text TEXT NOT NULL,
+          tokens INTEGER NOT NULL,
+          source TEXT NOT NULL,
+          empty INTEGER NOT NULL DEFAULT 0,
+          created_at INTEGER NOT NULL
+        )
+      `);
+      // The sessions a queued message attaches, resolved when it goes;
+      // apart from attachments so an older build still reads those
+      addColumnIfMissing(db, "session_queue", "sessions", "TEXT");
+    }),
+  },
 ];
 
 export function runMigrations(db: Database.Database): void {

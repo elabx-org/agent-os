@@ -18,7 +18,11 @@ import {
   type SessionStatus,
 } from "./status-detector";
 import { tmuxNameOf } from "./session-launch";
+import { limitStateOf } from "./limits/types";
+import { getFlags } from "./flags";
 import { latest } from "./session-watch";
+import { isHandingOff } from "./handing-off";
+import { isMoving } from "./worktree-moving";
 
 const execFileAsync = promisify(execFile);
 
@@ -294,7 +298,22 @@ export function classifyScreen(input: ScreenInput): Readiness {
     : classifyOther(input, plain);
 }
 
-export async function readiness(session: Session): Promise<Readiness> {
+export async function readiness(
+  session: Session,
+  /** The handoff's (M4) or the worktree move's (M5) own reads */
+  options: { duringHandoff?: boolean; duringMove?: boolean } = {}
+): Promise<Readiness> {
+  // Handed off (M4): its tmux ended, nothing goes in until it is resumed
+  if (session.paused_at) return hold("paused");
+  // Being handed off: no new turn until it is done (or given up)
+  if (!options.duringHandoff && isHandingOff(session.id))
+    return hold("handing_off");
+  // Being moved into a worktree (M5): no new turn until it is done
+  if (!options.duringMove && isMoving(session.id)) return hold("moving");
+  // Hit a usage limit that hasn't reset: anything typed would bounce
+  // (flag `limits` is its kill switch)
+  if (getFlags().limits && limitStateOf(session).limited)
+    return hold("limited");
   const name = tmuxNameOf(session);
   try {
     // display-message prints nothing (and succeeds) for a missing target

@@ -15,6 +15,7 @@ import { openNew } from "@/stores/newSurface";
 import { SortableItem, SortableList } from "@/components/ui/sortable";
 import type { Session, Group, DevServer } from "@/lib/db";
 import type { ProjectWithDevServers } from "@/lib/projects";
+import { pausedLast } from "@/lib/paused";
 
 interface SessionStatus {
   sessionName: string;
@@ -98,7 +99,7 @@ export function ProjectsSection({
   const allSessionIds = useMemo(() => {
     const ids: string[] = [];
     for (const project of projects) {
-      const projectSessions = sessions.filter(
+      const projectSessions = pausedLast(sessions).filter(
         (s) =>
           !s.conductor_session_id &&
           (s.project_id || "uncategorized") === project.id
@@ -126,7 +127,7 @@ export function ProjectsSection({
   );
 
   // Group sessions by project_id
-  const sessionsByProject = sessions
+  const sessionsByProject = pausedLast(sessions)
     .filter((s) => !s.conductor_session_id) // Exclude workers
     .reduce(
       (acc, session) => {

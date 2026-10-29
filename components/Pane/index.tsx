@@ -12,9 +12,12 @@ import type {
 import type { Session, Project } from "@/lib/db";
 import { sessionRegistry } from "@/lib/client/session-registry";
 import { cn } from "@/lib/utils";
-import { ConductorPanel } from "@/components/ConductorPanel";
+import { AgentsView } from "@/components/Session/AgentsView";
+import { useAgentCount } from "@/components/Session/agent-tree-count";
+import { canonicalViewMode } from "@/lib/agent-views";
 import { useFileEditor } from "@/hooks/useFileEditor";
 import { SessionTitleBar } from "./SessionTitleBar";
+import { MoveToWorktreeSheetHost } from "@/components/Session/MoveToWorktreeSheet";
 import { DesktopTabBar } from "./DesktopTabBar";
 import {
   TerminalSkeleton,
@@ -29,7 +32,11 @@ import {
 import { ShellDrawer } from "@/components/ShellDrawer";
 import { useSnapshot } from "valtio";
 import { fileOpenStore, fileOpenActions } from "@/stores/fileOpen";
-import { mobileNavStore, mobileNavActions } from "@/stores/mobileNav";
+import {
+  mobileNavStore,
+  mobileNavActions,
+  type PaneViewMode,
+} from "@/stores/mobileNav";
 import { focusStore } from "@/stores/focus";
 import {
   getSessionView,
@@ -39,10 +46,12 @@ import {
 import { useFlag } from "@/hooks/useFlags";
 import { usePaneChrome } from "@/components/Session/usePaneChrome";
 import { takePaneLaunch } from "@/stores/beside";
+import { isPaused } from "@/lib/handoff-types";
 import { ActivityStrip } from "@/components/Session/ActivityStrip";
 import { isNative } from "@/lib/native-bridge";
 import { useSharedFiles } from "@/hooks/useSharedFiles";
 import { useGitStatus } from "@/data/git/queries";
+import { useTerminalRunRequest } from "@/stores/scriptTerminal";
 
 // Dynamic imports for client-only components with loading states
 const Terminal = dynamic(
@@ -77,7 +86,7 @@ interface PaneProps {
   onSelectSession?: (sessionId: string) => void;
 }
 
-type ViewMode = "terminal" | "chat" | "files" | "git" | "workers";
+type ViewMode = PaneViewMode;
 
 
 /** Each pane's view and session, by pane id */
@@ -118,7 +127,9 @@ export const Pane = memo(function Pane({
   const setViewMode = useCallback(
     (next: ViewMode | ((mode: ViewMode) => ViewMode)) =>
       setViewModeState((mode) => {
-        const value = typeof next === "function" ? next(mode) : next;
+        const value = canonicalViewMode(
+          typeof next === "function" ? next(mode) : next
+        );
         paneViewModes.set(paneId, value);
         return value;
       }),
@@ -153,15 +164,24 @@ export const Pane = memo(function Pane({
   const session = activeTab
     ? sessions.find((s) => s.id === activeTab.sessionId)
     : null;
+  // Handed off (M4): no terminal to attach or launch, its chat stays
+  const sessionPaused = isPaused(session);
+  // M3: a script for this session's shell drawer opens it
+  const terminalRun = useTerminalRunRequest(session?.id);
+  useEffect(() => {
+    if (terminalRun) setShellDrawerOpen(true);
+  }, [terminalRun]);
 
   // File editor state - lifted here so it persists across view switches
   const fileEditor = useFileEditor();
 
-  // A conductor's workers, shown from the header's ⋯
-  const workerCount = useMemo(() => {
-    if (!session) return 0;
-    return sessions.filter((s) => s.conductor_session_id === session.id).length;
-  }, [session, sessions]);
+  // Its agents (the agents view; the column's Agents item and the ⋯)
+  const agentCount = useAgentCount({
+    session,
+    sessions,
+    isFocused,
+    agentsShown: viewMode === "agents",
+  });
 
   // Get current project and its repositories
   const currentProject = useMemo(() => {
@@ -210,7 +230,9 @@ export const Pane = memo(function Pane({
     // Each session opens in the view you last used there, else chat for
     // Claude (flag chatDefault) or the terminal
     const next = session
-      ? openingView(session.id, session.agent_type, chatDefault)
+      ? isPaused(session)
+        ? "chat"
+        : openingView(session.id, session.agent_type, chatDefault)
       : "terminal";
     defaultedRef.current = next;
     setViewMode(next);
@@ -230,10 +252,20 @@ export const Pane = memo(function Pane({
   // Opened in chat by default, but nothing has been said yet: the terminal
   // is where there's something to see
   const chatEmpty = useCallback(() => {
-    if (defaultedRef.current !== "chat") return;
+    if (defaultedRef.current !== "chat" || sessionPaused) return;
     defaultedRef.current = "terminal";
     setViewMode((mode) => (mode === "chat" ? "terminal" : mode));
-  }, [setViewMode]);
+  }, [setViewMode, sessionPaused]);
+
+  // Handed off while showing here: its terminal ended, its chat stays
+  const wasPaused = useRef(sessionPaused);
+  useEffect(() => {
+    if (sessionPaused && !wasPaused.current) {
+      defaultedRef.current = "chat";
+      setViewMode((mode) => (mode === "terminal" ? "chat" : mode));
+    }
+    wasPaused.current = sessionPaused;
+  }, [sessionPaused, setViewMode]);
 
   // Remember a change of view; a switch of session alone isn't one
   const viewSessionId = useRef(session?.id);
@@ -390,6 +422,10 @@ export const Pane = memo(function Pane({
       }
       initializedTabs.current.add(tab.id);
 
+      // A paused (handed-off) session's tmux ended: nothing to attach, and
+      // never a launch
+      if (isPaused(sessions.find((s) => s.id === tab.sessionId))) return;
+
       // Determine tmux session name to attach
       const tmuxName = tab.sessionId
         ? sessions.find((s) => s.id === tab.sessionId)?.tmux_name ||
@@ -503,7 +539,7 @@ export const Pane = memo(function Pane({
         isMobile={isMobile}
         isFocused={isFocused}
         viewMode={viewMode}
-        workerCount={workerCount}
+        agentCount={agentCount}
         onViewModeChange={setViewMode}
         hasAttachedTmux={!!activeTab?.attachedTmux}
         onDetach={handleDetach}
@@ -519,6 +555,8 @@ export const Pane = memo(function Pane({
         onClose={() => close(paneId)}
       />
       )}
+      {/* Here, not in the header: Changes and Files on the Duo have none */}
+      {session && <MoveToWorktreeSheetHost session={session} />}
       {showStrip && session && <ActivityStrip session={session} />}
 
       {/* Content Area - Mobile: simple flex, Desktop: resizable panels */}
@@ -615,24 +653,15 @@ export const Pane = memo(function Pane({
             </div>
           )}
 
-          {/* Workers */}
-          {viewMode === "workers" && session && (
-            <ConductorPanel
-              conductorSessionId={session.id}
-              onAttachToWorker={(workerId) => {
-                setViewMode("terminal");
-                const worker = sessions.find((s) => s.id === workerId);
-                if (worker && terminalRef) {
-                  const sessionName = `claude-${workerId}`;
-                  terminalRef.sendInput("\x02d");
-                  setTimeout(() => {
-                    terminalRef?.sendInput("\x15");
-                    setTimeout(() => {
-                      terminalRef?.sendCommand(`${tmuxSetup}; tmux attach -t ${sessionName}`);
-                    }, 50);
-                  }, 100);
-                }
-              }}
+          {/* Agents */}
+          {viewMode === "agents" && session && (
+            <AgentsView
+              session={session}
+              active
+              onOpenSession={(id) => onSelectSession?.(id)}
+              onClose={() =>
+                setViewMode(openingView(session.id, session.agent_type, chatDefault))
+              }
             />
           )}
         </div>
@@ -743,26 +772,17 @@ export const Pane = memo(function Pane({
                     </div>
                   )}
 
-                  {/* Workers */}
-                  {viewMode === "workers" && session && (
-                    <ConductorPanel
-                      conductorSessionId={session.id}
-                      onAttachToWorker={(workerId) => {
-                        setViewMode("terminal");
-                        const worker = sessions.find((s) => s.id === workerId);
-                        if (worker && terminalRef) {
-                          const sessionName = `claude-${workerId}`;
-                          terminalRef.sendInput("\x02d");
-                          setTimeout(() => {
-                            terminalRef?.sendInput("\x15");
-                            setTimeout(() => {
-                              terminalRef?.sendCommand(
-                                `${tmuxSetup}; tmux attach -t ${sessionName}`
-                              );
-                            }, 50);
-                          }, 100);
-                        }
-                      }}
+                  {/* Agents */}
+                  {viewMode === "agents" && session && (
+                    <AgentsView
+                      session={session}
+                      active
+                      onOpenSession={(id) => onSelectSession?.(id)}
+                      onClose={() =>
+                        setViewMode(
+                          openingView(session.id, session.agent_type, chatDefault)
+                        )
+                      }
                     />
                   )}
                 </div>
@@ -777,6 +797,7 @@ export const Pane = memo(function Pane({
                       open={true}
                       onOpenChange={setShellDrawerOpen}
                       workingDirectory={session.working_directory}
+                      sessionId={session.id}
                     />
                   </ResizablePanel>
                 </>

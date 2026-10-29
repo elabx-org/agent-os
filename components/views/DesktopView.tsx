@@ -8,7 +8,7 @@ import { NewSurfaceHost } from "@/components/New/NewSurface";
 import { ProjectSettingsHost } from "@/components/Projects/ProjectSettingsDialog";
 import { StartServerDialog } from "@/components/DevServers/StartServerDialog";
 import { PaneLayout } from "@/components/PaneLayout";
-import { QuickSwitcher } from "@/components/QuickSwitcher";
+import { SearchHost } from "@/components/Search/SearchHost";
 import type { ViewProps } from "./types";
 import { fileOpenActions } from "@/stores/fileOpen";
 import { useSnapshot } from "valtio";
@@ -282,7 +282,7 @@ export function DesktopView(props: ViewProps) {
         onCreateProject={handleCreateProject}
       />
       <ProjectSettingsHost />
-      <QuickSwitcher
+      <SearchHost
         sessions={sessions}
         open={showQuickSwitcher}
         onOpenChange={setShowQuickSwitcher}
@@ -293,10 +293,12 @@ export function DesktopView(props: ViewProps) {
           if (session) attachToSession(session);
         }}
         onSelectFile={(file, line) => {
-          // Convert relative path to absolute by prepending working directory
-          const absolutePath = activeSession?.working_directory
-            ? `${activeSession.working_directory}/${file.replace(/^\.\//, "")}`
-            : file;
+          // Search results pass absolute paths; others are relative to the session folder
+          const absolutePath = file.startsWith("/")
+            ? file
+            : activeSession?.working_directory
+              ? `${activeSession.working_directory}/${file.replace(/^\.\//, "")}`
+              : file;
           fileOpenActions.requestOpen(absolutePath, line);
         }}
       />

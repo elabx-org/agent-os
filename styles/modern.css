@@ -26,6 +26,8 @@
     --del-bg: rgba(248, 113, 113, 0.14);
     --diff-bg: #f7f7f9;
     --sheet: #ffffff;
+    /* Tiles, tracks and cards on a sheet: a step off the sheet itself */
+    --sheet-fill: #f2f2f7;
     --block: #ffffff;
     --say: #1c1c1f;
     /* The edge of what needs you: amber-600 here, readable on white */
@@ -60,6 +62,7 @@
     --del-bg: rgba(248, 113, 113, 0.1);
     --diff-bg: #0e0e10;
     --sheet: #1c1c1e;
+    --sheet-fill: #141416;
     --block: #0e0e10;
     --say: #e5e5ea;
     --git-mod: hsl(var(--needs));
@@ -236,6 +239,9 @@
     border: 1.5px solid transparent;
     font-size: 13px;
     color: hsl(var(--foreground) / 0.9);
+  }
+  .sheet-surface .pick {
+    background: var(--sheet-fill);
   }
   .pick.on,
   .pick[aria-pressed="true"] {
@@ -749,5 +755,18 @@
     font-family: var(--font-geist-mono), ui-monospace, monospace;
     font-size: 13px;
     line-height: 1.75;
+  }
+}
+
+@layer components {
+  /* M3: panels on a sheet or dialog (log tails, grouped rows, icon tiles).
+     Light sheets are white like --block and --card, so they take the
+     page's grey there; dark keeps its values (--diff-bg is --block) */
+  .on-sheet {
+    --block: var(--diff-bg);
+  }
+  :root:not(.dark) .on-sheet {
+    --card: 240 14% 97%;
+    --block: #ececf1;
   }
 }

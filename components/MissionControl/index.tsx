@@ -15,9 +15,10 @@ import { mobileNavStore } from "@/stores/mobileNav";
 import type { SessionStatus } from "@/components/views/types";
 import type { Session } from "@/lib/db";
 import { cn } from "@/lib/utils";
-import { nowSubline } from "./now-summary";
+import { nowSubline, nowSublineParts } from "./now-summary";
 import {
   DoneTodaySection,
+  LimitedSection,
   NeedsSection,
   QuietSection,
   WorkingSection,
@@ -82,12 +83,14 @@ export function MissionControl({
   const now = useNowItems(sessions, sessionStatuses);
   const first = now.waiting[0];
   // The needs count is useNeedsYou's, as on the column badge
-  const subline = nowSubline({
+  const counts = {
     needs: now.needsCount,
     working: now.workingCount,
     limited: now.limited.length,
     settledToday: now.settled.length,
-  });
+  };
+  const subline = nowSubline(counts);
+  const sublineParts = nowSublineParts(counts);
 
   const sectionProps = {
     now,
@@ -128,25 +131,55 @@ export function MissionControl({
               AgentOS
             </p>
             <h1 className="t-large">Now</h1>
-            <p className="text-muted-foreground mt-1 truncate text-[15px]">
-              {subline}
+            {/* One line: a count that doesn't fit wraps out of sight, so
+                the line drops whole counts from the end, never cuts a word;
+                beside the taller limited pill it is 14px (N-Limited) */}
+            <p
+              className={cn(
+                "text-muted-foreground mt-1 flex flex-wrap overflow-hidden",
+                counts.limited > 0
+                  ? "h-5 text-[14px] leading-5"
+                  : "h-[22px] text-[15px] leading-[22px]"
+              )}
+            >
+              {sublineParts.length === 0 ? (
+                <span className="truncate">{subline}</span>
+              ) : (
+                <span className="sr-only">{subline}</span>
+              )}
+              {sublineParts.length > 0 &&
+                sublineParts.map((part, i) => (
+                  <span
+                    key={part}
+                    aria-hidden
+                    className={cn(
+                      "whitespace-nowrap",
+                      i === 0 && "max-w-full min-w-0 truncate"
+                    )}
+                  >
+                    {i ? `\u00a0· ${part}` : part}
+                  </span>
+                ))}
             </p>
           </div>
           <UsagePill variant={PILL[mode]} />
         </header>
 
         <NeedsSection {...sectionProps} skipFirst={cardOnBase} />
+        <LimitedSection {...sectionProps} />
         <WorkingSection {...sectionProps} />
-        {now.needsCount === 0 && now.workingCount === 0 && (
-          <div className="px-1 py-2">
-            <p className="font-medium">Nothing running</p>
-            <p className="text-muted-foreground text-sm">
-              {now.quiet.length + now.loose.length
-                ? "Start a session, or pick up one below."
-                : "Start a session."}
-            </p>
-          </div>
-        )}
+        {now.needsCount === 0 &&
+          now.workingCount === 0 &&
+          now.limited.length === 0 && (
+            <div className="px-1 py-2">
+              <p className="font-medium">Nothing running</p>
+              <p className="text-muted-foreground text-sm">
+                {now.quiet.length + now.loose.length
+                  ? "Start a session, or pick up one below."
+                  : "Start a session."}
+              </p>
+            </div>
+          )}
         <DoneTodaySection {...sectionProps} sessions={sessions} />
         <QuietSection {...sectionProps} />
 

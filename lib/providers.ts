@@ -15,6 +15,8 @@ import {
   isValidProviderId,
 } from "./providers/registry";
 import { permissionFlags } from "./permission-mode";
+import { isEffortLevel } from "./handoff-types";
+import { isSafeModelName } from "./model-name";
 
 export type AgentType = ProviderId;
 
@@ -53,6 +55,8 @@ export interface BuildFlagsOptions {
   allowBypassCycle?: boolean; // Full access joins Claude's Shift+Tab cycle (Labs)
   continueSession?: boolean; // Continue last session in working directory
   model?: string;
+  modelPinned?: boolean; // sessions.model_pinned: passed even when "sonnet"
+  effort?: string | null; // Claude --effort (sessions.effort, lib/handoff-types.ts EffortLevel)
   initialPrompt?: string; // Initial prompt to send to agent
   worktreeName?: string; // If set, use provider's native worktree flag with this name
   systemPromptFile?: string; // Appended to the system prompt (the project note)
@@ -109,14 +113,20 @@ export const claudeProvider: AgentProvider = {
     }
 
     // "sonnet" is what the server stores when none was chosen, which has
-    // always meant Claude's own default; the pattern keeps it shell-safe
+    // always meant Claude's own default, unless it was picked (M4); the
+    // pattern keeps it shell-safe
     if (
       options.model &&
-      options.model !== "sonnet" &&
+      (options.model !== "sonnet" || options.modelPinned) &&
       def.modelFlag &&
       /^[\w.-]+$/.test(options.model)
     ) {
       flags.push(`${def.modelFlag} ${options.model}`);
+    }
+
+    // sessions.effort (M4): one of a fixed list, so shell-safe
+    if (isEffortLevel(options.effort)) {
+      flags.push(`--effort ${options.effort}`);
     }
 
     // Initial prompt (positional argument for Claude)
@@ -187,8 +197,8 @@ export const codexProvider: AgentProvider = {
     // The session's permission mode, else the registry's auto-approve flag
     flags.push(...permissionFlags(def.id, options));
 
-    if (options.model && def.modelFlag) {
-      flags.push(`${def.modelFlag} ${options.model}`);
+    if (options.model && def.modelFlag && isSafeModelName(options.model)) {
+      flags.push(`${def.modelFlag} '${options.model}'`);
     }
 
     // Initial prompt (positional argument for Codex)
@@ -293,8 +303,8 @@ export const geminiProvider: AgentProvider = {
     // The session's permission mode, else the registry's auto-approve flag
     flags.push(...permissionFlags(def.id, options));
 
-    if (options.model && def.modelFlag) {
-      flags.push(`${def.modelFlag} ${options.model}`);
+    if (options.model && def.modelFlag && isSafeModelName(options.model)) {
+      flags.push(`${def.modelFlag} '${options.model}'`);
     }
 
     // Initial prompt (uses -p flag)
@@ -350,8 +360,8 @@ export const aiderProvider: AgentProvider = {
     // The session's permission mode, else the registry's auto-approve flag
     flags.push(...permissionFlags(def.id, options));
 
-    if (options.model && def.modelFlag) {
-      flags.push(`${def.modelFlag} ${options.model}`);
+    if (options.model && def.modelFlag && isSafeModelName(options.model)) {
+      flags.push(`${def.modelFlag} '${options.model}'`);
     }
 
     return flags;
@@ -397,8 +407,8 @@ export const cursorProvider: AgentProvider = {
     // The session's permission mode, else the registry's auto-approve flag
     flags.push(...permissionFlags(def.id, options));
 
-    if (options.model && def.modelFlag) {
-      flags.push(`${def.modelFlag} ${options.model}`);
+    if (options.model && def.modelFlag && isSafeModelName(options.model)) {
+      flags.push(`${def.modelFlag} '${options.model}'`);
     }
 
     return flags;
@@ -445,8 +455,8 @@ export const clineProvider: AgentProvider = {
     // The session's permission mode, else the registry's auto-approve flag
     flags.push(...permissionFlags(def.id, options));
 
-    if (options.model && def.modelFlag) {
-      flags.push(`${def.modelFlag} ${options.model}`);
+    if (options.model && def.modelFlag && isSafeModelName(options.model)) {
+      flags.push(`${def.modelFlag} '${options.model}'`);
     }
 
     // Initial prompt (positional argument for Cline)

@@ -276,7 +276,8 @@ describe("migrations 25 and 26", () => {
 
   test("create session_queue and session_turns", () => {
     const db = migrated();
-    assert.deepEqual(columns(db, "session_queue"), QUEUE);
+    // Migration 31 (M9) adds the attached sessions
+    assert.deepEqual(columns(db, "session_queue"), [...QUEUE, "sessions"]);
     assert.deepEqual(columns(db, "session_turns"), TURNS);
     assert.ok(indexes(db, "session_queue").includes("idx_queue_session"));
     assert.ok(applied(db).includes(25));
@@ -327,5 +328,107 @@ describe("migrations 25 and 26", () => {
     quietly(() => runMigrations(db));
     assert.deepEqual(columns(db, "session_queue"), QUEUE);
     assert.deepEqual(columns(db, "session_turns"), TURNS);
+  });
+});
+
+describe("migration 27", () => {
+  const RUNS = [
+    "id",
+    "project_id",
+    "script_id",
+    "command",
+    "status",
+    "exit_code",
+    "pid",
+    "log_path",
+    "started_at",
+    "finished_at",
+  ];
+  const TRUST = ["project_id", "config_hash", "trusted_at"];
+  const count = (db: Database.Database, table: string) =>
+    (db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get() as { n: number }).n;
+
+  test("creates script_runs and project_trust", () => {
+    const db = migrated();
+    assert.deepEqual(columns(db, "script_runs"), RUNS);
+    assert.deepEqual(columns(db, "project_trust"), TRUST);
+    assert.ok(indexes(db, "script_runs").includes("idx_script_runs_project"));
+    assert.ok(applied(db).includes(27));
+    db.prepare(
+      `INSERT INTO script_runs (id, project_id, script_id, command, started_at) VALUES ('sr_a', 'p', 'test', 'npm test', 1)`
+    ).run();
+    assert.equal(
+      (db.prepare(`SELECT status FROM script_runs`).get() as { status: string })
+        .status,
+      "running"
+    );
+    const trust = db.prepare(
+      `INSERT INTO project_trust (project_id, config_hash, trusted_at) VALUES ('p', 'h', 1)`
+    );
+    trust.run();
+    assert.throws(() => trust.run(), /UNIQUE|PRIMARY/);
+  });
+
+  test("run twice: applied once, rows kept", () => {
+    const db = migrated();
+    db.prepare(
+      `INSERT INTO project_trust (project_id, config_hash, trusted_at) VALUES ('p', 'h', 1)`
+    ).run();
+    db.exec(`DELETE FROM _migrations WHERE id = 27`);
+    quietly(() => runMigrations(db));
+    assert.ok(applied(db).includes(27));
+    assert.equal(count(db, "project_trust"), 1);
+    assert.equal(
+      indexes(db, "script_runs").filter((n) => n === "idx_script_runs_project")
+        .length,
+      1
+    );
+  });
+
+  test("with one table already there, still makes the other", () => {
+    const db = migrated();
+    db.exec(`DROP TABLE project_trust`);
+    db.exec(`DELETE FROM _migrations WHERE id = 27`);
+    quietly(() => runMigrations(db));
+    assert.deepEqual(columns(db, "project_trust"), TRUST);
+    assert.deepEqual(columns(db, "script_runs"), RUNS);
+  });
+});
+
+describe("migration 28", () => {
+  const HANDOFF = [
+    "paused_at",
+    "handoff_from_session_id",
+    "handoff_to_session_id",
+    "effort",
+    "model_pinned",
+  ];
+  const unapply28 = (db: Database.Database, drop: string[]) => {
+    for (const column of drop)
+      db.exec(`ALTER TABLE sessions DROP COLUMN ${column}`);
+    db.exec(`DELETE FROM _migrations WHERE id = 28`);
+  };
+
+  test("adds the handoff columns to sessions", () => {
+    const db = migrated();
+    for (const column of HANDOFF)
+      assert.ok(columns(db, "sessions").includes(column), column);
+    assert.ok(applied(db).includes(28));
+  });
+
+  test("runs twice, and over a database with one column already there", () => {
+    const db = migrated();
+    // paused_at stays: the rest must still be added
+    unapply28(db, HANDOFF.slice(1));
+    quietly(() => runMigrations(db));
+    for (const column of HANDOFF)
+      assert.ok(columns(db, "sessions").includes(column), column);
+    unapply28(db, []);
+    quietly(() => runMigrations(db));
+    assert.ok(applied(db).includes(28));
+    assert.equal(
+      columns(db, "sessions").filter((c) => c === "paused_at").length,
+      1
+    );
   });
 });

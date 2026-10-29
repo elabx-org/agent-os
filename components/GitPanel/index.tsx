@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertCircle, Loader2, X } from "lucide-react";
 import { toast } from "sonner";
+import { useSnapshot } from "valtio";
 import { PRCreationModal } from "@/components/PRCreationModal";
 import { PRReview } from "./PRReview";
 import { BranchCard } from "./BranchCard";
@@ -25,6 +26,7 @@ import { useViewport } from "@/hooks/useViewport";
 import { useLayoutMode } from "@/hooks/useLayoutMode";
 import { registerNavHandlers } from "@/lib/nav-actions";
 import { setGitMenu } from "@/stores/gitMenu";
+import { moveSheetStore, openMoveSheet } from "@/stores/moveSheet";
 import { cn } from "@/lib/utils";
 import type { GitFile } from "@/lib/git-status";
 import type { ProjectRepository } from "@/lib/db";
@@ -94,6 +96,10 @@ function GitPanelContent({
     projectId,
     repositories,
   });
+  // N-Worktree (M5): the session can move (moveSheetStore.offer, the
+  // focused pane's): its branch card offers it, in the app's page too
+  const { offer } = useSnapshot(moveSheetStore);
+  const movable = sessionId && offer === sessionId ? sessionId : null;
   // The closed Duo: E-Git's insets, and its column holds Pull, Push and New pull request
   const closed = useLayoutMode() === "duo-closed";
   const columnActions = !!active && closed && narrow;
@@ -239,6 +245,7 @@ function GitPanelContent({
       hasChanges={m.hasChanges}
       fixed={m.isMultiRepo && repositories.length > 1}
       onBranchChanged={m.refreshAll}
+      onMove={movable ? () => openMoveSheet(movable) : undefined}
     />
   );
 

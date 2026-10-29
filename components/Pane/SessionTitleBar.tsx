@@ -1,14 +1,15 @@
 "use client";
 
-import { useMemo, useRef } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { useSnapshot } from "valtio";
 import { toast } from "sonner";
 import {
   ChevronLeft,
   MoreHorizontal,
-  Users,
+  Workflow,
   GitBranch,
+  GitBranchPlus,
   SquareTerminal,
   Copy,
   Unplug,
@@ -23,6 +24,8 @@ import {
   Columns2,
   FolderOpen,
   Activity,
+  ArrowRightLeft,
+  Play,
   MessageSquare,
 } from "lucide-react";
 import {
@@ -52,8 +55,9 @@ import {
   STATE_DOT_CLASS,
   STATE_TEXT_CLASS,
   STATE_WORD,
-  fromSessionStatus,
 } from "@/lib/agent-state";
+import { sessionState } from "@/lib/paused";
+import { isPaused } from "@/lib/handoff-types";
 import { useGitStatus } from "@/data/git/queries";
 import {
   Crumb,
@@ -64,7 +68,17 @@ import {
   type HeaderInfo,
 } from "@/components/Session/SessionHeader";
 import { addedLines } from "@/components/Session/activity-format";
+import { canSwitch, ModelChip } from "@/components/Session/ModelChip";
+import { SwitchSheet } from "@/components/Session/SwitchSheet";
 import { headerVariant } from "@/lib/session-views";
+import { openScripts } from "@/stores/scriptsSheet";
+import {
+  PermissionChip,
+  PermissionMenuItem,
+} from "@/components/Session/PermissionChip";
+import { PermissionSheetHost } from "@/components/Session/PermissionSheet";
+import { useCanOfferMove } from "@/hooks/useWorktreeMove";
+import { openMoveSheet } from "@/stores/moveSheet";
 
 interface SessionTitleBarProps {
   session: Session | null | undefined;
@@ -74,7 +88,8 @@ interface SessionTitleBarProps {
   isMobile: boolean;
   isFocused: boolean;
   viewMode: PaneViewMode;
-  workerCount: number;
+  /** Agents the session started: the ⋯ menu's Agents item */
+  agentCount: number;
   onViewModeChange: (mode: PaneViewMode) => void;
   hasAttachedTmux: boolean;
   onDetach: () => void;
@@ -112,7 +127,7 @@ function visibleInput(pane: Element): HTMLTextAreaElement | null {
 /**
  * The session's header: back, its title and a crumb, and ⋯. Views switch
  * from the control column, so nothing here changes what the pane shows
- * except the less used ones (Workers, the drawers). The desktop shell has
+ * except the less used ones (Agents, the drawers). The desktop shell has
  * no column: there the views switch here.
  */
 export function SessionTitleBar({
@@ -122,7 +137,7 @@ export function SessionTitleBar({
   isMobile,
   isFocused,
   viewMode,
-  workerCount,
+  agentCount,
   onViewModeChange,
   hasAttachedTmux,
   onDetach,
@@ -150,6 +165,23 @@ export function SessionTitleBar({
     useSpreadPanes()?.mode === "fold" && !!session && besidePills();
   const titles = useListTitles(session ? [session] : []);
   const { copy } = useCopyToClipboard();
+  // N-Switch: the header's model chip (or ⋯ where it has no room) opens it
+  const [switchOpen, setSwitchOpen] = useState(false);
+  const switchable = canSwitch(session);
+  // N-Worktree: git folders, not paused, shell or already in a worktree
+  const movable = useCanOfferMove(session);
+  const switcher = useMemo(
+    () => ({ open: switchOpen, onOpen: () => setSwitchOpen(true) }),
+    [switchOpen]
+  );
+  // The new session opens where this one was, as a restarted one does
+  const openHandedOff = useCallback((next: Session) => {
+    window.dispatchEvent(
+      new CustomEvent("agentos-session-restarted", {
+        detail: { session: next },
+      })
+    );
+  }, []);
 
   const { title, idLabel } = session
     ? displayTitle(session, titles)
@@ -158,7 +190,7 @@ export function SessionTitleBar({
     ? projects.find((p) => p.id === session.project_id)?.name
     : null;
   const state = session
-    ? fromSessionStatus(statuses[session.id]?.status ?? "idle")
+    ? sessionState(session, statuses[session.id]?.status)
     : null;
   const crumb = [
     projectName && projectName !== "Uncategorized" ? projectName : null,
@@ -231,6 +263,10 @@ export function SessionTitleBar({
   // The new headers keep Focus, Files and Changes here; their segments
   // show Chat and Terminal (the desktop's Changes too)
   const newHeader = variant !== "classic";
+  // N-PermMode's chip sits by the title in the page and on the desktop bar
+  const chipInHeader =
+    !!info &&
+    (variant === "desktop" || variant === "page" || variant === "large");
 
   const besideMenu = (
     <DropdownMenu modal={false}>
@@ -291,6 +327,10 @@ export function SessionTitleBar({
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="min-w-[200px]">
+        {/* The headers without the shield chip reach the sheet here */}
+        {session && !chipInHeader && (
+          <PermissionMenuItem session={session} separator />
+        )}
         {newHeader && session && (
           <>
             {variant !== "desktop" && hasFolder && (
@@ -313,6 +353,19 @@ export function SessionTitleBar({
                   <Maximize2 className="h-4 w-4" />
                 )}
                 {focus.on ? "Leave Focus" : "Focus"}
+              </DropdownMenuItem>
+            )}
+            {switchable && (variant === "fold" || variant === "card") && (
+              <DropdownMenuItem onSelect={() => setSwitchOpen(true)}>
+                <ArrowRightLeft className="h-4 w-4" />
+                Agent and model
+              </DropdownMenuItem>
+            )}
+            {/* No chip to reach it from: every new header has it here */}
+            {movable && variant !== "desktop" && (
+              <DropdownMenuItem onSelect={() => openMoveSheet(session.id)}>
+                <GitBranchPlus className="h-4 w-4" />
+                Move to a worktree
               </DropdownMenuItem>
             )}
             {variant === "card" && (
@@ -359,17 +412,25 @@ export function SessionTitleBar({
             <DropdownMenuSeparator />
           </>
         )}
-        {workerCount > 0 && (
+        {(agentCount > 0 || viewMode === "agents") && (
           <DropdownMenuItem
             onSelect={() =>
-              onViewModeChange(viewMode === "workers" ? "terminal" : "workers")
+              onViewModeChange(
+                viewMode === "agents"
+                  ? mobileNavStore.conversationView
+                  : "agents"
+              )
             }
           >
-            <Users className="h-4 w-4" />
+            <Workflow className="h-4 w-4" />
             <span className="flex-1">
-              {viewMode === "workers" ? "Hide workers" : "Workers"}
+              {viewMode === "agents" ? "Hide agents" : "Agents"}
             </span>
-            <span className="text-muted-foreground text-xs">{workerCount}</span>
+            {agentCount > 0 && (
+              <span className="text-muted-foreground text-xs">
+                {agentCount}
+              </span>
+            )}
           </DropdownMenuItem>
         )}
         {/* Changes is a view too; the drawer keeps it beside the others */}
@@ -379,12 +440,37 @@ export function SessionTitleBar({
             {gitDrawerOpen ? "Hide changes drawer" : "Changes drawer"}
           </DropdownMenuItem>
         )}
+        {session?.project_id && session.project_id !== "uncategorized" && (
+          <DropdownMenuItem
+            onSelect={() => openScripts(session.project_id!, session.id)}
+          >
+            <Play className="h-4 w-4" />
+            Scripts
+          </DropdownMenuItem>
+        )}
         {wide && hasFolder && onShellDrawerToggle && (
           <DropdownMenuItem onSelect={onShellDrawerToggle}>
             <SquareTerminal className="h-4 w-4" />
             {shellDrawerOpen ? "Hide shell drawer" : "Shell drawer"}
           </DropdownMenuItem>
         )}
+        {/* The phone's classic header has no chip; a narrow desktop bar hides it */}
+        {session &&
+          switchable &&
+          (variant === "classic" || variant === "desktop") && (
+            <DropdownMenuItem onSelect={() => setSwitchOpen(true)}>
+              <ArrowRightLeft className="h-4 w-4" />
+              Agent and model
+            </DropdownMenuItem>
+          )}
+        {session &&
+          movable &&
+          (variant === "classic" || variant === "desktop") && (
+            <DropdownMenuItem onSelect={() => openMoveSheet(session.id)}>
+              <GitBranchPlus className="h-4 w-4" />
+              Move to a worktree
+            </DropdownMenuItem>
+          )}
         {session && (
           <DropdownMenuItem
             onSelect={async () => {
@@ -428,8 +514,12 @@ export function SessionTitleBar({
     </DropdownMenu>
   );
 
-  // Hidden while typing (the slim line stands in) and beside the pills
-  const hidden = nativeTyping || pilled;
+  // Hidden while typing (the slim line stands in) and beside the pills;
+  // the agents view names the session in its own header (N-Tree, O-Tree)
+  const hidden =
+    nativeTyping ||
+    pilled ||
+    (viewMode === "agents" && (variant === "page" || variant === "large"));
   let header: React.ReactNode;
   if (info && variant === "desktop")
     header = (
@@ -443,6 +533,23 @@ export function SessionTitleBar({
           dimmed={wide && !isFocused}
           actions={
             <>
+              {session && switchable && (
+                <ModelChip
+                  session={session}
+                  open={switchOpen}
+                  onOpen={switcher.onOpen}
+                  className="max-w-[220px] @max-[640px]/bar:hidden"
+                />
+              )}
+              {/* Handed off: no running agent to set a mode on */}
+              {!isPaused(info.session) && (
+                <PermissionChip
+                  session={info.session}
+                  variant="header"
+                  // A crowded bar keeps the shield alone, so the subtitle keeps the state
+                  className="h-9 rounded-full @max-[900px]/bar:px-2.5 @max-[900px]/bar:[&>[data-chip-label]]:hidden"
+                />
+              )}
               <DesktopLiveButton />
               {besideMenu}
               {moreMenu}
@@ -486,6 +593,7 @@ export function SessionTitleBar({
                 ? "compact"
                 : "title"
           }
+          switcher={switcher}
         />
       </div>
     );
@@ -668,6 +776,15 @@ export function SessionTitleBar({
         )}
       </div>
       {header}
+      {session && switchable && (
+        <SwitchSheet
+          session={session}
+          open={switchOpen}
+          onOpenChange={setSwitchOpen}
+          onHandedOff={openHandedOff}
+        />
+      )}
+      {session && <PermissionSheetHost session={session} />}
     </>
   );
 }

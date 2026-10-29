@@ -18,7 +18,9 @@ import {
 } from "@/stores/workspacePage";
 import { closeNew, newSurfaceStore } from "@/stores/newSurface";
 import { openProjectSettings } from "@/stores/projectSettings";
+import { openScripts } from "@/stores/scriptsSheet";
 import { surfaceStore } from "@/stores/surface";
+import { toggleAllCollapsed, toggleShowFinished } from "@/stores/agentTree";
 import { isNative, postToNative } from "@/lib/native-bridge";
 import { layoutStore } from "@/hooks/useLayoutMode";
 
@@ -52,6 +54,12 @@ export const NAV_ACTIONS = [
   "start",
   "stop",
   "closeSheet",
+  "scripts",
+  "viewConfig",
+  "done",
+  "agents",
+  "showFinished",
+  "collapseAll",
   "pull",
   "push",
   "newPr",
@@ -115,8 +123,15 @@ interface NavHandlers {
   startNew: () => void;
   /** Interrupt the session in view (N-Queue's Stop); the pane registers it */
   stopSession: () => void;
-  /** Close the sheet over the session (E-Live, N-Undo) */
+  /** Close the sheet over the session (E-Live, N-Undo, N-Scripts) */
   closeSheet: () => void;
+  /** The project's Scripts sheet (N-Config's ▷, M3) */
+  openScripts: () => void;
+  /** Project settings' .agent-os.json (N-Config's <>, M3); the page
+      registers it */
+  viewConfig: () => void;
+  /** The column's ✓ under a sheet: apply it (N-PermMode); the sheet registers it */
+  confirmSheet: () => void;
   /**
    * The column's Changes: the git view, unless the open Duo's spread shows
    * Changes as a page beside the conversation (Open-Changes registers it)
@@ -184,6 +199,13 @@ export const navStore: NavHandlers = {
     mobileNavStore.liveOpen = false;
     mobileNavStore.sheet = null;
   },
+  openScripts: () => {
+    const page = workspacePageStore.page;
+    if (page?.kind === "project" || page?.kind === "projectSettings")
+      openScripts(page.projectId);
+  },
+  viewConfig: () => {},
+  confirmSheet: () => {},
   openChanges: () => mobileNavActions.requestViewMode("git"),
   gitPull: () => {},
   gitPush: () => {},
@@ -287,6 +309,12 @@ export const NAV_ROUTES: Record<NavAction, (leftPage: boolean) => void> = {
   start: () => navStore.startNew(),
   stop: () => navStore.stopSession(),
   closeSheet: () => navStore.closeSheet(),
+  scripts: () => navStore.openScripts(),
+  viewConfig: () => navStore.viewConfig(),
+  done: () => navStore.confirmSheet(),
+  agents: () => mobileNavActions.requestViewMode("agents"),
+  showFinished: () => toggleShowFinished(),
+  collapseAll: () => toggleAllCollapsed(),
   pull: () => navStore.gitPull(),
   push: () => navStore.gitPush(),
   newPr: () => navStore.newPullRequest(),
@@ -311,7 +339,8 @@ export function runNav(action: NavAction): void {
     (action === "chat" ||
       action === "terminal" ||
       action === "git" ||
-      action === "files") &&
+      action === "files" ||
+      action === "agents") &&
     closePage();
   NAV_ROUTES[action](leftPage);
 }

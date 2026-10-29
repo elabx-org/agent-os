@@ -19,12 +19,19 @@ export function toQueueItem(row: SessionQueueRow): QueueItem {
   } catch {
     // Unreadable: sent without
   }
+  let sessions: QueueItem["sessions"] = [];
+  try {
+    sessions = row.sessions ? JSON.parse(row.sessions) : [];
+  } catch {
+    // Unreadable: sent without
+  }
   return {
     id: row.id,
     sessionId: row.session_id,
     position: row.position,
     text: row.text,
     attachments,
+    sessions,
     origin: row.origin as QueueOrigin,
     kind: row.kind as QueueKind,
     status: row.status as QueueItem["status"],
@@ -38,15 +45,26 @@ export function toQueueItem(row: SessionQueueRow): QueueItem {
 export interface NewQueueItem {
   text: string;
   attachments?: string[];
+  /** Sessions attached with @ (M9); stored in session_queue.sessions */
+  sessions?: QueueItem["sessions"];
   kind?: QueueKind;
   origin: QueueOrigin;
   notBefore?: number | null;
 }
 
+/**
+ * not_before of every move row (M5): a build without M5 types a pending
+ * head in, but stops at one that waits for not_before, so it holds a move
+ * forever instead of typing its JSON into the agent. M5 ignores it for moves
+ */
+export const MOVE_HOLD = 8_640_000_000_000_000;
+
 /** The queue's statements on one connection (tests open a second one) */
 export function createQueueStore(db: Database.Database) {
-  // Pending and sending items, not the notice: what the positions number
-  const active = `session_id = ? AND status IN ('pending', 'sending') AND kind != 'undo_notice'`;
+  // Pending and sending items, not the notice nor a scheduled move (M5,
+  // run by the dispatcher, never shown in the composer): what the
+  // positions number
+  const active = `session_id = ? AND status IN ('pending', 'sending') AND kind NOT IN ('undo_notice', 'move')`;
   const s = {
     get: db.prepare(
       `SELECT * FROM session_queue WHERE id = ? AND session_id = ?`
@@ -57,8 +75,36 @@ export function createQueueStore(db: Database.Database) {
     ),
     pending: db.prepare(
       `SELECT * FROM session_queue WHERE session_id = ? AND status = 'pending'
-         AND kind != 'undo_notice'
+         AND kind NOT IN ('undo_notice', 'move')
        ORDER BY position, id`
+    ),
+    // What goes next: a scheduled move ahead of everything else
+    next: db.prepare(
+      `SELECT * FROM session_queue WHERE session_id = ? AND status = 'pending'
+         AND kind != 'undo_notice'
+       ORDER BY kind = 'move' DESC, position, id`
+    ),
+    // Anything pending or being sent ahead of a new message, moves included
+    countAhead: db.prepare(
+      `SELECT COUNT(*) AS n FROM session_queue WHERE session_id = ?
+         AND status IN ('pending', 'sending') AND kind != 'undo_notice'`
+    ),
+    moveOf: db.prepare(
+      `SELECT * FROM session_queue WHERE session_id = ? AND kind = 'move'
+         AND status IN ('pending', 'sending')
+       ORDER BY status = 'sending' DESC, id LIMIT 1`
+    ),
+    pendingMoves: db.prepare(
+      `SELECT * FROM session_queue WHERE kind = 'move' AND status = 'pending'
+       ORDER BY id`
+    ),
+    sendingMoves: db.prepare(
+      `SELECT * FROM session_queue WHERE kind = 'move' AND status = 'sending'
+       ORDER BY id`
+    ),
+    setMoveText: db.prepare(
+      `UPDATE session_queue SET text = ?
+       WHERE id = ? AND session_id = ? AND kind = 'move' AND status = 'sending'`
     ),
     countActive: db.prepare(
       `SELECT COUNT(*) AS n FROM session_queue WHERE ${active}`
@@ -68,8 +114,8 @@ export function createQueueStore(db: Database.Database) {
     ),
     insert: db.prepare(
       `INSERT INTO session_queue
-         (session_id, position, text, attachments, origin, kind, status, not_before, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+         (session_id, position, text, attachments, sessions, origin, kind, status, not_before, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ),
     setPosition: db.prepare(
       `UPDATE session_queue SET position = ? WHERE id = ?`
@@ -92,7 +138,7 @@ export function createQueueStore(db: Database.Database) {
     ),
     failed: db.prepare(
       `SELECT * FROM session_queue WHERE session_id = ? AND status = 'failed'
-         AND kind != 'undo_notice' AND created_at >= ?
+         AND kind NOT IN ('undo_notice', 'move') AND created_at >= ?
        ORDER BY id`
     ),
     withPending: db.prepare(
@@ -124,6 +170,7 @@ export function createQueueStore(db: Database.Database) {
       position,
       item.text,
       item.attachments?.length ? JSON.stringify(item.attachments) : null,
+      item.sessions?.length ? JSON.stringify(item.sessions) : null,
       item.origin,
       item.kind ?? "message",
       status,
@@ -144,7 +191,10 @@ export function createQueueStore(db: Database.Database) {
   ) => s.move.run(to, sentAt, error, id, sessionId, from).changes === 1;
 
   const store = {
-    /** Pending and sending items by position, without the undo notice */
+    /**
+     * Pending and sending items by position, without the undo notice or a
+     * scheduled move
+     */
     listQueue(sessionId: string): QueueItem[] {
       return (s.list.all(sessionId) as SessionQueueRow[]).map(toQueueItem);
     },
@@ -177,9 +227,27 @@ export function createQueueStore(db: Database.Database) {
       if (item.kind === "undo_notice") {
         throw new TypeError("The undo notice goes through setUndoNotice");
       }
+      if (item.kind === "move") {
+        throw new TypeError("A move goes through scheduleMove");
+      }
       return db.transaction(() => {
         const { n } = s.countActive.get(sessionId) as { n: number };
         return insert(sessionId, item, "pending", n + 1);
+      })();
+    },
+
+    /**
+     * A pending item ahead of the user's (behind one being sent): a moved
+     * session's first message (M5)
+     */
+    enqueueFirst(sessionId: string, item: NewQueueItem): QueueItem {
+      if (item.kind === "undo_notice" || item.kind === "move") {
+        throw new TypeError("Only messages and commands go first");
+      }
+      return db.transaction(() => {
+        const added = insert(sessionId, item, "pending", 0);
+        renumber(sessionId);
+        return toQueueItem(row(sessionId, added.id)!);
       })();
     },
 
@@ -261,15 +329,92 @@ export function createQueueStore(db: Database.Database) {
       s.clear.run(sessionId);
     },
 
-    /** Pending or sending items (not the notice) ahead of a new one */
+    /**
+     * Pending or sending items (not the notice) ahead of a new one, a
+     * scheduled or running move included
+     */
     hasActive(sessionId: string): boolean {
-      return (s.countActive.get(sessionId) as { n: number }).n > 0;
+      return (s.countAhead.get(sessionId) as { n: number }).n > 0;
     },
 
-    /** The next pending item, without claiming it */
+    /** The next pending item (a scheduled move first), without claiming it */
     head(sessionId: string): QueueItem | null {
-      const r = (s.pending.all(sessionId) as SessionQueueRow[])[0];
+      const r = s.next.get(sessionId) as SessionQueueRow | undefined;
       return r ? toQueueItem(r) : null;
+    },
+
+    /**
+     * Stores a scheduled move (M5) ahead of the user's messages: pending,
+     * position 1 among nothing (moves aren't numbered). Null when one is
+     * already scheduled or running for the session
+     */
+    scheduleMove(sessionId: string, text: string): QueueItem | null {
+      return db.transaction(() => {
+        if (s.moveOf.get(sessionId)) return null;
+        return insert(
+          sessionId,
+          { text, kind: "move", origin: "system", notBefore: MOVE_HOLD },
+          "pending",
+          1
+        );
+      })();
+    },
+
+    /**
+     * Records a move that runs now (M5) as sending, so a restart finds it.
+     * Null when a move is already scheduled or running for the session
+     */
+    startMove(sessionId: string, text: string): QueueItem | null {
+      return db.transaction(() => {
+        if (s.moveOf.get(sessionId)) return null;
+        return insert(
+          sessionId,
+          { text, kind: "move", origin: "system", notBefore: MOVE_HOLD },
+          "sending",
+          1
+        );
+      })();
+    },
+
+    /** The session's scheduled (pending) or running (sending) move */
+    moveItem(sessionId: string): QueueItem | null {
+      const r = s.moveOf.get(sessionId) as SessionQueueRow | undefined;
+      return r ? toQueueItem(r) : null;
+    },
+
+    /** Every scheduled move, oldest first */
+    pendingMoves(): QueueItem[] {
+      return (s.pendingMoves.all() as SessionQueueRow[]).map(toQueueItem);
+    },
+
+    /** Rewrites a running move's payload (its progress, for a restart) */
+    setMoveText(sessionId: string, itemId: number, text: string): boolean {
+      return s.setMoveText.run(text, itemId, sessionId).changes === 1;
+    },
+
+    /**
+     * Moves a dead process left running: failed, returned so the source
+     * can be checked and restored (failInterrupted leaves them)
+     */
+    failInterruptedMoves(): QueueItem[] {
+      return db.transaction(() => {
+        const rows = s.sendingMoves.all() as SessionQueueRow[];
+        for (const r of rows) {
+          move(
+            r.session_id,
+            r.id,
+            "sending",
+            "failed",
+            null,
+            "Cut off by a restart"
+          );
+        }
+        return rows.map((r) => ({
+          ...toQueueItem(r),
+          status: "failed" as const,
+          error: "Cut off by a restart",
+        }));
+      })();
     },
 
     /**
@@ -280,8 +425,11 @@ export function createQueueStore(db: Database.Database) {
     claimNext(sessionId: string, now = Date.now()): QueueItem | null {
       return db.transaction(() => {
         if (s.sending.get(sessionId)) return null;
-        const r = (s.pending.all(sessionId) as SessionQueueRow[])[0];
-        if (!r || (r.not_before !== null && r.not_before > now)) return null;
+        const r = s.next.get(sessionId) as SessionQueueRow | undefined;
+        if (!r) return null;
+        // A move's not_before is MOVE_HOLD: only an older build reads it
+        if (r.kind !== "move" && r.not_before !== null && r.not_before > now)
+          return null;
         if (!move(sessionId, r.id, "pending", "sending")) return null;
         renumber(sessionId);
         return toQueueItem(row(sessionId, r.id)!);
@@ -336,7 +484,7 @@ export function createQueueStore(db: Database.Database) {
         .prepare(
           `UPDATE session_queue SET status = 'failed',
              error = 'Cut off by a restart: it may have gone in'
-           WHERE status = 'sending'`
+           WHERE status = 'sending' AND kind != 'move'`
         )
         .run().changes;
     },

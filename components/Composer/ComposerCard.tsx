@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { useSnapshot } from "valtio";
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { ArrowUp, History, Loader2, Plus, X } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -20,6 +21,8 @@ import { ComposerInput, type ComposerInputProps } from "./ComposerInput";
 import { ComposerPopover } from "./ComposerPopover";
 import { ComposerChips } from "./ModeChip";
 import { VideoPills } from "./VideoPills";
+import { SessionAttachChip } from "./SessionAttachChip";
+import { attachFooter, sessionRefs } from "./attach-model";
 import { FailedSends, QueueCard } from "./QueueCard";
 import { modeTone, type ClaudeLive } from "./ClaudeStateBar";
 import { PlusSlot, plusButtonClass } from "./plus-slot";
@@ -31,7 +34,14 @@ import {
   noticeChipText,
 } from "./queue-model";
 import type { UseQueue } from "@/hooks/useQueue";
+import { permissionModeKeys } from "@/hooks/usePermissionMode";
+import { PermissionChip } from "@/components/Session/PermissionChip";
+import type { Session } from "@/lib/db";
 import type { EnqueueResult, QueueItem } from "@/lib/queue/types";
+import type {
+  DirectSendOptions,
+  SessionAttachmentRef,
+} from "@/lib/session-attach-types";
 
 export interface ComposerCardProps {
   composer: ComposerEngine;
@@ -41,8 +51,12 @@ export interface ComposerCardProps {
   /** The session's server queue. With `queue.enabled`, sending goes
       through `queue.send` and Queue replaces Send while it is held */
   queue: UseQueue;
-  /** The old send, used while `queue.enabled` is false */
-  onSendDirect: (text: string) => void | Promise<void>;
+  /** The old send, used while `queue.enabled` is false; with the
+      sessions attached with @ (M9) */
+  onSendDirect: (
+    text: string,
+    options?: DirectSendOptions
+  ) => void | Promise<void>;
   /** After the server took it (sent or queued): clear the draft, scroll… */
   onSent?: (result: EnqueueResult) => void;
   /** "Reply to Claude" (chat) / "Type into the terminal" */
@@ -66,6 +80,9 @@ export interface ComposerCardProps {
   history?: boolean;
   /** The mode pill, with `live` (default on; the terminal shows Claude's) */
   modePill?: boolean;
+  /** Without `live`'s pill: the session's shield chip in the bottom row
+      (E-Composer's mode pill; a tap opens its Permissions sheet) */
+  session?: Session;
   /** Send with nothing typed (the terminal: press Enter); without it an
       empty send does nothing */
   onEmptySend?: () => void;
@@ -111,6 +128,7 @@ export function ComposerCard({
   live,
   history,
   modePill = true,
+  session,
   onEmptySend,
   pages,
   inlinePlus = false,
@@ -125,7 +143,7 @@ export function ComposerCard({
   const expanded = composerExpanded({
     focused: composer.focused,
     text: composer.display,
-    attachments: videos + composer.uploading,
+    attachments: videos + composer.uploading + composer.attached.length,
     queued: (queue.enabled ? queue.items.length : 0) + typed.length,
     notice: !!queue.notice || !!editing || queue.failed.length > 0,
   });
@@ -138,14 +156,19 @@ export function ComposerCard({
   const sendingRef = useRef(false);
   const [sending, setSending] = useState(false);
 
-  /** The send rule: the server queue when it's on, the old send if not */
+  /** The send rule: the server queue when it's on, the old send if not.
+      `sessions`: the @ chips as they were when Send was pressed */
   const deliver = useCallback(
-    async (text: string): Promise<boolean> => {
+    async (
+      text: string,
+      sessions: SessionAttachmentRef[] = []
+    ): Promise<boolean> => {
+      const options = sessions.length ? { sessions } : undefined;
       // Not known yet (loading, or the reads failing): try the queue, which
       // says when it's off, rather than typing into a busy agent
       if (queue.enabled || !queue.known) {
         try {
-          onSent?.(await queue.send(text));
+          onSent?.(await queue.send(text, options));
           return true;
         } catch (e) {
           if (!isQueueOff(e)) {
@@ -155,7 +178,7 @@ export function ComposerCard({
         }
       }
       try {
-        await onSendDirect(text);
+        await onSendDirect(text, options);
         return true;
       } catch (e) {
         // Not sent: the draft stays
@@ -166,10 +189,13 @@ export function ComposerCard({
     [queue, onSendDirect, onSent]
   );
 
-  const clear = useCallback(() => {
-    composer.replace("");
-    composer.sent();
-  }, [composer]);
+  // Editing a queued message: its sessions can't change, so no Sessions
+  // tab and no chips (they belong to the draft it replaced)
+  const { setSessionsOff } = composer;
+  useEffect(() => {
+    setSessionsOff(!!editing);
+  }, [editing, setSessionsOff]);
+  const chips = editing ? [] : composer.attached;
 
   const send = useCallback(async () => {
     if (sendingRef.current) return;
@@ -195,18 +221,35 @@ export function ComposerCard({
       }
       return;
     }
+    const attached = composer.attached;
+    const sessions = sessionRefs(attached);
+    // The chips that went: off, not one attached while it went
+    const dropSent = () => {
+      for (const a of attached) composer.detachSession(a.sessionId);
+    };
+    const clearSent = () => {
+      composer.replace("");
+      composer.sent({ keepAttached: true });
+      dropSent();
+    };
+    // A summary needs a message to go with
+    if (!text.trim() && attached.length) {
+      toast("Add a message to go with the attached session");
+      composer.textareaRef.current?.focus();
+      return;
+    }
     // With a video: its frames first, once they're ready
     if (videos) {
       sendWithVideos(
         sessionId,
         () => textRef.current,
         (full) => {
-          void deliver(full).then((ok) => {
+          void deliver(full, sessions).then((ok) => {
             // Couldn't go: back into an empty box rather than lost
             if (!ok && !textRef.current) composer.replace(full);
           });
         },
-        clear
+        clearSent
       );
       return;
     }
@@ -218,24 +261,16 @@ export function ComposerCard({
     setSending(true);
     try {
       // The draft holds the pills' full text: that's what goes
-      if (await deliver(text)) {
+      if (await deliver(text, sessions)) {
         // Typed on while it went: keep that
-        if (textRef.current === text) clear();
+        if (textRef.current === text) clearSent();
+        else dropSent();
       }
     } finally {
       sendingRef.current = false;
       setSending(false);
     }
-  }, [
-    composer,
-    editing,
-    queue,
-    videos,
-    sessionId,
-    deliver,
-    clear,
-    onEmptySend,
-  ]);
+  }, [composer, editing, queue, videos, sessionId, deliver, onEmptySend]);
 
   /** A queued message back into the box, to change and save */
   const startEdit = useCallback(
@@ -281,7 +316,10 @@ export function ComposerCard({
     async (item: QueueItem) => {
       try {
         onSent?.(
-          await queue.send(item.text, { attachments: item.attachments })
+          await queue.send(item.text, {
+            attachments: item.attachments,
+            sessions: item.sessions,
+          })
         );
         await queue.dismiss(item.id);
       } catch (e) {
@@ -299,6 +337,19 @@ export function ComposerCard({
     },
     [composer, queue]
   );
+
+  // Shift+Tab here or in the terminal: the header's shield chip follows
+  // (a prompt over the footer reads as no mode, not a change)
+  const queryClient = useQueryClient();
+  const liveMode = live?.claude ? live.screen?.mode : undefined;
+  const lastMode = useRef(liveMode);
+  useEffect(() => {
+    if (!liveMode || lastMode.current === liveMode) return;
+    lastMode.current = liveMode;
+    queryClient.invalidateQueries({
+      queryKey: permissionModeKeys.session(sessionId),
+    });
+  }, [liveMode, queryClient, sessionId]);
 
   const tone = live?.claude && modePill ? modeTone(live.mode) : undefined;
   const modeName = live?.mode ? MODE_PILL[live.mode] : undefined;
@@ -428,6 +479,17 @@ export function ComposerCard({
               onEdit={startEdit}
             />
           )}
+          {!collapsed && chips.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2">
+              {chips.map((a) => (
+                <SessionAttachChip
+                  key={a.sessionId}
+                  session={a}
+                  onRemove={composer.detachSession}
+                />
+              ))}
+            </div>
+          )}
           {!collapsed && (
             <ComposerChips composer={composer} className="px-0 pb-0" />
           )}
@@ -441,6 +503,15 @@ export function ComposerCard({
               <PlusSlot.Provider value={{ collapsed }}>
                 {plusNode}
               </PlusSlot.Provider>
+            )}
+            {!collapsed && chips.length > 0 && (
+              <span
+                data-attach-footer
+                // Shrinks (never wraps the send button to a row of its own)
+                className="text-muted-foreground min-w-0 flex-1 basis-0 truncate text-[13px]"
+              >
+                {attachFooter(chips)}
+              </span>
             )}
             <div
               className={cn(
@@ -495,10 +566,20 @@ export function ComposerCard({
                 className={cn("mode-pill flex-none", tone.className)}
               >
                 {tone.icon}
-                {modeName}
+                {/* With sessions attached: the icon alone, the footer's
+                    token count needs the room (N-Attach) */}
+                {chips.length ? null : modeName}
               </button>
             )}
-            {!collapsed && showHistory && (
+            {!collapsed && !tone && session && (
+              <PermissionChip
+                session={session}
+                variant="composer"
+                compact={chips.length > 0}
+              />
+            )}
+            {/* With sessions attached their footer takes the room (N-Attach) */}
+            {!collapsed && showHistory && !chips.length && (
               <button
                 type="button"
                 onMouseDown={keep}
@@ -510,7 +591,9 @@ export function ComposerCard({
                 <History className="h-5 w-5" />
               </button>
             )}
-            {!collapsed && <span className="flex-1" aria-hidden="true" />}
+            {!collapsed && !chips.length && (
+              <span className="flex-1" aria-hidden="true" />
+            )}
             {!collapsed && !pages && sendButton}
           </div>
         </div>

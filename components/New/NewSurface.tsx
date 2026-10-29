@@ -219,7 +219,7 @@ export function NewSurface({
             !e.defaultPrevented
           ) {
             e.preventDefault();
-            form.submit();
+            void form.submit();
           }
         }}
       >

@@ -110,7 +110,11 @@ export function spreadLayout(i: SpreadInput): SpreadLayout {
     !changesBeside &&
     (i.pages
       ? !homeOpen && (i.liveOpen || i.railByDefault) && conversation
-      : i.roomForRail && !i.duo && !(i.desktop && i.paneCount > 1));
+      : i.roomForRail &&
+        !i.duo &&
+        !(i.desktop && i.paneCount > 1) &&
+        // D-Tree: the agents view draws its own detail panel there
+        !(i.desktop && i.viewMode === "agents"));
   const paneLeft = i.pages && (showRail || changesBeside);
   // Half open nothing may sit in the bend: only the chat lays itself out as
   // a book, anything else takes the right page. A workspace page takes it

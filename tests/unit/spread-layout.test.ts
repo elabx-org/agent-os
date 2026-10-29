@@ -166,3 +166,15 @@ test("off the pages (tabletop, closed, web, desktop) Changes never shows", () =>
   const tabletop = spreadLayout({ ...web, duo: true });
   assert.deepEqual(on(tabletop), []);
 });
+
+test("desktop agents view: its detail panel takes the live rail's place (D-Tree)", () => {
+  const DESK: SpreadInput = {
+    ...OPEN,
+    duo: false,
+    desktop: true,
+    pages: false,
+    roomForRail: true,
+  };
+  assert.equal(spreadLayout(DESK).showRail, true);
+  assert.equal(spreadLayout({ ...DESK, viewMode: "agents" }).showRail, false);
+});
