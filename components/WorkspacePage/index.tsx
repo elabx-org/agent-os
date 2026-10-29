@@ -6,7 +6,9 @@ import type { Session } from "@/lib/db";
 import type { ViewProps } from "@/components/views/types";
 import { backPage, workspacePageStore } from "@/stores/workspacePage";
 import { cn } from "@/lib/utils";
+import { runNav } from "@/lib/nav-actions";
 import { PAGES, type PageProps } from "./pages";
+import { PageEdge } from "@/components/ui/page-edge";
 
 export { PageHeader, PageEmpty } from "./PageHeader";
 export type { PageProps } from "./pages";
@@ -56,10 +58,11 @@ export function WorkspacePage({
       ref={ref}
       tabIndex={-1}
       className={cn(
-        "bg-background flex h-full min-h-0 flex-col outline-none",
+        "bg-background relative flex h-full min-h-0 flex-col outline-none",
         className
       )}
     >
+      <PageEdge label="Back" onClose={() => runNav("back")} />
       <Page
         // A new subject starts fresh (another project, another agent)
         key={JSON.stringify(page)}
