@@ -1,0 +1,82 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import {
+  agentName,
+  canRestartHere,
+  fullAccessConfirm,
+  initialChoice,
+  modeToast,
+  needsPost,
+} from "../../lib/permission-sheet";
+import type { PermissionModeState } from "../../lib/permission-mode";
+
+const STATE: PermissionModeState = {
+  mode: "acceptEdits",
+  pending: null,
+  live: "acceptEdits",
+  canApplyLive: true,
+  agentType: "claude",
+};
+
+test("starts on the mode, or the change waiting for the turn", () => {
+  assert.equal(initialChoice(undefined), null);
+  assert.equal(initialChoice(STATE), "acceptEdits");
+  assert.equal(initialChoice({ ...STATE, pending: "auto" }), "auto");
+});
+
+test("Done with the row it opened on only closes", () => {
+  assert.equal(needsPost("acceptEdits", STATE), false);
+  assert.equal(needsPost("auto", STATE), true);
+  assert.equal(needsPost(null, STATE), false);
+  assert.equal(needsPost("auto", undefined), false);
+  // A pending change: picking it again is nothing new, the current mode cancels it
+  const pending = { ...STATE, pending: "auto" as const };
+  assert.equal(needsPost("auto", pending), false);
+  assert.equal(needsPost("acceptEdits", pending), true);
+});
+
+test("toast per appliesAt", () => {
+  assert.deepEqual(modeToast({ mode: "auto", appliesAt: "now" }, "claude"), {
+    text: "Auto on",
+    restart: false,
+  });
+  assert.deepEqual(
+    modeToast({ mode: "manual", appliesAt: "nextTurn" }, "claude"),
+    { text: "Ask first from the next turn", restart: false }
+  );
+  assert.deepEqual(
+    modeToast({ mode: "bypassPermissions", appliesAt: "restart" }, "claude"),
+    { text: "Full access after a restart", restart: true }
+  );
+  assert.deepEqual(modeToast({ mode: "auto", appliesAt: "restart" }, "codex"), {
+    text: "Codex takes this when it restarts",
+    restart: false,
+  });
+  assert.deepEqual(
+    modeToast({ mode: "auto", appliesAt: "restart" }, "gemini"),
+    { text: "Gemini takes this when it restarts", restart: false }
+  );
+  assert.deepEqual(
+    modeToast({ mode: "auto", appliesAt: "nextLaunch" }, "codex"),
+    { text: "Applies when it starts", restart: false }
+  );
+});
+
+test("only Claude restarts from the sheet (the route refuses others)", () => {
+  assert.equal(canRestartHere("claude"), true);
+  assert.equal(canRestartHere("codex"), false);
+  assert.equal(canRestartHere("minimax"), false);
+  assert.equal(
+    modeToast({ mode: "bypassPermissions", appliesAt: "restart" }, "minimax")
+      .restart,
+    false
+  );
+  assert.equal(agentName("opencode"), "The agent");
+});
+
+test("full access confirm names the session", () => {
+  const c = fullAccessConfirm("Signing profiles");
+  assert.equal(c.title, "Switch Signing profiles to full access?");
+  assert.equal(c.message, "It will never ask, even to delete files.");
+  assert.equal(c.destructive, true);
+});
