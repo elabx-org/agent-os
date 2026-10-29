@@ -8,7 +8,7 @@ import { NewSurfaceHost } from "@/components/New/NewSurface";
 import { ProjectSettingsHost } from "@/components/Projects/ProjectSettingsDialog";
 import { StartServerDialog } from "@/components/DevServers/StartServerDialog";
 import { PaneLayout } from "@/components/PaneLayout";
-import { QuickSwitcher } from "@/components/QuickSwitcher";
+import { SearchHost } from "@/components/Search/SearchHost";
 import type { ViewProps } from "./types";
 import { fileOpenActions } from "@/stores/fileOpen";
 import { useSnapshot } from "valtio";
@@ -18,6 +18,7 @@ import {
   useNeedsYouPage,
 } from "@/components/Notifications/NeedsYouPage";
 import { mobileNavStore } from "@/stores/mobileNav";
+import { diffReviewStore } from "@/stores/diffReview";
 import { focusStore } from "@/stores/focus";
 import { isNative } from "@/lib/native-bridge";
 import { useIsNative } from "@/hooks/useIsNative";
@@ -169,8 +170,12 @@ export function DesktopView(props: ViewProps) {
   // Two or more panes on the desktop: the sidebar steps down to the rail
   // and the panes become cards (Desk-Beside)
   const beside = desktop && paneIds.length > 1;
+  // A turn's diff review beside the chat steps it down too (D-Diff)
+  const { open: review } = useSnapshot(diffReviewStore);
+  const reviewing =
+    desktop && !!review && review.sessionId === activeSession?.id;
   const projectsShown = desktop && homeTab === "projects";
-  const rail = beside && !pageOpen && !projectsShown;
+  const rail = (beside || reviewing) && !pageOpen && !projectsShown;
   const homeWidth = !desktop
     ? undefined
     : rail
@@ -282,7 +287,7 @@ export function DesktopView(props: ViewProps) {
         onCreateProject={handleCreateProject}
       />
       <ProjectSettingsHost />
-      <QuickSwitcher
+      <SearchHost
         sessions={sessions}
         open={showQuickSwitcher}
         onOpenChange={setShowQuickSwitcher}
@@ -293,10 +298,12 @@ export function DesktopView(props: ViewProps) {
           if (session) attachToSession(session);
         }}
         onSelectFile={(file, line) => {
-          // Convert relative path to absolute by prepending working directory
-          const absolutePath = activeSession?.working_directory
-            ? `${activeSession.working_directory}/${file.replace(/^\.\//, "")}`
-            : file;
+          // Search results pass absolute paths; others are relative to the session folder
+          const absolutePath = file.startsWith("/")
+            ? file
+            : activeSession?.working_directory
+              ? `${activeSession.working_directory}/${file.replace(/^\.\//, "")}`
+              : file;
           fileOpenActions.requestOpen(absolutePath, line);
         }}
       />

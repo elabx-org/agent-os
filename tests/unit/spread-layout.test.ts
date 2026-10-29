@@ -28,10 +28,10 @@ const OPEN: SpreadInput = {
 };
 const BOOK: SpreadInput = { ...OPEN, book: true };
 
-/** The slots that are on, for compact asserts */
+/** The slots that are on, for compact asserts (the review's own test reads reviewRoom) */
 function on(layout: SpreadLayout): string[] {
   return Object.entries(layout)
-    .filter(([, v]) => v)
+    .filter(([k, v]) => v && k !== "reviewRoom")
     .map(([k]) => k)
     .sort();
 }
@@ -177,4 +177,42 @@ test("desktop agents view: its detail panel takes the live rail's place (D-Tree)
   };
   assert.equal(spreadLayout(DESK).showRail, true);
   assert.equal(spreadLayout({ ...DESK, viewMode: "agents" }).showRail, false);
+});
+
+test("diff review (M12): beside the chat on the desktop and the open Duo (D-Diff, O-Diff)", () => {
+  const DESK: SpreadInput = {
+    ...OPEN,
+    duo: false,
+    desktop: true,
+    pages: false,
+    roomForRail: true,
+  };
+  const desk = spreadLayout({ ...DESK, reviewOpen: true });
+  assert.equal(desk.reviewBeside, true);
+  assert.equal(desk.showRail, false);
+  // The 0.1.62 app keeps the rail by default; the review takes its page
+  const APP: SpreadInput = { ...OPEN, railByDefault: true };
+  assert.equal(spreadLayout(APP).showRail, true);
+  assert.equal(spreadLayout(APP).reviewRoom, true);
+  const open = spreadLayout({ ...APP, reviewOpen: true });
+  assert.deepEqual(on(open), ["changesRoom", "paneLeft", "reviewBeside"]);
+  // The home steps aside; typing keeps the review where it is
+  const home = spreadLayout({ ...OPEN, homeWanted: true, reviewOpen: true });
+  assert.equal(home.homeOpen, false);
+  assert.equal(home.reviewBeside, true);
+  const typing = spreadLayout({ ...OPEN, replying: true, reviewOpen: true });
+  assert.equal(typing.replyLeft, false);
+  assert.equal(typing.reviewBeside, true);
+  // No room: the terminal, a workspace page, two sessions on the pages, the
+  // closed Duo and the phone (the chat draws it over itself)
+  for (const no of [
+    { ...OPEN, viewMode: "terminal" as const },
+    { ...OPEN, pageOpen: true },
+    { ...OPEN, paneCount: 2 },
+    { ...OPEN, pages: false },
+    { ...DESK, desktop: false },
+  ]) {
+    const l = spreadLayout({ ...no, reviewOpen: true });
+    assert.equal(l.reviewBeside, false);
+  }
 });

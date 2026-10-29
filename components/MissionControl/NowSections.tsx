@@ -328,7 +328,9 @@ export function WorkingSection({
                 title={title}
                 {...row(
                   projectOf(projectNames, session),
-                  sessionStatuses[session.id]?.lastLine?.trim() || "Working",
+                  now.moves[session.id] ??
+                    (sessionStatuses[session.id]?.lastLine?.trim() ||
+                      "Working"),
                   shortAge(session.updated_at)
                 )}
                 selected={session.id === selectedId}
@@ -588,7 +590,7 @@ export function QuietSection({
                 />
               }
               title={quietRow(displayTitle(session, now.titles).title)}
-              subtitle={handoff}
+              subtitle={handoff ?? now.moves[session.id]}
               trailing={handoff ? STATE_WORD.paused : undefined}
               chevron
               onClick={() => onOpenSession(session)}

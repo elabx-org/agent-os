@@ -13,6 +13,8 @@ interface BranchCardProps {
   /** A project's several repos: shown, not switched */
   fixed?: boolean;
   onBranchChanged: () => void;
+  /** N-Worktree (M5): the list offers moving the session to a new worktree */
+  onMove?: () => void;
 }
 
 /**
@@ -26,6 +28,7 @@ export function BranchCard({
   hasChanges,
   fixed,
   onBranchChanged,
+  onMove,
 }: BranchCardProps) {
   const card = (switching: boolean) => (
     <button
@@ -71,6 +74,7 @@ export function BranchCard({
       currentBranch={branch}
       hasChanges={hasChanges}
       onBranchChanged={onBranchChanged}
+      onMove={onMove}
     >
       {card}
     </BranchSelector>

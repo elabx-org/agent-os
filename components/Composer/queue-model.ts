@@ -143,6 +143,8 @@ export function holdCaption(
       return "Held while the session is settled";
     case "handing_off":
       return `Held while ${agentName} hands off to another session`;
+    case "moving":
+      return "Held while the session moves to a worktree";
     default:
       return `Sends when ${agentName} is done. Held while it asks you something.`;
   }

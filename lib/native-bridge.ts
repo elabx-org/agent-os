@@ -84,6 +84,8 @@ export interface NativeState {
   liveOpen?: boolean;
   /** A wide layout (open Duo, book, desktop): More offers Open beside */
   wide?: boolean;
+  /** What the person took out of this column (Settings → Control column), for More */
+  more?: NativeColumnItem[];
 }
 
 /** A column item as the app gets it: the SF Symbol, not the web icon */

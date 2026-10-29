@@ -58,6 +58,7 @@ import { clearHandingOff, markHandingOff } from "./handing-off";
 import { savePausedHistory } from "./paused-history";
 import { isSettled } from "./settle-types";
 import { isRunning, launchSession, tmuxNameOf } from "./session-launch";
+import { forgetSessionSummary } from "./session-summaries";
 import { buildSummary } from "./summarize";
 import { sendText } from "./tmux-send";
 import { locateTranscript } from "./transcript-locate";
@@ -637,6 +638,7 @@ const liveDeps = (): HandoffDeps => ({
   discard: (session) => {
     const db = getDb();
     clearQueue(session.id);
+    forgetSessionSummary(session.id);
     queries.deleteDraft(db).run(session.id);
     queries.deleteSession(db).run(session.id);
   },

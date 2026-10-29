@@ -21,11 +21,7 @@ import {
 } from "@/lib/native-bridge";
 import { useSessionDraft } from "@/hooks/useSessionDraft";
 import { CHAT_KEYS } from "@/components/Terminal/toolbar-config";
-import {
-  ComposerChips,
-  ComposerPopover,
-  useComposer,
-} from "@/components/Composer";
+import { ComposerChips, useComposer } from "@/components/Composer";
 import { ComposerCard } from "@/components/Composer/ComposerCard";
 import { PausedBar } from "@/components/Session/PausedBar";
 import { PausedHistory } from "@/components/Session/PausedHistory";
@@ -40,6 +36,7 @@ import { useFoldDeck } from "@/hooks/useFoldDeck";
 import { useLayoutMode } from "@/hooks/useLayoutMode";
 import { useQueue } from "@/hooks/useQueue";
 import { useTurns } from "@/hooks/useTurns";
+import { useSearchAction } from "@/hooks/useSearchAction";
 import { useSessionPrompt } from "@/data/prompts/queries";
 import { DeckActions } from "@/components/DeckActions";
 import { DeckStateLine } from "@/components/DeckStateLine";
@@ -51,6 +48,9 @@ import {
 import { agentOpenStore, consumeSubagent } from "@/stores/agentOpen";
 import type { Session } from "@/lib/db";
 import { WorkflowPanel, workflowAgentInfo } from "@/components/WorkflowPhases";
+import { DiffReview } from "@/components/DiffViewer/DiffReview";
+import { FOLD_CLEAR } from "@/hooks/useHinge";
+import { diffReviewStore, openDiffReview } from "@/stores/diffReview";
 import {
   AnswerChips,
   DeckContext,
@@ -65,10 +65,10 @@ import { NeedsYouCard } from "./NeedsYouCard";
 import { buildRows, placeTurns } from "./rows";
 import { SubagentPanel } from "./SubagentPanel";
 import { SubagentRow } from "./ToolCard";
-import { TurnDiff } from "./TurnDiff";
 import { UndoSheet } from "./UndoSheet";
 import { useSeam } from "./useSeam";
 import { useTranscript } from "./useTranscript";
+import type { DirectSendOptions } from "@/lib/session-attach-types";
 
 export interface ChatViewProps {
   session: Session;
@@ -123,16 +123,22 @@ export function ChatView({
       turns.enabled && turns.turns.length
         ? {
             after: placeTurns(rows, turns.turns),
-            onDiff: setDiffTurn,
+            // The open turn's Diff closes it again
+            onDiff: (n) => setDiffTurn((open) => (open === n ? null : n)),
             onUndo: setUndoTurn,
+            diffTurn,
           }
         : undefined,
-    [turns.enabled, turns.turns, rows]
+    [turns.enabled, turns.turns, rows, diffTurn]
   );
   useEffect(() => {
     setDiffTurn(null);
     setUndoTurn(null);
   }, [session.id]);
+  // Search's "Undo turn N" / "Open diff: This turn" (M11)
+  useSearchAction(session.id, "turn", active, (r) =>
+    r.action === "undo" ? setUndoTurn(r.turnNo) : setDiffTurn(r.turnNo)
+  );
 
   const agents = useSubagents(session.id, active);
   const agentsByTool = useMemo(
@@ -173,14 +179,37 @@ export function ChatView({
     }
   }, [agents, runs, openAgent]);
   const openedRun = openRun ? runsById.get(openRun) : undefined;
-  // What takes the right page: an agent, or a whole workflow
-  const side = !!opened || !!openedRun;
+  // One right page at a time: the latest of an agent and a turn's diff
+  useEffect(() => {
+    if (openAgent || openRun) setDiffTurn(null);
+  }, [openAgent, openRun]);
+  useEffect(() => {
+    if (diffTurn === null) return;
+    setOpenAgent(null);
+    setOpenRun(null);
+  }, [diffTurn]);
+  // Beside the pane where SessionSpread has room (O-Diff's right page,
+  // D-Diff's room beside the chat), so the session header covers the
+  // conversation only; over the chat everywhere else
+  const { room: reviewRoom } = useSnapshot(diffReviewStore);
+  const reviewBeside = active && reviewRoom === session.id;
+  useEffect(() => {
+    if (diffTurn === null || !reviewBeside) return;
+    return openDiffReview(
+      { sessionId: session.id, turnNo: diffTurn },
+      { close: () => setDiffTurn(null), undoTurn: setUndoTurn }
+    );
+  }, [diffTurn, reviewBeside, session.id]);
+  const reviewHere = diffTurn !== null && !reviewBeside;
+  // What takes the right page: an agent, a whole workflow or a turn's diff
+  const side = !!opened || !!openedRun || reviewHere;
 
   // Focus on the open Duo: the conversation reads across both pages like a
   // book, earlier rows on the left page and the latest with the composer on
   // the right. An open subagent takes the right page instead.
   const outerRef = useRef<HTMLDivElement>(null);
   const pages = useSpreadPages(outerRef, useSpreadFold());
+  const mode = useLayoutMode();
   const book = !!pages && !side && state === "ready";
   // Either way each column keeps to one side of the fold
   const paged = book || (!!pages && side);
@@ -222,7 +251,13 @@ export function ChatView({
     },
     [rows, book, seam]
   );
-  useChatJump(session.id, active, findItem);
+  // A search hit far back: load earlier pages until it's there (M11)
+  useChatJump(
+    session.id,
+    active,
+    findItem,
+    truncated && !loadingEarlier ? loadEarlier : undefined
+  );
 
   // Earlier history goes in above: keep what's on screen where it was
   const shown = useRef<{ first?: string; height: number }>({ height: 0 });
@@ -283,6 +318,7 @@ export function ChatView({
     sessionId: session.id,
     cwd: session.working_directory,
     claude: session.agent_type === "claude",
+    active,
   });
   const inputRef = composer.textareaRef;
   // Claude's mode, spinner and status line, mirrored under the box
@@ -346,19 +382,30 @@ export function ChatView({
     atBottom.current = true;
   }, []);
   const sendDirect = useCallback(
-    async (text: string) => {
+    async (text: string, options?: DirectSendOptions) => {
       if (!text.trim()) return;
       const res = await fetchAsUser(`/api/sessions/${session.id}/send-keys`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: text.trim(), pressEnter: true }),
+        body: JSON.stringify({
+          text: text.trim(),
+          pressEnter: true,
+          ...(options?.sessions?.length ? { sessions: options.sessions } : {}),
+        }),
       });
-      if (!res.ok) throw new Error("Couldn't send to Claude");
+      if (!res.ok) {
+        // A 409: the attached sessions can't go with an answer (send-keys)
+        const body = await res.json().catch(() => null);
+        throw new Error(
+          res.status === 409 && body?.error
+            ? body.error
+            : "Couldn't send to Claude"
+        );
+      }
       sent();
     },
     [session.id, sent]
   );
-  const mode = useLayoutMode();
   // The header's inset (Closed-Chat 20px, Fold, open Duo and desktop
   // 24px); the composer row sits 16px in on the closed Duo and the phone
   const roomy = mode !== "duo-closed" && mode !== "phone";
@@ -673,7 +720,6 @@ export function ChatView({
               ) : (
                 <PausedBar session={session} />
               ))}
-            {!paused && <ComposerPopover composer={composer} />}
             {!paused && (
               <RewindSheet
                 live={live}
@@ -692,9 +738,12 @@ export function ChatView({
                 onSendDirect={sendDirect}
                 onSent={sent}
                 placeholder={
-                  mode === "desktop"
-                    ? "Reply to Claude, / for commands, @ for files"
-                    : "Reply to Claude"
+                  mode !== "desktop"
+                    ? "Reply to Claude"
+                    : diffTurn !== null
+                      ? // D-Diff: the chat is narrower beside the review
+                        "Reply to Claude, / for commands"
+                      : "Reply to Claude, / for commands, @ for files"
                 }
                 inputProps={{
                   onFocus: () => {
@@ -786,21 +835,45 @@ export function ChatView({
           }
         />
       )}
+      {reviewHere && diffTurn !== null && (
+        <DiffReview
+          session={session}
+          agentName="Claude"
+          initialScope={`turn:${diffTurn}`}
+          // Beside the conversation on the open Duo (O-Diff) and the
+          // desktop (D-Diff); over it on the closed Duo and the phone
+          placement={pages || mode === "desktop" ? "page" : "screen"}
+          onClose={() => setDiffTurn(null)}
+          onUndoTurn={setUndoTurn}
+          className={
+            pages
+              ? "min-w-0 flex-1"
+              : mode === "desktop"
+                ? "bg-background absolute inset-0 z-10 @2xl/chat:static @2xl/chat:w-[62%] @2xl/chat:max-w-[60rem] @2xl/chat:shrink-0"
+                : // Over the conversation, inside the chat's own box (the
+                  // closed Duo's column stays clear; UndoSheet is above)
+                  "bg-background absolute inset-0 z-10"
+          }
+          // On a table: above the fold (clear of the hinge, as the
+          // column's rule), the composer stays on the deck
+          style={
+            deck && !pages && mode !== "desktop"
+              ? {
+                  bottom: deck.deck + deck.gap,
+                  paddingBottom: Math.max(0, FOLD_CLEAR - deck.gap / 2),
+                }
+              : undefined
+          }
+        />
+      )}
       {/* On a table while typing: Claude's last turn over the chat above */}
       <DeckContext
         sessionId={session.id}
         view="chat"
-        on={!!deck && active}
+        on={!!deck && active && diffTurn === null}
         cover={scrollRef}
       />
       {quoteMenu.menu}
-      {diffTurn !== null && (
-        <TurnDiff
-          sessionId={session.id}
-          turnNo={diffTurn}
-          onClose={() => setDiffTurn(null)}
-        />
-      )}
       {undoTurn !== null && (
         <UndoSheet
           turnNo={undoTurn}

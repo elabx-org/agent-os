@@ -510,6 +510,59 @@ const migrations: Migration[] = [
       addColumnIfMissing(db, "sessions", "pr_merged_at", "INTEGER");
     }),
   },
+  {
+    id: 31,
+    name: "add_session_summaries",
+    up: atomic((db) => {
+      // Attach a session with @ (M9): its summary, cached until the
+      // transcript grows (lib/session-summaries.ts)
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS session_summaries (
+          session_id TEXT PRIMARY KEY,
+          basis TEXT NOT NULL,
+          text TEXT NOT NULL,
+          tokens INTEGER NOT NULL,
+          source TEXT NOT NULL,
+          empty INTEGER NOT NULL DEFAULT 0,
+          created_at INTEGER NOT NULL
+        )
+      `);
+      // The sessions a queued message attaches, resolved when it goes;
+      // apart from attachments so an older build still reads those
+      addColumnIfMissing(db, "session_queue", "sessions", "TEXT");
+    }),
+  },
+  {
+    id: 33,
+    name: "add_review_comments_table",
+    up: atomic((db) => {
+      // Line comments on a session's diff (lib/review-comments.ts): the
+      // desktop tray's until sent, the Duo's once sent; side old|new picks
+      // which numbers start_line/end_line are; times in epoch ms
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS review_comments (
+          id INTEGER PRIMARY KEY,
+          session_id TEXT NOT NULL,
+          scope TEXT NOT NULL,
+          path TEXT NOT NULL,
+          side TEXT NOT NULL DEFAULT 'new',
+          start_line INTEGER NOT NULL,
+          end_line INTEGER NOT NULL,
+          quote TEXT NOT NULL,
+          body TEXT NOT NULL,
+          created_at INTEGER NOT NULL,
+          sent_at INTEGER,
+          queue_item_id INTEGER
+        )
+      `);
+      // queue_item_id: the queued message (session_queue) carrying it,
+      // until that one goes (sent_at) or is cancelled (back to pending)
+      addColumnIfMissing(db, "review_comments", "queue_item_id", "INTEGER");
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_review_comments_session ON review_comments(session_id, sent_at, created_at)`
+      );
+    }),
+  },
 ];
 
 export function runMigrations(db: Database.Database): void {

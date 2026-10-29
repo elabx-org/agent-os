@@ -4,6 +4,7 @@ export type SettingsSection =
   | "notifications"
   | "display"
   | "keys"
+  | "column"
   | "duo"
   | "usage"
   | "claude"

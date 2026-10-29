@@ -20,6 +20,7 @@ import {
   FlaskConical,
   Globe,
   Keyboard,
+  PanelRight,
   Terminal,
   Video,
   X,
@@ -58,6 +59,8 @@ import {
 import { DisplaySection } from "./DisplaySection";
 import { DuoSection } from "./DuoSection";
 import { KeysSection, keysSummary } from "./KeysSection";
+import { ColumnSection, columnSummary } from "./ColumnSection";
+import { useColumnOrder } from "@/hooks/useColumnOrder";
 import { UsageSection } from "./UsageSection";
 import { ClaudeCodeSection } from "./ClaudeCodeSection";
 import { SessionsSection } from "./SessionsSection";
@@ -69,6 +72,7 @@ const SECTION_TITLE: Record<SettingsSection, string> = {
   notifications: "Notifications",
   display: "Display",
   keys: "Keys",
+  column: "Control column",
   duo: "iPhone Duo",
   usage: "Usage",
   claude: "Claude Code",
@@ -83,6 +87,7 @@ const SECTION_TILE = {
   notifications: { icon: Bell, color: "#DC2626" },
   display: { icon: Contrast, color: "#2563EB" },
   keys: { icon: Keyboard, color: "#52525B" },
+  column: { icon: PanelRight, color: "#0F766E" },
   duo: { icon: Columns2, color: "#4F46E5" },
   usage: { icon: Zap, color: "#6D28D9" },
   claude: { icon: Asterisk, color: "#C2410C" },
@@ -230,6 +235,7 @@ function SettingsLayer(props: NotificationsSectionProps) {
     "notifications",
     "display",
     ...(layout !== "desktop" || native ? (["keys"] as const) : []),
+    "column",
     ...(native ? (["duo"] as const) : []),
     "claude",
     "uploads",
@@ -244,11 +250,13 @@ function SettingsLayer(props: NotificationsSectionProps) {
   const running = useRunningCount();
   const { look } = useSyncedLook();
   const { preferences: keys } = useToolbarPreferences();
+  const { order: columnOrder } = useColumnOrder();
 
   const body: Record<SettingsSection, ReactNode> = {
     notifications: <NotificationsSection {...props} />,
     display: <DisplaySection />,
     keys: <KeysSection />,
+    column: <ColumnSection />,
     duo: <DuoSection />,
     usage: <UsageSection />,
     claude: <ClaudeCodeSection />,
@@ -267,6 +275,7 @@ function SettingsLayer(props: NotificationsSectionProps) {
       notificationsOn === null ? undefined : notificationsOn ? "On" : "Off",
     display: lookSummary(look),
     keys: keysSummary(keys),
+    column: columnSummary(columnOrder),
     duo: duoTrial ? "Title in page" : "Classic header",
     uploads: PRESETS[preset].label,
     sessions: running === null ? undefined : `${running} running`,

@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect } from "react";
+import { subscribe } from "valtio";
 import { subscribeKey } from "valtio/utils";
+import { columnOrderStore } from "@/stores/columnOrder";
 import {
   isNative,
   nativeCaps,
@@ -125,6 +127,8 @@ export function useNativeBridge({ waitingCount }: NativeBridgeOptions) {
             // A sheet over the session and a turn in progress change the
             // closed column (× | ✓, × | Changes, Stop)
             subscribeKey(mobileNavStore, "sheet", report),
+            // The move sheet's × | Move session, × | Cancel move or × (M5)
+            subscribeKey(mobileNavStore, "sheetAction", report),
             subscribeKey(mobileNavStore, "working", report),
             subscribeKey(mobileNavStore, "agentCount", report),
             subscribeKey(agentTreeStore, "showFinished", report),
@@ -134,8 +138,10 @@ export function useNativeBridge({ waitingCount }: NativeBridgeOptions) {
             subscribeKey(surfaceStore, "home", report),
             subscribeKey(surfaceStore, "paneCount", report),
             subscribeKey(surfaceStore, "searchOpen", report),
+            subscribeKey(surfaceStore, "behind", report),
             subscribeKey(settingsPageStore, "detail", report),
             subscribeKey(layoutStore, "mode", report),
+            subscribe(columnOrderStore, report),
           ]
         : []),
     ];

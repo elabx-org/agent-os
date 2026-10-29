@@ -98,6 +98,9 @@ final class AppModel {
     var surface: String?
     /// The live activity is showing: the page's `liveOpen`, else its Live item's state
     var liveOpen = false
+    /// What the person took out of the column (Settings → Control column):
+    /// More lists them
+    var more: [ColumnEntry] = []
     /// The page's own wide layout (open Duo, book, desktop) when it says,
     /// for Open beside; nil: the app goes by its size class
     var pageWide: Bool?
@@ -235,6 +238,7 @@ final class AppModel {
         surface = nil
         liveOpen = false
         pageWide = nil
+        more = []
     }
 
     /// The system reported the device's hinge, or that it has none
@@ -372,6 +376,7 @@ final class AppModel {
         liveOpen = message["liveOpen"] as? Bool
             ?? column?.first(where: { $0.id == "live" })?.selected ?? false
         pageWide = message["wide"] as? Bool
+        more = (message["more"] as? [Any] ?? []).compactMap(ColumnEntry.init)
         if let css = message["background"] as? String, let color = Self.color(css: css) {
             pageBackground = Color(uiColor: color)
         }

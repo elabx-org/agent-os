@@ -1,3 +1,5 @@
+import type { SessionAttachmentRef } from "../session-attach-types";
+
 /**
  * The server message queue's shapes, shared by the API routes
  * (app/api/sessions/[id]/queue) and the client (hooks/useQueue.ts). No
@@ -9,9 +11,16 @@ export type QueueOrigin = "user" | "system" | "agent";
 /**
  * message: text to type in. command: a slash command or mode change, sent
  * only while idle. resume: M6's "continue" after a limit. undo_notice: never
- * sent alone, merged as a prefix into the next outgoing message
+ * sent alone, merged as a prefix into the next outgoing message. move: M5's
+ * scheduled move to a worktree, never typed in; its text is a
+ * MoveQueuePayload (lib/worktree-move-types.ts) and it runs at an idle edge
  */
-export type QueueKind = "message" | "command" | "resume" | "undo_notice";
+export type QueueKind =
+  | "message"
+  | "command"
+  | "resume"
+  | "undo_notice"
+  | "move";
 
 export type QueueStatus =
   | "pending"
@@ -25,7 +34,7 @@ export type QueueStatus =
  * busy: working. asking: a question, plan approval, trust screen or picker.
  * permission: a permission prompt. typing: text half-typed in its input
  * line. unknown: a screen it can't classify (fail closed). limited, paused,
- * settled: M6 / M4 / M8
+ * settled: M6 / M4 / M8. moving: M5, being moved into a worktree
  */
 export type HoldReason =
   | "busy"
@@ -36,7 +45,8 @@ export type HoldReason =
   | "limited"
   | "paused"
   | "settled"
-  | "handing_off";
+  | "handing_off"
+  | "moving";
 
 export interface QueueItem {
   id: number;
@@ -45,6 +55,11 @@ export interface QueueItem {
   text: string;
   /** File paths sent after the text */
   attachments: string[];
+  /**
+   * Sessions attached with @ (M9): their summaries go in a block in front
+   * of the text, resolved when it is typed in (lib/session-attach.ts)
+   */
+  sessions: SessionAttachmentRef[];
   origin: QueueOrigin;
   kind: QueueKind;
   status: QueueStatus;
@@ -83,6 +98,8 @@ export interface QueueState {
 export interface EnqueueRequest {
   text: string;
   attachments?: string[];
+  /** Sessions attached with @ (M9), at most MAX_SESSION_ATTACHMENTS */
+  sessions?: SessionAttachmentRef[];
   /** Default message; agents may only send messages */
   kind?: Extract<QueueKind, "message" | "command">;
   /**

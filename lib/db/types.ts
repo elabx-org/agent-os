@@ -85,6 +85,8 @@ export interface SessionQueueRow {
   text: string;
   /** JSON string[] of file paths, or null */
   attachments: string | null;
+  /** JSON SessionAttachmentRef[] (M9, migration 31), or null */
+  sessions: string | null;
   origin: string; // lib/queue/types.ts QueueOrigin
   kind: string; // QueueKind
   status: string; // QueueStatus
@@ -92,6 +94,19 @@ export interface SessionQueueRow {
   created_at: number; // ms
   sent_at: number | null; // ms
   error: string | null;
+}
+
+/** A session's cached summary for @ attach (migration 31, lib/session-summaries.ts) */
+export interface SessionSummaryRow {
+  session_id: string;
+  /** What it was built from (transcript size + mtime, or scrollback time) */
+  basis: string;
+  text: string;
+  tokens: number;
+  /** lib/summarize.ts SessionSummary source */
+  source: string;
+  empty: number; // 0 or 1
+  created_at: number; // ms
 }
 
 /** One agent turn and its snapshot refs (migration 26, lib/turns.ts) */
@@ -114,6 +129,23 @@ export interface SessionTurnRow {
   added: number | null;
   removed: number | null;
   undone_at: number | null; // ms
+}
+
+/** A line comment on a session's diff (migration 33, lib/review-comments.ts) */
+export interface ReviewCommentRow {
+  id: number;
+  session_id: string;
+  scope: string; // lib/turn-types.ts DiffScope
+  path: string;
+  side: string; // lib/review-types.ts ReviewSide
+  start_line: number;
+  end_line: number;
+  quote: string;
+  body: string;
+  created_at: number; // ms
+  sent_at: number | null; // ms
+  /** The queued message carrying it (session_queue.id), while it waits */
+  queue_item_id: number | null;
 }
 
 export interface Group {

@@ -14,6 +14,7 @@ export const FLAG_NAMES = [
   "chatDefault",
   "liveFullAccess",
   "modeAtIdle",
+  "portProxy",
 ] as const;
 
 export type FlagName = (typeof FLAG_NAMES)[number];
@@ -43,6 +44,8 @@ export const FLAG_DEFAULTS: Flags = {
   chatDefault: false,
   liveFullAccess: false,
   modeAtIdle: false,
+  // The code-server replacement: on unless turned off (or AGENTOS_PROXY=0)
+  portProxy: true,
 };
 
 export const FLAGS_PREFERENCE_KEY = "flags";
@@ -118,6 +121,10 @@ export const FLAG_LABELS: Record<FlagName, { label: string; hint: string }> = {
   modeAtIdle: {
     label: "Permission changes wait for the turn",
     hint: "A mode picked mid-turn applies when the turn ends. Off applies it at once",
+  },
+  portProxy: {
+    label: "Port proxy",
+    hint: "Apps in the container at /proxy/<port>/, sign-in links from sessions. Off keeps the origin gate on",
   },
 };
 

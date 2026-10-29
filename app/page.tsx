@@ -48,6 +48,9 @@ import { useSessionStatuses } from "@/hooks/useSessionStatuses";
 import type { Session } from "@/lib/db";
 import type { TerminalHandle } from "@/components/Terminal";
 import { generatePaneId, getAllPaneIds } from "@/lib/panes";
+import { typingElsewhere } from "@/lib/typing-elsewhere";
+import { useColumnOrderSource } from "@/hooks/useColumnOrder";
+import { useTerminalFontSource } from "@/hooks/useTerminalFont";
 import { getProvider } from "@/lib/providers";
 import { getProviderDefinition } from "@/lib/providers/registry";
 import { DesktopView } from "@/components/views/DesktopView";
@@ -91,6 +94,7 @@ function HomeContent() {
     addTab,
     focusPane,
     splitHorizontal,
+    close: closePane,
     maxPanes,
   } = usePanes();
   const focusedActiveTab = getActiveTab(focusedPaneId);
@@ -297,7 +301,8 @@ function HomeContent() {
         `${tmuxSetup}; tmux attach -t ${sessionName} 2>/dev/null || ${tmuxNew}`
       );
       attachSession(paneId, session.id, sessionName);
-      terminal.focus();
+      // A pane starting beside the one being typed into leaves the keyboard
+      if (!typingElsewhere()) terminal.focus();
     },
     [attachSession]
   );
@@ -485,14 +490,22 @@ function HomeContent() {
 
   useFoldPosture();
   useLayoutModeSource();
+  useColumnOrderSource();
+  useTerminalFontSource();
   useSurfaceSource({
     paneCount: getAllPaneIds(paneState.layout).length,
     searchOpen: showQuickSwitcher,
+    behind: !!focusedActiveTab?.sessionId,
   });
   useEffect(loadFocus, []);
+  const lastBesideRef = useRef(0);
   useEffect(
     () =>
       registerNavHandlers({
+        resume: () => {
+          closePage();
+          setSidebarOpen(false);
+        },
         // On a phone a page covers the home: leave it for the home
         openSessions: () =>
           isMobile && closePage()
@@ -514,6 +527,16 @@ function HomeContent() {
         // The most recent other session beside the focused one (workers
         // show inside their conductor's)
         openBeside: () => {
+          // The column's toggle: one press, delivered twice, mustn't undo itself
+          const now = Date.now();
+          if (now - lastBesideRef.current < 700) return;
+          lastBesideRef.current = now;
+          // Already side by side: back to the session being typed into, alone
+          const ids = getAllPaneIds(paneState.layout);
+          if (ids.length > 1) {
+            ids.filter((id) => id !== focusedPaneId).forEach(closePane);
+            return;
+          }
           const current = focusedActiveTab?.sessionId;
           const next = sessions
             .filter((s) => s.id !== current && !s.conductor_session_id)
@@ -522,7 +545,15 @@ function HomeContent() {
           setSidebarOpen(false);
         },
       }),
-    [isMobile, sessions, focusedActiveTab?.sessionId, openSessionBeside]
+    [
+      isMobile,
+      sessions,
+      focusedActiveTab?.sessionId,
+      openSessionBeside,
+      paneState.layout,
+      focusedPaneId,
+      closePane,
+    ]
   );
 
   // One count for the column badge, the iOS app and the Now hero: waiting

@@ -17,6 +17,7 @@ import { useAgentCount } from "@/components/Session/agent-tree-count";
 import { canonicalViewMode } from "@/lib/agent-views";
 import { useFileEditor } from "@/hooks/useFileEditor";
 import { SessionTitleBar } from "./SessionTitleBar";
+import { MoveToWorktreeSheetHost } from "@/components/Session/MoveToWorktreeSheet";
 import { DesktopTabBar } from "./DesktopTabBar";
 import {
   TerminalSkeleton,
@@ -556,6 +557,8 @@ export const Pane = memo(function Pane({
         onClose={() => close(paneId)}
       />
       )}
+      {/* Here, not in the header: Changes and Files on the Duo have none */}
+      {session && <MoveToWorktreeSheetHost session={session} />}
       {showStrip && session && <ActivityStrip session={session} />}
 
       {/* Content Area - Mobile: simple flex, Desktop: resizable panels */}

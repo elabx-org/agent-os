@@ -276,7 +276,8 @@ describe("migrations 25 and 26", () => {
 
   test("create session_queue and session_turns", () => {
     const db = migrated();
-    assert.deepEqual(columns(db, "session_queue"), QUEUE);
+    // Migration 31 (M9) adds the attached sessions
+    assert.deepEqual(columns(db, "session_queue"), [...QUEUE, "sessions"]);
     assert.deepEqual(columns(db, "session_turns"), TURNS);
     assert.ok(indexes(db, "session_queue").includes("idx_queue_session"));
     assert.ok(applied(db).includes(25));

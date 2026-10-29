@@ -29,6 +29,7 @@ function item(id: number, position: number, extra: Partial<QueueItem> = {}) {
     position,
     text: `message ${id}`,
     attachments: [],
+    sessions: [],
     origin: "user",
     kind: "message",
     status: "pending",

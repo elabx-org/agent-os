@@ -14,6 +14,7 @@ import { startLimitWatch } from "./limits/watch";
 import { startResumeTicker } from "./limits/resume";
 import { startModeApplier } from "./permission-apply";
 import { startPrPoller } from "./pr-poller";
+import { startSearchIndexer } from "./search/indexer";
 import { startDispatcher } from "./queue/dispatcher";
 import { onEdge, startSessionWatch, wantWatch } from "./session-watch";
 import { reconcileSettled } from "./settle";
@@ -62,6 +63,8 @@ export function startTickers(): void {
   };
   setTimeout(prune, 10 * 60 * 1000).unref();
   setInterval(prune, DAY_MS).unref();
+  // Transcript search index (M11): checks flag searchIndex
+  startSearchIndexer();
 
   // The end of a turn: Codex/Gemini post snapshots, Claude's turn journal
   onEdge((edge) => {
