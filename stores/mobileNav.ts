@@ -1,7 +1,14 @@
 import { proxy } from "valtio";
 import type { SessionStatus } from "@/components/views/types";
 
-export type PaneViewMode = "terminal" | "chat" | "files" | "git" | "workers";
+/** `workers` is an alias of `agents` (lib/agent-views.ts canonicalViewMode) */
+export type PaneViewMode =
+  | "terminal"
+  | "chat"
+  | "files"
+  | "git"
+  | "workers"
+  | "agents";
 
 /**
  * Bridges the mobile nav rail (outside the pane tree) and the focused pane,
@@ -40,6 +47,8 @@ export const mobileNavStore = proxy<{
   /** A sheet over the session other than Live activity (N-Undo M2,
       N-Switch M4, N-PermMode M7, N-Scripts M3) */
   sheet: "undo" | "switch" | "permissions" | "scripts" | null;
+  /** Agents the focused session started (its tree's total): the column's Agents item */
+  agentCount: number;
   /**
    * The open Duo's Changes page beside the conversation (Open-Changes, M2b):
    * the column's Changes there opens this instead of the git view
@@ -63,6 +72,7 @@ export const mobileNavStore = proxy<{
   liveOpen: false,
   working: false,
   sheet: null,
+  agentCount: 0,
   changesOpen: false,
   conversationView: "chat",
 });

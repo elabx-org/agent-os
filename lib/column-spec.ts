@@ -51,6 +51,14 @@ export interface ColumnContext {
   sheet?: "undo" | "switch" | "permissions" | "scripts" | null;
   /** The project surface shows the project's settings (N-Config, M3) */
   projectSettings?: boolean;
+  /** Agents the session started (its tree's total): the Agents item shows (O-Tree) */
+  agents?: number;
+  /** Finished agents show in the agents view (N-Tree's eye) */
+  showFinished?: boolean;
+  /** Every branch of the agents view is folded (N-Tree's Collapse all) */
+  allCollapsed?: boolean;
+  /** The closed agents view shows an agent's detail over its tree */
+  agentDetail?: boolean;
   /** The open Duo's Changes page shows beside the conversation (Open-Changes) */
   changesOpen?: boolean;
 }
@@ -184,6 +192,24 @@ const BASE = {
     icon: "Ellipsis",
     label: "Project actions",
   },
+  agents: {
+    id: "agents",
+    symbol: "point.3.connected.trianglepath.dotted",
+    icon: "Workflow",
+    label: "Agents",
+  },
+  showFinished: {
+    id: "showFinished",
+    symbol: "eye",
+    icon: "Eye",
+    label: "Show finished agents",
+  },
+  collapseAll: {
+    id: "collapseAll",
+    symbol: "arrow.down.and.line.horizontal.and.arrow.up",
+    icon: "ChevronsDownUp",
+    label: "Collapse all",
+  },
   scripts: {
     id: "scripts",
     symbol: "play",
@@ -290,6 +316,36 @@ function sheetColumn(ctx: ColumnContext): ColumnItem[] | null {
   return null;
 }
 
+/** The column's Agents item, while the session has any or shows them */
+function agents(ctx: ColumnContext, extra: Partial<ColumnItem> = {}) {
+  const shown = ctx.viewMode === "agents";
+  return shown || (ctx.agents ?? 0) > 0
+    ? [item(BASE.agents, { selected: shown, ...extra })]
+    : [];
+}
+
+/**
+ * N-Tree: back to the Live activity | Show finished, Collapse all |
+ * Interrupt while it works (the session only: workers and
+ * background agents are stopped from their own detail); back to the tree
+ * over an agent's detail
+ */
+function agentsColumn(ctx: ColumnContext): ColumnItem[] {
+  if (ctx.agentDetail) return [item(BASE.back, { label: "Back to agents" })];
+  return [
+    item(BASE.back, { label: "Back to live activity" }),
+    item(BASE.showFinished, { selected: ctx.showFinished, ...sep }),
+    ctx.allCollapsed
+      ? item(BASE.collapseAll, {
+          symbol: "arrow.up.and.line.horizontal.and.arrow.down",
+          icon: "ChevronsUpDown",
+          label: "Expand all",
+        })
+      : item(BASE.collapseAll),
+    ...(ctx.working ? [item(BASE.stop, { danger: true, ...sep })] : []),
+  ];
+}
+
 /** N-Scripts: close | the project's settings, where the scripts are edited */
 function scriptsColumn(): ColumnItem[] {
   return [
@@ -341,6 +397,7 @@ function sessionColumn(
   if (closed) {
     const own = sheetColumn(ctx) ?? viewColumn(ctx);
     if (own) return own;
+    if (ctx.viewMode === "agents") return agentsColumn(ctx);
   }
   if (compact)
     // Closed-Terminal, keyboard up: what fits above it
@@ -359,17 +416,21 @@ function sessionColumn(
       item(BASE.live, { selected: ctx.liveOpen }),
       item(BASE.stop, { danger: true, ...sep }),
     ];
+  // O-Tree: Agents beside Files on the open Duo, back to the session
   return [
-    item(BASE.back),
+    ctx.viewMode === "agents"
+      ? item(BASE.back, { label: "Back to session" })
+      : item(BASE.back),
     otherView(ctx, sep),
     changes(ctx),
     item(BASE.files, { selected: ctx.viewMode === "files" }),
+    ...(closed ? [] : agents(ctx)),
     item(BASE.live, { selected: ctx.liveOpen }),
     item(BASE.more, sep),
   ];
 }
 
-/** Fold-Chat / Fold-Terminal: the view showing, Changes, Files, Live | Needs you, More */
+/** Fold-Chat / Fold-Terminal: the view showing, Changes, Files, Agents, Live | Needs you, More */
 function sessionBar(ctx: ColumnContext): ColumnItem[] {
   const conversation =
     ctx.viewMode === "terminal"
@@ -380,6 +441,7 @@ function sessionBar(ctx: ColumnContext): ColumnItem[] {
     conversation,
     changes(ctx),
     item(BASE.files, { selected: ctx.viewMode === "files" }),
+    ...agents(ctx),
     item(BASE.live, { selected: ctx.liveOpen }),
     ...(needs ? [inbox(ctx, sep)] : []),
     item(BASE.more, needs ? {} : sep),

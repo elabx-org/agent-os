@@ -20,6 +20,7 @@ import { closeNew, newSurfaceStore } from "@/stores/newSurface";
 import { openProjectSettings } from "@/stores/projectSettings";
 import { openScripts } from "@/stores/scriptsSheet";
 import { surfaceStore } from "@/stores/surface";
+import { toggleAllCollapsed, toggleShowFinished } from "@/stores/agentTree";
 import { isNative, postToNative } from "@/lib/native-bridge";
 import { layoutStore } from "@/hooks/useLayoutMode";
 
@@ -56,6 +57,9 @@ export const NAV_ACTIONS = [
   "scripts",
   "viewConfig",
   "done",
+  "agents",
+  "showFinished",
+  "collapseAll",
   "pull",
   "push",
   "newPr",
@@ -308,6 +312,9 @@ export const NAV_ROUTES: Record<NavAction, (leftPage: boolean) => void> = {
   scripts: () => navStore.openScripts(),
   viewConfig: () => navStore.viewConfig(),
   done: () => navStore.confirmSheet(),
+  agents: () => mobileNavActions.requestViewMode("agents"),
+  showFinished: () => toggleShowFinished(),
+  collapseAll: () => toggleAllCollapsed(),
   pull: () => navStore.gitPull(),
   push: () => navStore.gitPush(),
   newPr: () => navStore.newPullRequest(),
@@ -332,7 +339,8 @@ export function runNav(action: NavAction): void {
     (action === "chat" ||
       action === "terminal" ||
       action === "git" ||
-      action === "files") &&
+      action === "files" ||
+      action === "agents") &&
     closePage();
   NAV_ROUTES[action](leftPage);
 }

@@ -7,7 +7,7 @@
  * native goes through the `agentos` script message handler.
  */
 
-import type { PaneViewMode } from "@/stores/mobileNav";
+import type { NativeViewMode } from "@/lib/agent-views";
 import type { Fold } from "@/stores/posture";
 import type { NavAction } from "@/lib/nav-actions";
 import type { WorkspacePageKind } from "@/stores/workspacePage";
@@ -53,7 +53,8 @@ export interface SharedFile {
 
 export interface NativeState {
   type: "state";
-  viewMode: PaneViewMode;
+  /** Only modes iOS app 0.1.62 knows: agents is posted as workers */
+  viewMode: NativeViewMode;
   waiting: number;
   changes: number;
   /** The page's background (getComputedStyle), for the edges the app shows around it */

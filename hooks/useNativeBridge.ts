@@ -20,6 +20,8 @@ import { surfaceStore } from "@/stores/surface";
 import { layoutStore } from "@/hooks/useLayoutMode";
 import { nativeColumn } from "@/components/ControlColumn/columnState";
 import { startClientLog } from "@/lib/client-log";
+import { nativeViewMode } from "@/lib/agent-views";
+import { agentTreeStore } from "@/stores/agentTree";
 
 interface NativeBridgeOptions {
   waitingCount: number;
@@ -85,7 +87,7 @@ export function useNativeBridge({ waitingCount }: NativeBridgeOptions) {
     const report = () => {
       const state: NativeState = {
         type: "state",
-        viewMode: mobileNavStore.viewMode,
+        viewMode: nativeViewMode(mobileNavStore.viewMode),
         waiting: waitingCount,
         changes: mobileNavStore.changes,
         background: getComputedStyle(document.body).backgroundColor,
@@ -124,6 +126,10 @@ export function useNativeBridge({ waitingCount }: NativeBridgeOptions) {
             // closed column (× | ✓, × | Changes, Stop)
             subscribeKey(mobileNavStore, "sheet", report),
             subscribeKey(mobileNavStore, "working", report),
+            subscribeKey(mobileNavStore, "agentCount", report),
+            subscribeKey(agentTreeStore, "showFinished", report),
+            subscribeKey(agentTreeStore, "allCollapsed", report),
+            subscribeKey(agentTreeStore, "detailOpen", report),
             subscribeKey(newSurfaceStore, "open", report),
             subscribeKey(surfaceStore, "home", report),
             subscribeKey(surfaceStore, "paneCount", report),

@@ -10,6 +10,7 @@ import {
 import type { NativeColumnItem } from "@/lib/native-bridge";
 import { layoutStore, type LayoutMode } from "@/hooks/useLayoutMode";
 import { mobileNavStore } from "@/stores/mobileNav";
+import { agentTreeStore } from "@/stores/agentTree";
 import { newSurfaceStore } from "@/stores/newSurface";
 import { focusStore } from "@/stores/focus";
 import { settingsPageStore } from "@/stores/settingsPage";
@@ -36,6 +37,10 @@ interface ColumnSources {
   sheet: ColumnContext["sheet"];
   changesOpen: boolean;
   native: boolean;
+  agents: number;
+  showFinished: boolean;
+  allCollapsed: boolean;
+  agentDetail: boolean;
   projectSettings: boolean;
 }
 
@@ -53,6 +58,10 @@ function contextFrom(s: ColumnSources): ColumnContext {
     liveOpen: s.liveOpen,
     working: s.working,
     sheet: s.sheet,
+    agents: s.agents,
+    showFinished: s.showFinished,
+    allCollapsed: s.allCollapsed,
+    agentDetail: s.agentDetail,
     projectSettings: s.projectSettings,
     changesOpen: s.changesOpen,
   };
@@ -69,6 +78,7 @@ export function useColumn(
   const { paneCount } = useSnapshot(surfaceStore);
   const { detail: settingsDetail } = useSnapshot(settingsPageStore);
   const { mode } = useSnapshot(layoutStore);
+  const tree = useSnapshot(agentTreeStore);
   const { page } = useSnapshot(workspacePageStore);
   const surface = useSurface();
   const ctx = contextFrom({
@@ -86,6 +96,10 @@ export function useColumn(
     sheet: nav.sheet,
     changesOpen: nav.changesOpen,
     native,
+    agents: nav.agentCount,
+    showFinished: tree.showFinished,
+    allCollapsed: tree.allCollapsed,
+    agentDetail: tree.detailOpen,
     projectSettings: page?.kind === "projectSettings",
   });
   return { surface, mode, items: columnFor(surface, mode, ctx) };
@@ -127,6 +141,10 @@ export function nativeColumn(): {
       sheet: mobileNavStore.sheet,
       changesOpen: mobileNavStore.changesOpen,
       native: true,
+      agents: mobileNavStore.agentCount,
+      showFinished: agentTreeStore.showFinished,
+      allCollapsed: agentTreeStore.allCollapsed,
+      agentDetail: agentTreeStore.detailOpen,
       projectSettings: workspacePageStore.page?.kind === "projectSettings",
     })
   );
