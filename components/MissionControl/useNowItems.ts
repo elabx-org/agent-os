@@ -10,6 +10,8 @@ import type { SessionStatus } from "@/components/views/types";
 import type { BackgroundAgent } from "@/lib/claude-background";
 import type { DevServer, Session } from "@/lib/db";
 import type { ProjectWithRepositories } from "@/lib/projects";
+import { limitedSessions } from "@/components/Chat/limited-model";
+import { useLimitClock } from "@/hooks/useSessionLimit";
 
 export interface AgentGroup {
   key: string;
@@ -45,7 +47,10 @@ export interface NowItems {
   loose: Session[];
   /** Agents outside every project that are neither blocked nor working */
   elsewhere: BackgroundAgent[];
-  /** At a usage limit (M6 fills it) */
+  /**
+   * At a usage limit that hasn't reset, or resuming at the reset until it
+   * goes (limitView): oldest limit first
+   */
   limited: Session[];
   /** Settled today (M8 fills it) */
   settled: Session[];
@@ -75,21 +80,40 @@ export function useNowItems(
   const { agents, waiting } = needs;
   const agentsByProject = useBackgroundAgentsByProject(projects);
 
-  // Workers show inside their conductor's session, not on their own
+  // Limited until the reset passes: the clock moves on then
+  const clock = useLimitClock(sessions.map((s) => s.limited_until));
+  const limited = useMemo(
+    () =>
+      limitedSessions(
+        sessions.filter((s) => !s.conductor_session_id),
+        clock
+      ),
+    [sessions, clock]
+  );
+  const limitedIds = useMemo(
+    () => new Set(limited.map((s) => s.id)),
+    [limited]
+  );
+
+  // Workers show inside their conductor's session, not on their own; a
+  // limited one is under Limited, not Working
   const running = useMemo(
     () =>
       sessions
         .filter(
-          (s) => !s.conductor_session_id && statuses[s.id]?.status === "running"
+          (s) =>
+            !s.conductor_session_id &&
+            !limitedIds.has(s.id) &&
+            statuses[s.id]?.status === "running"
         )
         .sort((a, b) => b.updated_at.localeCompare(a.updated_at)),
-    [sessions, statuses]
+    [sessions, statuses, limitedIds]
   );
 
   // Only sessions that are doing something can have subagents running
   const live = useMemo(
-    () => [...waiting, ...running].map((s) => s.id),
-    [waiting, running]
+    () => [...waiting, ...running, ...limited].map((s) => s.id),
+    [waiting, running, limited]
   );
   const subagents = useRunningSubagents(live);
   const titles = useSessionTitles(live);
@@ -144,7 +168,7 @@ export function useNowItems(
     (s) => s.status === "running" || s.status === "starting"
   );
 
-  for (const s of [...waiting, ...running]) mark(s.project_id);
+  for (const s of [...waiting, ...running, ...limited]) mark(s.project_id);
   for (const s of devServers) mark(s.project_id);
 
   // Quiet: most recently used first, by their sessions' last activity
@@ -170,6 +194,7 @@ export function useNowItems(
       (s) =>
         !s.conductor_session_id &&
         !byId.has(s.id) &&
+        !limitedIds.has(s.id) &&
         (!s.project_id || uncategorized.has(s.project_id))
     )
     .sort((a, b) => b.updated_at.localeCompare(a.updated_at));
@@ -192,7 +217,7 @@ export function useNowItems(
     quiet,
     loose,
     elsewhere,
-    limited: EMPTY_SESSIONS,
+    limited,
     settled: EMPTY_SESSIONS,
     doneToday: EMPTY_DONE,
     titles,
