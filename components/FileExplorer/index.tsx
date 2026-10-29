@@ -474,7 +474,7 @@ export function FileExplorer({
         </aside>
 
         {/* Tabs, actions, the code */}
-        <main className="flex h-full min-w-0 flex-1 flex-col px-4 pt-3 pb-4">
+        <main className="@container/code flex h-full min-w-0 flex-1 flex-col px-4 pt-3 pb-4">
           {activeFile ? (
             <>
               <div className="flex min-w-0 items-end gap-2">
@@ -500,8 +500,14 @@ export function FileExplorer({
                       type="button"
                       className="pill pill-sm pill-secondary"
                       onClick={askClaude}
+                      aria-label="Ask Claude about this file"
                     >
-                      Ask Claude about this file
+                      Ask Claude
+                      {/* The tabs keep their room on a narrow page */}
+                      <span className="hidden @min-[760px]/code:inline">
+                        {" "}
+                        about this file
+                      </span>
                     </button>
                   )}
                   <button

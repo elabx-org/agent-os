@@ -299,7 +299,7 @@ function GitPanelContent({
         <div
           className={cn(
             "flex h-full min-w-0 flex-col gap-3 overflow-x-hidden overflow-y-auto overscroll-contain pt-[18px] pb-[max(1rem,var(--pane-inset-bottom,env(safe-area-inset-bottom)))]",
-            closed ? "pr-2 pl-5" : "px-4"
+            closed ? "pr-[8px] pl-[20px]" : "px-4"
           )}
         >
           {title("large")}

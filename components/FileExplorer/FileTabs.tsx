@@ -33,7 +33,7 @@ export function FileTabs({
     activeTabRef.current?.scrollIntoView({
       behavior: "smooth",
       block: "nearest",
-      inline: "center",
+      inline: "nearest",
     });
   }, [activeFilePath]);
 
