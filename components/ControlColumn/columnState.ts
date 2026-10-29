@@ -176,10 +176,11 @@ export function nativeColumn(): {
     canGoBack: items[0]?.id === "back",
     liveOpen: mobileNavStore.liveOpen,
     wide: WIDE.includes(mode),
+    // What the column shows already isn't offered again
     more: kind
-      ? moreItems(kind, columnOrderStore.order, mobileNavStore.viewMode).map(
-          ({ icon: _icon, ...rest }) => rest
-        )
+      ? moreItems(kind, columnOrderStore.order, mobileNavStore.viewMode)
+          .filter((it) => !items.some((shown) => shown.id === it.id))
+          .map(({ icon: _icon, ...rest }) => rest)
       : [],
   };
 }

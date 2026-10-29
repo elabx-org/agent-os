@@ -56,6 +56,8 @@ interface ColumnItemsProps {
 /** The spec's items as buttons, separators where it says, ⋯ as a menu */
 export function ColumnItems({ items, orientation }: ColumnItemsProps) {
   const mod = useModKey();
+  // What the column shows already, so More doesn't offer it again
+  const shown = new Set<NavAction>(items.map((it) => it.id));
   const hint = orientation === "vertical" ? "left" : "top";
   return items.map((item, i) => {
     const key = shortcutKey(item.id);
@@ -96,7 +98,7 @@ export function ColumnItems({ items, orientation }: ColumnItemsProps) {
           />
         )}
         {item.id === "more" ? (
-          <MoreMenu {...props} />
+          <MoreMenu {...props} shown={shown} />
         ) : (
           <ColumnItem
             {...props}
@@ -115,7 +117,7 @@ export function ColumnItems({ items, orientation }: ColumnItemsProps) {
 type MoreProps = Omit<
   React.ComponentProps<typeof ColumnItem>,
   "onClick" | "ref"
->;
+> & { shown: Set<NavAction> };
 
 /** What More lists anyway, so a column that leaves them out doesn't add them twice */
 const LISTED: NavAction[] = ["inbox", "beside", "projects", "settings"];
@@ -124,7 +126,7 @@ const LISTED: NavAction[] = ["inbox", "beside", "projects", "settings"];
  * ⋯: what the surface's column has no room for. Also opened by
  * runNav("more") (navStore.openMore's MORE_EVENT)
  */
-function MoreMenu(props: MoreProps) {
+function MoreMenu({ shown, ...props }: MoreProps) {
   const [open, setOpen] = useState(false);
   useEffect(() => {
     const show = () => setOpen(true);
@@ -140,12 +142,13 @@ function MoreMenu(props: MoreProps) {
   const inSession = surface === "session" || surface === "beside";
   const wide = mode === "duo-open" || mode === "book" || mode === "desktop";
   const go = (action: NavAction) => () => runNav(action);
+  const has = (...ids: NavAction[]) => ids.some((id) => shown.has(id));
   // What the person took out of this column; the menu already lists some
   const { order } = useSnapshot(columnOrderStore);
   const kind = columnKindFor(surface, mode);
   const takenOut = kind
     ? moreItems(kind, order as ColumnOrder, viewMode).filter(
-        (it) => !LISTED.includes(it.id)
+        (it) => !LISTED.includes(it.id) && !shown.has(it.id)
       )
     : [];
   return (
@@ -186,12 +189,12 @@ function MoreMenu(props: MoreProps) {
             <DropdownMenuSeparator />
           </>
         )}
-        {inSession && (
+        {inSession && !has("inbox") && (
           <DropdownMenuItem onSelect={go("inbox")}>
             Needs you{needsYou > 0 && !focus ? ` (${needsYou})` : ""}
           </DropdownMenuItem>
         )}
-        {surface === "now" && (
+        {surface === "now" && !has("live") && (
           <DropdownMenuItem onSelect={go("live")}>
             Live activity
           </DropdownMenuItem>
@@ -206,10 +209,10 @@ function MoreMenu(props: MoreProps) {
           </DropdownMenuItem>
         )}
         {/* A session's column has no Find of its own (M11) */}
-        {inSession && (
+        {inSession && !has("search", "find") && (
           <DropdownMenuItem onSelect={go("search")}>Find</DropdownMenuItem>
         )}
-        {inSession && wide && surface !== "beside" && (
+        {inSession && wide && surface !== "beside" && !has("beside") && (
           <DropdownMenuItem onSelect={go("beside")}>
             Open beside
           </DropdownMenuItem>
@@ -219,8 +222,16 @@ function MoreMenu(props: MoreProps) {
             {it.label}
           </DropdownMenuItem>
         ))}
-        <DropdownMenuItem onSelect={go("projects")}>Projects</DropdownMenuItem>
-        <DropdownMenuItem onSelect={go("settings")}>Settings</DropdownMenuItem>
+        {!has("projects") && (
+          <DropdownMenuItem onSelect={go("projects")}>
+            Projects
+          </DropdownMenuItem>
+        )}
+        {!has("settings") && (
+          <DropdownMenuItem onSelect={go("settings")}>
+            Settings
+          </DropdownMenuItem>
+        )}
         <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={go("focus")}>
           {focus ? "Leave Focus" : "Focus"}

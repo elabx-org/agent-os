@@ -204,27 +204,33 @@ struct ColumnMoreMenu: View {
 
     var body: some View {
         let inSession = model.surface == "session" || model.surface == "beside"
+        // What the column shows already isn't offered again
+        let shown = Set((model.column ?? []).map(\.id))
         Menu {
-            if inSession {
+            if inSession && !shown.contains("inbox") {
                 let waiting = model.focus ? 0 : model.waiting
                 Button(waiting > 0 ? "Needs you (\(waiting))" : "Needs you", systemImage: "tray") {
                     model.nav("inbox")
                 }
             }
-            if model.surface == "now" {
-                Button(model.liveOpen ? "Hide live activity" : "Live activity", systemImage: "waveform.path.ecg") {
+            if model.surface == "now" && !shown.contains("live") {
+                Button("Live activity", systemImage: "waveform.path.ecg") {
                     model.nav("live")
                 }
             }
-            if inSession && (model.pageWide ?? wide) && model.surface != "beside" {
+            if inSession && (model.pageWide ?? wide) && model.surface != "beside" && !shown.contains("beside") {
                 Button("Open beside", systemImage: "rectangle.split.2x1") { model.nav("beside") }
             }
             // What the column leaves out; the menu already lists some
-            ForEach(model.more.filter { !Self.listed.contains($0.id) }, id: \.id) { entry in
+            ForEach(model.more.filter { !Self.listed.contains($0.id) && !shown.contains($0.id) }, id: \.id) { entry in
                 Button(entry.label, systemImage: entry.symbolName) { model.nav(entry.id) }
             }
-            Button("Projects", systemImage: "folder") { model.nav("projects") }
-            Button("Settings", systemImage: "gearshape") { model.nav("settings") }
+            if !shown.contains("projects") {
+                Button("Projects", systemImage: "folder") { model.nav("projects") }
+            }
+            if !shown.contains("settings") {
+                Button("Settings", systemImage: "gearshape") { model.nav("settings") }
+            }
             Divider()
             Button(model.focus ? "Leave Focus" : "Focus", systemImage: "scope") { model.nav("focus") }
             Divider()
