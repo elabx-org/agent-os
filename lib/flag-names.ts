@@ -13,6 +13,7 @@ export const FLAG_NAMES = [
   "prPoller",
   "chatDefault",
   "liveFullAccess",
+  "modeAtIdle",
 ] as const;
 
 export type FlagName = (typeof FLAG_NAMES)[number];
@@ -28,6 +29,7 @@ export const TICKER_FLAGS: readonly FlagName[] = [
   "autoSettle",
   "searchIndex",
   "prPoller",
+  "modeAtIdle",
 ];
 
 export const FLAG_DEFAULTS: Flags = {
@@ -40,6 +42,7 @@ export const FLAG_DEFAULTS: Flags = {
   prPoller: false,
   chatDefault: false,
   liveFullAccess: false,
+  modeAtIdle: false,
 };
 
 export const FLAGS_PREFERENCE_KEY = "flags";
@@ -111,6 +114,10 @@ export const FLAG_LABELS: Record<FlagName, { label: string; hint: string }> = {
   liveFullAccess: {
     label: "Instant full access",
     hint: "Full access joins Shift+Tab, so an agent could switch it on. New sessions only",
+  },
+  modeAtIdle: {
+    label: "Permission changes wait for the turn",
+    hint: "A mode picked mid-turn applies when the turn ends. Off applies it at once",
   },
 };
 

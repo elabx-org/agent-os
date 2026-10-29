@@ -124,11 +124,73 @@ test("columnFor: the session shows the other conversation view", () => {
   });
   assert.equal(terminal[1].id, "chat");
   assert.equal(terminal[1].label, "Show chat");
-  const changes = columnFor("session", "duo-closed", {
+  const changes = columnFor("session", "duo-open", {
     ...CTX,
     viewMode: "git",
   });
   assert.equal(fmt(changes), "back | chat git(on)[3n] files live | more");
+});
+
+test("columnFor: the closed git and files views have their own (E-Git, E-Files)", () => {
+  const git = columnFor("session", "duo-closed", { ...CTX, viewMode: "git" });
+  assert.equal(fmt(git), "back | pull push newPr | more");
+  assert.deepEqual(
+    git.map((i) => [i.label, i.symbol]),
+    [
+      ["Back to session", "chevron.left"],
+      ["Pull", "arrow.down.to.line"],
+      ["Push", "arrow.up.to.line"],
+      ["New pull request", "arrow.triangle.pull"],
+      ["More", "ellipsis"],
+    ]
+  );
+  const files = columnFor("session", "duo-closed", {
+    ...CTX,
+    viewMode: "files",
+  });
+  assert.equal(fmt(files), "back | newFile upload | more");
+  assert.equal(files[1].label, "New file");
+  // The keyboard up (a commit message, a search) keeps what fits
+  assert.equal(
+    fmt(
+      columnFor("session", "duo-closed", {
+        ...CTX,
+        viewMode: "git",
+        keyboardUp: true,
+      })
+    ),
+    "back | pull push more"
+  );
+  // Working doesn't swap in Stop here; a sheet still wins
+  assert.equal(
+    fmt(
+      columnFor("session", "duo-closed", {
+        ...CTX,
+        viewMode: "files",
+        working: true,
+      })
+    ),
+    "back | newFile upload | more"
+  );
+  assert.equal(
+    fmt(
+      columnFor("session", "duo-closed", {
+        ...CTX,
+        viewMode: "git",
+        liveOpen: true,
+      })
+    ),
+    "closeSheet"
+  );
+  for (const i of [...git, ...files])
+    assert.notEqual(columnIcon(i.icon), Circle, `${i.id}: ${i.icon}`);
+});
+
+test("columnFor: Changes is on while its page shows beside the chat (Open-Changes)", () => {
+  assert.equal(
+    fmt(columnFor("session", "duo-open", { ...CTX, changesOpen: true })),
+    "back | terminal git(on)[3n] files live | more"
+  );
 });
 
 test("columnFor: keyboard up compacts the closed session column (Closed-Terminal)", () => {
@@ -175,6 +237,10 @@ test("columnFor: a sheet over the closed session (E-Live, N-Undo)", () => {
   assert.equal(
     fmt(columnFor("session", "duo-closed", { ...CTX, sheet: "undo" })),
     "closeSheet | git[3n]"
+  );
+  assert.equal(
+    fmt(columnFor("session", "duo-closed", { ...CTX, sheet: "permissions" })),
+    "closeSheet | done*"
   );
   // The open Duo shows Live activity as its rail: no sheet column
   assert.equal(

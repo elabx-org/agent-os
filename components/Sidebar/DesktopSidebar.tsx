@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useSnapshot } from "valtio";
-import { ChevronLeft, Folder, Plus, Search, Terminal } from "lucide-react";
+import { ChevronLeft, Folder, Plus, Search } from "lucide-react";
+import { AppLogo } from "@/components/SessionList/SessionListHeader";
 import type { Session } from "@/lib/db";
 import type { SessionStatus, ViewProps } from "@/components/views/types";
 import { StateDot } from "@/components/a/StateDot";
@@ -191,9 +192,9 @@ export function DesktopSidebar({
     >
       <div className="flex items-center gap-2.5 px-1.5">
         <span className="bg-primary flex h-7 w-7 flex-none items-center justify-center rounded-lg text-white">
-          <Terminal className="h-4 w-4" />
+          <AppLogo className="h-4 w-4" />
         </span>
-        <span className="t-head min-w-0 flex-1 truncate">Agent-OS</span>
+        <span className="t-head min-w-0 flex-1 truncate">AgentOS</span>
         {!newOpen && (
           <button
             type="button"

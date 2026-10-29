@@ -302,7 +302,7 @@ app.prepare().then(() => {
   });
 
   server.listen(port, () => {
-    console.log(`> Agent-OS ready on http://${hostname}:${port}`);
+    console.log(`> AgentOS ready on http://${hostname}:${port}`);
     scheduleStoreSync();
     startPushWatcher();
     startTickers();

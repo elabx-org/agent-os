@@ -4,6 +4,7 @@ import {
   expandPath,
   fetchRemote,
 } from "@/lib/git-status";
+import { forgetBranchInfo } from "@/lib/git-branch-info";
 
 /**
  * POST /api/git/fetch
@@ -29,6 +30,7 @@ export async function POST(request: NextRequest) {
 
     fetchRemote(path);
 
+    forgetBranchInfo(path);
     return NextResponse.json({ success: true });
   } catch (error) {
     return NextResponse.json(

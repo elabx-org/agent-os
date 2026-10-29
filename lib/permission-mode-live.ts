@@ -53,12 +53,13 @@ export async function applyModeLive(
     return await cycleToMode(mode, {
       // The footer redraws a moment after the key; wait for it to change.
       // A capture mid-redraw has no footer yet, so that waits too: only a
-      // footer still gone after the wait means a dialog covers it
+      // footer still gone after the wait means a dialog covers it. The first
+      // read waits for a footer too: the screen may be mid-redraw
       read: async () => {
         let seen = await footerMode(target);
         for (
           let n = 0;
-          last !== null && (seen === last || seen === null) && n < 8;
+          (seen === null || (last !== null && seen === last)) && n < 8;
           n++
         ) {
           await wait(150);

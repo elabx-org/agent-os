@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { useSnapshot } from "valtio";
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { ArrowUp, History, Loader2, Plus, X } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -31,6 +32,9 @@ import {
   noticeChipText,
 } from "./queue-model";
 import type { UseQueue } from "@/hooks/useQueue";
+import { permissionModeKeys } from "@/hooks/usePermissionMode";
+import { PermissionChip } from "@/components/Session/PermissionChip";
+import type { Session } from "@/lib/db";
 import type { EnqueueResult, QueueItem } from "@/lib/queue/types";
 
 export interface ComposerCardProps {
@@ -66,6 +70,9 @@ export interface ComposerCardProps {
   history?: boolean;
   /** The mode pill, with `live` (default on; the terminal shows Claude's) */
   modePill?: boolean;
+  /** Without `live`'s pill: the session's shield chip in the bottom row
+      (E-Composer's mode pill; a tap opens its Permissions sheet) */
+  session?: Session;
   /** Send with nothing typed (the terminal: press Enter); without it an
       empty send does nothing */
   onEmptySend?: () => void;
@@ -111,6 +118,7 @@ export function ComposerCard({
   live,
   history,
   modePill = true,
+  session,
   onEmptySend,
   pages,
   inlinePlus = false,
@@ -299,6 +307,19 @@ export function ComposerCard({
     },
     [composer, queue]
   );
+
+  // Shift+Tab here or in the terminal: the header's shield chip follows
+  // (a prompt over the footer reads as no mode, not a change)
+  const queryClient = useQueryClient();
+  const liveMode = live?.claude ? live.screen?.mode : undefined;
+  const lastMode = useRef(liveMode);
+  useEffect(() => {
+    if (!liveMode || lastMode.current === liveMode) return;
+    lastMode.current = liveMode;
+    queryClient.invalidateQueries({
+      queryKey: permissionModeKeys.session(sessionId),
+    });
+  }, [liveMode, queryClient, sessionId]);
 
   const tone = live?.claude && modePill ? modeTone(live.mode) : undefined;
   const modeName = live?.mode ? MODE_PILL[live.mode] : undefined;
@@ -497,6 +518,9 @@ export function ComposerCard({
                 {tone.icon}
                 {modeName}
               </button>
+            )}
+            {!collapsed && !tone && session && (
+              <PermissionChip session={session} variant="composer" />
             )}
             {!collapsed && showHistory && (
               <button

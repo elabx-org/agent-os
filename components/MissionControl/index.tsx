@@ -3,6 +3,7 @@
 import { useRef, type ReactNode } from "react";
 import { ChevronLeft, Plus } from "lucide-react";
 import { FoldSplit } from "@/components/FoldSplit";
+import { AppLogo } from "@/components/SessionList/SessionListHeader";
 import { InboxItem } from "@/components/Inbox";
 import { UsagePill, type UsagePillVariant } from "@/components/UsagePill";
 import { BackgroundAgents } from "@/components/BackgroundAgents";
@@ -125,6 +126,10 @@ export function MissionControl({
         )}
         <header className="flex items-end justify-between gap-3">
           <div className="min-w-0">
+            <p className="text-primary mb-1 flex items-center gap-1.5 text-[15px] font-semibold">
+              <AppLogo className="h-5 w-5 shrink-0" />
+              AgentOS
+            </p>
             <h1 className="t-large">Now</h1>
             {/* One line: a count that doesn't fit wraps out of sight, so
                 the line drops whole counts from the end, never cuts a word;

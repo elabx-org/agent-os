@@ -91,7 +91,7 @@ jobs:
           TAG="ios-build-$BUILD"
           python3 scripts/make_source.py AgentOS.ipa "$TAG" "$APP_VERSION" "$BUILD" source.json
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "name=Agent-OS iOS $APP_VERSION (build $BUILD)" >> "$GITHUB_OUTPUT"
+          echo "name=AgentOS iOS $APP_VERSION (build $BUILD)" >> "$GITHUB_OUTPUT"
 
       - name: Publish release
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'

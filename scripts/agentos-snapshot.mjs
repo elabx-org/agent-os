@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /*
- * Agent-OS: hidden git snapshots of a session's working tree, one before
+ * AgentOS: hidden git snapshots of a session's working tree, one before
  * and one after each agent turn, so a turn can be shown and undone.
  *
  * A private index under $(git rev-parse --git-path agent-os), seeded from a
@@ -35,9 +35,9 @@ const DEFAULT_TIMEOUT = 3000;
 const STALE_LOCK_MS = 10_000;
 
 const IDENTITY = {
-  GIT_AUTHOR_NAME: "Agent-OS",
+  GIT_AUTHOR_NAME: "AgentOS",
   GIT_AUTHOR_EMAIL: "agent-os@localhost",
-  GIT_COMMITTER_NAME: "Agent-OS",
+  GIT_COMMITTER_NAME: "AgentOS",
   GIT_COMMITTER_EMAIL: "agent-os@localhost",
 };
 

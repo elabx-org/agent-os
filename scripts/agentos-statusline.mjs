@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /*
- * Agent-OS: Claude Code status line wrapper. Saves the status line JSON
+ * AgentOS: Claude Code status line wrapper. Saves the status line JSON
  * (model, context, cost, rate limits) to <state dir>/status.json for the web
  * UI, then runs the user's own status line command, if they have one, with
  * the same input and prints what it prints. Its first line is saved too
@@ -22,7 +22,7 @@ function readJson(file) {
 }
 
 // Not { recursive: true }: Node can spin forever on it in some filesystems.
-// The state dir's parent is made by Agent-OS; make it again if it's gone.
+// The state dir's parent is made by AgentOS; make it again if it's gone.
 function ensureDir(dir) {
   for (const d of [path.dirname(dir), dir]) {
     try {

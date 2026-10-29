@@ -4,7 +4,7 @@ import path from "path";
 
 /*
  * Claude Code's own view of a session, recorded as it runs: every Claude
- * session Agent-OS starts gets a status line wrapper and command hooks
+ * session AgentOS starts gets a status line wrapper and command hooks
  * (scripts/agentos-statusline.mjs, scripts/agentos-hook.mjs) that write to
  * $AGENT_OS_HOME/claude-state/<session id>/. The UI reads it instead of
  * parsing the screen for the permission mode, model, context and cost.
@@ -97,7 +97,7 @@ function quote(s: string): string {
 
 /**
  * Copies the scripts next to the state, so running sessions keep working
- * while Agent-OS updates itself in place
+ * while AgentOS updates itself in place
  */
 function installScripts(): { hook: string; statusLine: string } {
   const bin = path.join(stateRoot(), "bin");

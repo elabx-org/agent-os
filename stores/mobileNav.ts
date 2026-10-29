@@ -37,8 +37,15 @@ export const mobileNavStore = proxy<{
   liveOpen: boolean;
   /** The session in view is working (the closed column's Stop, M2) */
   working: boolean;
-  /** A sheet over the session other than Live activity (N-Undo, M2) */
-  sheet: "undo" | null;
+  /** A sheet over the session other than Live activity (N-Undo M2, N-PermMode M7) */
+  sheet: "undo" | "permissions" | null;
+  /**
+   * The open Duo's Changes page beside the conversation (Open-Changes, M2b):
+   * the column's Changes there opens this instead of the git view
+   */
+  changesOpen: boolean;
+  /** The focused pane's last conversation view, for "Back to session" (E-Git, E-Files) */
+  conversationView: "chat" | "terminal";
 }>({
   viewMode: "terminal",
   request: null,
@@ -55,6 +62,8 @@ export const mobileNavStore = proxy<{
   liveOpen: false,
   working: false,
   sheet: null,
+  changesOpen: false,
+  conversationView: "chat",
 });
 
 export const mobileNavActions = {

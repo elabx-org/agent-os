@@ -5,8 +5,11 @@ export const gitKeys = {
   multiStatus: (projectId: string, fallbackPath?: string) =>
     [...gitKeys.all, "multi-status", projectId, fallbackPath || ""] as const,
   pr: (workingDir: string) => [...gitKeys.all, "pr", workingDir] as const,
-  history: (workingDir: string) =>
-    [...gitKeys.all, "history", workingDir] as const,
+  /** Without a ref: every history of the folder (invalidation) */
+  history: (workingDir: string, ref?: string) =>
+    ref === undefined
+      ? ([...gitKeys.all, "history", workingDir] as const)
+      : ([...gitKeys.all, "history", workingDir, ref] as const),
   commitDetail: (workingDir: string, hash: string) =>
     [...gitKeys.all, "commit", workingDir, hash] as const,
   commitFileDiff: (workingDir: string, hash: string, file: string) =>

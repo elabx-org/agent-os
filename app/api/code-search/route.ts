@@ -1,5 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
+import { execFile } from "child_process";
+import { promisify } from "util";
 import { searchCode, formatSearchResults } from "@/lib/code-search";
+
+const execFileAsync = promisify(execFile);
+
+/** Outside a git repo (a session in ~, say) search only near the top */
+const NON_GIT_MAX_DEPTH = 3;
+
+async function insideGitRepo(cwd: string): Promise<boolean> {
+  try {
+    await execFileAsync("git", ["rev-parse", "--is-inside-work-tree"], {
+      cwd,
+      timeout: 3000,
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -25,9 +44,13 @@ export async function GET(request: NextRequest) {
 
     const expandedPath = path.replace(/^~/, process.env.HOME || "");
 
-    const rawMatches = searchCode(expandedPath, query, {
+    const rawMatches = await searchCode(expandedPath, query, {
       maxResults,
       contextLines,
+      maxDepth: (await insideGitRepo(expandedPath))
+        ? undefined
+        : NON_GIT_MAX_DEPTH,
+      signal: request.signal,
     });
 
     const results = formatSearchResults(rawMatches);

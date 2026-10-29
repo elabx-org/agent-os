@@ -110,7 +110,7 @@ export interface EditQueueItemResult {
 /** The notice prefixed to the next message after an undo (lib/turns.ts) */
 export function undoNoticeText(turnNo: number, paths: string[]): string {
   const files = paths.length ? paths.join(", ") : "its files";
-  return `[Agent-OS: the user undid turn ${turnNo}; ${files} ${paths.length === 1 ? "is" : "are"} back to how ${paths.length === 1 ? "it was" : "they were"} before it. Re-read them before editing.]`;
+  return `[AgentOS: the user undid turn ${turnNo}; ${files} ${paths.length === 1 ? "is" : "are"} back to how ${paths.length === 1 ? "it was" : "they were"} before it. Re-read them before editing.]`;
 }
 
 /**
@@ -123,7 +123,7 @@ export function takesNotice(text: string): boolean {
 }
 
 /** A sent message's leading undo notice, which the chat doesn't show */
-const NOTICE_PREFIX = /^\[Agent-OS: the user undid turn (\d+);[^\]]*\]\s*/;
+const NOTICE_PREFIX = /^\[Agent-?OS: the user undid turn (\d+);[^\]]*\]\s*/;
 
 /**
  * A user message as the user typed it: without the undo notice the server
