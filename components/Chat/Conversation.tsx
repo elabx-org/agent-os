@@ -6,6 +6,8 @@ import type { SubagentInfo } from "@/lib/claude-subagents";
 import type { WorkflowInfo } from "@/lib/claude-workflows";
 import type { Turn } from "@/lib/turn-types";
 import { splitUndoNotice } from "@/lib/queue/types";
+import { splitAttachmentBlock } from "@/lib/session-attach-types";
+import { AttachedSessionsLine } from "./AttachedSessionsLine";
 import type { ResultItem, Row } from "./rows";
 import { ToolRun } from "./ToolCard";
 import { TurnCard } from "./TurnCard";
@@ -36,8 +38,11 @@ function RowView({
   quotable?: boolean;
 }) {
   if (row.kind === "user") {
-    // The undo notice the server put in front isn't the user's words
-    const { text, undoneTurn } = splitUndoNotice(row.text);
+    // The undo notice and the attached sessions' block the server put in
+    // front aren't the user's words
+    const notice = splitUndoNotice(row.text);
+    const { undoneTurn } = notice;
+    const { text, attached } = splitAttachmentBlock(notice.text);
     return (
       <div className="flex min-w-0 flex-col items-end gap-1">
         {undoneTurn !== null && (
@@ -45,6 +50,7 @@ function RowView({
             Told it turn {undoneTurn} was undone
           </span>
         )}
+        <AttachedSessionsLine names={attached} className="ml-8" />
         {text && (
           <div className="bubble-me ml-8 min-w-0 text-[15px] [overflow-wrap:anywhere] whitespace-pre-wrap">
             {text}
