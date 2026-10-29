@@ -266,6 +266,7 @@ test("columnFor: a sheet over the closed session (E-Live, N-Undo)", () => {
     fmt(columnFor("session", "duo-open", move)),
     "closeSheet | done*"
   );
+  assert.equal(fmt(columnFor("session", "book", move)), "closeSheet | done*");
   // Waiting for the turn: Cancel move, not prominent; nothing to do: × alone
   const waiting = columnFor("session", "duo-closed", {
     ...move,

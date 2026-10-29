@@ -125,6 +125,8 @@ export function useNativeBridge({ waitingCount }: NativeBridgeOptions) {
             // A sheet over the session and a turn in progress change the
             // closed column (× | ✓, × | Changes, Stop)
             subscribeKey(mobileNavStore, "sheet", report),
+            // The move sheet's × | Move session, × | Cancel move or × (M5)
+            subscribeKey(mobileNavStore, "sheetAction", report),
             subscribeKey(mobileNavStore, "working", report),
             subscribeKey(mobileNavStore, "agentCount", report),
             subscribeKey(agentTreeStore, "showFinished", report),

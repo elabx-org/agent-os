@@ -541,7 +541,9 @@ export function columnFor(
   // the open Duo the sheet stops at the column, which offers the same
   if (
     ctx.sheet === "move" &&
-    ((mode === "duo-closed" && !inSession) || mode === "duo-open")
+    ((mode === "duo-closed" && !inSession) ||
+      mode === "duo-open" ||
+      mode === "book")
   )
     return sheetColumn(ctx) ?? [];
   if (mode === "phone" && !inSession) return tabs(surface, ctx);

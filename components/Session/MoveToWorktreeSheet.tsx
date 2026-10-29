@@ -67,7 +67,7 @@ export function MoveToWorktreeSheet({
   const mode = useLayoutMode();
   const [columnRight, setColumnRight] = useState(0);
   useEffect(() => {
-    if (!open || mode !== "duo-open") {
+    if (!open || (mode !== "duo-open" && mode !== "book")) {
       setColumnRight(0);
       return;
     }
