@@ -94,6 +94,7 @@ export async function launchSession(
     allowBypassCycle: caps.allowBypassCycle,
     continueSession: session.continue_session,
     model: session.model,
+    effort: session.effort,
     initialPrompt,
     worktreeName: nativeWorktreeName,
   });

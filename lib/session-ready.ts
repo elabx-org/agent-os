@@ -295,6 +295,8 @@ export function classifyScreen(input: ScreenInput): Readiness {
 }
 
 export async function readiness(session: Session): Promise<Readiness> {
+  // Handed off (M4): its tmux ended, nothing goes in until it is resumed
+  if (session.paused_at) return hold("paused");
   const name = tmuxNameOf(session);
   try {
     // display-message prints nothing (and succeeds) for a missing target
