@@ -14,13 +14,16 @@ const MAX_BACKOFF_MS = 30_000;
  * callbacks on localhost) as toasts, polling /api/browser-open every 3s
  * while the tab is visible. Not a long poll: on plain HTTP/1.1 a held
  * request would take one of the browser's six connections per tab.
+ * Only while the port proxy is on: off, sessions get no helper.
  */
 export function BrowserOpenListener() {
   const config = useProxyConfig();
   const configRef = useRef(config);
   configRef.current = config;
+  const enabled = config?.enabled === true;
 
   useEffect(() => {
+    if (!enabled) return;
     let stopped = false;
     let controller: AbortController | null = null;
     let seq: number | null = null;
@@ -103,7 +106,7 @@ export function BrowserOpenListener() {
       controller?.abort();
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, []);
+  }, [enabled]);
 
   return null;
 }

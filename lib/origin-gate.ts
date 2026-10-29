@@ -49,10 +49,14 @@ function pathOf(url: string): string {
   }
 }
 
-/** Pure: why a request to a gated path must be refused, or "ok" */
+/**
+ * Pure: why a request to a gated path must be refused, or "ok". Cross-site
+ * navigations pass only for /auth/logout: Agent-OS never needs another
+ * site (or a sandboxed popup) to open an /api or /ws URL as a page.
+ */
 export function originGate(
   headers: Headers,
-  options: { subdomainBase?: string | null } = {}
+  options: { subdomainBase?: string | null; pathname?: string } = {}
 ): OriginGateResult {
   const ownHosts = [
     firstHeader(headers["host"]),
@@ -70,7 +74,9 @@ export function originGate(
 
   const site = firstHeader(headers["sec-fetch-site"]);
   const mode = firstHeader(headers["sec-fetch-mode"]);
-  if ((site === "cross-site" || site === "same-site") && mode !== "navigate") {
+  const navigationOk =
+    mode === "navigate" && options.pathname === "/auth/logout";
+  if ((site === "cross-site" || site === "same-site") && !navigationOk) {
     return "cross_site";
   }
 
@@ -101,8 +107,9 @@ function pathnameOf(req: IncomingMessage): string {
 }
 
 function refusal(req: IncomingMessage): OriginGateResult {
-  if (!originGateEnabled() || !isGatedPath(pathnameOf(req))) return "ok";
-  return originGate(req.headers, { subdomainBase: proxyDomain() });
+  const pathname = pathnameOf(req);
+  if (!originGateEnabled() || !isGatedPath(pathname)) return "ok";
+  return originGate(req.headers, { subdomainBase: proxyDomain(), pathname });
 }
 
 /** server.ts: answers 403 and returns true when the request is refused */

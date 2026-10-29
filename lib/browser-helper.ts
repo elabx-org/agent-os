@@ -2,12 +2,18 @@
  * Installs scripts/agentos-browser.sh as $AGENT_OS_HOME/bin/agentos-browser
  * and gives sessions BROWSER + AGENTOS_URL, so sign-in links CLIs open
  * reach the user as a toast (see lib/browser-open.ts). The installed copy
- * outlives repo swaps on deploy. AGENTOS_BROWSER_HELPER=0 turns it off.
+ * outlives repo swaps on deploy. AGENTOS_BROWSER_HELPER=0 or the port
+ * proxy off (flag / AGENTOS_PROXY=0) turns it off.
+ *
+ * A BROWSER the session already has (code-server's browser-helper with
+ * CODE_SERVER_URL) is kept, unless AGENTOS_PUBLIC_URL (or publicUrl in
+ * proxy.json) says Agent-OS is where the user is.
  */
 
 import fs from "fs";
 import os from "os";
 import path from "path";
+import { configuredPublicUrl, proxyEnabled } from "./port-proxy-config";
 
 function home(): string {
   return process.env.AGENT_OS_HOME || path.join(os.homedir(), ".agent-os");
@@ -45,25 +51,72 @@ export function ensureBrowserHelper(): string | null {
   }
 }
 
-/** The environment a session gets: BROWSER and where Agent-OS listens */
-export function sessionBrowserEnv(): Record<string, string> {
+export interface SessionBrowserEnv {
+  /** Always set: AGENTOS_URL */
+  env: Record<string, string>;
+  /** The helper for BROWSER, null when off */
+  browser: string | null;
+  /** Replace a BROWSER the session already has */
+  force: boolean;
+}
+
+const OFF: SessionBrowserEnv = { env: {}, browser: null, force: false };
+
+/** What a session gets: BROWSER and where Agent-OS listens */
+export function sessionBrowserEnv(): SessionBrowserEnv {
+  let enabled = false;
+  try {
+    enabled = proxyEnabled();
+  } catch {
+    enabled = false;
+  }
+  if (!enabled) return OFF;
   const helper = ensureBrowserHelper();
-  if (!helper) return {};
+  if (!helper) return OFF;
   const port = parseInt(process.env.PORT || "3011", 10) || 3011;
-  return { BROWSER: helper, AGENTOS_URL: `http://127.0.0.1:${port}` };
+  return {
+    env: { AGENTOS_URL: `http://127.0.0.1:${port}` },
+    browser: helper,
+    force: !!configuredPublicUrl(),
+  };
 }
 
 const shellQuote = (value: string) => `'${value.replace(/'/g, "'\\''")}'`;
 
-/** `export KEY='value'` lines for a generated bash script */
-export function exportLines(env: Record<string, string>): string {
-  return Object.entries(env)
-    .map(([key, value]) => `export ${key}=${shellQuote(value)}\n`)
-    .join("");
+/**
+ * Lines for the generated bash script: `export KEY='value'`, and BROWSER
+ * only when the session has none (or ours), unless forced
+ */
+export function exportLines(setup: SessionBrowserEnv): string {
+  const lines = Object.entries(setup.env).map(
+    ([key, value]) => `export ${key}=${shellQuote(value)}\n`
+  );
+  if (setup.browser) {
+    const helper = shellQuote(setup.browser);
+    lines.push(
+      setup.force
+        ? `export BROWSER=${helper}\n`
+        : `if [ -z "\${BROWSER:-}" ] || [ "$BROWSER" = ${helper} ]; then export BROWSER=${helper}; fi\n`
+    );
+  }
+  return lines.join("");
 }
 
-/** `-e KEY=value` arguments for tmux new-session */
-export function tmuxEnvArgs(env: Record<string, string>): string[] {
+/**
+ * `-e KEY=value` arguments for tmux new-session; BROWSER only when the
+ * server's environment (which the tmux session inherits) has none
+ */
+export function tmuxEnvArgs(
+  setup: SessionBrowserEnv,
+  existingBrowser: string | undefined
+): string[] {
+  const env = { ...setup.env };
+  if (
+    setup.browser &&
+    (setup.force || !existingBrowser || existingBrowser === setup.browser)
+  ) {
+    env.BROWSER = setup.browser;
+  }
   return Object.entries(env).flatMap(([key, value]) => [
     "-e",
     `${key}=${value}`,

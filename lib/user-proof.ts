@@ -118,6 +118,25 @@ export function requireUser(req: Request): UserProof {
   return { ok: true };
 }
 
+/**
+ * The user's own browser on an Agent-OS page, for reads that only need to
+ * know it's a page of ours (a same-origin GET carries no Origin): the
+ * per-boot proof cookie, Sec-Fetch-Site same-origin (or plain http), and
+ * no agent marker. Loopback tools pass none of these by default.
+ */
+export function isUserPageRequest(req: Request): boolean {
+  const headers = req.headers;
+  if (headers.get("x-agentos-origin")?.toLowerCase() === "agent") return false;
+  const site = headers.get("sec-fetch-site");
+  if (
+    site !== "same-origin" &&
+    !insecureBrowser(site, headers.get("x-forwarded-proto"))
+  ) {
+    return false;
+  }
+  return isSecret(readCookies(headers.get("cookie"), USER_PROOF_COOKIE));
+}
+
 function isHttps(req: IncomingMessage): boolean {
   return (
     first(req.headers["x-forwarded-proto"]) === "https" ||

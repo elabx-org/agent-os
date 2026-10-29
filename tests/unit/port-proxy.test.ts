@@ -9,8 +9,10 @@ import {
 } from "../../lib/port-proxy-target";
 import {
   DEFAULT_STRIPPED_COOKIES,
+  MAX_SET_COOKIES,
   SANDBOX_CSP,
   downstreamResponseHeaders,
+  fromProxiedPage,
   parseHead,
   rewriteLocation,
   rewriteSetCookie,
@@ -261,17 +263,67 @@ describe("upstreamRequestHeaders", () => {
     assert.equal(out["x-real-ip"], "10.0.0.9");
   });
 
-  test("Origin null becomes the app's origin; foreign origins pass", () => {
+  test("Origin null becomes the app's origin only from our own page", () => {
     const sandboxed = upstreamRequestHeaders(
       raw([["Origin", "null"]]),
-      reqCtx()
+      reqCtx({ ownPage: true })
     );
     assert.equal(sandboxed["origin"], "http://localhost:5173");
+    // Another site's sandboxed iframe: "null" goes to the app as is
+    const other = upstreamRequestHeaders(
+      raw([
+        ["Origin", "null"],
+        ["Referer", "https://evil.example/"],
+      ]),
+      reqCtx()
+    );
+    assert.equal(other["origin"], "null");
     const foreign = upstreamRequestHeaders(
       raw([["Origin", "https://evil.example"]]),
       reqCtx()
     );
     assert.equal(foreign["origin"], "https://evil.example");
+  });
+
+  test("Sec-Fetch-Site is same-origin for our own page only", () => {
+    const own = upstreamRequestHeaders(
+      raw([
+        ["Sec-Fetch-Site", "cross-site"],
+        ["Sec-Fetch-Mode", "no-cors"],
+      ]),
+      reqCtx({ ownPage: true })
+    );
+    assert.equal(own["sec-fetch-site"], "same-origin");
+    assert.equal(own["sec-fetch-mode"], "no-cors");
+    const other = upstreamRequestHeaders(
+      raw([["Sec-Fetch-Site", "cross-site"]]),
+      reqCtx()
+    );
+    assert.equal(other["sec-fetch-site"], "cross-site");
+  });
+
+  test("fromProxiedPage: Referer on this host under this port", () => {
+    const at = (referer: string | undefined, mode = "proxy" as const) =>
+      fromProxiedPage(referer ? { referer } : {}, {
+        port: 5173,
+        mode,
+        publicHost: "agent.example.com",
+      });
+    assert.ok(at("https://agent.example.com/proxy/5173/"));
+    assert.ok(at("https://agent.example.com/proxy/5173"));
+    assert.ok(at("https://agent.example.com/absproxy/5173/a?b"));
+    assert.ok(!at("https://agent.example.com/proxy/51730/"));
+    assert.ok(!at("https://agent.example.com/proxy/3000/"));
+    assert.ok(!at("https://agent.example.com/"));
+    assert.ok(!at("https://evil.example/proxy/5173/"));
+    assert.ok(!at(undefined));
+    assert.ok(!at("garbage"));
+    assert.ok(
+      fromProxiedPage(
+        { referer: "https://5173.agent.example.com/x" },
+        { port: 5173, mode: "subdomain", publicHost: "5173.agent.example.com" }
+      )
+    );
   });
 
   test("absproxy keeps the Referer path; subdomain has no prefix", () => {
@@ -368,6 +420,17 @@ describe("rewriteLocation", () => {
 
   test("root-relative stays under the prefix; others unchanged", () => {
     assert.equal(rewriteLocation("/echo", proxy), "/proxy/5173/echo");
+    // Apps that honour X-Forwarded-Prefix add it themselves: not twice
+    assert.equal(
+      rewriteLocation("/proxy/5173/login", proxy),
+      "/proxy/5173/login"
+    );
+    assert.equal(rewriteLocation("/proxy/5173", proxy), "/proxy/5173");
+    assert.equal(rewriteLocation("/proxy/5173?a=1", proxy), "/proxy/5173?a=1");
+    assert.equal(
+      rewriteLocation("/proxy/51730/x", proxy),
+      "/proxy/5173/proxy/51730/x"
+    );
     assert.equal(rewriteLocation("echo", proxy), "echo");
     assert.equal(rewriteLocation("../x", proxy), "../x");
     assert.equal(
@@ -415,14 +478,48 @@ describe("rewriteSetCookie", () => {
     );
   });
 
-  test("absproxy and subdomain keep the path", () => {
+  test("absproxy keeps paths under the prefix, forces the rest under it", () => {
+    const abs = resCtx({ mode: "absproxy", prefix: "/absproxy/5173" });
     assert.equal(
-      rewriteSetCookie(
-        "x=1; Path=/absproxy/5173/; Domain=x",
-        resCtx({ mode: "absproxy", prefix: "/absproxy/5173" })
-      ),
+      rewriteSetCookie("x=1; Path=/absproxy/5173/; Domain=x", abs),
       "x=1; Path=/absproxy/5173/"
     );
+    assert.equal(
+      rewriteSetCookie("x=1; Path=/absproxy/5173/app", abs),
+      "x=1; Path=/absproxy/5173/app"
+    );
+    assert.equal(
+      rewriteSetCookie("x=1; Path=/absproxy/5173", abs),
+      "x=1; Path=/absproxy/5173"
+    );
+    // A cookie bomb on Agent-OS's paths stays inside the app's prefix
+    assert.equal(
+      rewriteSetCookie("big=1; Path=/; Max-Age=999", abs),
+      "big=1; Path=/absproxy/5173/; Max-Age=999"
+    );
+    assert.equal(
+      rewriteSetCookie("x=1; Path=/api", abs),
+      "x=1; Path=/absproxy/5173/"
+    );
+    assert.equal(
+      rewriteSetCookie("x=1; Path=/absproxy/51730/", abs),
+      "x=1; Path=/absproxy/5173/"
+    );
+    assert.equal(rewriteSetCookie("x=1", abs), "x=1; Path=/absproxy/5173/");
+  });
+
+  test("oversized cookies and too many per response are dropped", () => {
+    const ctx = resCtx();
+    assert.equal(rewriteSetCookie(`x=${"a".repeat(5000)}`, ctx), null);
+    const many = Array.from({ length: MAX_SET_COOKIES + 10 }, (_, i) => [
+      "Set-Cookie",
+      `c${i}=1`,
+    ]) as [string, string][];
+    const out = downstreamResponseHeaders(raw(many), ctx);
+    assert.equal((out["set-cookie"] as string[]).length, MAX_SET_COOKIES);
+  });
+
+  test("subdomain keeps the path", () => {
     assert.equal(
       rewriteSetCookie(
         "x=1; Domain=agent.example.com",
@@ -488,16 +585,22 @@ describe("downstreamResponseHeaders", () => {
     assert.equal(out["content-security-policy"], SANDBOX_CSP);
   });
 
-  test("ACAO null only for Origin null, only when absent", () => {
+  test("ACAO null only for our own page's Origin null, only when absent", () => {
     const sandboxed = downstreamResponseHeaders(
       [],
-      resCtx({ requestOrigin: "null" })
+      resCtx({ requestOrigin: "null", ownPage: true })
     );
     assert.equal(sandboxed["access-control-allow-origin"], "null");
     assert.equal(sandboxed["access-control-allow-credentials"], undefined);
+    // Someone else's sandboxed iframe can't read the app's answers
+    const other = downstreamResponseHeaders(
+      [],
+      resCtx({ requestOrigin: "null" })
+    );
+    assert.equal(other["access-control-allow-origin"], undefined);
     const own = downstreamResponseHeaders(
       raw([["Access-Control-Allow-Origin", "*"]]),
-      resCtx({ requestOrigin: "null" })
+      resCtx({ requestOrigin: "null", ownPage: true })
     );
     assert.equal(own["access-control-allow-origin"], "*");
     const normal = downstreamResponseHeaders(

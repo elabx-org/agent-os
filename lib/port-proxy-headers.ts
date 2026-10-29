@@ -145,6 +145,45 @@ export interface RequestContext {
   upgrade?: boolean;
   /** Cookie name patterns stripped (DEFAULT_STRIPPED_COOKIES + config) */
   strippedCookies: readonly string[];
+  /**
+   * The request came from a page this proxy served for the same port
+   * (fromProxiedPage): only then is "Origin: null" our sandbox, mapped to
+   * the app's own origin, and Sec-Fetch-Site made same-origin
+   */
+  ownPage?: boolean;
+}
+
+/** The proxy prefix of a path ("/proxy/5173/x" -> port 5173), else null */
+function proxiedPortOfPath(path: string): number | null {
+  const match = /^\/(?:proxy|absproxy)\/(\d{1,5})(?:\/|$)/.exec(path);
+  return match ? Number(match[1]) : null;
+}
+
+/**
+ * Evidence that a request comes from a page the proxy served for this
+ * port, on this host: its Referer is <public host>/(abs)proxy/<port>/...
+ * (path modes) or the port host itself (subdomain mode). A sandboxed
+ * page's Origin is "null" like any other sandboxed page on the web; the
+ * Referer is what tells ours apart. Chrome sends it for navigations and
+ * module scripts, not for fetch, XHR or WebSocket from a sandboxed page
+ * (and a page with no-referrer sends none), so those fail the evidence
+ * unless AGENTOS_PROXY_TRUST_NULL_ORIGIN=1.
+ */
+export function fromProxiedPage(
+  headers: Record<string, string | string[] | undefined>,
+  target: { port: number; mode: ProxyMode; publicHost: string }
+): boolean {
+  const referer = firstHeader(headers["referer"]);
+  if (!referer || !target.publicHost) return false;
+  let url: URL;
+  try {
+    url = new URL(referer);
+  } catch {
+    return false;
+  }
+  if (url.host.toLowerCase() !== target.publicHost.toLowerCase()) return false;
+  if (target.mode === "subdomain") return true;
+  return proxiedPortOfPath(url.pathname) === target.port;
 }
 
 /** The public host and scheme of a request, as the browser sees them */
@@ -159,9 +198,10 @@ export function publicHostOf(
 }
 
 /**
- * Origin or Referer pointing at the public host (or "null" from the
- * sandbox) become the app's own localhost origin, so dev servers' origin
- * checks pass; anything else is the browser's truth and goes as is.
+ * Origin or Referer pointing at the public host (or "null" from our own
+ * sandboxed page, see fromProxiedPage) become the app's own localhost
+ * origin, so dev servers' origin checks pass; anything else, including a
+ * "null" from someone else's sandbox, is the browser's truth and goes as is.
  */
 function rewriteOriginLike(
   value: string,
@@ -169,7 +209,7 @@ function rewriteOriginLike(
   keepPath: boolean
 ): string {
   const local = `http://localhost:${ctx.port}`;
-  if (value === "null") return local;
+  if (value === "null") return ctx.ownPage ? local : value;
   let url: URL;
   try {
     url = new URL(value);
@@ -233,6 +273,12 @@ export function upstreamRequestHeaders(
       add(out, name, rewriteOriginLike(value, ctx, true));
       continue;
     }
+    if (name === "sec-fetch-site" && ctx.ownPage) {
+      // The sandbox makes every request of the app's page cross-site; to
+      // the app it is its own page (Next blocks cross-site /_next/* loads)
+      add(out, name, "same-origin");
+      continue;
+    }
     add(out, name, value);
   }
 
@@ -267,6 +313,8 @@ export interface ResponseContext {
   sandbox: boolean;
   /** The request's Origin header, for the opaque-origin CORS answer */
   requestOrigin?: string | null;
+  /** The request came from our own proxied page (fromProxiedPage) */
+  ownPage?: boolean;
   strippedCookies: readonly string[];
   /** A 101 answer: Connection/Upgrade/Sec-WebSocket-* stay */
   upgrade?: boolean;
@@ -296,8 +344,11 @@ export function rewriteLocation(value: string, ctx: ResponseContext): string {
     }
     return `/proxy/${port}${path}${tail}`;
   }
-  // Root-relative, not protocol-relative ("//host") or "/\host"
+  // Root-relative, not protocol-relative ("//host") or "/\host"; an app
+  // that honours X-Forwarded-Prefix already put the prefix in
   if (ctx.mode === "proxy" && /^\/(?![/\\])/.test(value)) {
+    const path = value.split(/[?#]/)[0];
+    if (path === ctx.prefix || path.startsWith(`${ctx.prefix}/`)) return value;
     return `${ctx.prefix}${value}`;
   }
   return value;
@@ -310,11 +361,16 @@ function rewriteRefresh(value: string, ctx: ResponseContext): string {
   return `${match[1]}${match[2]}${rewriteLocation(match[3], ctx)}${match[2]}`;
 }
 
+/** Per response: more (or bigger) Set-Cookies are dropped */
+export const MAX_SET_COOKIES = 32;
+export const MAX_SET_COOKIE_BYTES = 4096;
+
 /**
  * The app's Set-Cookie as the browser may keep it: never Agent-OS's or the
  * front door's names (or __Host-/__Secure- ones), never a Domain (it would
- * reach Agent-OS or its siblings), and in proxy mode under the prefix.
- * Null drops it.
+ * reach Agent-OS or its siblings), and in path modes always under the
+ * prefix, so an app can't fill Agent-OS's own paths with cookies (a cookie
+ * bomb makes every Agent-OS request 431). Null drops it.
  */
 export function rewriteSetCookie(
   value: string,
@@ -323,6 +379,7 @@ export function rewriteSetCookie(
   const parts = value.split(";");
   const name = parts[0].split("=")[0].trim();
   if (!name) return null;
+  if (value.length > MAX_SET_COOKIE_BYTES) return null;
   if (cookieNameMatches(name, ctx.strippedCookies)) return null;
   if (/^__(host|secure)-/i.test(name)) return null;
 
@@ -342,6 +399,12 @@ export function rewriteSetCookie(
   if (ctx.mode === "proxy") {
     const original = path && path.startsWith("/") ? path : "/";
     path = original === "/" ? `${ctx.prefix}/` : `${ctx.prefix}${original}`;
+  } else if (ctx.mode === "absproxy") {
+    // The app is configured with the prefix as its base: its own paths
+    // start with it. Anything else ("/", "/api") would land on Agent-OS
+    const inside =
+      !!path && (path === ctx.prefix || path.startsWith(`${ctx.prefix}/`));
+    if (!inside) path = `${ctx.prefix}/`;
   }
   return [
     parts[0].trim(),
@@ -358,6 +421,7 @@ export function downstreamResponseHeaders(
   const pairs = headerPairs(rawHeaders);
   const listed = connectionTokens(pairs);
   const out: HeaderMap = {};
+  let cookieCount = 0;
   for (const [name, value] of pairs) {
     const keep =
       ctx.upgrade &&
@@ -367,8 +431,12 @@ export function downstreamResponseHeaders(
     if (!keep && (HOP_BY_HOP.has(name) || listed.has(name))) continue;
     if (ORIGIN_WIDE_RESPONSE.has(name)) continue;
     if (name === "set-cookie") {
+      if (cookieCount >= MAX_SET_COOKIES) continue;
       const cookie = rewriteSetCookie(value, ctx);
-      if (cookie) add(out, name, cookie);
+      if (cookie) {
+        add(out, name, cookie);
+        cookieCount++;
+      }
       continue;
     }
     if (name === "location" || name === "content-location") {
@@ -390,10 +458,12 @@ export function downstreamResponseHeaders(
   if (
     ctx.sandbox &&
     ctx.requestOrigin === "null" &&
+    ctx.ownPage &&
     out["access-control-allow-origin"] === undefined
   ) {
-    // Module scripts from the opaque origin are CORS requests; this grants
-    // nothing a credential-less request couldn't already read
+    // Module scripts and fetches of our sandboxed page are CORS requests
+    // from an opaque origin. Only for our own page (Referer under this
+    // port's prefix): another site's sandboxed iframe gets no CORS answer
     out["access-control-allow-origin"] = "null";
     add(out, "vary", "Origin");
   }
@@ -401,7 +471,11 @@ export function downstreamResponseHeaders(
   return out;
 }
 
-/** The preflight answer when the app has none, for an opaque-origin page */
+/**
+ * The preflight answer for our own sandboxed page (opaque origin), given
+ * by the proxy itself: the app sees the real request with its own origin,
+ * so its CORS rules (if any) are for other origins, not for this page
+ */
 export function sandboxPreflightHeaders(
   requestMethod: string | null,
   requestHeaders: string | null

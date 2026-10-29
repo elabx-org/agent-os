@@ -7,6 +7,8 @@
  *   AGENTOS_PROXY_DOMAIN=d           subdomain mode on <port>.d
  *   AGENTOS_PROXY_SANDBOX=0          path mode without the sandbox (unsafe)
  *   AGENTOS_PROXY_SUBDOMAIN_SANDBOX=1  sandbox port hosts too
+ *   AGENTOS_PROXY_TRUST_NULL_ORIGIN=1  treat every "Origin: null" as our
+ *                                    sandboxed page (any site can send it)
  *   AGENTOS_PROXY_DENY_PORTS=a,b     more refused ports
  *   AGENTOS_PROXY_STRIP_COOKIES=x,y_*  more cookies never sent to apps
  *   AGENTOS_PUBLIC_URL=https://...   where helper links point
@@ -31,6 +33,12 @@ export interface ProxyConfig {
   /** Subdomain mode base, e.g. agent.example.com; null = off */
   subdomainBase: string | null;
   subdomainSandbox: boolean;
+  /**
+   * Every "Origin: null" counts as our own sandboxed page. Off: only with
+   * Referer evidence, which Chrome sends for module scripts but not for
+   * fetch, XHR or WebSocket from a sandboxed page
+   */
+  trustNullOrigin: boolean;
   ownPort: number;
   deny: number[];
   strippedCookies: string[];
@@ -95,6 +103,7 @@ export function proxyConfig(): ProxyConfig {
     sandbox: process.env.AGENTOS_PROXY_SANDBOX !== "0",
     subdomainBase: proxyDomain(),
     subdomainSandbox: process.env.AGENTOS_PROXY_SUBDOMAIN_SANDBOX === "1",
+    trustNullOrigin: process.env.AGENTOS_PROXY_TRUST_NULL_ORIGIN === "1",
     ownPort: ownPort(),
     deny: parsePortList(process.env.AGENTOS_PROXY_DENY_PORTS),
     strippedCookies: [...DEFAULT_STRIPPED_COOKIES, ...extraCookies],

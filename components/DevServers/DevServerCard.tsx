@@ -83,8 +83,20 @@ const typeLabel = (server: DevServer) =>
 const TOUCH_HIT =
   "relative pointer-coarse:after:absolute pointer-coarse:after:-inset-1.5 pointer-coarse:after:content-['']";
 
+/**
+ * Path mode serves the app under /proxy/<port>/ in a sandbox: dev servers
+ * that load assets from the root (/@vite/client, /_next/...) need subdomain
+ * mode or a base of /absproxy/<port>/ (docs/setup/port-proxy.md)
+ */
+function pathModeHint(url: string, port: number): string | undefined {
+  return url.includes(`/proxy/${port}/`)
+    ? `Opens through /proxy/${port}/. Blank page? Dev servers need subdomain mode or base /absproxy/${port}/`
+    : undefined;
+}
+
 function OpenButton({ port }: { port: number }) {
   const urlOf = useProxyUrl();
+  const href = urlOf(port);
   return (
     <Button
       asChild
@@ -93,7 +105,8 @@ function OpenButton({ port }: { port: number }) {
       className={cn("h-8", TOUCH_HIT)}
     >
       <a
-        href={urlOf(port)}
+        href={href}
+        title={pathModeHint(href, port)}
         target="_blank"
         rel="noopener noreferrer"
         onClick={(e) => e.stopPropagation()}

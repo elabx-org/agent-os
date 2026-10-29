@@ -53,7 +53,7 @@ export async function launchSession(
       name,
       "-c",
       cwd,
-      ...tmuxEnvArgs(sessionBrowserEnv()),
+      ...tmuxEnvArgs(sessionBrowserEnv(), process.env.BROWSER),
     ]);
     return true;
   }

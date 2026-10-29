@@ -1,14 +1,18 @@
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import { exportLines, sessionBrowserEnv } from "./browser-helper";
+import {
+  exportLines,
+  sessionBrowserEnv,
+  type SessionBrowserEnv,
+} from "./browser-helper";
 
 /**
  * Generate an init script that shows the AgentOS banner and configures tmux
  */
 function generateInitScript(
   agentCommand: string,
-  env: Record<string, string> = {}
+  browser: SessionBrowserEnv = { env: {}, browser: null, force: false }
 ): string {
   return `#!/bin/bash
 # AgentOS Session Init Script
@@ -56,7 +60,7 @@ sleep 0.8
 export PATH="$HOME/.local/bin:$PATH"
 
 # Sign-in links CLIs open go to Agent-OS (lib/browser-helper.ts)
-${exportLines(env)}
+${exportLines(browser)}
 # Start the agent
 exec ${agentCommand}
 `;

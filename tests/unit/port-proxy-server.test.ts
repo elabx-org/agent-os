@@ -22,6 +22,7 @@ for (const key of [
   "AGENTOS_PROXY_DOMAIN",
   "AGENTOS_PROXY_SANDBOX",
   "AGENTOS_ORIGIN_GATE",
+  "AGENTOS_PROXY_TRUST_NULL_ORIGIN",
 ]) {
   delete process.env[key];
 }
@@ -81,6 +82,26 @@ before(async () => {
         "Content-Length": body.length,
       });
       res.end(body);
+    } else if (url === "/api/x" && req.method === "OPTIONS") {
+      // Express's automatic OPTIONS answer: 200 + Allow, no CORS headers
+      res.writeHead(200, {
+        Allow: "GET,HEAD,POST",
+        "Content-Type": "text/html",
+      });
+      res.end("GET,HEAD,POST");
+    } else if (url === "/redir-prefixed") {
+      res.writeHead(302, {
+        Location: `${req.headers["x-forwarded-prefix"]}/echo`,
+      });
+      res.end();
+    } else if (url === "/bomb") {
+      res.writeHead(200, {
+        "Set-Cookie": [
+          `b1=${"x".repeat(3000)}; Path=/; Max-Age=999`,
+          "x=1; Path=/api",
+        ],
+      });
+      res.end("ok");
     } else if (url === "/post") {
       let body = "";
       req.on("data", (c) => (body += c));
@@ -261,19 +282,86 @@ describe("path mode", () => {
     assert.equal((await get(`/proxy/${upstreamPort}/a/%2e%2e/b`)).status, 400);
   });
 
-  test("sandboxed preflight the app can't answer gets a null CORS answer", async () => {
-    const res = await get(
-      `/proxy/${upstreamPort}/nothing`,
+  test("our sandboxed page's preflight is answered by the proxy", async () => {
+    const ownReferer = `http://127.0.0.1:${frontPort}/proxy/${upstreamPort}/`;
+    for (const appPath of ["nothing", "api/x"]) {
+      const before = seen.length;
+      const res = await get(
+        `/proxy/${upstreamPort}/${appPath}`,
+        {
+          Origin: "null",
+          Referer: ownReferer,
+          "Access-Control-Request-Method": "POST",
+          "Access-Control-Request-Headers": "content-type",
+        },
+        "OPTIONS"
+      );
+      // Also when the app answers OPTIONS itself (Express: 200 + Allow)
+      assert.equal(res.status, 204, appPath);
+      assert.equal(res.headers["access-control-allow-origin"], "null");
+      assert.equal(res.headers["access-control-allow-methods"], "POST");
+      assert.equal(res.headers["access-control-allow-headers"], "content-type");
+      assert.equal(seen.length, before, "the app isn't asked");
+    }
+  });
+
+  test("someone else's Origin null gets no CORS answer and stays null", async () => {
+    const pre = await get(
+      `/proxy/${upstreamPort}/api/x`,
       {
         Origin: "null",
-        "Access-Control-Request-Method": "PUT",
-        "Access-Control-Request-Headers": "content-type",
+        Referer: "https://evil.example/",
+        "Access-Control-Request-Method": "POST",
       },
       "OPTIONS"
     );
-    assert.equal(res.status, 204);
-    assert.equal(res.headers["access-control-allow-origin"], "null");
-    assert.equal(res.headers["access-control-allow-headers"], "content-type");
+    assert.equal(pre.status, 200);
+    assert.equal(pre.headers["access-control-allow-origin"], undefined);
+    const res = await get(`/proxy/${upstreamPort}/echo`, { Origin: "null" });
+    assert.equal(res.headers["access-control-allow-origin"], undefined);
+    assert.equal(JSON.parse(res.body.toString()).headers.origin, "null");
+    // Our own page: the app sees its own origin and a same-origin fetch
+    const own = await get(`/proxy/${upstreamPort}/echo`, {
+      Origin: "null",
+      Referer: `http://127.0.0.1:${frontPort}/proxy/${upstreamPort}/page`,
+      "Sec-Fetch-Site": "cross-site",
+    });
+    assert.equal(own.headers["access-control-allow-origin"], "null");
+    const seenBy = JSON.parse(own.body.toString()).headers;
+    assert.equal(seenBy.origin, `http://localhost:${upstreamPort}`);
+    assert.equal(seenBy["sec-fetch-site"], "same-origin");
+  });
+
+  test("AGENTOS_PROXY_TRUST_NULL_ORIGIN=1: any null origin is our page", async () => {
+    process.env.AGENTOS_PROXY_TRUST_NULL_ORIGIN = "1";
+    try {
+      const res = await get(`/proxy/${upstreamPort}/echo`, { Origin: "null" });
+      assert.equal(res.headers["access-control-allow-origin"], "null");
+      assert.equal(
+        JSON.parse(res.body.toString()).headers.origin,
+        `http://localhost:${upstreamPort}`
+      );
+      const { ws } = await openWs(
+        `ws://127.0.0.1:${frontPort}/proxy/${upstreamPort}/ws`,
+        { Origin: "null" }
+      );
+      ws.close();
+    } finally {
+      delete process.env.AGENTOS_PROXY_TRUST_NULL_ORIGIN;
+    }
+  });
+
+  test("a redirect that already has the prefix isn't doubled", async () => {
+    const res = await get(`/proxy/${upstreamPort}/redir-prefixed`);
+    assert.equal(res.headers.location, `/proxy/${upstreamPort}/echo`);
+  });
+
+  test("absproxy cookies can't land on Agent-OS's paths", async () => {
+    const res = await get(`/absproxy/${upstreamPort}/bomb`);
+    assert.deepEqual(res.headers["set-cookie"], [
+      `b1=${"x".repeat(3000)}; Path=/absproxy/${upstreamPort}/; Max-Age=999`,
+      `x=1; Path=/absproxy/${upstreamPort}/`,
+    ]);
   });
 
   test("AGENTOS_PROXY=0: as if it didn't exist", async () => {
@@ -341,12 +429,29 @@ describe("WebSocket upgrades", () => {
     assert.equal(upgrade.headers.origin, `http://localhost:${upstreamPort}`);
   });
 
-  test("the sandboxed page (Origin null) may connect; foreign origins can't", async () => {
+  test("our sandboxed page (Origin null + its Referer) may connect; others can't", async () => {
     const { ws } = await openWs(
       `ws://127.0.0.1:${frontPort}/proxy/${upstreamPort}/ws`,
-      { Origin: "null" }
+      {
+        Origin: "null",
+        Referer: `http://127.0.0.1:${frontPort}/proxy/${upstreamPort}/`,
+      }
     );
     ws.close();
+    // Any site's sandboxed iframe has Origin null too
+    await assert.rejects(
+      openWs(`ws://127.0.0.1:${frontPort}/proxy/${upstreamPort}/ws`, {
+        Origin: "null",
+      }),
+      /status 403/
+    );
+    await assert.rejects(
+      openWs(`ws://127.0.0.1:${frontPort}/proxy/${upstreamPort}/ws`, {
+        Origin: "null",
+        Referer: `http://127.0.0.1:${frontPort}/proxy/1/`,
+      }),
+      /status 403/
+    );
     await assert.rejects(
       openWs(`ws://127.0.0.1:${frontPort}/proxy/${upstreamPort}/ws`, {
         Origin: "http://evil.example",
@@ -398,6 +503,13 @@ describe("subdomain mode", () => {
       });
       assert.equal(first, JSON.stringify({ type: "connected" }));
       ws.close();
+      // X-Forwarded-Host doesn't pick a port host: only Host does
+      const forged = await get("/echo", {
+        Host: `127.0.0.1:${frontPort}`,
+        "X-Forwarded-Host": host,
+      });
+      assert.equal(forged.headers["x-agentos-proxy"], undefined);
+      assert.equal(forged.body.toString(), "agent-os");
     } finally {
       delete process.env.AGENTOS_PROXY_DOMAIN;
     }

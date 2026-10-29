@@ -18,6 +18,7 @@ import {
 } from "./port-proxy-config";
 import {
   downstreamResponseHeaders,
+  fromProxiedPage,
   parseHead,
   publicHostOf,
   sandboxPreflightHeaders,
@@ -62,6 +63,15 @@ function warnOnce(config: ProxyConfig): void {
   } catch {
     // Reported by server.ts at startup
   }
+  if (
+    config.subdomainBase &&
+    !config.subdomainSandbox &&
+    config.subdomainBase.split(".").length > 2
+  ) {
+    console.warn(
+      `> Port proxy: port hosts *.${config.subdomainBase} are same-site with other hosts under ${config.subdomainBase.split(".").slice(1).join(".")} (their cookies, CSRF). Prefer a separate domain or AGENTOS_PROXY_SUBDOMAIN_SANDBOX=1 (docs/setup/port-proxy.md).`
+    );
+  }
   if (config.subdomainBase && signIn) {
     console.warn(
       `> Port proxy: Agent-OS sign-in doesn't reach *.${config.subdomainBase}; port hosts answer 401 unless reached from loopback. Gate them in the front door instead.`
@@ -80,6 +90,32 @@ function publicProto(req: IncomingMessage): string {
   return isHttps(req) ? "https" : "http";
 }
 
+/**
+ * The request is from a page the proxy served for this port: Referer
+ * evidence, or (opt-in) any "Origin: null" in a sandboxed mode
+ */
+function isOwnPage(
+  req: IncomingMessage,
+  target: Target,
+  config: ProxyConfig,
+  publicHost: string
+): boolean {
+  if (
+    fromProxiedPage(req.headers, {
+      port: target.port,
+      mode: target.mode,
+      publicHost,
+    })
+  ) {
+    return true;
+  }
+  return (
+    config.trustNullOrigin &&
+    target.sandbox &&
+    firstHeader(req.headers.origin) === "null"
+  );
+}
+
 function contexts(
   req: IncomingMessage,
   target: Target,
@@ -87,16 +123,19 @@ function contexts(
   upgrade: boolean
 ): { request: RequestContext; response: ResponseContext } {
   const proto = publicProto(req);
+  const publicHost = publicHostOf(req.headers);
+  const ownPage = isOwnPage(req, target, config, publicHost);
   return {
     request: {
       port: target.port,
       mode: target.mode,
       prefix: target.prefix,
-      publicHost: publicHostOf(req.headers),
+      publicHost,
       proto,
       clientAddress: req.socket.remoteAddress ?? "",
       upgrade,
       strippedCookies: config.strippedCookies,
+      ownPage,
     },
     response: {
       port: target.port,
@@ -106,6 +145,7 @@ function contexts(
       proto,
       sandbox: target.sandbox,
       requestOrigin: firstHeader(req.headers.origin),
+      ownPage,
       strippedCookies: config.strippedCookies,
       upgrade,
     },
@@ -121,7 +161,9 @@ function resolveTarget(
   if (phase === "host") {
     const base = proxyDomain();
     if (!base) return null;
-    const port = matchProxyHost(publicHostOf(req.headers), base);
+    // Host only: X-Forwarded-Host is client-supplied unless a front door
+    // overwrites it, and Traefik keeps Host by default
+    const port = matchProxyHost(firstHeader(req.headers.host), base);
     if (port === null) return null;
     const c = config();
     if (!c.enabled) return { kind: "disabled" };
@@ -155,6 +197,24 @@ function resolveTarget(
 
 const isProblem = (value: object): value is ProxyProblem => "kind" in value;
 
+/** Open proxied connections (requests + sockets) per port, and the cap */
+const MAX_PER_PORT = 256;
+const openPerPort = new Map<number, number>();
+
+/** Counts a connection to the port; false (nothing counted) when full */
+function takeSlot(port: number): boolean {
+  const open = openPerPort.get(port) ?? 0;
+  if (open >= MAX_PER_PORT) return false;
+  openPerPort.set(port, open + 1);
+  return true;
+}
+
+function releaseSlot(port: number): void {
+  const open = (openPerPort.get(port) ?? 1) - 1;
+  if (open <= 0) openPerPort.delete(port);
+  else openPerPort.set(port, open);
+}
+
 /**
  * server.ts request handler. "host" runs first (a port host is never
  * Agent-OS), "path" after sign-in. True when the request was answered.
@@ -186,6 +246,11 @@ export async function proxyRequest(
     sendProxyProblem(req, res, { kind: "refused", port: target.port });
     return true;
   }
+  if (!takeSlot(target.port)) {
+    sendProxyProblem(req, res, { kind: "busy", port: target.port });
+    return true;
+  }
+  res.once("close", () => releaseSlot(target.port));
   await forward(req, res, target, getConfig());
   return true;
 }
@@ -196,6 +261,28 @@ async function forward(
   target: Target,
   config: ProxyConfig
 ): Promise<void> {
+  const ctx = contexts(req, target, config, false);
+  if (
+    target.sandbox &&
+    req.method === "OPTIONS" &&
+    ctx.response.requestOrigin === "null" &&
+    ctx.response.ownPage &&
+    !!req.headers["access-control-request-method"]
+  ) {
+    // Our sandboxed page's preflight is answered here: apps that answer
+    // OPTIONS themselves (Express, Flask...) don't list our opaque origin
+    req.resume();
+    res.writeHead(
+      204,
+      sandboxPreflightHeaders(
+        firstHeader(req.headers["access-control-request-method"]),
+        (req.headers["access-control-request-headers"] as string) ?? null
+      )
+    );
+    res.end();
+    return;
+  }
+
   let socket: Socket;
   try {
     socket = await connectLoopback(target.port);
@@ -212,7 +299,6 @@ async function forward(
     return;
   }
 
-  const ctx = contexts(req, target, config, false);
   const upstreamReq = http.request({
     method: req.method,
     path: target.upstreamPath,
@@ -221,27 +307,8 @@ async function forward(
     createConnection: () => socket,
   });
 
-  const isSandboxPreflight =
-    target.sandbox &&
-    req.method === "OPTIONS" &&
-    ctx.response.requestOrigin === "null" &&
-    !!req.headers["access-control-request-method"];
-
   upstreamReq.on("response", (upstreamRes) => {
     const status = upstreamRes.statusCode ?? 502;
-    if (isSandboxPreflight && (status === 404 || status === 405)) {
-      // The app has no CORS answer: let the opaque-origin page's request go
-      upstreamRes.resume();
-      res.writeHead(
-        204,
-        sandboxPreflightHeaders(
-          firstHeader(req.headers["access-control-request-method"]),
-          (req.headers["access-control-request-headers"] as string) ?? null
-        )
-      );
-      res.end();
-      return;
-    }
     try {
       res.writeHead(
         status,
@@ -295,11 +362,20 @@ function reject(socket: Duplex, status: string): void {
 
 /**
  * Cross-site WebSocket hijacking: a browser page may only open a socket to
- * the app from this host (or the sandboxed "null"); non-browsers send none
+ * the app from this host, or as "null" from our own sandboxed page (its
+ * Referer under this port's prefix: any site can make a "null" origin);
+ * non-browsers send no Origin
  */
-function upgradeOriginAllowed(req: IncomingMessage): boolean {
+function upgradeOriginAllowed(
+  req: IncomingMessage,
+  target: Target,
+  config: ProxyConfig
+): boolean {
   const origin = firstHeader(req.headers.origin);
-  if (origin === null || origin === "null") return true;
+  if (origin === null) return true;
+  if (origin === "null") {
+    return isOwnPage(req, target, config, publicHostOf(req.headers));
+  }
   try {
     return (
       new URL(origin).host.toLowerCase() ===
@@ -346,7 +422,7 @@ export function proxyUpgrade(
     reject(socket, "401 Unauthorized");
     return true;
   }
-  if (!upgradeOriginAllowed(req)) {
+  if (!upgradeOriginAllowed(req, target, getConfig())) {
     reject(socket, "403 Forbidden");
     return true;
   }
@@ -354,6 +430,11 @@ export function proxyUpgrade(
     reject(socket, "403 Forbidden");
     return true;
   }
+  if (!takeSlot(target.port)) {
+    reject(socket, "503 Service Unavailable");
+    return true;
+  }
+  socket.once("close", () => releaseSlot(target.port));
   void pipeUpgrade(req, socket, head, target, getConfig());
   return true;
 }

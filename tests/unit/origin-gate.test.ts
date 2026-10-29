@@ -11,6 +11,7 @@ type Case = {
   mode?: string;
   referer?: string;
   forwardedHost?: string;
+  pathname?: string;
 };
 
 const gate = (c: Case) =>
@@ -23,7 +24,7 @@ const gate = (c: Case) =>
       ...(c.mode !== undefined ? { "sec-fetch-mode": c.mode } : {}),
       ...(c.referer !== undefined ? { referer: c.referer } : {}),
     },
-    BASE
+    { ...BASE, pathname: c.pathname ?? "/api/sessions" }
   );
 
 describe("isGatedPath", () => {
@@ -86,13 +87,29 @@ describe("originGate", () => {
     assert.equal(gate({ origin: "not a url" }), "foreign_origin");
   });
 
-  test("Sec-Fetch-Site cross-site / same-site refused unless navigating", () => {
+  test("Sec-Fetch-Site cross-site / same-site refused, navigations too", () => {
     for (const site of ["cross-site", "same-site"]) {
       for (const mode of ["cors", "no-cors", "same-origin", "websocket"]) {
         assert.equal(gate({ site, mode }), "cross_site", `${site} ${mode}`);
       }
       assert.equal(gate({ site }), "cross_site", `${site} without mode`);
-      assert.equal(gate({ site, mode: "navigate" }), "ok", `${site} navigate`);
+      // window.open('/api/...') from a sandboxed popup or another site
+      assert.equal(
+        gate({ site, mode: "navigate" }),
+        "cross_site",
+        `${site} navigate /api`
+      );
+      assert.equal(
+        gate({ site, mode: "navigate", pathname: "/ws/terminal" }),
+        "cross_site",
+        `${site} navigate /ws`
+      );
+      // A sign-out link from another site still works
+      assert.equal(
+        gate({ site, mode: "navigate", pathname: "/auth/logout" }),
+        "ok",
+        `${site} navigate logout`
+      );
     }
     for (const site of ["same-origin", "none"]) {
       for (const mode of ["cors", "no-cors", "navigate"]) {

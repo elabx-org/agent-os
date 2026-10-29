@@ -11,6 +11,7 @@ import {
 import { configuredPublicUrl, proxyConfig } from "@/lib/port-proxy-config";
 import { agentOsHome } from "@/lib/push/config";
 import { proxyUrlFor } from "@/lib/proxy-url";
+import { isUserPageRequest } from "@/lib/user-proof";
 
 export const dynamic = "force-dynamic";
 
@@ -78,13 +79,17 @@ export async function POST(request: NextRequest) {
 // seq; without `after` only the current seq. The page polls without wait:
 // a held request would take one of HTTP/1.1's six connections per tab
 export async function GET(request: NextRequest) {
-  const host =
-    request.headers.get("x-forwarded-host")?.split(",")[0].trim() ||
-    request.headers.get("host");
-  const proto =
-    request.headers.get("x-forwarded-proto")?.split(",")[0].trim() || "http";
-  if (host && (proto === "http" || proto === "https")) {
-    learnPublicBase(`${proto}://${host}`);
+  // Where the user opens Agent-OS, learned only from the user's own page
+  // (proof cookie): any loopback caller could send X-Forwarded-Host
+  if (isUserPageRequest(request)) {
+    const host =
+      request.headers.get("x-forwarded-host")?.split(",")[0].trim() ||
+      request.headers.get("host");
+    const proto =
+      request.headers.get("x-forwarded-proto")?.split(",")[0].trim() || "http";
+    if (host && (proto === "http" || proto === "https")) {
+      learnPublicBase(`${proto}://${host}`);
+    }
   }
 
   const afterParam = request.nextUrl.searchParams.get("after");

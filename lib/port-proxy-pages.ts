@@ -11,6 +11,7 @@ export type ProxyProblem =
   | { kind: "not_listening"; port: number }
   | { kind: "timeout"; port: number }
   | { kind: "refused"; port: number }
+  | { kind: "busy"; port: number }
   | { kind: "bad_path" }
   | { kind: "disabled" }
   | { kind: "sign_in"; port: number };
@@ -55,6 +56,12 @@ function describe(problem: ProxyProblem): Page {
         status: 403,
         title: `Port ${problem.port} can't be proxied`,
         lines: ["It is Agent-OS itself, or on the deny list."],
+      };
+    case "busy":
+      return {
+        status: 503,
+        title: `Too many open connections to port ${problem.port}`,
+        lines: ["Close some tabs of the app, then reload."],
       };
     case "bad_path":
       return {

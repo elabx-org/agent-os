@@ -18,6 +18,7 @@ for (const key of [
 }
 
 import {
+  isUserPageRequest,
   issueUserProof,
   requireUser,
   userSecret,
@@ -272,5 +273,36 @@ test("requireUser: a tossed duplicate agentos_u can't hide the real one", () => 
       })
     ),
     { ok: false, reason: "no_proof" }
+  );
+});
+
+test("isUserPageRequest: the proof cookie on a same-origin read", () => {
+  const read = (headers: Record<string, string>) =>
+    isUserPageRequest(
+      new Request(`http://${HOST}/api/browser-open`, {
+        headers: new Headers({ host: HOST, ...headers }),
+      })
+    );
+  const proof = `${USER_PROOF_COOKIE}=${userSecret()}`;
+  // A same-origin GET carries no Origin
+  assert.ok(read({ "sec-fetch-site": "same-origin", cookie: proof }));
+  // Plain http LAN page: no Sec-Fetch-*
+  assert.ok(read({ cookie: proof }));
+  // Loopback tools forging the forwarded host have no proof
+  assert.ok(
+    !read({
+      "sec-fetch-site": "same-origin",
+      "x-forwarded-host": "evil.example",
+      "x-forwarded-proto": "https",
+    })
+  );
+  assert.ok(!read({ "sec-fetch-site": "cross-site", cookie: proof }));
+  assert.ok(!read({ cookie: `${USER_PROOF_COOKIE}=wrong` }));
+  assert.ok(
+    !read({
+      "sec-fetch-site": "same-origin",
+      cookie: proof,
+      "x-agentos-origin": "agent",
+    })
   );
 });

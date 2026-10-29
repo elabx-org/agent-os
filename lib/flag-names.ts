@@ -80,7 +80,7 @@ export const FLAG_LABELS: Record<FlagName, { label: string; hint: string }> = {
   },
   portProxy: {
     label: "Port proxy",
-    hint: "Opens apps running in the container at /proxy/<port>/",
+    hint: "Apps in the container at /proxy/<port>/, sign-in links from sessions. Off keeps the origin gate on",
   },
 };
 
