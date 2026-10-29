@@ -11,19 +11,23 @@ import { cn } from "@/lib/utils";
 export function PageEdge({
   label,
   onClose,
+  side = "left",
   className,
 }: {
   label: string;
   onClose: () => void;
+  /** "right": the grip on the right edge, dragged left (the open Duo's Now) */
+  side?: "left" | "right";
   className?: string;
 }) {
+  const dir = side === "left" ? 1 : -1;
   const drag = useRef<{ x: number; t: number; dx: number } | null>(null);
   const layer = (el: HTMLElement) => el.parentElement as HTMLElement;
 
   const settle = (el: HTMLElement, close: boolean) => {
     const box = layer(el);
     box.style.transition = "transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1)";
-    box.style.transform = close ? "translateX(100%)" : "";
+    box.style.transform = close ? `translateX(${dir * 100}%)` : "";
     setTimeout(
       () => {
         box.style.transition = "";
@@ -41,7 +45,8 @@ export function PageEdge({
       type="button"
       aria-label={label}
       className={cn(
-        "group absolute inset-y-0 left-0 z-20 flex w-5 cursor-ew-resize touch-none items-center justify-center",
+        "group absolute inset-y-0 z-20 flex w-5 cursor-ew-resize touch-none items-center justify-center",
+        side === "left" ? "left-0" : "right-0",
         className
       )}
       onPointerDown={(e) => {
@@ -52,8 +57,8 @@ export function PageEdge({
       onPointerMove={(e) => {
         const d = drag.current;
         if (!d) return;
-        d.dx = Math.max(0, e.clientX - d.x);
-        layer(e.currentTarget).style.transform = `translateX(${d.dx}px)`;
+        d.dx = Math.max(0, (e.clientX - d.x) * dir);
+        layer(e.currentTarget).style.transform = `translateX(${d.dx * dir}px)`;
       }}
       onPointerUp={(e) => {
         const d = drag.current;
