@@ -117,6 +117,7 @@ export async function POST(
       pending: null,
       appliedNow: false,
       needsRestart: running,
+      appliesAt: running ? "restart" : "nextLaunch",
     };
     return NextResponse.json(result);
   }
@@ -130,7 +131,8 @@ export async function POST(
   let pending: Mode | null = null;
   let appliedNow = false;
   let needsRestart = false;
-  if (await isRunning(session)) {
+  const running = await isRunning(session);
+  if (running) {
     if (session.agent_type === "claude") {
       if (mode !== "bypassPermissions" || canApplyLive(session, true)) {
         appliedNow = (await applyModeLive(session, mode)).applied;
@@ -154,6 +156,8 @@ export async function POST(
     pending,
     appliedNow,
     needsRestart,
+    // M7 U1 defers a mid-turn change to the next idle edge ("nextTurn")
+    appliesAt: appliedNow ? "now" : !running ? "nextLaunch" : "restart",
   };
   return NextResponse.json(result);
 }

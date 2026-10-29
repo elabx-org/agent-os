@@ -176,6 +176,10 @@ test("columnFor: a sheet over the closed session (E-Live, N-Undo)", () => {
     fmt(columnFor("session", "duo-closed", { ...CTX, sheet: "undo" })),
     "closeSheet | git[3n]"
   );
+  assert.equal(
+    fmt(columnFor("session", "duo-closed", { ...CTX, sheet: "permissions" })),
+    "closeSheet | done*"
+  );
   // The open Duo shows Live activity as its rail: no sheet column
   assert.equal(
     fmt(columnFor("session", "duo-open", { ...CTX, liveOpen: true })),

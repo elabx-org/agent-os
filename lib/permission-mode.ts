@@ -25,6 +25,22 @@ export const MODE_LABELS: Record<Mode, string> = {
   bypassPermissions: "Full access",
 };
 
+/** One line per mode in the session's Permissions sheet (N-PermMode) */
+export const MODE_HINTS: Record<Mode, string> = {
+  manual: "Asks before edits and commands",
+  acceptEdits: "Edits files freely, asks before commands",
+  auto: "Agent decides, asks for risky actions",
+  bypassPermissions: "Never asks, even to delete files",
+};
+
+/**
+ * When a change takes effect: now (Claude's Shift+Tab cycle while idle),
+ * at the end of the turn in progress (flag modeAtIdle), when the session
+ * is restarted (Codex, Gemini, Claude full access without the Labs cycle),
+ * or at its next launch (not running)
+ */
+export type ModeAppliesAt = "now" | "nextTurn" | "restart" | "nextLaunch";
+
 /** Recorded at launch (sessions.launch_caps, JSON) */
 export interface LaunchCaps {
   /** Launched with --allow-dangerously-skip-permissions (Labs liveFullAccess) */
@@ -57,6 +73,7 @@ export interface SetPermissionModeResult {
   pending: Mode | null;
   appliedNow: boolean;
   needsRestart: boolean;
+  appliesAt: ModeAppliesAt;
 }
 
 /** 403 body of a user-only request made without proof */
