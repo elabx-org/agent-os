@@ -38,6 +38,7 @@ interface ColumnSources {
   working: boolean;
   sheet: ColumnContext["sheet"];
   changesOpen: boolean;
+  behind: boolean;
   native: boolean;
   order: ColumnOrder;
 }
@@ -57,6 +58,7 @@ function contextFrom(s: ColumnSources): ColumnContext {
     working: s.working,
     sheet: s.sheet,
     changesOpen: s.changesOpen,
+    behind: s.behind,
     order: s.order,
   };
 }
@@ -69,7 +71,7 @@ export function useColumn(
   const nav = useSnapshot(mobileNavStore);
   const { open: newOpen } = useSnapshot(newSurfaceStore);
   const { on: focus } = useSnapshot(focusStore);
-  const { paneCount } = useSnapshot(surfaceStore);
+  const { paneCount, behind } = useSnapshot(surfaceStore);
   const { detail: settingsDetail } = useSnapshot(settingsPageStore);
   const { mode } = useSnapshot(layoutStore);
   const surface = useSurface();
@@ -88,6 +90,7 @@ export function useColumn(
     working: nav.working,
     sheet: nav.sheet,
     changesOpen: nav.changesOpen,
+    behind,
     native,
     order: order as ColumnOrder,
   });
@@ -130,6 +133,7 @@ export function nativeColumn(): {
       working: mobileNavStore.working,
       sheet: mobileNavStore.sheet,
       changesOpen: mobileNavStore.changesOpen,
+      behind: surfaceStore.behind,
       native: true,
       order: columnOrderStore.order,
     })

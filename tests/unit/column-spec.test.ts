@@ -42,13 +42,13 @@ const homeBeside = (mode: LayoutMode) =>
 // Every surface in every posture, as the mocks draw them
 const TABLE: [Surface, LayoutMode, string][] = [
   ["now", "phone", "now(on) inbox[2a] projects settings | new*"],
-  ["now", "duo-closed", "new* inbox(on)[2a] projects search | settings more"],
+  ["now", "duo-closed", "new* inbox(on)[2a] projects search | more"],
   [
     "now",
     "duo-open",
     "new* inbox[2a] | terminal git[3n] files beside | search more",
   ],
-  ["now", "tabletop", "new* inbox(on)[2a] projects search | settings more"],
+  ["now", "tabletop", "new* inbox(on)[2a] projects search | more"],
   [
     "now",
     "book",
@@ -270,7 +270,7 @@ test("columnFor: Focus hides the counts", () => {
   const ctx = { ...CTX, focus: true };
   assert.equal(
     fmt(columnFor("now", "duo-closed", { ...ctx, viewMode: null })),
-    "new* inbox projects search | settings more"
+    "new* inbox projects search | more"
   );
   assert.equal(
     fmt(columnFor("session", "tabletop", ctx)),
@@ -307,7 +307,6 @@ test("columnFor: labels, symbols and icons as the mocks", () => {
       ["Needs you", "tray", "Inbox"],
       ["Projects", "folder", "Folder"],
       ["Find", "magnifyingglass", "Search"],
-      ["Settings", "gearshape", "Settings"],
       ["More", "ellipsis", "Ellipsis"],
     ]
   );
@@ -389,7 +388,7 @@ const ARRANGED: [Surface, LayoutMode, Partial<ColumnContext>, string][] = [
   ],
   ["session", "phone", {}, "projects inbox[2a] live chat(on) git[3n] | more"],
   ["beside", "duo-open", {}, "back | swap | more"],
-  ["now", "duo-closed", {}, "inbox(on)[2a] new* | settings more"],
+  ["now", "duo-closed", {}, "inbox(on)[2a] new* | more"],
 ];
 
 for (const [surface, mode, extra, want] of ARRANGED)
@@ -432,11 +431,24 @@ test("More offers New and Find a session's default column leaves out", () => {
   );
 });
 
-test("the web's Now keeps Settings last; the app's adds More", () => {
+test("the web's Now keeps Settings last; the app's ends in More", () => {
   const web = columnFor("now", "desktop", {
     ...CTX,
     viewMode: null,
     native: false,
   });
   assert.equal(web.at(-1)?.id, "settings");
+});
+
+test("a session behind Now: back to it leads, closed and on tabletop", () => {
+  for (const mode of ["duo-closed", "tabletop"] as LayoutMode[])
+    assert.equal(
+      fmt(columnFor("now", mode, { ...CTX, viewMode: null, behind: true })),
+      `resume | new* inbox${mode === "duo-closed" || mode === "tabletop" ? "(on)" : ""}[2a] projects search | more`
+    );
+  assert.equal(
+    columnFor("now", "duo-open", { ...CTX, viewMode: null, behind: true })[0]
+      ?.id,
+    "new"
+  );
 });
