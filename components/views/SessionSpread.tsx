@@ -18,10 +18,15 @@ import type { ProjectWithRepositories } from "@/lib/projects";
 import { cn } from "@/lib/utils";
 import { ActivityRail } from "@/components/Session/ActivityRail";
 import { ControlColumn } from "@/components/ControlColumn";
+import { LiveSheet } from "@/components/ControlColumn/LiveSheet";
 import { usePanes } from "@/contexts/PaneContext";
 import { GitPanelSkeleton } from "@/components/Pane/PaneSkeletons";
 import { useIsNative } from "@/hooks/useIsNative";
 import { FOLD_CLEAR, useHinge } from "@/hooks/useHinge";
+import { useLayoutMode } from "@/hooks/useLayoutMode";
+import { registerNavHandlers } from "@/lib/nav-actions";
+import { setHome } from "@/stores/surface";
+import { nativeCaps } from "@/lib/native-bridge";
 import { postureStore } from "@/stores/posture";
 import { focusStore } from "@/stores/focus";
 import { mobileNavStore } from "@/stores/mobileNav";
@@ -197,15 +202,18 @@ export function SessionSpread({
   children,
 }: SessionSpreadProps) {
   const native = useIsNative();
+  const mode = useLayoutMode();
+  // The Duo lays out as two pages in the app and in Safari alike
+  const duo = native || mode === "duo-open" || mode === "book";
   const { fold } = useSnapshot(postureStore);
   const book = fold?.axis === "vertical" ? fold : null;
-  const hingeX = useHinge(native && !fold);
+  const hingeX = useHinge(duo && !fold);
   const { on: focus } = useSnapshot(focusStore);
-  const { viewMode } = useSnapshot(mobileNavStore);
+  const { viewMode, liveOpen } = useSnapshot(mobileNavStore);
   const roomForRail = useMinWidth(RAIL_MIN_VIEWPORT);
 
   // Two pages either side of the fold: the left one's width, then the gap
-  const pages = native && (book || hingeX !== null);
+  const pages = duo && (book || hingeX !== null);
   const leftPage = book
     ? `calc(${book.start}px - env(safe-area-inset-left))`
     : `calc(var(--hinge-x) - ${FOLD_CLEAR}px - env(safe-area-inset-left))`;
@@ -215,7 +223,7 @@ export function SessionSpread({
   const pageOpen = !!page;
   const pageWide = !!pages && pageOpen && !!pageSpread;
   // Two sessions open: one on each page, in place of the rail
-  const { paneCount } = usePanes();
+  const { paneCount, swap } = usePanes();
   const twoPages = !!pages && paneCount > 1 && !pageOpen;
   // Replying to the one session open: its context on the left page, the
   // pane on the right (two open keep their own cards above each composer)
@@ -235,8 +243,11 @@ export function SessionSpread({
     !replyLeft &&
     viewMode === "terminal" &&
     !!folder;
-  // On the pages the rail sits beside a conversation; Changes, Files and
-  // Workers take both pages for their own list | detail split
+  // On the pages the rail sits beside a conversation, once the column's
+  // Live asks for it; Changes, Files and Workers take both pages for their
+  // own list | detail split. An iOS app without the column has no Live
+  // to ask with, so there it stays as before
+  const railByDefault = native && !nativeCaps().column;
   const showRail =
     !!session &&
     !pageOpen &&
@@ -244,8 +255,10 @@ export function SessionSpread({
     !splitFold &&
     !replyLeft &&
     (pages
-      ? !homeOpen && (viewMode === "terminal" || viewMode === "chat")
-      : roomForRail && !native);
+      ? !homeOpen &&
+        (liveOpen || railByDefault) &&
+        (viewMode === "terminal" || viewMode === "chat")
+      : roomForRail && !duo);
   // Pane on the left page, the rail on the right (the home and Changes left
   // pages only come with no rail)
   const paneLeft = pages && showRail;
@@ -298,6 +311,16 @@ export function SessionSpread({
     mobileNavStore.railActive = true;
   }, []);
 
+  // The home beside the panes, for the surface (Now)
+  useEffect(() => {
+    setHome(homeWanted);
+    return () => {
+      setHome(false);
+    };
+  }, [homeWanted]);
+
+  useEffect(() => registerNavHandlers({ swapPanes: swap }), [swap]);
+
   const spreadPanes = useMemo<SpreadPanes>(
     () =>
       splitFold
@@ -327,15 +350,14 @@ export function SessionSpread({
       <div
         className={cn(
           "kb-compact-hide bg-sidebar-background flex-shrink-0 overflow-hidden shadow-xl shadow-black/10 transition-all duration-200 dark:shadow-black/30",
-          homeOpen && !pages && (native ? "w-1/2" : "w-[22rem]"),
-          homeOpen && native && !book && "border-border border-r"
+          homeOpen && !pages && (duo ? "w-1/2" : "w-[22rem]"),
+          homeOpen && duo && !book && "border-border border-r"
         )}
         style={homeStyle}
       >
-        {/* Its rows are inset px-4 already: px-1 more makes the 20px that,
-            with the bottom inset, keeps the last row clear of the open
-            Duo's round screen corner */}
-        <div className="bg-background h-full px-1 pb-[max(1rem,env(safe-area-inset-bottom))]">
+        {/* The page's own colour edge to edge (Open-Now); the bottom inset
+            keeps the last row clear of the open Duo's round screen corner */}
+        <div className="bg-page h-full pb-[max(1rem,env(safe-area-inset-bottom))]">
           {home}
         </div>
       </div>
@@ -395,7 +417,7 @@ export function SessionSpread({
       >
         <div
           className="mx-auto h-full w-full"
-          style={focus && !native ? { maxWidth: FOCUS_MAX_WIDTH } : undefined}
+          style={focus && !duo ? { maxWidth: FOCUS_MAX_WIDTH } : undefined}
         >
           {/* Hidden rather than unmounted: the terminal refits when shown */}
           <div className={cn("h-full w-full", pageOpen && "hidden")}>
@@ -434,12 +456,22 @@ export function SessionSpread({
         </aside>
       )}
 
-      {/* The one view switcher; the iOS app has its own */}
+      {/* The one view switcher; the iOS app has its own. On the open Duo
+          it sits in the system column's 86px, below the camera (Open-Now:
+          20 + 16 + 24 + 40) */}
       {!native && (
-        <div className="flex w-16 flex-shrink-0 justify-center py-2">
+        <div
+          className={cn(
+            "flex flex-shrink-0 justify-center",
+            duo ? "w-[86px] pt-[100px]" : "w-16 py-2"
+          )}
+        >
           <ControlColumn variant="column" className="self-start" />
         </div>
       )}
+
+      {/* Live activity where the rail isn't showing */}
+      <LiveSheet session={session} />
     </div>
   );
 }

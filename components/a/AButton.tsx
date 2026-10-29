@@ -70,10 +70,11 @@ export interface AButtonProps extends Omit<
   className?: string;
 }
 
+// md is the modern pill (44px, 15px); sm the small one (36px, 14px)
 const SIZE_CLASSES: Record<AButtonSize, { button: string; icon: string }> = {
-  sm: { button: "h-7 px-2 text-xs", icon: "h-3.5 w-3.5" },
-  md: { button: "h-8 px-3 text-sm", icon: "h-4 w-4" },
-  lg: { button: "h-10 px-4 text-base", icon: "h-5 w-5" },
+  sm: { button: "h-9 px-3.5 text-sm", icon: "h-4 w-4" },
+  md: { button: "h-11 px-[18px] text-[15px]", icon: "h-4 w-4" },
+  lg: { button: "h-12 px-6 text-base", icon: "h-5 w-5" },
 };
 
 const VARIANT_MAP: Record<

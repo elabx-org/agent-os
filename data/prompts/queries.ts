@@ -5,6 +5,8 @@ import { useSharedPoll } from "@/hooks/useSharedPoll";
 import { fetchAsUser } from "@/lib/client/user-fetch";
 
 const PROMPT_POLL_MS = 2000;
+/** Every waiting card past the first on Now: each poll reads a tmux screen */
+export const PROMPT_POLL_SLOW_MS = 10_000;
 
 export const promptKeys = {
   session: (sessionId: string) => ["session-prompt", sessionId] as const,
@@ -19,16 +21,19 @@ async function fetchPrompt(id: string): Promise<PermissionPrompt | null> {
 /** The selection prompt the session is showing, if any (the Inbox's card) */
 export function useSessionPrompt(
   sessionId: string,
-  { enabled = true }: { enabled?: boolean } = {}
+  {
+    enabled = true,
+    pollMs = PROMPT_POLL_MS,
+  }: { enabled?: boolean; pollMs?: number } = {}
 ) {
   const queryKey = promptKeys.session(sessionId);
   const query = useQuery({
     queryKey,
     queryFn: () => fetchPrompt(sessionId),
     enabled,
-    staleTime: PROMPT_POLL_MS,
+    staleTime: pollMs,
   });
-  useSharedPoll(queryKey, PROMPT_POLL_MS, enabled);
+  useSharedPoll(queryKey, pollMs, enabled);
   return query;
 }
 

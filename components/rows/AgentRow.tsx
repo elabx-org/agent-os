@@ -182,7 +182,9 @@ export const AgentRow = forwardRef<HTMLElement, AgentRowProps>(
     const classes = cn(
       "flex w-full items-center gap-3 rounded-xl px-2 py-[7px] text-left",
       dense ? "min-h-[46px]" : "min-h-[54px]",
-      selected ? "bg-secondary" : "[@media(pointer:fine)]:hover:bg-accent/50",
+      selected
+        ? "bg-[var(--row-sel)]"
+        : "[@media(pointer:fine)]:hover:bg-accent/50",
       "active:bg-accent disabled:opacity-50",
       className
     );
@@ -332,7 +334,7 @@ export const ProjectRow = forwardRef<
   );
 });
 
-/** "WORKING · 3", with an optional link on the right like "All projects" */
+/** "Working · 3", with an optional link on the right like "All projects" */
 export function SectionHeader({
   children,
   count,
@@ -347,7 +349,7 @@ export function SectionHeader({
   return (
     <div
       className={cn(
-        "text-muted-foreground flex items-center gap-2 px-2 pt-3 pb-1 text-[11.5px] font-semibold tracking-[.07em] uppercase",
+        "text-muted-foreground flex items-center gap-2 px-2 pt-4 pb-1.5 text-[15px] font-semibold",
         className
       )}
     >
@@ -359,7 +361,7 @@ export function SectionHeader({
         <button
           type="button"
           onClick={action.onClick}
-          className="hover:text-foreground relative ml-auto shrink-0 text-[12.5px] font-medium tracking-normal normal-case after:absolute after:-inset-x-2 after:-inset-y-3.5 after:content-['']"
+          className="relative ml-auto shrink-0 text-sm font-medium text-violet-700 after:absolute after:-inset-x-2 after:-inset-y-3.5 after:content-[''] active:opacity-70 dark:text-violet-300"
         >
           {action.label}
         </button>

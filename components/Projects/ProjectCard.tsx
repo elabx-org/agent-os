@@ -237,7 +237,7 @@ export function ProjectCard({
             backgroundAgents.needsYou
               ? "bg-amber-400/15 text-amber-400"
               : backgroundAgents.working
-                ? "bg-blue-400/15 text-blue-400"
+                ? "bg-work/15 text-work"
                 : "bg-secondary text-muted-foreground"
           )}
         >

@@ -1,39 +1,51 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useRef,
+  type ComponentType,
+  type CSSProperties,
+  type ReactNode,
+  type Ref,
+} from "react";
 import { useSnapshot } from "valtio";
 import { useLongPress } from "@/hooks/useLongPress";
-import { useTheme } from "next-themes";
 import { useQuery } from "@tanstack/react-query";
 import {
+  Asterisk,
   Bell,
   ChevronLeft,
-  ChevronRight,
-  CircleStop,
-  Film,
-  FlaskConical,
   Columns2,
+  Contrast,
+  FlaskConical,
   Globe,
-  Settings,
-  SlidersHorizontal,
-  Type,
+  Keyboard,
+  Terminal,
+  Video,
+  X,
   Zap,
 } from "lucide-react";
-import { AgentRow, SectionHeader } from "@/components/rows/AgentRow";
-import { isNative, postToNative } from "@/lib/native-bridge";
+import { AgentRow } from "@/components/rows/AgentRow";
+import { GroupCard, GroupRow } from "@/components/a";
+import { isNative, nativeCaps, postToNative } from "@/lib/native-bridge";
 import { postureStore } from "@/stores/posture";
 import { mobileNavStore } from "@/stores/mobileNav";
+import { layoutStore, type LayoutMode } from "@/hooks/useLayoutMode";
+import { useSyncedLook } from "@/hooks/useSyncedLook";
 import { useClaudeUsage } from "@/components/UsageMonitor";
-import {
-  DENSITY_EVENT,
-  getDisplayClass,
-  getOffset,
-} from "@/lib/display-density";
+import { useToolbarPreferences } from "@/components/Terminal/toolbar-config";
+import { formatReset } from "@/lib/usage-reset";
+import { lookSummary } from "@/lib/look-sync";
 import type { PushSettingsView } from "@/app/api/push/route";
+import type { SessionStatus } from "@/components/views/types";
+import { statusKeys } from "@/data/sessions/keys";
 import { duoPreviewStore } from "@/stores/duoPreview";
+import { PRESETS, loadUploadPrefs, uploadPrefs } from "@/stores/videoUploads";
 import {
   closeSettings,
+  settingsBack,
   settingsPageStore,
+  showSettingsSection,
   type SettingsSection,
 } from "@/stores/settingsPage";
 import { cn } from "@/lib/utils";
@@ -42,18 +54,20 @@ import {
   NotificationsSection,
   type NotificationsSectionProps,
 } from "./NotificationsSection";
-import { DisplaySection, themeLabel } from "./DisplaySection";
+import { DisplaySection } from "./DisplaySection";
 import { DuoSection } from "./DuoSection";
+import { KeysSection, keysSummary } from "./KeysSection";
 import { UsageSection } from "./UsageSection";
 import { ClaudeCodeSection } from "./ClaudeCodeSection";
 import { SessionsSection } from "./SessionsSection";
 import { UploadsSection } from "./UploadsSection";
 import { LabsSection } from "./LabsSection";
-import { SettingGroup } from "./SettingGroup";
+import { Chevron, SettingGroup } from "./SettingGroup";
 
 const SECTION_TITLE: Record<SettingsSection, string> = {
   notifications: "Notifications",
   display: "Display",
+  keys: "Keys",
   duo: "iPhone Duo",
   usage: "Usage",
   claude: "Claude Code",
@@ -63,29 +77,45 @@ const SECTION_TITLE: Record<SettingsSection, string> = {
   labs: "Labs",
 };
 
-const SECTION_ICON = {
-  notifications: Bell,
-  display: Type,
-  duo: Columns2,
-  usage: Zap,
-  claude: SlidersHorizontal,
-  sessions: CircleStop,
-  uploads: Film,
-  server: Globe,
-  labs: FlaskConical,
-} satisfies Record<SettingsSection, unknown>;
+/** Each section's 30px tile: its icon on its own colour (Closed-Settings) */
+const SECTION_TILE = {
+  notifications: { icon: Bell, color: "#DC2626" },
+  display: { icon: Contrast, color: "#2563EB" },
+  keys: { icon: Keyboard, color: "#52525B" },
+  duo: { icon: Columns2, color: "#4F46E5" },
+  usage: { icon: Zap, color: "#6D28D9" },
+  claude: { icon: Asterisk, color: "#C2410C" },
+  sessions: { icon: Terminal, color: "#3F3F46" },
+  uploads: { icon: Video, color: "#047857" },
+  server: { icon: Globe, color: "#0284C7" },
+  labs: { icon: FlaskConical, color: "#A16207" },
+} satisfies Record<
+  SettingsSection,
+  { icon: ComponentType<{ className?: string }>; color: string }
+>;
 
-/**
- * Settings as a solid page over everything: one scrolling page when narrow,
- * a section list beside the chosen section when wide (the open iPhone Duo's
- * two pages, either side of the fold in book pose).
- */
+/** The list|detail split: the open Duo (flat or book) and desktops */
+const SPLIT: readonly LayoutMode[] = ["duo-open", "book", "desktop"];
+
+function Tile({ section }: { section: SettingsSection }) {
+  const { icon: Icon, color } = SECTION_TILE[section];
+  return (
+    <span
+      aria-hidden="true"
+      className="grid h-[30px] w-[30px] shrink-0 place-items-center rounded-lg text-white"
+      style={{ backgroundColor: color }}
+    >
+      <Icon className="h-4 w-4" />
+    </span>
+  );
+}
+
 /** What runs: the server's release, and the app's when in it */
 function VersionLine({ className }: { className?: string }) {
   const ref = useRef<HTMLParagraphElement>(null);
   const revealLabs = () => {
     settingsPageStore.labs = true;
-    settingsPageStore.section = "labs";
+    showSettingsSection("labs");
   };
   // Hidden on purpose: a long press (a double click on desktop) shows Labs
   useLongPress(ref, revealLabs);
@@ -101,9 +131,12 @@ function VersionLine({ className }: { className?: string }) {
     <p
       ref={ref}
       onDoubleClick={revealLabs}
-      className={cn("text-muted-foreground text-xs select-none", className)}
+      className={cn(
+        "text-muted-foreground px-[calc(var(--settings-gutter-l,20px)+4px)] text-[13px] select-none",
+        className
+      )}
     >
-      {data?.version && `Agent-OS v${data.version}`}
+      {data?.version && `Agent-OS ${data.version}`}
       {data?.version && app && " · "}
       {app && `iOS app ${app}`}
     </p>
@@ -117,15 +150,21 @@ export function SettingsPage(props: NotificationsSectionProps) {
 }
 
 function SettingsLayer(props: NotificationsSectionProps) {
-  const { section, labs } = useSnapshot(settingsPageStore);
+  const { section, detail, labs } = useSnapshot(settingsPageStore);
   const { fold } = useSnapshot(postureStore);
   const { on: duoTrial } = useSnapshot(duoPreviewStore);
-  const { theme } = useTheme();
+  const { preset } = useSnapshot(uploadPrefs);
   const { railWidth } = useSnapshot(mobileNavStore);
-  const narrow = useNarrow();
+  const layout = useSettingsLayout();
+  const split = SPLIT.includes(layout);
   // Only ever mounted in the browser, so no hydration to match
   const native = isNative();
-  const backRef = useRef<HTMLButtonElement>(null);
+  // The column draws close/back and Server: the web column on the closed
+  // Duo in Safari, the app's own once it takes the column spec. Otherwise
+  // the page has its own.
+  const nativeColumn = native && nativeCaps().column;
+  const columnNav = nativeColumn || (!native && layout === "duo-closed");
+  const navRef = useRef<HTMLButtonElement>(null);
   const layerRef = useRef<HTMLDivElement>(null);
 
   // Modal for real: the app behind can't take focus or keys (the terminal
@@ -134,12 +173,18 @@ function SettingsLayer(props: NotificationsSectionProps) {
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null;
     const layer = layerRef.current;
-    const behind = [...(layer?.parentElement?.children ?? [])].filter(
-      (el): el is HTMLElement =>
-        el !== layer && el instanceof HTMLElement && !el.inert
-    );
+    // The web column or bar stays usable: it closes Settings and goes back
+    const keep = [...document.querySelectorAll("[data-control-column]")];
+    const behind: HTMLElement[] = [];
+    const shut = (el: Element) => {
+      if (el === layer || !(el instanceof HTMLElement) || el.inert) return;
+      if (!keep.some((k) => el.contains(k))) behind.push(el);
+      else if (!keep.includes(el)) [...el.children].forEach(shut);
+    };
+    [...(layer?.parentElement?.children ?? [])].forEach(shut);
     behind.forEach((el) => (el.inert = true));
-    backRef.current?.focus();
+    // The layer, not its close button: focus moved by script shows a ring
+    layer?.focus();
     return () => {
       behind.forEach((el) => (el.inert = false));
       if (previous?.isConnected) previous.focus();
@@ -147,41 +192,60 @@ function SettingsLayer(props: NotificationsSectionProps) {
   }, []);
 
   // Capture: the terminal swallows Esc otherwise. A dialog opened from here
-  // (usage details) closes first.
+  // (usage details) closes first; a section on its own page goes back first.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
       if (document.querySelector('[data-slot="dialog-content"]')) return;
       e.preventDefault();
-      closeSettings();
+      if (split || !settingsBack()) closeSettings();
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, []);
+  }, [split]);
 
-  // The Duo and Server sections are the iOS app's
-  const base: SettingsSection[] = native
-    ? [
-        "notifications",
-        "display",
-        "duo",
-        "usage",
-        "claude",
-        "sessions",
-        "uploads",
-        "server",
-      ]
-    : ["notifications", "display", "usage", "claude", "sessions", "uploads"];
-  const sections: SettingsSection[] = labs ? [...base, "labs"] : base;
+  useEffect(loadUploadPrefs, []);
+
+  // A section on its own page, or back on the list: from its top, with focus
+  // on the page (the row tapped is gone)
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const firstPage = useRef(true);
+  useEffect(() => {
+    if (firstPage.current) {
+      firstPage.current = false;
+      return;
+    }
+    // Split, the list stays put beside the section
+    if (split) return;
+    scrollRef.current?.scrollTo({ top: 0 });
+    (navRef.current ?? layerRef.current)?.focus({ preventScroll: true });
+  }, [detail, section, split]);
+
+  // The list. Usage is the card above it; iPhone Duo and Server are the iOS
+  // app's (Server in its column once it has one); Keys are touch keys
+  const rows: SettingsSection[] = [
+    "notifications",
+    "display",
+    ...(layout !== "desktop" || native ? (["keys"] as const) : []),
+    ...(native ? (["duo"] as const) : []),
+    "claude",
+    "uploads",
+    "sessions",
+    ...(native && !nativeColumn ? (["server"] as const) : []),
+    ...(labs ? (["labs"] as const) : []),
+  ];
+  const sections: SettingsSection[] = [...rows, "usage"];
   const current = sections.includes(section) ? section : "notifications";
 
-  const phone = usePhoneSummary(current);
-  const textSize = useTextSize();
-  const { data: usage } = useClaudeUsage();
+  const notificationsOn = useNotificationsOn(current, props);
+  const running = useRunningCount();
+  const { look } = useSyncedLook();
+  const { preferences: keys } = useToolbarPreferences();
 
   const body: Record<SettingsSection, ReactNode> = {
     notifications: <NotificationsSection {...props} />,
     display: <DisplaySection />,
+    keys: <KeysSection />,
     duo: <DuoSection />,
     usage: <UsageSection />,
     claude: <ClaudeCodeSection />,
@@ -195,71 +259,109 @@ function SettingsLayer(props: NotificationsSectionProps) {
     ),
   };
 
-  const summary: Record<SettingsSection, string> = {
-    notifications: phone ?? `Sound ${props.settings.sound ? "on" : "off"}`,
-    // The variant alone: "Graphite", not "Dark · Graphite"
-    display: `Text size ${textSize > 0 ? "+" : ""}${textSize} · ${themeLabel(theme).split(" · ").pop()}`,
-    duo: `Closed layout · ${duoTrial ? "title in page" : "standard"}`,
-    usage:
-      usage && !usage.error
-        ? `${usage.plan} · ${Math.round(usage.seven_day.utilization ?? 0)}% this week`
-        : "Plan limits",
-    claude: "Claude Config",
-    sessions: "Kill all sessions",
-    uploads: "Video frames",
-    labs: "Kill switches",
-    server: typeof window !== "undefined" ? window.location.host : "",
+  const value: Partial<Record<SettingsSection, string>> = {
+    notifications:
+      notificationsOn === null ? undefined : notificationsOn ? "On" : "Off",
+    display: lookSummary(look),
+    keys: keysSummary(keys),
+    duo: duoTrial ? "Title in page" : "Standard",
+    uploads: PRESETS[preset].label,
+    sessions: running === null ? undefined : `${running} running`,
+    server: typeof window !== "undefined" ? window.location.host : undefined,
   };
 
-  const backButton = (
-    <button
-      ref={backRef}
-      type="button"
-      onClick={closeSettings}
-      aria-label="Close settings"
-      className="text-muted-foreground active:bg-accent hover:bg-accent relative grid h-[34px] w-[34px] shrink-0 place-items-center rounded-lg after:absolute after:-inset-[5px] after:content-['']"
-    >
-      <ChevronLeft className="h-5 w-5" />
-    </button>
+  const open = (s: SettingsSection) => {
+    if (s === "server") postToNative({ type: "server" });
+    else showSettingsSection(s);
+  };
+
+  const list = (
+    <div className="flex flex-col gap-4">
+      <UsageCard
+        selected={split && current === "usage"}
+        onClick={() => open("usage")}
+      />
+      <GroupCard
+        aria-label="Settings sections"
+        className="mr-[var(--settings-gutter-r,20px)] ml-[var(--settings-gutter-l,20px)]"
+      >
+        {rows.map((s) => (
+          <GroupRow
+            key={s}
+            leading={<Tile section={s} />}
+            title={<span className="text-[16px]">{SECTION_TITLE[s]}</span>}
+            trailing={
+              value[s] && (
+                <span className="text-muted-foreground shrink-0 text-[14px]">
+                  {value[s]}
+                </span>
+              )
+            }
+            chevron
+            selected={split && s === current}
+            onClick={() => open(s)}
+          />
+        ))}
+      </GroupCard>
+      <VersionLine />
+    </div>
   );
 
   const layer =
-    "bg-background fixed inset-0 z-[45] flex pt-[env(safe-area-inset-top)]";
+    "bg-background fixed inset-0 z-[45] flex pt-[env(safe-area-inset-top)] outline-none";
   // Clear of the iOS app's system column on the right. In a browser with the
   // nav rail in that column, stop at the rail and leave it usable
   const rightInset = railWidth
     ? ""
     : "pr-[var(--safe-right,env(safe-area-inset-right))]";
   const layerStyle = railWidth ? { right: railWidth } : undefined;
+  const scroll =
+    "min-h-0 flex-1 overflow-y-auto overscroll-contain pt-[18px] pb-[calc(1.5rem+max(env(safe-area-inset-bottom),var(--control-bar-h,0px)))]";
+  const title = "t-large px-[var(--settings-gutter-l,20px)]";
 
-  if (narrow) {
+  if (!split) {
+    const navButton = columnNav ? null : detail ? (
+      <NavButton
+        ref={navRef}
+        label="Back to Settings"
+        onClick={() => settingsBack()}
+      >
+        <ChevronLeft className="h-5 w-5" />
+      </NavButton>
+    ) : (
+      <NavButton ref={navRef} label="Close settings" onClick={closeSettings}>
+        <X className="h-5 w-5" />
+      </NavButton>
+    );
     return (
       <div
         ref={layerRef}
         role="dialog"
-        aria-modal="true"
+        // The web column outside it closes it and goes back, so VoiceOver
+        // must reach it (inert keeps the rest behind out)
+        aria-modal={columnNav && !nativeColumn ? undefined : true}
         aria-label="Settings"
-        style={layerStyle}
+        tabIndex={-1}
+        style={{ ...layerStyle, ...gutters(columnNav ? 8 : 20) }}
         className={cn(
           layer,
           rightInset,
           "flex-col pl-[env(safe-area-inset-left)]"
         )}
       >
-        <header className="border-border flex items-center gap-2.5 border-b px-3 pt-2 pb-2.5">
-          {backButton}
-          <h1 className="text-[15px] font-semibold">Settings</h1>
-        </header>
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
-          {sections.map((s) => (
-            <section key={s}>
-              <SectionHeader className="px-5 pt-4">
-                {SECTION_TITLE[s]}
-              </SectionHeader>
-              {body[s]}
-            </section>
-          ))}
-          <VersionLine className="px-5 pt-6" />
+        <div ref={scrollRef} className={scroll}>
+          {navButton && <div className="-mt-2 px-3 pb-1">{navButton}</div>}
+          {detail ? (
+            <>
+              <h1 className={title}>{SECTION_TITLE[current]}</h1>
+              <div className="pt-4">{body[current]}</div>
+            </>
+          ) : (
+            <div className="flex flex-col gap-4">
+              <h1 className={title}>Settings</h1>
+              {list}
+            </div>
+          )}
         </div>
       </div>
     );
@@ -276,73 +378,193 @@ function SettingsLayer(props: NotificationsSectionProps) {
       role="dialog"
       aria-modal="true"
       aria-label="Settings"
-      style={layerStyle}
+      tabIndex={-1}
+      style={{ ...layerStyle, ...gutters(20) }}
       className={layer}
     >
       <aside
         style={listStyle}
         className={cn(
           "flex shrink-0 flex-col pl-[env(safe-area-inset-left)]",
-          !book && "border-border border-r",
-          !book && (native ? "w-[455px]" : "w-[40%] min-w-[300px]")
+          !book && "border-hair border-r",
+          !book &&
+            // Flat open Duo: the left page, up to the fold
+            (layout === "duo-open"
+              ? "w-[455px]"
+              : "w-[40%] max-w-[440px] min-w-[300px]")
         )}
       >
-        <div className="flex items-center gap-2 px-3 pt-3 pb-2">
-          {backButton}
-          <Settings className="h-[17px] w-[17px]" aria-hidden="true" />
-          <h1 className="text-base font-semibold">Settings</h1>
-        </div>
-        <nav
-          aria-label="Settings sections"
-          className="min-h-0 flex-1 overflow-y-auto px-2 pb-[calc(1rem+env(safe-area-inset-bottom))]"
-        >
-          {sections.map((s) => (
-            <AgentRow
-              key={s}
-              kind="setting"
-              state="idle"
-              icon={SECTION_ICON[s]}
-              title={SECTION_TITLE[s]}
-              subtitle={summary[s]}
-              dense
-              selected={s === current && s !== "server"}
-              onClick={() => {
-                if (s === "server") postToNative({ type: "server" });
-                else settingsPageStore.section = s;
-              }}
-              trailing={
-                <ChevronRight
-                  aria-hidden="true"
-                  className="text-muted-foreground h-4 w-4"
-                />
-              }
-            />
-          ))}
-          <VersionLine className="px-3 pt-4" />
+        <nav aria-label="Settings sections" className={scroll}>
+          <div className="flex flex-col gap-4">
+            <div className="flex items-center justify-between pr-3">
+              <h1 className={title}>Settings</h1>
+              {!nativeColumn && (
+                <NavButton
+                  ref={navRef}
+                  label="Close settings"
+                  onClick={closeSettings}
+                >
+                  <X className="h-5 w-5" />
+                </NavButton>
+              )}
+            </div>
+            {list}
+          </div>
         </nav>
       </aside>
       {book && (
         <div aria-hidden="true" style={{ width: book.end - book.start }} />
       )}
       <main
-        className={cn(
-          "min-w-0 flex-1 overflow-y-auto overscroll-contain pb-[calc(1.5rem+env(safe-area-inset-bottom))]",
-          rightInset
-        )}
+        className={cn(scroll, "min-w-0", rightInset)}
+        // Flat open Duo: the section's cards keep clear of the fold
+        style={
+          layout === "duo-open" && !book
+            ? ({
+                "--settings-gutter-l": "calc(20px + var(--fold-clear, 0px))",
+              } as CSSProperties)
+            : undefined
+        }
       >
-        <header className="border-border flex min-h-[50px] items-center border-b px-5 pt-3 pb-2">
-          <h2 className="text-[15px] font-semibold">
-            {SECTION_TITLE[current]}
-          </h2>
-        </header>
-        <div className="mx-auto max-w-2xl pt-2">{body[current]}</div>
+        <div className="mx-auto max-w-2xl">
+          <h2 className={title}>{SECTION_TITLE[current]}</h2>
+          <div className="pt-4">{body[current]}</div>
+        </div>
       </main>
     </div>
   );
 }
 
-/** "ntfy on", from the server's phone channels; re-read on each section */
-function usePhoneSummary(section: SettingsSection): string | null {
+/** The side margins every card on the page takes (SettingGroup reads them) */
+function gutters(right: number): CSSProperties {
+  return {
+    "--settings-gutter-l": "20px",
+    "--settings-gutter-r": `${right}px`,
+  } as CSSProperties;
+}
+
+function NavButton({
+  ref,
+  label,
+  onClick,
+  children,
+}: {
+  ref: Ref<HTMLButtonElement>;
+  label: string;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      ref={ref}
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      className="text-muted-foreground active:bg-accent hover:bg-accent relative grid h-[34px] w-[34px] shrink-0 place-items-center rounded-lg after:absolute after:-inset-[5px] after:content-['']"
+    >
+      {children}
+    </button>
+  );
+}
+
+/** Claude's plan use at the top of Settings; opens Usage */
+function UsageCard({
+  selected,
+  onClick,
+}: {
+  selected: boolean;
+  onClick: () => void;
+}) {
+  const { data } = useClaudeUsage();
+  const usage = data && !data.error ? data : null;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-current={selected || undefined}
+      className={cn(
+        "bg-card mr-[var(--settings-gutter-r,20px)] ml-[var(--settings-gutter-l,20px)] flex flex-col gap-2.5 rounded-[20px] p-3.5 text-left",
+        selected && "ring-primary/60 ring-2"
+      )}
+    >
+      <span className="flex items-center gap-2.5">
+        <Tile section="usage" />
+        <span className="min-w-0 flex-1 text-[16px] font-medium">
+          Claude usage
+        </span>
+        <span className="text-muted-foreground shrink-0 text-[14px]">
+          {usage ? usage.plan : "Not reported"}
+        </span>
+      </span>
+      {usage && (
+        <>
+          <Meter
+            label="Session"
+            pct={usage.five_hour.utilization}
+            resetsAt={usage.five_hour.resets_at}
+          />
+          <Meter
+            label="Week"
+            pct={usage.seven_day.utilization}
+            resetsAt={usage.seven_day.resets_at}
+          />
+        </>
+      )}
+    </button>
+  );
+}
+
+function Meter({
+  label,
+  pct,
+  resetsAt,
+}: {
+  label: string;
+  pct: number | null;
+  resetsAt: string | null;
+}) {
+  const value = Math.max(0, Math.min(100, Math.round(pct ?? 0)));
+  const reset = formatReset(resetsAt, { style: "long" });
+  return (
+    <span className="flex flex-col gap-1.5">
+      <span className="text-muted-foreground flex items-center justify-between text-[13px]">
+        <span>
+          <span className="text-foreground/90">{label}</span>
+          {reset && ` · resets ${reset}`}
+        </span>
+        <span className="text-foreground/90 font-semibold tabular-nums">
+          {value}%
+        </span>
+      </span>
+      <span className="bg-foreground/10 block h-1.5 overflow-hidden rounded-[3px]">
+        <span
+          className="bg-primary dark:bg-meter block h-full min-w-1.5 rounded-[3px]"
+          style={{ width: `${value}%` }}
+        />
+      </span>
+    </span>
+  );
+}
+
+/**
+ * The posture, or (before the posture is first measured) the width: this
+ * only mounts in the browser, and a wrong first frame would steal the nav
+ * button's focus when it swaps.
+ */
+function useSettingsLayout(): LayoutMode {
+  const { mode, hydrated } = useSnapshot(layoutStore);
+  if (hydrated) return mode;
+  return window.innerWidth < 768 ? "phone" : "desktop";
+}
+
+/**
+ * Notifications on: a phone channel (ntfy, Apple push) or this device's
+ * alerts. Re-read on each section; null until the server answers.
+ */
+function useNotificationsOn(
+  section: SettingsSection,
+  { settings, permissionGranted }: NotificationsSectionProps
+): boolean | null {
   const { data, refetch } = useQuery<PushSettingsView>({
     queryKey: ["push-settings"],
     queryFn: async () => {
@@ -355,35 +577,24 @@ function usePhoneSummary(section: SettingsSection): string | null {
     refetch();
   }, [section, refetch]);
   if (!data) return null;
-  const on = [data.ntfy.enabled && "ntfy", data.apns.enabled && "Apple push"];
-  const channels = on.filter(Boolean).join(" + ");
-  return channels ? `${channels} on` : "Phone alerts off";
+  const device =
+    settings.enabled && settings.browserNotifications && permissionGranted;
+  return data.ntfy.enabled || data.apns.enabled || device;
 }
 
-/** This display's text size step, following A− / A+ */
-function useTextSize(): number {
-  const [offset, setOffset] = useState(() => getOffset(getDisplayClass()));
-  useEffect(() => {
-    const update = () => setOffset(getOffset(getDisplayClass()));
-    window.addEventListener(DENSITY_EVENT, update);
-    return () => window.removeEventListener(DENSITY_EVENT, update);
-  }, []);
-  return offset;
-}
-
-/**
- * Under 768px, like useViewport, but right on the first render: this only
- * mounts in the browser, and a wide first frame would steal the back
- * button's focus when it swaps.
- */
-function useNarrow() {
-  const [narrow, setNarrow] = useState(() => window.innerWidth < 768);
-  useEffect(() => {
-    const update = () => setNarrow(window.innerWidth < 768);
-    window.addEventListener("resize", update);
-    return () => window.removeEventListener("resize", update);
-  }, []);
-  return narrow;
+/** Sessions whose tmux is alive, from the status poll the app already runs */
+function useRunningCount(): number | null {
+  const { data } = useQuery<{ statuses: Record<string, SessionStatus> }>({
+    queryKey: statusKeys.all,
+    queryFn: async () => {
+      const res = await fetch("/api/sessions/status");
+      if (!res.ok) throw new Error("Failed to fetch statuses");
+      return res.json();
+    },
+    staleTime: 2000,
+  });
+  if (!data) return null;
+  return Object.values(data.statuses).filter((s) => s.status !== "dead").length;
 }
 
 /** The iOS app keeps the server address and Face ID lock in its own screen */
@@ -397,12 +608,7 @@ function ServerRow() {
       subtitle={`${window.location.host} · opens in the app`}
       dense
       onClick={() => postToNative({ type: "server" })}
-      trailing={
-        <ChevronRight
-          aria-hidden="true"
-          className="text-muted-foreground h-4 w-4"
-        />
-      }
+      trailing={<Chevron />}
     />
   );
 }

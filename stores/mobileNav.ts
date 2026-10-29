@@ -31,6 +31,10 @@ export const mobileNavStore = proxy<{
   railShown: boolean;
   /** The home covers the pane (phones), so no view is selected */
   homeOpen: boolean;
+  /** Which half of the home shows: Now, or Projects until M1b gives it a page */
+  homeTab: "now" | "projects";
+  /** The column's Live activity: the rail on the open Duo's right page, else a sheet */
+  liveOpen: boolean;
 }>({
   viewMode: "terminal",
   request: null,
@@ -43,6 +47,8 @@ export const mobileNavStore = proxy<{
   needsYou: 0,
   railShown: false,
   homeOpen: false,
+  homeTab: "now",
+  liveOpen: false,
 });
 
 export const mobileNavActions = {
