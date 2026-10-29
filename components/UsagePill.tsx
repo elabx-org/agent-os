@@ -1,14 +1,9 @@
 "use client";
 
-import { useState } from "react";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { DetailBar, useClaudeUsage } from "@/components/UsageMonitor";
+import { useClaudeUsage } from "@/components/UsageMonitor";
 import { useMinimaxUsage } from "@/components/MinimaxUsageMonitor";
+import { formatReset } from "@/lib/usage-reset";
+import { openSettings } from "@/stores/settingsPage";
 import { cn } from "@/lib/utils";
 
 /** Claude's spark, in Claude's orange whatever the theme */
@@ -60,24 +55,70 @@ export function MinimaxMark({ size = 13 }: { size?: number }) {
   );
 }
 
-/** Quiet until half used, then amber, then red */
+/**
+ * phone: the regular iPhone's (54px meters); closed: the closed Duo's (60px);
+ * wide: the open Duo's left page and the desktop sidebar, taller with each
+ * window's reset under its meter
+ */
+export type UsagePillVariant = "phone" | "closed" | "wide";
+
+const VARIANT = {
+  phone: { pill: "h-11 gap-3 rounded-[22px] px-3", meter: "w-[54px]" },
+  closed: { pill: "h-11 gap-3.5 rounded-[22px] px-3.5", meter: "w-[60px]" },
+  wide: { pill: "h-[52px] gap-4 rounded-[26px] px-4", meter: "w-[84px]" },
+} as const;
+
+/** Only past 80% does the number warn */
 function level(pct: number): string {
-  if (pct >= 80) return "text-red-400";
-  if (pct >= 50) return "text-amber-400";
-  return "text-foreground";
+  return pct >= 80 ? "text-red-600 dark:text-red-400" : "text-foreground";
 }
 
-function Pct({ pct, className }: { pct: number; className?: string }) {
-  return <span className={cn(level(pct), className)}>{Math.round(pct)}%</span>;
+function Meter({
+  label,
+  pct,
+  reset,
+  className,
+}: {
+  label: string;
+  pct: number;
+  /** "resets 4:10 pm", wide only */
+  reset?: string;
+  className?: string;
+}) {
+  return (
+    <span className={cn("flex flex-col gap-[5px]", className)}>
+      <span className="flex items-center justify-between gap-1">
+        <span className="text-muted-foreground">{label}</span>
+        <span className={cn("font-semibold", level(pct))}>
+          {Math.round(pct)}%
+        </span>
+      </span>
+      <span className="bg-foreground/10 h-1 overflow-hidden rounded-full">
+        <span
+          className="dark:bg-meter block h-full min-w-1 rounded-full bg-violet-600"
+          style={{ width: `${Math.min(100, Math.max(0, pct))}%` }}
+        />
+      </span>
+      {reset !== undefined && (
+        <span className="text-[11px] text-[#6B6B70] dark:text-[#8E8E93]">
+          {reset ? `resets ${reset}` : "\u00a0"}
+        </span>
+      )}
+    </span>
+  );
 }
 
 /**
- * The home's usage: each provider's mark and its numbers, one tap from the
- * Usage sheet. Needs an @container/top ancestor; when it's narrow, Claude's
- * weekly % goes first, then only the marks and the highest % stay.
+ * The home's usage: Claude's session and week as two violet meters (MiniMax's
+ * prompts when there's no Claude), one tap from Settings → Usage.
  */
-export function UsagePill() {
-  const [open, setOpen] = useState(false);
+export function UsagePill({
+  variant = "closed",
+  className,
+}: {
+  variant?: UsagePillVariant;
+  className?: string;
+}) {
   const { data: claude } = useClaudeUsage();
   const { data: minimax } = useMinimaxUsage();
 
@@ -85,125 +126,61 @@ export function UsagePill() {
   const m = minimax?.data ?? null;
   if (!c && !m) return null;
 
+  const wide = variant === "wide";
+  const { pill, meter } = VARIANT[variant];
   const session = c?.five_hour.utilization ?? 0;
   const weekly = c?.seven_day.utilization ?? 0;
+  const sessionReset = formatReset(c?.five_hour.resets_at);
+  const weekReset = formatReset(c?.seven_day.resets_at);
   const mPct = m && m.total > 0 ? ((m.total - m.remains) / m.total) * 100 : 0;
-  const highest = Math.max(c ? Math.max(session, weekly) : 0, m ? mPct : 0);
 
+  // As the mock reads it: "Claude usage: session 3%, resets 4:10 pm; …"
+  const resets = (iso: string | null | undefined) => {
+    const when = formatReset(iso, { style: "long" });
+    return wide && when ? `, resets ${when}` : "";
+  };
   const label = [
     c &&
-      `Claude ${Math.round(session)}% of 5 hours, ${Math.round(weekly)}% of the week`,
+      `Claude usage: session ${Math.round(session)}%${resets(c.five_hour.resets_at)}; week ${Math.round(weekly)}%${resets(c.seven_day.resets_at)}`,
     m && `MiniMax ${Math.round(mPct)}%`,
   ]
     .filter(Boolean)
     .join("; ");
 
   return (
-    <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        aria-label={`Usage: ${label}`}
-        className="bg-secondary text-muted-foreground hover:bg-accent relative flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs whitespace-nowrap tabular-nums after:absolute after:inset-x-0 after:-inset-y-2 after:content-['']"
-      >
-        {c && (
-          <>
-            <ClaudeMark />
-            <span
-              className={cn(
-                "flex items-center gap-1",
-                m && "@max-[300px]/top:hidden"
-              )}
-            >
-              <Pct pct={session} />
-              <span className={cn(m && "@max-[350px]/top:hidden")}>·</span>
-              <Pct
-                pct={weekly}
-                className={cn(m && "@max-[350px]/top:hidden")}
-              />
-            </span>
-          </>
-        )}
-        {c && m && (
-          <span
-            aria-hidden="true"
-            className="bg-border mx-0.5 h-3 w-px @max-[300px]/top:hidden"
+    <button
+      type="button"
+      onClick={() => openSettings("usage")}
+      aria-label={label}
+      className={cn(
+        "glass flex shrink-0 items-center text-xs leading-none whitespace-nowrap tabular-nums active:opacity-80",
+        pill,
+        className
+      )}
+    >
+      {c ? (
+        <>
+          <Meter
+            label="Session"
+            pct={session}
+            reset={wide ? sessionReset : undefined}
+            className={meter}
           />
-        )}
-        {m && (
-          <>
-            <MinimaxMark />
-            <Pct pct={mPct} className={cn(c && "@max-[300px]/top:hidden")} />
-          </>
-        )}
-        {c && m && (
-          <Pct pct={highest} className="hidden @max-[300px]/top:inline" />
-        )}
-      </button>
-
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Usage</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3 pb-1">
-            {c && (
-              <section className="bg-secondary space-y-3 rounded-[14px] p-3.5">
-                <h3 className="flex items-center gap-2 text-sm font-semibold">
-                  <ClaudeMark size={15} />
-                  Claude
-                  <span className="text-muted-foreground font-normal">
-                    · {c.plan}
-                  </span>
-                </h3>
-                <DetailBar
-                  label="5 hours"
-                  pct={session}
-                  resetsAt={c.five_hour.resets_at}
-                />
-                <DetailBar
-                  label="Week"
-                  pct={weekly}
-                  resetsAt={c.seven_day.resets_at}
-                />
-                {c.seven_day_sonnet?.utilization != null && (
-                  <DetailBar
-                    label="Sonnet"
-                    pct={c.seven_day_sonnet.utilization}
-                    resetsAt={c.seven_day_sonnet.resets_at}
-                    subtitle="weekly"
-                  />
-                )}
-                {c.seven_day_opus?.utilization != null && (
-                  <DetailBar
-                    label="Opus"
-                    pct={c.seven_day_opus.utilization}
-                    resetsAt={c.seven_day_opus.resets_at}
-                    subtitle="weekly"
-                  />
-                )}
-              </section>
-            )}
-            {m && (
-              <section className="bg-secondary space-y-3 rounded-[14px] p-3.5">
-                <h3 className="flex items-center gap-2 text-sm font-semibold">
-                  <MinimaxMark size={14} />
-                  MiniMax
-                  <span className="text-muted-foreground font-normal">
-                    · Coding plan
-                  </span>
-                </h3>
-                <DetailBar
-                  label="Prompts"
-                  pct={mPct}
-                  resetsAt={null}
-                  subtitle={`${m.remains.toLocaleString()} of ${m.total.toLocaleString()} left`}
-                />
-              </section>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
-    </>
+          <Meter
+            label="Week"
+            pct={weekly}
+            reset={wide ? weekReset : undefined}
+            className={meter}
+          />
+        </>
+      ) : (
+        <Meter
+          label="MiniMax"
+          pct={mPct}
+          reset={wide ? "" : undefined}
+          className={meter}
+        />
+      )}
+    </button>
   );
 }

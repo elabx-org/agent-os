@@ -2,10 +2,13 @@
 
 import type { ReactNode } from "react";
 import { Loader2, SquareTerminal, Users } from "lucide-react";
+import { agentName } from "@/components/a/Avatar";
+import { StateDot } from "@/components/a/StateDot";
 import { PermissionCard } from "@/components/Composer/PermissionCard";
-import { KindBadge } from "@/components/rows/AgentRow";
+import { shortAge } from "@/components/MissionControl/now-summary";
 import { useAnswerPrompt, useSessionPrompt } from "@/data/prompts/queries";
 import { useReplyContextState } from "@/hooks/useReplyContext";
+import { STATE_TEXT_CLASS } from "@/lib/agent-state";
 import {
   isAnswerableQuestion,
   KIND_STYLE,
@@ -82,46 +85,67 @@ export function InboxItem({
 
   if (variant === "card") {
     const split = prompt ? splitOptions(prompt.options) : null;
+    const word = question
+      ? "Asking"
+      : permission
+        ? "Permission"
+        : isLoading
+          ? "Needs you"
+          : "Your turn";
+    const name = title ?? session.name;
     return (
-      <Root className="grid gap-2.5 rounded-2xl bg-gradient-to-b from-amber-400/[0.06] to-amber-400/[0.02] p-3.5 pb-3 ring-1 ring-amber-400/35 ring-inset">
+      // The mocks' .ask card
+      <Root className="bg-card border-needs/40 flex flex-col gap-1.5 rounded-[22px] border p-3.5">
         <button
           type="button"
           onClick={onOpen}
-          className="flex min-w-0 items-center gap-2.5 text-left"
+          className="text-muted-foreground flex min-w-0 items-center gap-2 text-left text-[13px]"
         >
-          <KindBadge kind="session" state="needs" />
-          <span className="min-w-0 flex-1">
-            <span className="block truncate text-sm">
-              {title ?? session.name}
-            </span>
-            <span className="text-muted-foreground block truncate text-[12.5px]">
-              {[projectName, prompt ? askLabel(prompt.title) : "Your turn"]
+          <StateDot state="needs" />
+          <span className={cn("font-semibold", STATE_TEXT_CLASS.needs)}>
+            {word}
+          </span>
+          <span className="min-w-0 flex-1 truncate">
+            {/* A permission card has no title line: the header names it */}
+            {"· " +
+              [projectName, permission ? name : agentName(session.agent_type)]
                 .filter(Boolean)
                 .join(" · ")}
-            </span>
           </span>
+          <span className="shrink-0">{shortAge(session.updated_at)}</span>
         </button>
+        {!permission && (
+          <button
+            type="button"
+            onClick={onOpen}
+            className="t-head min-w-0 truncate text-left"
+          >
+            {name}
+          </button>
+        )}
 
         {isLoading && (
-          <div className="text-muted-foreground flex items-center gap-2 text-xs">
+          <div className="text-muted-foreground flex items-center gap-2 text-[13px]">
             <Loader2 className="h-3.5 w-3.5 animate-spin" /> Reading the
             session…
           </div>
         )}
 
         {!isLoading && !prompt && (
-          <p className="text-muted-foreground text-[12.5px]">
+          <p className="text-foreground/75">
             Needs a typed reply. Open the session to respond.
           </p>
         )}
 
         {permission && (
-          <PermissionCard
-            session={session}
-            permission={permission}
-            variant="card"
-            onOpen={onOpen}
-          />
+          <div className="mt-0.5">
+            <PermissionCard
+              session={session}
+              permission={permission}
+              variant="card"
+              onOpen={onOpen}
+            />
+          </div>
         )}
 
         {question && split && (
@@ -132,12 +156,14 @@ export function InboxItem({
               </pre>
             ) : (
               prompt.question && (
-                <p className="line-clamp-2 text-sm">{prompt.question}</p>
+                <p className="text-foreground/75 line-clamp-2">
+                  {prompt.question}
+                </p>
               )
             )}
             <AgentsCanAnswer />
-            <div className="flex gap-2">
-              {split.main.map((option) => (
+            <div className="mt-1.5 flex gap-2.5">
+              {split.main.map((option, i) => (
                 <button
                   key={`${option.index}-${option.label}`}
                   type="button"
@@ -145,8 +171,11 @@ export function InboxItem({
                   disabled={answering !== null}
                   onClick={() => answer(option)}
                   className={cn(
-                    "flex min-h-[44px] min-w-0 flex-1 touch-manipulation items-center justify-center gap-1.5 rounded-xl px-2.5 text-[13px] font-semibold disabled:opacity-60",
-                    KIND_STYLE[option.kind]
+                    "pill min-w-0 flex-1 touch-manipulation px-3 disabled:opacity-60",
+                    // The first answer is the one that lets it go on
+                    i === 0
+                      ? "pill-primary active:opacity-80"
+                      : "border-foreground/10 bg-foreground/[0.06] active:bg-accent border font-medium"
                   )}
                 >
                   {answering === option.index && (
@@ -160,7 +189,7 @@ export function InboxItem({
               <button
                 type="button"
                 onClick={onOpen}
-                className="text-muted-foreground relative -my-1 justify-self-start py-1 text-xs after:absolute after:-inset-x-2 after:-inset-y-2.5 after:content-['']"
+                className="text-muted-foreground relative -my-0.5 self-start py-1 text-xs after:absolute after:-inset-x-2 after:-inset-y-2.5 after:content-['']"
               >
                 More…
               </button>
