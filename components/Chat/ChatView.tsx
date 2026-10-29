@@ -29,7 +29,8 @@ import {
 import { ComposerCard } from "@/components/Composer/ComposerCard";
 import { PausedBar } from "@/components/Session/PausedBar";
 import { PausedHistory } from "@/components/Session/PausedHistory";
-import { isPaused } from "@/lib/handoff-types";
+import { SettledBar } from "@/components/Session/SettledBar";
+import { isEnded, isSettled } from "@/lib/settle-types";
 import {
   RewindSheet,
   useClaudeLive,
@@ -106,8 +107,10 @@ export function ChatView({
   }, [empty, onEmpty]);
   const { statuses, nativeKeyboard } = useSnapshot(mobileNavStore);
   const status = statuses[session.id]?.status;
-  // Handed off to another agent: its tmux ended, the chat stays readable
-  const paused = isPaused(session);
+  // Handed off to another agent (M4) or settled (M8): its tmux ended, the
+  // chat stays readable
+  const paused = isEnded(session);
+  const settled = isSettled(session);
   const pausedOther = paused && (session.agent_type || "claude") !== "claude";
   const { rows, results } = useMemo(() => buildRows(items), [items]);
 
@@ -537,8 +540,8 @@ export function ChatView({
                 conversation…
               </div>
             )}
-            {/* Handed off: no terminal to open. Codex and Gemini keep no
-                transcript, so theirs as it was at the handoff */}
+            {/* Handed off or settled: no terminal to open. Codex and Gemini
+                keep no transcript, so theirs as it was when it ended */}
             {state === "missing" &&
               paused &&
               (pausedOther ? (
@@ -661,9 +664,15 @@ export function ChatView({
                 : undefined
             }
           >
-            {/* Handed off: Open the new session or Resume here, in place
-                of the composer (its transcript still reads above) */}
-            {paused && <PausedBar session={session} />}
+            {/* Handed off: Open the new session or Resume here; settled:
+                Resume. In place of the composer (its transcript still reads
+                above) */}
+            {paused &&
+              (settled ? (
+                <SettledBar session={session} />
+              ) : (
+                <PausedBar session={session} />
+              ))}
             {!paused && <ComposerPopover composer={composer} />}
             {!paused && (
               <RewindSheet

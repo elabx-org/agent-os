@@ -10,6 +10,7 @@ import { displayTitle, useListTitles } from "@/hooks/useSessionTitles";
 import { getSessionView } from "@/lib/session-views";
 import { STATE_DOT_CLASS } from "@/lib/agent-state";
 import { pausedLast, sessionState } from "@/lib/paused";
+import { isEnded } from "@/lib/settle-types";
 import { mobileNavStore } from "@/stores/mobileNav";
 import { openBeside } from "@/stores/beside";
 import { cn } from "@/lib/utils";
@@ -23,7 +24,7 @@ const MAX_SESSIONS = 8;
 export function BesideItems({ exclude }: { exclude?: string[] }) {
   const { data } = useSessionsQuery();
   const { statuses } = useSnapshot(mobileNavStore);
-  // Paused (handed-off) ones after the live ones
+  // Paused (handed-off) and settled ones after the live ones
   const sessions = pausedLast(
     (data?.sessions ?? [])
       .filter((s) => !exclude?.includes(s.id))
@@ -42,11 +43,10 @@ export function BesideItems({ exclude }: { exclude?: string[] }) {
       {sessions.map((session) => {
         const { title } = displayTitle(session, titles);
         const state = sessionState(session, statuses[session.id]?.status);
-        // A paused one has no terminal to show: it opens in its chat
-        const view =
-          state === "paused"
-            ? "chat"
-            : (getSessionView(session.id) ?? "terminal");
+        // A paused or settled one has no terminal to show: it opens in its chat
+        const view = isEnded(session)
+          ? "chat"
+          : (getSessionView(session.id) ?? "terminal");
         return (
           <DropdownMenuItem
             key={session.id}

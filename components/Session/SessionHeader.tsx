@@ -19,7 +19,9 @@ import { useSessionActivity } from "@/hooks/useSessionActivity";
 import { openLiveSheet, StatusCardButton } from "./ActivityStrip";
 import { canSwitch, ModelChip } from "./ModelChip";
 import { PermissionChip } from "./PermissionChip";
-import { isPaused } from "@/lib/handoff-types";
+import { PrChip } from "@/components/a/PrChip";
+import { isEnded, sessionPr, wantsSettleChip } from "@/lib/settle-types";
+import { useSettleActions } from "./settle-action";
 import { formatAge, workingLine } from "./activity-format";
 
 /** What every header says about the session */
@@ -119,6 +121,9 @@ export function PageHeader({
     plan: cards,
   });
   const { plan, now, state } = activity;
+  // N-Settle: its PR under the title; merged and still running, Settle
+  const pr = size !== "compact" ? sessionPr(session) : null;
+  const { settle } = useSettleActions();
   return (
     <header
       className={cn(
@@ -171,8 +176,8 @@ export function PageHeader({
         >
           {info.title}
         </h1>
-        {/* Handed off: no running agent to set a mode on */}
-        {!isPaused(session) && (
+        {/* Handed off or settled: no running agent to set a mode on */}
+        {!isEnded(session) && (
           <PermissionChip
             session={session}
             variant="header"
@@ -184,6 +189,18 @@ export function PageHeader({
           />
         )}
       </div>
+      {pr && (
+        <PrChip
+          pr={pr}
+          baseBranch={session.base_branch}
+          onSettle={
+            wantsSettleChip(session)
+              ? () => void settle(session, info.title)
+              : undefined
+          }
+          className="mt-2 self-start"
+        />
+      )}
       {cards && plan && plan.total > 0 ? (
         <PlanChip plan={plan} onOpen={openLiveSheet} className="mt-2.5" />
       ) : (

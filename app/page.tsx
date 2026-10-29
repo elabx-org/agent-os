@@ -61,7 +61,7 @@ import { mobileNavActions, mobileNavStore } from "@/stores/mobileNav";
 import { focusStore, loadFocus } from "@/stores/focus";
 import { registerNavHandlers, runNav } from "@/lib/nav-actions";
 import { isNative } from "@/lib/native-bridge";
-import { isPaused } from "@/lib/handoff-types";
+import { isEnded } from "@/lib/settle-types";
 import { SettingsPage } from "@/components/Settings/SettingsPage";
 import { ScriptsSheetHost } from "@/components/Projects/ScriptsSheet";
 import { useScriptShortcuts } from "@/hooks/useScriptShortcuts";
@@ -195,8 +195,8 @@ function HomeContent() {
       const cwd = session.working_directory?.replace("~", "$HOME") || "$HOME";
 
       // Shell sessions just open a terminal - no agent command; a paused
-      // (handed-off) one is never relaunched (runSessionInTerminal)
-      if (provider.id === "shell" || isPaused(session)) {
+      // (handed-off) or settled one is never relaunched (runSessionInTerminal)
+      if (provider.id === "shell" || isEnded(session)) {
         return { sessionName, cwd, command: "" };
       }
 
@@ -272,8 +272,9 @@ function HomeContent() {
       session: Session,
       sessionInfo: { sessionName: string; cwd: string; command: string }
     ) => {
-      // Paused (handed off, M4): its chat shows, its agent isn't relaunched
-      if (isPaused(session)) {
+      // Paused (handed off, M4) or settled (M8): its chat shows, its agent
+      // isn't relaunched
+      if (isEnded(session)) {
         attachSession(paneId, session.id, "");
         return;
       }
