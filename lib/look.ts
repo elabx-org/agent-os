@@ -30,9 +30,9 @@ export const ACCENTS: readonly Accent[] = [
 export const ACCENT_LABELS: Record<Accent, { label: string; hex: string }> = {
   purple: { label: "Purple", hex: "#7C3AED" },
   blue: { label: "Blue", hex: "#2563EB" },
-  orange: { label: "Orange", hex: "#EA580C" },
-  green: { label: "Green", hex: "#059669" },
-  graphite: { label: "Graphite", hex: "#8E8E93" },
+  orange: { label: "Orange", hex: "#C2410C" },
+  green: { label: "Green", hex: "#047857" },
+  graphite: { label: "Graphite", hex: "#52525B" },
 };
 
 export const DEFAULT_LOOK: Look = {
