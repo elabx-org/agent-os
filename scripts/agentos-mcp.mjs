@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Agent-OS as tools, for Claude Code, Codex, Gemini or any MCP client:
+ * AgentOS as tools, for Claude Code, Codex, Gemini or any MCP client:
  * projects, sessions, starting work, talking to sessions and reading them.
  *
  *   claude mcp add -s user agent-os -- agent-os mcp
@@ -24,7 +24,7 @@ import { z } from "zod";
 const BASE = process.env.AGENTOS_URL || "http://localhost:3011";
 
 const PERMISSION_USER_ONLY =
-  "Permission requests can only be answered by the user in Agent-OS. Ask the user.";
+  "Permission requests can only be answered by the user in AgentOS. Ask the user.";
 
 async function api(path, options = {}) {
   // Changing a session's permission mode is the user's, not a tool
@@ -198,10 +198,10 @@ const server = new McpServer(
   { name: "agent-os", version: "1.0.0" },
   {
     instructions: [
-      "Agent-OS runs the coding sessions on this machine (Claude Code, Codex, Gemini), each in its own tmux terminal, and the user watches and answers them from the Agent-OS app on their phone.",
+      "AgentOS runs the coding sessions on this machine (Claude Code, Codex, Gemini), each in its own tmux terminal, and the user watches and answers them from the AgentOS app on their phone.",
       "Use these tools when the user asks you to start, hand work to, check on, answer or stop another session, or to work across projects in parallel.",
       "A typical run: list_projects (or create_project), start_session with a task, then wait_for_session and read_session; when it is asking a question, answer_prompt.",
-      "Permission requests are the user's: you can't answer them (answer_prompt and send_message refuse) or start sessions that skip them. When a session is waiting for permission, tell the user and let them answer it in Agent-OS.",
+      "Permission requests are the user's: you can't answer them (answer_prompt and send_message refuse) or start sessions that skip them. When a session is waiting for permission, tell the user and let them answer it in AgentOS.",
       "You can't control your own session. Don't stop, interrupt or answer prompts in sessions you didn't start unless the user asks.",
     ].join("\n"),
   }
@@ -211,7 +211,7 @@ server.registerTool(
   "list_projects",
   {
     description:
-      "List Agent-OS projects: name, id, directory, default agent and model.",
+      "List AgentOS projects: name, id, directory, default agent and model.",
     inputSchema: {},
   },
   tool(async () =>
@@ -229,7 +229,7 @@ server.registerTool(
   "create_project",
   {
     description:
-      "Create an Agent-OS project for a directory. Sessions started in it get the project's context and other sessions' summaries.",
+      "Create an AgentOS project for a directory. Sessions started in it get the project's context and other sessions' summaries.",
     inputSchema: {
       name: z.string().describe("Project name"),
       directory: z.string().describe("Absolute path, or ~/..."),
@@ -268,7 +268,7 @@ server.registerTool(
   "list_sessions",
   {
     description:
-      "List Agent-OS sessions with what each is doing: working, asking a question, waiting for permission, done, or stopped.",
+      "List AgentOS sessions with what each is doing: working, asking a question, waiting for permission, done, or stopped.",
     inputSchema: {
       project: z.string().optional().describe("Only this project (name or id)"),
       running_only: z
@@ -312,7 +312,7 @@ server.registerTool(
   "start_session",
   {
     description:
-      "Start a new Agent-OS session (it appears in the Agent-OS app) and give it a task. Runs without anyone watching; check on it with read_session or wait_for_session. It always asks for permission as usual; only the user can approve its requests or turn on auto-approve, in Agent-OS.",
+      "Start a new AgentOS session (it appears in the AgentOS app) and give it a task. Runs without anyone watching; check on it with read_session or wait_for_session. It always asks for permission as usual; only the user can approve its requests or turn on auto-approve, in AgentOS.",
     inputSchema: {
       task: z
         .string()
@@ -381,7 +381,7 @@ server.registerTool(
   "send_message",
   {
     description:
-      "Type a message into a running session and press Enter, as if you sent it from Agent-OS. Refused while the session is waiting for permission (only the user can answer that), and for a session with full access unless yours has it too.",
+      "Type a message into a running session and press Enter, as if you sent it from AgentOS. Refused while the session is waiting for permission (only the user can answer that), and for a session with full access unless yours has it too.",
     inputSchema: {
       session: z.string().describe("Session id, id prefix or name"),
       text: z.string().describe("The message"),
@@ -484,7 +484,7 @@ server.registerTool(
   "answer_prompt",
   {
     description:
-      "Answer a question a session's Claude is asking (AskUserQuestion) by picking an option, by its index and label from read_session. Permission requests can't be answered here: only the user can, in Agent-OS.",
+      "Answer a question a session's Claude is asking (AskUserQuestion) by picking an option, by its index and label from read_session. Permission requests can't be answered here: only the user can, in AgentOS.",
     inputSchema: {
       session: z.string().describe("Session id, id prefix or name"),
       index: z
@@ -535,7 +535,7 @@ server.registerTool(
   "stop_session",
   {
     description:
-      "End a session's agent and terminal. The session stays in Agent-OS; opening it starts it again.",
+      "End a session's agent and terminal. The session stays in AgentOS; opening it starts it again.",
     inputSchema: {
       session: z.string().describe("Session id, id prefix or name"),
     },

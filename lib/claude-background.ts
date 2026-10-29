@@ -1,7 +1,7 @@
 /**
  * Claude Code's background agents: sessions started with `claude --bg`,
  * which run without a terminal and are managed with `claude agents`,
- * `logs`, `attach`, `stop` and `rm`. Agent-OS drives the CLI rather than
+ * `logs`, `attach`, `stop` and `rm`. AgentOS drives the CLI rather than
  * reading its state files, so it sees the same list `claude agents` does.
  */
 
@@ -26,7 +26,7 @@ export interface BackgroundAgent {
   sessionId: string;
   startedAt: number;
   /**
-   * The Agent-OS session this is, when it began in one and was sent to the
+   * The AgentOS session this is, when it began in one and was sent to the
    * background (parked): lists show it as that session, not twice
    */
   agentOsSessionId?: string;
@@ -124,7 +124,7 @@ const cache = globalThis as unknown as {
   __agentosBgAgents?: { promise: Promise<BackgroundAgent[]>; at: number };
 };
 
-/** The agents with parked ones marked as their Agent-OS session */
+/** The agents with parked ones marked as their AgentOS session */
 async function listWithParked(): Promise<BackgroundAgent[]> {
   const [agents, parked] = await Promise.all([
     listBackgroundAgents(),

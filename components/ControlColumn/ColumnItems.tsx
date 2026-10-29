@@ -9,14 +9,19 @@ import { isMacLike, shortcutKey } from "@/hooks/useViewShortcuts";
 import { useLayoutMode } from "@/hooks/useLayoutMode";
 import { mobileNavStore } from "@/stores/mobileNav";
 import { focusStore } from "@/stores/focus";
+import { gitMenuStore } from "@/stores/gitMenu";
 import { useSurface } from "@/stores/surface";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { SYNC_OPTIONS } from "@/components/GitPanel/GitMenu";
 import { ColumnItem } from "./ColumnItem";
 import { columnIcon } from "./icons";
 
@@ -109,6 +114,7 @@ function MoreMenu(props: MoreProps) {
   const mode = useLayoutMode();
   const { needsYou, liveOpen } = useSnapshot(mobileNavStore);
   const { on: focus } = useSnapshot(focusStore);
+  const { actions: git } = useSnapshot(gitMenuStore);
   const inSession = surface === "session" || surface === "beside";
   const wide = mode === "duo-open" || mode === "book" || mode === "desktop";
   const go = (action: NavAction) => () => runNav(action);
@@ -122,6 +128,34 @@ function MoreMenu(props: MoreProps) {
         align={props.hint === "left" ? "start" : "center"}
         className="w-56"
       >
+        {git && (
+          <>
+            <DropdownMenuItem onSelect={() => git.refresh()}>
+              Refresh
+            </DropdownMenuItem>
+            {git.prUrl && (
+              <DropdownMenuItem
+                onSelect={() => window.open(git.prUrl!, "_blank", "noopener")}
+              >
+                Open #{git.prNumber} on GitHub
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuLabel className="text-muted-foreground text-xs font-medium">
+              Fetch in the background
+            </DropdownMenuLabel>
+            <DropdownMenuRadioGroup
+              value={String(git.syncInterval)}
+              onValueChange={(v) => git.setSyncInterval(parseInt(v, 10) || 0)}
+            >
+              {SYNC_OPTIONS.map((o) => (
+                <DropdownMenuRadioItem key={o.value} value={String(o.value)}>
+                  {o.label}
+                </DropdownMenuRadioItem>
+              ))}
+            </DropdownMenuRadioGroup>
+            <DropdownMenuSeparator />
+          </>
+        )}
         {inSession && (
           <DropdownMenuItem onSelect={go("inbox")}>
             Needs you{needsYou > 0 && !focus ? ` (${needsYou})` : ""}

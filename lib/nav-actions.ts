@@ -21,6 +21,7 @@ import { openProjectSettings } from "@/stores/projectSettings";
 import { openScripts } from "@/stores/scriptsSheet";
 import { surfaceStore } from "@/stores/surface";
 import { isNative, postToNative } from "@/lib/native-bridge";
+import { layoutStore } from "@/hooks/useLayoutMode";
 
 /** Every action, for the routes table and its test */
 export const NAV_ACTIONS = [
@@ -54,6 +55,11 @@ export const NAV_ACTIONS = [
   "closeSheet",
   "scripts",
   "viewConfig",
+  "pull",
+  "push",
+  "newPr",
+  "newFile",
+  "upload",
 ] as const;
 
 /**
@@ -119,6 +125,18 @@ interface NavHandlers {
   /** Project settings' .agent-os.json (N-Config's <>, M3); the page
       registers it */
   viewConfig: () => void;
+  /**
+   * The column's Changes: the git view, unless the open Duo's spread shows
+   * Changes as a page beside the conversation (Open-Changes registers it)
+   */
+  openChanges: () => void;
+  /** E-Git's column: Pull, Push, New pull request (the git view registers them) */
+  gitPull: () => void;
+  gitPush: () => void;
+  newPullRequest: () => void;
+  /** E-Files' column: New file, Upload (the files view registers them) */
+  newFile: () => void;
+  uploadFile: () => void;
 }
 
 /**
@@ -180,6 +198,12 @@ export const navStore: NavHandlers = {
       openScripts(page.projectId);
   },
   viewConfig: () => {},
+  openChanges: () => mobileNavActions.requestViewMode("git"),
+  gitPull: () => {},
+  gitPush: () => {},
+  newPullRequest: () => {},
+  newFile: () => {},
+  uploadFile: () => {},
 };
 
 /**
@@ -222,6 +246,11 @@ function goBack() {
     mobileNavStore.homeTab = "now";
     return;
   }
+  // The closed Duo's Changes and Files go back to the conversation (E-Git,
+  // E-Files); elsewhere their column's back is Now's
+  const view = mobileNavStore.viewMode;
+  if (layoutStore.mode === "duo-closed" && (view === "git" || view === "files"))
+    return mobileNavActions.requestViewMode(mobileNavStore.conversationView);
   navStore.goBack();
 }
 
@@ -242,7 +271,7 @@ export const NAV_ROUTES: Record<NavAction, (leftPage: boolean) => void> = {
   inbox: () => mobileNavActions.setInboxOpen(true),
   chat: (leftPage) => showView("chat", leftPage),
   terminal: (leftPage) => showView("terminal", leftPage),
-  git: () => mobileNavActions.requestViewMode("git"),
+  git: () => navStore.openChanges(),
   files: () => mobileNavActions.requestViewMode("files"),
   find: () => navStore.openFind(),
   focus: () => toggleFocus(),
@@ -274,6 +303,11 @@ export const NAV_ROUTES: Record<NavAction, (leftPage: boolean) => void> = {
   closeSheet: () => navStore.closeSheet(),
   scripts: () => navStore.openScripts(),
   viewConfig: () => navStore.viewConfig(),
+  pull: () => navStore.gitPull(),
+  push: () => navStore.gitPush(),
+  newPr: () => navStore.newPullRequest(),
+  newFile: () => navStore.newFile(),
+  upload: () => navStore.uploadFile(),
 };
 
 /** Actions on or beside Settings: it stays up for them */

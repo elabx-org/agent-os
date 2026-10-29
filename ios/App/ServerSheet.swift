@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Where Agent-OS runs. Sign-in happens in the page itself.
+/// Where AgentOS runs. Sign-in happens in the page itself.
 struct ServerSheet: View {
     let model: AppModel
     @Environment(\.dismiss) private var dismiss
@@ -25,7 +25,7 @@ struct ServerSheet: View {
                 } header: {
                     Text("Server address")
                 } footer: {
-                    Text("The address you open Agent-OS at in Safari.")
+                    Text("The address you open AgentOS at in Safari.")
                 }
                 Section {
                     Button("Use \(AppModel.defaultServer.host() ?? "")") {
@@ -39,7 +39,7 @@ struct ServerSheet: View {
                             set: { on in Task { await model.lock.setEnabled(on) } }
                         ))
                     } footer: {
-                        Text("Asked when Agent-OS opens and after a minute away. The app switcher shows a blank page.")
+                        Text("Asked when AgentOS opens and after a minute away. The app switcher shows a blank page.")
                     }
                 }
             }

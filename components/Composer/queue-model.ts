@@ -45,7 +45,7 @@ export function queueErrorText(
     case "user_only":
       return body.reason === "no_proof"
         ? "Reload to confirm it's you"
-        : "Only you can do this, in Agent-OS";
+        : "Only you can do this, in AgentOS";
     case "queue_off":
       return "The queue is off for this session";
     case "not_pending":

@@ -2,6 +2,7 @@
 
 import { useSnapshot } from "valtio";
 import {
+  WIDE,
   columnFor,
   type ColumnContext,
   type ColumnItem,
@@ -33,6 +34,7 @@ interface ColumnSources {
   liveOpen: boolean;
   working: boolean;
   sheet: ColumnContext["sheet"];
+  changesOpen: boolean;
   native: boolean;
   projectSettings: boolean;
 }
@@ -52,6 +54,7 @@ function contextFrom(s: ColumnSources): ColumnContext {
     working: s.working,
     sheet: s.sheet,
     projectSettings: s.projectSettings,
+    changesOpen: s.changesOpen,
   };
 }
 
@@ -81,6 +84,7 @@ export function useColumn(
     liveOpen: nav.liveOpen,
     working: nav.working,
     sheet: nav.sheet,
+    changesOpen: nav.changesOpen,
     native,
     projectSettings: page?.kind === "projectSettings",
   });
@@ -88,17 +92,20 @@ export function useColumn(
 }
 
 /** Where the page draws its own bar, so the app's column steps aside */
-const PAGE_BARS: LayoutMode[] = ["phone", "tabletop"];
+export const PAGE_BARS: LayoutMode[] = ["phone", "tabletop"];
 
 /**
  * What the iOS app's column shows now, outside React: the surface, its
  * items without the web icons ([] where the page draws its own tab bar or
- * tabletop bar) and whether the first one is back
+ * tabletop bar), whether the first one is back, and what its More menu
+ * needs: the live activity showing and the wide layout
  */
 export function nativeColumn(): {
   surface: Surface;
   column: NativeColumnItem[];
   canGoBack: boolean;
+  liveOpen: boolean;
+  wide: boolean;
 } {
   const surface = currentSurface();
   const mode = layoutStore.mode;
@@ -118,6 +125,7 @@ export function nativeColumn(): {
       liveOpen: mobileNavStore.liveOpen,
       working: mobileNavStore.working,
       sheet: mobileNavStore.sheet,
+      changesOpen: mobileNavStore.changesOpen,
       native: true,
       projectSettings: workspacePageStore.page?.kind === "projectSettings",
     })
@@ -125,5 +133,11 @@ export function nativeColumn(): {
   const column = PAGE_BARS.includes(mode)
     ? []
     : items.map(({ icon: _icon, ...rest }) => rest);
-  return { surface, column, canGoBack: items[0]?.id === "back" };
+  return {
+    surface,
+    column,
+    canGoBack: items[0]?.id === "back",
+    liveOpen: mobileNavStore.liveOpen,
+    wide: WIDE.includes(mode),
+  };
 }

@@ -14,6 +14,7 @@ import { settingsPageStore } from "../../stores/settingsPage";
 import { workspacePageStore } from "../../stores/workspacePage";
 import { surfaceStore } from "../../stores/surface";
 import { focusStore } from "../../stores/focus";
+import { layoutStore } from "../../hooks/useLayoutMode";
 
 /** Every handler replaced by one that notes its name */
 function spyHandlers() {
@@ -62,7 +63,8 @@ test("runNav: what iOS app 0.1.62 sends still does what it did", () => {
     ["new", "openNewSession"],
     ["inbox", () => mobileNavStore.inboxOpen],
     ["chat", () => mobileNavStore.request?.mode === "chat"],
-    ["git", () => mobileNavStore.request?.mode === "git"],
+    // Changes goes through its handler (the open Duo's page, else the view)
+    ["git", "openChanges"],
     ["files", () => mobileNavStore.request?.mode === "files"],
     // The current view again opens the session list
     ["terminal", "openSessions"],
@@ -104,6 +106,12 @@ test("runNav: the new actions reach their handlers", () => {
     ["start", "startNew"],
     ["stop", "stopSession"],
     ["closeSheet", "closeSheet"],
+    ["git", "openChanges"],
+    ["pull", "gitPull"],
+    ["push", "gitPush"],
+    ["newPr", "newPullRequest"],
+    ["newFile", "newFile"],
+    ["upload", "uploadFile"],
   ];
   for (const [action, handler] of cases) {
     reset();
@@ -154,6 +162,42 @@ test("runNav: back goes one level up", () => {
   } finally {
     stop();
   }
+});
+
+test("runNav: back from the closed Changes or Files is the conversation", () => {
+  const { calls, stop } = spyHandlers();
+  try {
+    reset();
+    layoutStore.mode = "duo-closed";
+    mobileNavStore.viewMode = "git";
+    mobileNavStore.conversationView = "terminal";
+    runNav("back");
+    assert.equal(mobileNavStore.request?.mode, "terminal");
+    assert.deepEqual(calls, []);
+
+    reset();
+    mobileNavStore.viewMode = "files";
+    mobileNavStore.conversationView = "chat";
+    runNav("back");
+    assert.equal(mobileNavStore.request?.mode, "chat");
+
+    // Open, their back is Now's as before
+    reset();
+    layoutStore.mode = "duo-open";
+    mobileNavStore.viewMode = "git";
+    runNav("back");
+    assert.equal(mobileNavStore.request, null);
+    assert.deepEqual(calls, ["goBack"]);
+  } finally {
+    layoutStore.mode = "desktop";
+    stop();
+  }
+});
+
+test("runNav: Changes without a page beside asks for the git view", () => {
+  reset();
+  runNav("git");
+  assert.equal(mobileNavStore.request?.mode, "git");
 });
 
 test("runNav: closeSettings, and Settings leaves for the rest", () => {

@@ -7,6 +7,7 @@ import {
   getGitStatus,
   expandPath,
 } from "@/lib/git-status";
+import { forgetBranchInfo } from "@/lib/git-branch-info";
 
 export async function POST(request: NextRequest) {
   try {
@@ -35,9 +36,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check if there are commits to push
+    // Check if there are commits to push (a branch with no upstream
+    // has never been pushed, so it always goes)
+    const needsUpstream = !hasUpstream(path);
     const status = getGitStatus(path);
-    if (status.ahead === 0) {
+    if (!needsUpstream && status.ahead === 0) {
       return NextResponse.json({
         success: true,
         message: "Already up to date",
@@ -46,8 +49,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Push (set upstream if needed)
-    const needsUpstream = !hasUpstream(path);
     const output = push(path, needsUpstream);
+    forgetBranchInfo(path);
 
     return NextResponse.json({
       success: true,

@@ -77,7 +77,7 @@ export function UsageCard({ className }: { className?: string }) {
       )}
       <div className="flex items-center justify-between">
         <span className="text-muted-foreground text-[13px]">
-          {usage && usage.plan !== "Unknown" ? usage.plan : "Agent-OS"}
+          {usage && usage.plan !== "Unknown" ? usage.plan : "AgentOS"}
         </span>
         <button
           type="button"
