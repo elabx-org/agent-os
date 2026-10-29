@@ -35,6 +35,8 @@ export interface SpreadInput {
   changesOpen: boolean;
   /** The web viewport has room for the rail */
   roomForRail: boolean;
+  /** A diff review (M12) has the right page / the room beside the chat */
+  reviewOpen?: boolean;
 }
 
 export interface SpreadLayout {
@@ -108,6 +110,7 @@ export function spreadLayout(i: SpreadInput): SpreadLayout {
     !splitFold &&
     !replyLeft &&
     !changesBeside &&
+    !i.reviewOpen &&
     (i.pages
       ? !homeOpen && (i.liveOpen || i.railByDefault) && conversation
       : i.roomForRail &&

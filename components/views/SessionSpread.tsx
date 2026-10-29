@@ -233,7 +233,8 @@ export function SessionSpread({
   const book = fold?.axis === "vertical" ? fold : null;
   const hingeX = useHinge(duo && !fold);
   const { on: focus } = useSnapshot(focusStore);
-  const { viewMode, liveOpen, changesOpen } = useSnapshot(mobileNavStore);
+  const { viewMode, liveOpen, changesOpen, reviewOpen } =
+    useSnapshot(mobileNavStore);
   const roomForRail = useMinWidth(RAIL_MIN_VIEWPORT);
 
   // Two pages either side of the fold: the left one's width, then the gap
@@ -286,6 +287,7 @@ export function SessionSpread({
     railByDefault,
     changesOpen,
     roomForRail,
+    reviewOpen,
   });
   // Flat there's no gutter: the pages meet at the hinge
   const spreadStart = book ? book.start : hingeX;

@@ -178,3 +178,21 @@ test("desktop agents view: its detail panel takes the live rail's place (D-Tree)
   assert.equal(spreadLayout(DESK).showRail, true);
   assert.equal(spreadLayout({ ...DESK, viewMode: "agents" }).showRail, false);
 });
+
+test("diff review (M12): it takes the live rail's place, desktop and the open Duo (D-Diff, O-Diff)", () => {
+  const DESK: SpreadInput = {
+    ...OPEN,
+    duo: false,
+    desktop: true,
+    pages: false,
+    roomForRail: true,
+  };
+  assert.equal(spreadLayout({ ...DESK, reviewOpen: true }).showRail, false);
+  // The 0.1.62 app keeps the rail by default; the review still gets the
+  // right page, so the chat spans both pages and lays out its own
+  const APP: SpreadInput = { ...OPEN, railByDefault: true };
+  assert.equal(spreadLayout(APP).showRail, true);
+  const open = spreadLayout({ ...APP, reviewOpen: true });
+  assert.equal(open.showRail, false);
+  assert.equal(open.paneWide, true);
+});

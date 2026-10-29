@@ -165,7 +165,14 @@ export function DiffLines({
                   const after = renderAfter?.(line, h);
                   return (
                     <Fragment key={i}>
-                      <div className={cn(cls, selected && SELECTED_LINE)}>
+                      <div
+                        className={cn(
+                          cls,
+                          // Wrapped code hangs past the number, not under it
+                          wrap && "flex items-start",
+                          selected && SELECTED_LINE
+                        )}
+                      >
                         <ReviewGutter
                           path={path}
                           line={line}
@@ -176,7 +183,13 @@ export function DiffLines({
                           }
                           className="mr-3"
                         />
-                        {lineText(line)}
+                        {wrap ? (
+                          <span className="min-w-0 flex-1">
+                            {lineText(line)}
+                          </span>
+                        ) : (
+                          lineText(line)
+                        )}
                       </div>
                       {after && (
                         // Under the line at the visible width, however far it scrolled

@@ -179,6 +179,15 @@ export function ChatView({
     setOpenAgent(null);
     setOpenRun(null);
   }, [diffTurn]);
+  // The review takes the live activity rail's room (O-Diff, D-Diff)
+  const reviewing = diffTurn !== null && active;
+  useEffect(() => {
+    if (!reviewing) return;
+    mobileNavStore.reviewOpen = true;
+    return () => {
+      mobileNavStore.reviewOpen = false;
+    };
+  }, [reviewing]);
   // What takes the right page: an agent, a whole workflow or a turn's diff
   const side = !!opened || !!openedRun || diffTurn !== null;
 
@@ -800,8 +809,10 @@ export function ChatView({
             pages
               ? "min-w-0 flex-1"
               : mode === "desktop"
-                ? "absolute inset-0 z-10 @2xl/chat:static @2xl/chat:w-[62%] @2xl/chat:max-w-[60rem] @2xl/chat:shrink-0"
-                : undefined
+                ? "bg-background absolute inset-0 z-10 @2xl/chat:static @2xl/chat:w-[62%] @2xl/chat:max-w-[60rem] @2xl/chat:shrink-0"
+                : // Over the conversation, inside the chat's own box (the
+                  // closed Duo's column stays clear; UndoSheet is above)
+                  "bg-background absolute inset-0 z-10"
           }
         />
       )}
