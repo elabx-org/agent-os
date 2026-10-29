@@ -7,6 +7,7 @@ import {
   getGitStatus,
   expandPath,
 } from "@/lib/git-status";
+import { forgetBranchInfo } from "@/lib/git-branch-info";
 
 export async function POST(request: NextRequest) {
   try {
@@ -60,6 +61,7 @@ export async function POST(request: NextRequest) {
     // Commit
     const output = commit(path, message);
 
+    forgetBranchInfo(path);
     return NextResponse.json({
       success: true,
       output,

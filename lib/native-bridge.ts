@@ -80,6 +80,10 @@ export interface NativeState {
   column?: NativeColumnItem[];
   /** The column's first item is back */
   canGoBack?: boolean;
+  /** The live activity is showing: More offers Hide live activity */
+  liveOpen?: boolean;
+  /** A wide layout (open Duo, book, desktop): More offers Open beside */
+  wide?: boolean;
 }
 
 /** A column item as the app gets it: the SF Symbol, not the web icon */

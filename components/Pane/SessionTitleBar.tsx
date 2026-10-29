@@ -23,6 +23,7 @@ import {
   Columns2,
   FolderOpen,
   Activity,
+  MessageSquare,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -331,10 +332,42 @@ export function SessionTitleBar({
             <DropdownMenuSeparator />
           </>
         )}
+        {/* A plain phone has no column: its views are reached from here */}
+        {!newHeader && layout === "phone" && session && hasFolder && (
+          <>
+            {(viewMode === "git" || viewMode === "files") && (
+              <DropdownMenuItem
+                onSelect={() =>
+                  onViewModeChange(mobileNavStore.conversationView)
+                }
+              >
+                <MessageSquare className="h-4 w-4" />
+                Back to session
+              </DropdownMenuItem>
+            )}
+            {viewMode !== "git" && (
+              <DropdownMenuItem onSelect={() => onViewModeChange("git")}>
+                <GitBranch className="h-4 w-4" />
+                Changes
+              </DropdownMenuItem>
+            )}
+            {viewMode !== "files" && (
+              <DropdownMenuItem onSelect={() => onViewModeChange("files")}>
+                <FolderOpen className="h-4 w-4" />
+                Files
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuSeparator />
+          </>
+        )}
         {(agentCount > 0 || viewMode === "agents") && (
           <DropdownMenuItem
             onSelect={() =>
-              onViewModeChange(viewMode === "agents" ? "terminal" : "agents")
+              onViewModeChange(
+                viewMode === "agents"
+                  ? mobileNavStore.conversationView
+                  : "agents"
+              )
             }
           >
             <Workflow className="h-4 w-4" />

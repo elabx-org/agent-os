@@ -1,7 +1,9 @@
 import {
   Activity,
   AlignLeft,
+  ArrowDownToLine,
   ArrowRightLeft,
+  ArrowUpToLine,
   Bell,
   Check,
   ChevronLeft,
@@ -11,8 +13,10 @@ import {
   Columns2,
   Ellipsis,
   Eye,
+  FilePlus,
   Folder,
   GitBranch,
+  GitPullRequestArrow,
   Globe,
   Inbox,
   MessageSquare,
@@ -23,6 +27,7 @@ import {
   Terminal,
   Trash,
   Workflow,
+  Upload,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -31,7 +36,9 @@ import {
 const ICONS: Record<string, LucideIcon> = {
   Activity,
   AlignLeft,
+  ArrowDownToLine,
   ArrowRightLeft,
+  ArrowUpToLine,
   Bell,
   Check,
   ChevronLeft,
@@ -40,8 +47,10 @@ const ICONS: Record<string, LucideIcon> = {
   Columns2,
   Ellipsis,
   Eye,
+  FilePlus,
   Folder,
   GitBranch,
+  GitPullRequestArrow,
   Globe,
   Inbox,
   MessageSquare,
@@ -53,6 +62,7 @@ const ICONS: Record<string, LucideIcon> = {
   Terminal,
   Trash,
   Workflow,
+  Upload,
   X,
 };
 

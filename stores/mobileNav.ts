@@ -48,6 +48,13 @@ export const mobileNavStore = proxy<{
   sheet: "undo" | null;
   /** Agents the focused session started (its tree's total): the column's Agents item */
   agentCount: number;
+  /**
+   * The open Duo's Changes page beside the conversation (Open-Changes, M2b):
+   * the column's Changes there opens this instead of the git view
+   */
+  changesOpen: boolean;
+  /** The focused pane's last conversation view, for "Back to session" (E-Git, E-Files) */
+  conversationView: "chat" | "terminal";
 }>({
   viewMode: "terminal",
   request: null,
@@ -65,6 +72,8 @@ export const mobileNavStore = proxy<{
   working: false,
   sheet: null,
   agentCount: 0,
+  changesOpen: false,
+  conversationView: "chat",
 });
 
 export const mobileNavActions = {

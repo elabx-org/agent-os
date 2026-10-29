@@ -1,4 +1,8 @@
-import { execSync } from "child_process";
+import { execFile, execSync } from "child_process";
+import { promisify } from "util";
+import type { PRChecks, PRState, PRSummary } from "@/lib/git-types";
+
+const execFileAsync = promisify(execFile);
 
 export interface PRInfo {
   number: number;
@@ -13,16 +17,51 @@ export interface CommitInfo {
   body: string;
 }
 
+// The git page asks on every open: a signed-in gh is remembered for a
+// minute, a signed-out one briefly so signing in shows up soon
+const GH_OK_TTL_MS = 60_000;
+const GH_NO_TTL_MS = 10_000;
+let ghAuth: { at: number; ok: boolean } | null = null;
+let ghAuthRun: Promise<boolean> | null = null;
+
+function ghAuthCached(): boolean | null {
+  if (!ghAuth) return null;
+  const ttl = ghAuth.ok ? GH_OK_TTL_MS : GH_NO_TTL_MS;
+  return Date.now() - ghAuth.at < ttl ? ghAuth.ok : null;
+}
+
 /**
  * Check if gh CLI is installed and authenticated
  */
 export function checkGhCli(): boolean {
+  const cached = ghAuthCached();
+  if (cached !== null) return cached;
+  let ok: boolean;
   try {
     execSync("gh auth status", { timeout: 5000, stdio: "pipe" });
-    return true;
+    ok = true;
   } catch {
-    return false;
+    ok = false;
   }
+  ghAuth = { at: Date.now(), ok };
+  return ok;
+}
+
+/** checkGhCli without blocking the server; concurrent callers share one run */
+export function isGhReady(): Promise<boolean> {
+  const cached = ghAuthCached();
+  if (cached !== null) return Promise.resolve(cached);
+  ghAuthRun ??= execFileAsync("gh", ["auth", "status"], { timeout: 5000 })
+    .then(
+      () => true,
+      () => false
+    )
+    .then((ok) => {
+      ghAuth = { at: Date.now(), ok };
+      ghAuthRun = null;
+      return ok;
+    });
+  return ghAuthRun;
 }
 
 /**
@@ -128,24 +167,133 @@ export function generatePRBody(commits: CommitInfo[]): string {
   return lines.join("\n");
 }
 
+// --- The branch's PR with its checks (M2b) ---
+
+/** One entry of gh's statusCheckRollup: a CheckRun or a StatusContext */
+export interface CheckRollupEntry {
+  __typename?: string;
+  status?: string | null;
+  conclusion?: string | null;
+  state?: string | null;
+}
+
+const FAILED = new Set([
+  "FAILURE",
+  "ERROR",
+  "CANCELLED",
+  "TIMED_OUT",
+  "ACTION_REQUIRED",
+  "STARTUP_FAILURE",
+]);
+const RUNNING = new Set([
+  "QUEUED",
+  "IN_PROGRESS",
+  "PENDING",
+  "WAITING",
+  "REQUESTED",
+  "EXPECTED",
+]);
+
+/** The rollup as one state: any failure fails, else anything running is pending */
+export function foldChecks(
+  rollup: CheckRollupEntry[] | null | undefined
+): PRChecks {
+  if (!Array.isArray(rollup) || rollup.length === 0) return null;
+  const up = (v: string | null | undefined) => (v || "").toUpperCase();
+  const failed = rollup.some(
+    (c) => FAILED.has(up(c.conclusion)) || FAILED.has(up(c.state))
+  );
+  if (failed) return "failed";
+  // A StatusContext has only a state; a CheckRun a status, then a conclusion
+  const pending = rollup.some(
+    (c) =>
+      RUNNING.has(up(c.state)) ||
+      RUNNING.has(up(c.status)) ||
+      (!!c.status && up(c.status) !== "COMPLETED")
+  );
+  return pending ? "pending" : "passed";
+}
+
+/** gh pr list's JSON for one PR (the fields PR_FIELDS asks for) */
+export interface GhPR {
+  number: number;
+  url: string;
+  state: string;
+  title: string;
+  isDraft?: boolean;
+  statusCheckRollup?: CheckRollupEntry[] | null;
+  body?: string | null;
+  changedFiles?: number;
+  additions?: number;
+  deletions?: number;
+  headRefName?: string;
+  baseRefName?: string;
+  author?: { login?: string } | null;
+  createdAt?: string;
+}
+
+export const PR_FIELDS =
+  "number,url,state,title,isDraft,statusCheckRollup,body,changedFiles,additions,deletions,headRefName,baseRefName,author,createdAt";
+
+export function toPRSummary(pr: GhPR): PRSummary {
+  const state = (pr.state || "").toLowerCase();
+  return {
+    number: pr.number,
+    url: pr.url,
+    state: (state === "merged" || state === "closed"
+      ? state
+      : "open") as PRState,
+    title: pr.title || "",
+    isDraft: !!pr.isDraft,
+    checks: foldChecks(pr.statusCheckRollup),
+    body: pr.body || "",
+    changedFiles: pr.changedFiles || 0,
+    additions: pr.additions || 0,
+    deletions: pr.deletions || 0,
+    headRefName: pr.headRefName || "",
+    baseRefName: pr.baseRefName || "",
+    author: pr.author?.login || "",
+    createdAt: pr.createdAt || "",
+  };
+}
+
+/** The branch's PR among gh's list: an open one, else the most recent */
+export function pickPR(prs: GhPR[]): GhPR | null {
+  if (!Array.isArray(prs) || prs.length === 0) return null;
+  const open = prs.find((p) => (p.state || "").toUpperCase() === "OPEN");
+  if (open) return open;
+  const time = (p: GhPR) => Date.parse(p.createdAt || "") || 0;
+  return [...prs].sort((a, b) => time(b) - time(a) || b.number - a.number)[0];
+}
+
 /**
- * Get PR for a branch
+ * Get PR for a branch (open, merged or closed); null when there is none or
+ * gh can't answer
  */
-export function getPRForBranch(
+export async function getPRForBranch(
   workingDir: string,
   branchName: string
-): PRInfo | null {
+): Promise<PRSummary | null> {
+  if (!branchName) return null;
   try {
-    const output = execSync(
-      `gh pr list --head "${branchName}" --json number,url,state,title --limit 1`,
-      {
-        cwd: workingDir,
-        encoding: "utf-8",
-        timeout: 10000,
-      }
+    const { stdout } = await execFileAsync(
+      "gh",
+      [
+        "pr",
+        "list",
+        "--head",
+        branchName,
+        "--state",
+        "all",
+        "--json",
+        PR_FIELDS,
+        "--limit",
+        "5",
+      ],
+      { cwd: workingDir, timeout: 10000, maxBuffer: 4 * 1024 * 1024 }
     );
-    const prs = JSON.parse(output);
-    return prs.length > 0 ? prs[0] : null;
+    const pr = pickPR(JSON.parse(stdout));
+    return pr ? toPRSummary(pr) : null;
   } catch {
     return null;
   }
@@ -154,19 +302,19 @@ export function getPRForBranch(
 /**
  * Create a new PR
  */
-export function createPR(
+export async function createPR(
   workingDir: string,
   branchName: string,
   baseBranch: string,
   title: string,
   body: string
-): PRInfo {
+): Promise<PRInfo> {
   // First ensure branch is pushed
   try {
-    execSync(`git push -u origin "${branchName}"`, {
+    await execFileAsync("git", ["push", "-u", "origin", branchName], {
       cwd: workingDir,
       timeout: 30000,
-      stdio: "pipe",
+      env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
     });
   } catch {
     // Branch might already be pushed
@@ -174,15 +322,10 @@ export function createPR(
 
   // Create PR using gh CLI
   // gh pr create outputs the PR URL on success
-  const titleEscaped = title.replace(/'/g, "'\\''");
-  const bodyEscaped = body.replace(/'/g, "'\\''");
-  const output = execSync(
-    `gh pr create --title '${titleEscaped}' --base "${baseBranch}" --body '${bodyEscaped}'`,
-    {
-      cwd: workingDir,
-      encoding: "utf-8",
-      timeout: 30000,
-    }
+  const { stdout: output } = await execFileAsync(
+    "gh",
+    ["pr", "create", "--title", title, "--base", baseBranch, "--body", body],
+    { cwd: workingDir, timeout: 30000 }
   );
 
   // Parse URL from output (gh pr create prints the URL)

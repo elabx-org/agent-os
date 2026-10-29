@@ -4,6 +4,7 @@ import { useRef, useCallback, useEffect, memo, useState, useMemo } from "react";
 import dynamic from "next/dynamic";
 import { usePanes } from "@/contexts/PaneContext";
 import { useViewport } from "@/hooks/useViewport";
+import { useLayoutMode } from "@/hooks/useLayoutMode";
 import type {
   TerminalHandle,
   TerminalScrollState,
@@ -27,7 +28,6 @@ import {
   Group as ResizablePanelGroup,
   Separator as ResizablePanelHandle,
 } from "react-resizable-panels";
-import { GitDrawer } from "@/components/GitDrawer";
 import { ShellDrawer } from "@/components/ShellDrawer";
 import { useSnapshot } from "valtio";
 import { fileOpenStore, fileOpenActions } from "@/stores/fileOpen";
@@ -97,6 +97,7 @@ export const Pane = memo(function Pane({
   onSelectSession,
 }: PaneProps) {
   const { isMobile } = useViewport();
+  const layoutMode = useLayoutMode();
   const {
     focusedPaneId,
     canSplit,
@@ -287,7 +288,11 @@ export const Pane = memo(function Pane({
   const { request: navRequest } = useSnapshot(mobileNavStore);
 
   useEffect(() => {
-    if (isFocused) mobileNavStore.viewMode = viewMode;
+    if (!isFocused) return;
+    mobileNavStore.viewMode = viewMode;
+    // Where the closed column's "Back to session" returns from Changes or Files
+    if (viewMode === "chat" || viewMode === "terminal")
+      mobileNavStore.conversationView = viewMode;
   }, [isFocused, viewMode]);
 
   // The column badges Changes with the focused session's changed files
@@ -498,6 +503,9 @@ export const Pane = memo(function Pane({
           onTabAdd={() => addTab(paneId)}
         />
       )}
+      {/* E-Git, E-Files: on the Duo those pages carry their own title, and
+          the column goes back; a phone keeps the header's way back */}
+      {!(layoutMode !== "phone" && layoutMode !== "desktop" && (viewMode === "git" || viewMode === "files")) && (
       <SessionTitleBar
         session={session}
         projects={projects}
@@ -520,6 +528,7 @@ export const Pane = memo(function Pane({
         onSplitVertical={() => splitVertical(paneId)}
         onClose={() => close(paneId)}
       />
+      )}
       {showStrip && session && <ActivityStrip session={session} />}
 
       {/* Content Area - Mobile: simple flex, Desktop: resizable panels */}
@@ -595,6 +604,8 @@ export const Pane = memo(function Pane({
           {session?.working_directory && (
             <div className={viewMode === "files" ? "h-full" : "hidden"}>
               <FileExplorer
+                sessionId={session.id}
+                active={isFocused && viewMode === "files"}
                 workingDirectory={session.working_directory}
                 fileEditor={fileEditor}
               />
@@ -605,6 +616,8 @@ export const Pane = memo(function Pane({
           {session?.working_directory && (
             <div className={viewMode === "git" ? "h-full" : "hidden"}>
               <GitPanel
+                sessionId={session.id}
+                active={isFocused && viewMode === "git"}
                 workingDirectory={session.working_directory}
                 projectId={currentProject?.id}
                 repositories={projectRepositories}
@@ -710,6 +723,8 @@ export const Pane = memo(function Pane({
                   {session?.working_directory && (
                     <div className={viewMode === "files" ? "h-full" : "hidden"}>
                       <FileExplorer
+                        sessionId={session.id}
+                        active={isFocused && viewMode === "files"}
                         workingDirectory={session.working_directory}
                         fileEditor={fileEditor}
                       />
@@ -720,6 +735,8 @@ export const Pane = memo(function Pane({
                   {viewMode === "git" && session?.working_directory && (
                     <div className="h-full">
                       <GitPanel
+                        sessionId={session.id}
+                        active={isFocused && viewMode === "git"}
                         workingDirectory={session.working_directory}
                         projectId={currentProject?.id}
                         repositories={projectRepositories}
@@ -765,6 +782,7 @@ export const Pane = memo(function Pane({
               <ResizablePanelHandle className="bg-border/30 hover:bg-primary/30 active:bg-primary/50 w-px cursor-col-resize transition-colors" />
               <ResizablePanel defaultSize={30} minSize={10}>
                 <GitPanel
+                  sessionId={session.id}
                   workingDirectory={session.working_directory}
                   projectId={currentProject?.id}
                   repositories={projectRepositories}

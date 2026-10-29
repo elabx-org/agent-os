@@ -59,10 +59,13 @@ struct AgentWebContainer: UIViewRepresentable {
 
     func updateUIView(_ view: AgentWebView, context: Context) {}
 
-    /// Runs before the page: tells it it's inside the app (lib/native-bridge.ts)
+    /// Runs before the page: tells it it's inside the app (lib/native-bridge.ts).
+    /// `column`: the app draws NativeState.column. No `duo` yet: today's web
+    /// reads it as "open" whenever the screen is landscape, which the closed
+    /// Duo held sideways would get wrong
     private static var bootScript: String {
         """
-        window.agentosNative = { platform: 'ios', version: '\(Bundle.main.shortVersion)', keySpecs: true };
+        window.agentosNative = { platform: 'ios', version: '\(Bundle.main.shortVersion)', keySpecs: true, column: 1 };
         document.documentElement.dataset.native = 'ios';
         """
     }
