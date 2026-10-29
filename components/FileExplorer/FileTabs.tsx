@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useEffect } from "react";
-import { X, File } from "lucide-react";
+import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { OpenFile } from "@/hooks/useFileEditor";
 
@@ -11,27 +11,30 @@ interface FileTabsProps {
   onSelect: (path: string) => void;
   onClose: (path: string) => void;
   isDirty: (path: string) => boolean;
+  /** Files changed in git (absolute paths) also get the amber dot */
+  isModified?: (path: string) => boolean;
+  className?: string;
 }
 
+/** Open files over the code (D-Files): the shown one joins the code page */
 export function FileTabs({
   files,
   activeFilePath,
   onSelect,
   onClose,
   isDirty,
+  isModified,
+  className,
 }: FileTabsProps) {
-  const scrollRef = useRef<HTMLDivElement>(null);
   const activeTabRef = useRef<HTMLDivElement>(null);
 
   // Scroll active tab into view
   useEffect(() => {
-    if (activeTabRef.current && scrollRef.current) {
-      activeTabRef.current.scrollIntoView({
-        behavior: "smooth",
-        block: "nearest",
-        inline: "center",
-      });
-    }
+    activeTabRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "nearest",
+      inline: "center",
+    });
   }, [activeFilePath]);
 
   if (files.length === 0) {
@@ -40,21 +43,26 @@ export function FileTabs({
 
   return (
     <div
-      ref={scrollRef}
-      className="bg-muted/30 scrollbar-none flex items-center gap-0.5 overflow-x-auto px-1"
+      role="tablist"
+      aria-label="Open files"
+      className={cn(
+        "scrollbar-none flex min-w-0 items-end gap-0.5 overflow-x-auto",
+        className
+      )}
     >
       {files.map((file) => {
         const isActive = file.path === activeFilePath;
-        const dirty = isDirty(file.path);
+        const dot = isDirty(file.path) || !!isModified?.(file.path);
         const fileName = file.path.split("/").pop() || file.path;
-        const ext = fileName.split(".").pop()?.toLowerCase() || "";
 
         return (
           <div
             key={file.path}
             ref={isActive ? activeTabRef : null}
-            role="button"
+            role="tab"
+            aria-selected={isActive}
             tabIndex={0}
+            title={file.path}
             onClick={() => onSelect(file.path)}
             onKeyDown={(e) => {
               if (e.key === "Enter" || e.key === " ") {
@@ -63,28 +71,28 @@ export function FileTabs({
               }
             }}
             className={cn(
-              "flex cursor-pointer items-center gap-1.5 px-3 py-2 text-sm whitespace-nowrap transition-colors",
-              "min-h-[40px] md:min-h-[36px]",
-              "hover:bg-accent/50",
-              isActive
-                ? "bg-background text-foreground"
-                : "text-muted-foreground"
+              "file-tab group flex-shrink-0 cursor-pointer whitespace-nowrap",
+              isActive ? "on" : "hover:text-foreground"
             )}
           >
-            <FileIcon extension={ext} />
-            <span className="max-w-[120px] truncate">{fileName}</span>
-            {dirty && (
-              <span className="bg-primary h-2 w-2 flex-shrink-0 rounded-full" />
+            <span className="max-w-[180px] truncate font-mono">{fileName}</span>
+            {dot && (
+              <span
+                className="dirty-dot"
+                aria-label={isDirty(file.path) ? "Unsaved" : "Changed"}
+              />
             )}
             <button
+              type="button"
+              aria-label={`Close ${fileName}`}
               onClick={(e) => {
                 e.stopPropagation();
                 onClose(file.path);
               }}
               className={cn(
-                "hover:bg-accent ml-1 flex-shrink-0 rounded p-0.5",
+                "-mr-1.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full hover:bg-[hsl(var(--foreground)/0.1)] focus-visible:opacity-100",
                 "pointer-fine:opacity-0 pointer-fine:group-hover:opacity-100",
-                isActive && "opacity-100"
+                !isActive && "pointer-coarse:hidden"
               )}
             >
               <X className="h-3 w-3" />
@@ -94,25 +102,4 @@ export function FileTabs({
       })}
     </div>
   );
-}
-
-function FileIcon({ extension }: { extension: string }) {
-  const colorMap: Record<string, string> = {
-    js: "text-yellow-400",
-    jsx: "text-yellow-400",
-    ts: "text-blue-400",
-    tsx: "text-blue-400",
-    css: "text-pink-400",
-    scss: "text-pink-400",
-    html: "text-orange-400",
-    xml: "text-orange-400",
-    json: "text-green-400",
-    yaml: "text-purple-400",
-    yml: "text-purple-400",
-    md: "text-blue-300",
-    py: "text-green-500",
-  };
-
-  const color = colorMap[extension] || "text-muted-foreground";
-  return <File className={cn("h-3.5 w-3.5 flex-shrink-0", color)} />;
 }

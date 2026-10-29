@@ -1,214 +1,190 @@
 "use client";
 
-import { useState, useCallback } from "react";
-import {
-  ChevronRight,
-  ChevronDown,
-  File,
-  Folder,
-  FolderOpen,
-  Loader2,
-} from "lucide-react";
+import { useState, useCallback, useEffect, useRef } from "react";
+import { ChevronRight, ChevronDown, Folder, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { gitBadgeClass } from "@/lib/git-types";
 import type { FileNode } from "@/lib/file-utils";
+
+/** Narrow (E-Files): violet folder icons, rows on a card. Wide (D-Files): plain */
+export type TreeVariant = "narrow" | "wide";
 
 interface FileTreeProps {
   nodes: FileNode[];
-  basePath: string;
+  variant: TreeVariant;
+  /** The open file's row is selected */
+  selectedPath?: string | null;
   onFileClick: (path: string) => void;
-  depth?: number;
+  /** Double-click or long-press a folder: list from it */
+  onEnterFolder?: (path: string) => void;
+  /** Changes when the listing was refreshed: expanded folders refetch too */
+  refreshKey?: number;
+}
+
+const LONG_PRESS_MS = 500;
+
+/** Each level 20px further in; files one level past their folder */
+const INDENT = { narrow: 14, wide: 8 } as const;
+
+export async function fetchListing(dir: string): Promise<FileNode[] | null> {
+  try {
+    const res = await fetch(`/api/files?path=${encodeURIComponent(dir)}&git=1`);
+    const data = await res.json();
+    return Array.isArray(data.files) ? data.files : null;
+  } catch (err) {
+    console.error("Failed to load directory:", err);
+    return null;
+  }
 }
 
 /**
- * Recursive file tree component
- * Mobile-optimized with larger touch targets
- * Lazily loads directory contents when expanded
+ * The file tree (E-Files, D-Files): folders expand in place and load lazily;
+ * files show their git letter and colour
  */
 export function FileTree({
   nodes,
-  basePath,
+  variant,
+  selectedPath,
   onFileClick,
-  depth = 0,
+  onEnterFolder,
+  refreshKey = 0,
 }: FileTreeProps) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const [loadedChildren, setLoadedChildren] = useState<Map<string, FileNode[]>>(
-    new Map()
-  );
+  const [children, setChildren] = useState<Map<string, FileNode[]>>(new Map());
   const [loadingDirs, setLoadingDirs] = useState<Set<string>>(new Set());
+  const expandedRef = useRef(expanded);
+  expandedRef.current = expanded;
 
-  const fetchChildren = useCallback(
-    async (dirPath: string) => {
-      if (loadedChildren.has(dirPath)) return;
+  const load = useCallback(async (dir: string) => {
+    setLoadingDirs((prev) => new Set(prev).add(dir));
+    const files = await fetchListing(dir);
+    if (files) setChildren((prev) => new Map(prev).set(dir, files));
+    setLoadingDirs((prev) => {
+      const next = new Set(prev);
+      next.delete(dir);
+      return next;
+    });
+  }, []);
 
-      setLoadingDirs((prev) => new Set(prev).add(dirPath));
-      try {
-        const res = await fetch(
-          `/api/files?path=${encodeURIComponent(dirPath)}`
-        );
-        const data = await res.json();
-        if (data.files) {
-          setLoadedChildren((prev) => new Map(prev).set(dirPath, data.files));
-        }
-      } catch (err) {
-        console.error("Failed to load directory:", err);
-      } finally {
-        setLoadingDirs((prev) => {
-          const next = new Set(prev);
-          next.delete(dirPath);
-          return next;
-        });
-      }
-    },
-    [loadedChildren]
-  );
+  // A refresh (upload, new file, coming back to the view) reloads what is open
+  useEffect(() => {
+    if (!refreshKey) return;
+    for (const dir of expandedRef.current) load(dir);
+  }, [refreshKey, load]);
 
-  const toggleExpand = useCallback(
-    async (path: string) => {
-      const isCurrentlyExpanded = expanded.has(path);
-
+  const toggle = useCallback(
+    (dir: string) => {
+      const opening = !expandedRef.current.has(dir);
       setExpanded((prev) => {
         const next = new Set(prev);
-        if (next.has(path)) {
-          next.delete(path);
-        } else {
-          next.add(path);
-        }
+        if (opening) next.add(dir);
+        else next.delete(dir);
         return next;
       });
-
-      // Fetch children if expanding and not already loaded
-      if (!isCurrentlyExpanded && !loadedChildren.has(path)) {
-        await fetchChildren(path);
-      }
+      if (opening && !children.has(dir)) load(dir);
     },
-    [expanded, loadedChildren, fetchChildren]
+    [children, load]
   );
 
-  return (
-    <div className="w-full">
-      {nodes.map((node) => {
-        const isExpanded = expanded.has(node.path);
-        const isDirectory = node.type === "directory";
-        const isLoading = loadingDirs.has(node.path);
-        const children = loadedChildren.get(node.path) || node.children;
+  // Long-press a folder (touch): enter it instead of toggling
+  const press = useRef<{ timer: number; fired: boolean } | null>(null);
+  const startPress = (dir: string) => {
+    if (!onEnterFolder) return;
+    const state = { timer: 0, fired: false };
+    state.timer = window.setTimeout(() => {
+      state.fired = true;
+      onEnterFolder(dir);
+    }, LONG_PRESS_MS);
+    press.current = state;
+  };
+  const endPress = () => {
+    if (press.current) window.clearTimeout(press.current.timer);
+  };
 
+  const renderLevel = (list: FileNode[], depth: number): React.ReactNode =>
+    list.map((node) => {
+      if (node.type === "directory") {
+        const open = expanded.has(node.path);
+        const kids = children.get(node.path) ?? node.children;
         return (
-          <div key={node.path}>
-            {/* File/Directory item */}
+          <div key={node.path} role="treeitem" aria-expanded={open}>
             <button
+              type="button"
+              className="tree-row w-full text-left hover:bg-[hsl(var(--foreground)/0.04)]"
+              style={{ paddingLeft: INDENT[variant] + depth * 20 }}
+              title={
+                onEnterFolder ? "Double-click to list from here" : undefined
+              }
               onClick={() => {
-                if (isDirectory) {
-                  toggleExpand(node.path);
-                } else {
-                  onFileClick(node.path);
+                if (press.current?.fired) {
+                  press.current = null;
+                  return;
                 }
+                toggle(node.path);
               }}
-              className={cn(
-                "hover:bg-accent flex w-full items-center gap-2 px-2 py-2 text-left transition-colors",
-                "min-h-[40px] md:min-h-[32px]", // Touch target
-                "text-sm"
-              )}
-              style={{ paddingLeft: `${depth * 12 + 8}px` }}
+              onDoubleClick={() => onEnterFolder?.(node.path)}
+              onPointerDown={() => startPress(node.path)}
+              onPointerUp={endPress}
+              onPointerLeave={endPress}
+              onPointerCancel={endPress}
+              onContextMenu={(e) => onEnterFolder && e.preventDefault()}
             >
-              {/* Expand/collapse icon */}
-              {isDirectory && (
-                <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center">
-                  {isLoading ? (
-                    <Loader2 className="text-muted-foreground h-3 w-3 animate-spin" />
-                  ) : isExpanded ? (
-                    <ChevronDown className="text-muted-foreground h-4 w-4" />
-                  ) : (
-                    <ChevronRight className="text-muted-foreground h-4 w-4" />
-                  )}
-                </span>
-              )}
-
-              {/* Icon */}
-              <span className="flex-shrink-0">
-                {isDirectory ? (
-                  isExpanded ? (
-                    <FolderOpen className="h-4 w-4 text-blue-400" />
-                  ) : (
-                    <Folder className="h-4 w-4 text-blue-400" />
-                  )
+              <span className="text-muted-foreground flex h-4 w-4 flex-shrink-0 items-center justify-center">
+                {loadingDirs.has(node.path) ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : open ? (
+                  <ChevronDown className="h-4 w-4" />
                 ) : (
-                  <FileIcon extension={node.extension || ""} />
+                  <ChevronRight className="h-4 w-4" />
                 )}
               </span>
-
-              {/* Name */}
-              <span
-                className={cn(
-                  "flex-1 truncate",
-                  isDirectory ? "font-medium" : "text-muted-foreground"
-                )}
-              >
-                {node.name}
-              </span>
-
-              {/* Size (files only, on desktop) */}
-              {!isDirectory && node.size !== undefined && (
-                <span className="text-muted-foreground hidden flex-shrink-0 text-xs md:block">
-                  {formatFileSize(node.size)}
-                </span>
+              {variant === "narrow" && (
+                <Folder className="h-4 w-4 flex-shrink-0 text-[hsl(var(--meter))]" />
+              )}
+              <span className="min-w-0 flex-1 truncate">{node.name}</span>
+              {node.dirty && (
+                <span className="dirty-dot mr-1" aria-label="Has changes" />
               )}
             </button>
-
-            {/* Children (if expanded) */}
-            {isDirectory && isExpanded && children && children.length > 0 && (
-              <FileTree
-                nodes={children}
-                basePath={basePath}
-                onFileClick={onFileClick}
-                depth={depth + 1}
-              />
+            {open && kids && kids.length > 0 && (
+              <div role="group">{renderLevel(kids, depth + 1)}</div>
             )}
           </div>
         );
-      })}
-    </div>
-  );
-}
+      }
 
-/**
- * File icon based on extension
- */
-function FileIcon({ extension }: { extension: string }) {
-  const ext = extension.toLowerCase();
+      const badge = node.git;
+      const selected = node.path === selectedPath;
+      return (
+        <button
+          key={node.path}
+          type="button"
+          role="treeitem"
+          aria-selected={selected}
+          className={cn(
+            "tree-row w-full text-left",
+            selected ? "sel" : "hover:bg-[hsl(var(--foreground)/0.04)]",
+            // E-Files' selection runs edge to edge of its card
+            variant === "narrow" && "rounded-none"
+          )}
+          style={{ paddingLeft: INDENT[variant] + (depth + 1) * 20 }}
+          onClick={() => onFileClick(node.path)}
+        >
+          {variant === "narrow" && <span className="w-4 flex-shrink-0" />}
+          <span
+            className={cn(
+              "min-w-0 flex-1 truncate font-mono text-[13px]",
+              badge && gitBadgeClass(badge)
+            )}
+          >
+            {node.name}
+          </span>
+          {badge && (
+            <span className={cn("git-st", gitBadgeClass(badge))}>{badge}</span>
+          )}
+        </button>
+      );
+    });
 
-  // Color coding by file type
-  const colorMap: Record<string, string> = {
-    // JavaScript/TypeScript
-    js: "text-yellow-400",
-    jsx: "text-yellow-400",
-    ts: "text-blue-400",
-    tsx: "text-blue-400",
-    // Styles
-    css: "text-pink-400",
-    scss: "text-pink-400",
-    // Markup
-    html: "text-orange-400",
-    xml: "text-orange-400",
-    // Data
-    json: "text-green-400",
-    yaml: "text-purple-400",
-    yml: "text-purple-400",
-    // Config
-    md: "text-blue-300",
-    toml: "text-gray-400",
-    env: "text-yellow-300",
-  };
-
-  const color = colorMap[ext] || "text-muted-foreground";
-
-  return <File className={cn("h-4 w-4", color)} />;
-}
-
-/**
- * Format file size for display
- */
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes}B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`;
-  return `${(bytes / 1024 / 1024).toFixed(1)}MB`;
+  return <div role="tree">{renderLevel(nodes, 0)}</div>;
 }
