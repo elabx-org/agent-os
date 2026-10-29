@@ -849,7 +849,11 @@ export function ChatView({
         <InboxItem session={session} onOpen={onOpenTerminal} questionsOnly />
       </ul>
       {pending && !prompt && !promptLoading && (
-        <PendingPermission tool={pending} onOpenTerminal={onOpenTerminal} />
+        <PendingPermission
+          tool={pending}
+          session={session}
+          onOpenTerminal={onOpenTerminal}
+        />
       )}
     </>
   );

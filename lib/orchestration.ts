@@ -17,7 +17,7 @@ import { statusDetector } from "./status-detector";
 import { wrapWithBanner } from "./banner";
 import { runInBackground } from "./async-operations";
 import { writeClaudeStateSettings } from "./claude-state";
-import { effectiveMode, flagsFor, type Mode } from "./permission-mode";
+import { effectiveMode, type Mode } from "./permission-mode";
 
 const execAsync = promisify(exec);
 
@@ -192,14 +192,12 @@ export async function spawnWorker(
   // Workers the user starts auto-approve, for automation; an agent's don't
   const mode = fromUser ? null : inheritedMode(conductorSessionId);
   if (mode) {
-    db.prepare("UPDATE sessions SET permission_mode = ? WHERE id = ?").run(
-      mode,
-      sessionId
-    );
+    queries.updateSessionPermissionMode(db).run(mode, null, 0, sessionId);
   }
   const flags = provider.buildFlags({
     model,
     autoApprove: fromUser,
+    permissionMode: mode,
     // Pass branch name as the native worktree name for providers that support it
     worktreeName: useWorktree && hasNativeWorktree ? branchName : undefined,
     settingsFile:
@@ -207,7 +205,6 @@ export async function spawnWorker(
         ? writeClaudeStateSettings(sessionId) || undefined
         : undefined,
   });
-  if (!fromUser) flags.push(...flagsFor(agentType, mode));
   const flagsStr = flags.join(" ");
 
   // Create tmux session with the agent and banner

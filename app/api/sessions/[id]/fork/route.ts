@@ -53,6 +53,11 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         0,
         parent.project_id || "uncategorized"
       );
+    if (parent.permission_mode) {
+      queries
+        .updateSessionPermissionMode(db)
+        .run(parent.permission_mode, null, parent.auto_approve ? 1 : 0, newId);
+    }
 
     // NOTE: We do NOT copy claude_session_id here.
     // When the forked session is first attached, it will use --fork-session flag

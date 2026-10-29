@@ -12,10 +12,14 @@ import {
   parsePermissionPrompt,
   type PermissionPrompt,
 } from "@/lib/permission-prompt";
+import { isAnswerableQuestion } from "@/lib/permission-card";
 import { mergePrompt, type ReplyContext } from "@/lib/reply-context";
 import { sessionReplyContext } from "@/lib/session-reply-context";
 
 const execFileAsync = promisify(execFile);
+
+// One rule for the card and the guard
+export { isAnswerableQuestion };
 
 export const AGENT_ORIGIN_HEADER = "x-agentos-origin";
 
@@ -24,21 +28,6 @@ export const PERMISSION_USER_ONLY =
 
 export function isAgentOrigin(request: Request): boolean {
   return request.headers.get(AGENT_ORIGIN_HEADER)?.toLowerCase() === "agent";
-}
-
-/**
- * Whether the prompt on screen is a question an agent may answer: only a
- * pending AskUserQuestion, as the Needs you card classifies it (mergePrompt).
- * Anything else, or anything unclear, is treated as a permission request.
- */
-export function isAnswerableQuestion(
-  merged: ReplyContext | null,
-  prompt: PermissionPrompt
-): boolean {
-  if (merged?.kind !== "ask" || merged.toolName !== "AskUserQuestion")
-    return false;
-  // Permission dialogs offer "Yes, and don't ask again"; a question doesn't
-  return !prompt.options.some((o) => o.kind === "always");
 }
 
 /** The selection prompt on a tmux pane, if any; throws if it isn't running */

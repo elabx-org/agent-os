@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useSnapshot } from "valtio";
+import { useLongPress } from "@/hooks/useLongPress";
 import { useTheme } from "next-themes";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -10,6 +11,7 @@ import {
   ChevronRight,
   CircleStop,
   Film,
+  FlaskConical,
   Columns2,
   Globe,
   Settings,
@@ -46,6 +48,7 @@ import { UsageSection } from "./UsageSection";
 import { ClaudeCodeSection } from "./ClaudeCodeSection";
 import { SessionsSection } from "./SessionsSection";
 import { UploadsSection } from "./UploadsSection";
+import { LabsSection } from "./LabsSection";
 import { SettingGroup } from "./SettingGroup";
 
 const SECTION_TITLE: Record<SettingsSection, string> = {
@@ -57,6 +60,7 @@ const SECTION_TITLE: Record<SettingsSection, string> = {
   sessions: "Sessions",
   uploads: "Uploads",
   server: "Server",
+  labs: "Labs",
 };
 
 const SECTION_ICON = {
@@ -68,6 +72,7 @@ const SECTION_ICON = {
   sessions: CircleStop,
   uploads: Film,
   server: Globe,
+  labs: FlaskConical,
 } satisfies Record<SettingsSection, unknown>;
 
 /**
@@ -77,6 +82,13 @@ const SECTION_ICON = {
  */
 /** What runs: the server's release, and the app's when in it */
 function VersionLine({ className }: { className?: string }) {
+  const ref = useRef<HTMLParagraphElement>(null);
+  const revealLabs = () => {
+    settingsPageStore.labs = true;
+    settingsPageStore.section = "labs";
+  };
+  // Hidden on purpose: a long press (a double click on desktop) shows Labs
+  useLongPress(ref, revealLabs);
   const { data } = useQuery({
     queryKey: ["build"],
     queryFn: fetchBuild,
@@ -86,7 +98,11 @@ function VersionLine({ className }: { className?: string }) {
     typeof window !== "undefined" ? window.agentosNative?.version : undefined;
   if (!data?.version && !app) return null;
   return (
-    <p className={cn("text-muted-foreground text-xs", className)}>
+    <p
+      ref={ref}
+      onDoubleClick={revealLabs}
+      className={cn("text-muted-foreground text-xs select-none", className)}
+    >
       {data?.version && `Agent-OS v${data.version}`}
       {data?.version && app && " · "}
       {app && `iOS app ${app}`}
@@ -101,7 +117,7 @@ export function SettingsPage(props: NotificationsSectionProps) {
 }
 
 function SettingsLayer(props: NotificationsSectionProps) {
-  const { section } = useSnapshot(settingsPageStore);
+  const { section, labs } = useSnapshot(settingsPageStore);
   const { fold } = useSnapshot(postureStore);
   const { on: duoTrial } = useSnapshot(duoPreviewStore);
   const { theme } = useTheme();
@@ -144,7 +160,7 @@ function SettingsLayer(props: NotificationsSectionProps) {
   }, []);
 
   // The Duo and Server sections are the iOS app's
-  const sections: SettingsSection[] = native
+  const base: SettingsSection[] = native
     ? [
         "notifications",
         "display",
@@ -156,6 +172,7 @@ function SettingsLayer(props: NotificationsSectionProps) {
         "server",
       ]
     : ["notifications", "display", "usage", "claude", "sessions", "uploads"];
+  const sections: SettingsSection[] = labs ? [...base, "labs"] : base;
   const current = sections.includes(section) ? section : "notifications";
 
   const phone = usePhoneSummary(current);
@@ -170,6 +187,7 @@ function SettingsLayer(props: NotificationsSectionProps) {
     claude: <ClaudeCodeSection />,
     sessions: <SessionsSection />,
     uploads: <UploadsSection />,
+    labs: <LabsSection />,
     server: (
       <SettingGroup className="divide-y-0 p-1">
         <ServerRow />
@@ -189,6 +207,7 @@ function SettingsLayer(props: NotificationsSectionProps) {
     claude: "Claude Config",
     sessions: "Kill all sessions",
     uploads: "Video frames",
+    labs: "Kill switches",
     server: typeof window !== "undefined" ? window.location.host : "",
   };
 

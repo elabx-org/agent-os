@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { queries } from "@/lib/db/queries";
+import { FLAGS_PREFERENCE_KEY, setFlags, type Flags } from "@/lib/flags";
+import { requireUser } from "@/lib/user-proof";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -26,6 +28,19 @@ export async function PUT(request: Request) {
 
     if (!key || typeof key !== "string") {
       return NextResponse.json({ error: "key is required" }, { status: 400 });
+    }
+
+    // Flags gate instant full access: the user's call, never an agent's
+    if (key === FLAGS_PREFERENCE_KEY) {
+      const proof = requireUser(request);
+      if (!proof.ok) {
+        return NextResponse.json({ error: "user_only", reason: proof.reason }, { status: 403 });
+      }
+      try {
+        return NextResponse.json({ success: true, value: setFlags((value ?? {}) as Partial<Flags>) });
+      } catch (error) {
+        return NextResponse.json({ error: (error as Error).message }, { status: 400 });
+      }
     }
 
     queries.upsertPreference(db).run(key, JSON.stringify(value));

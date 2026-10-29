@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { PermissionPrompt, PromptOption } from "@/lib/permission-prompt";
 import { useSharedPoll } from "@/hooks/useSharedPoll";
+import { fetchAsUser } from "@/lib/client/user-fetch";
 
 const PROMPT_POLL_MS = 2000;
 
@@ -41,13 +42,18 @@ export function useAnswerPrompt(sessionId: string) {
     setAnswering(option.index);
     setError(null);
     try {
-      const res = await fetch(`/api/sessions/${sessionId}/prompt`, {
+      const res = await fetchAsUser(`/api/sessions/${sessionId}/prompt`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ index: option.index, label: option.label }),
       });
       if (!res.ok) {
-        setError((await res.json()).error ?? "Couldn't answer");
+        const body = await res.json().catch(() => ({}));
+        setError(
+          body.reason === "no_proof"
+            ? "Reload to confirm it's you"
+            : (body.error ?? "Couldn't answer")
+        );
       }
     } catch {
       setError("Couldn't reach the server");

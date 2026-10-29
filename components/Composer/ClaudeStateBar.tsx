@@ -13,14 +13,12 @@ import {
   ArrowDownToLine,
   ShieldQuestion,
   Square,
-  SquareTerminal,
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useClaudeState } from "@/hooks/useClaudeState";
 import { useSharedPoll } from "@/hooks/useSharedPoll";
 import { readClaudeScreen, type ClaudeScreen } from "@/lib/claude-screen";
-import { toolSummary } from "@/lib/permission-card";
 import type { ClaudeState, ClaudeTool } from "@/lib/claude-state";
 import type { Session } from "@/lib/db";
 import type { ChatItem } from "@/lib/claude-transcript";
@@ -641,11 +639,10 @@ export function PendingPermission({
 }: {
   tool: ClaudeTool;
   /** For the card's full-access switch and blocked attempts */
-  session?: Session;
+  session: Session;
   onOpenTerminal: () => void;
 }) {
   const permission: PendingPermissionInfo = { tool, prompt: null };
-  const summary = toolSummary(tool);
   return (
     // Needs-you amber, as the inbox's card: the accent stays for Send
     <div className="grid gap-2.5 rounded-2xl border border-amber-400/30 bg-amber-400/[0.06] p-3">
@@ -653,29 +650,11 @@ export function PendingPermission({
         <ShieldQuestion className="h-5 w-5 shrink-0 text-amber-400" />
         Claude wants to use {tool.tool_name}
       </p>
-      {session ? (
-        <PermissionCard
-          session={session}
-          permission={permission}
-          onOpen={onOpenTerminal}
-        />
-      ) : (
-        <>
-          {summary && (
-            <p className="text-muted-foreground truncate font-mono text-xs">
-              {summary}
-            </p>
-          )}
-          <button
-            type="button"
-            onClick={onOpenTerminal}
-            className="text-muted-foreground active:bg-accent hover:bg-accent flex h-11 items-center gap-1.5 justify-self-start rounded-lg px-2.5 text-xs font-medium"
-          >
-            <SquareTerminal className="h-4 w-4" />
-            Answer in terminal
-          </button>
-        </>
-      )}
+      <PermissionCard
+        session={session}
+        permission={permission}
+        onOpen={onOpenTerminal}
+      />
     </div>
   );
 }

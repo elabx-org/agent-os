@@ -8,13 +8,16 @@ export type SettingsSection =
   | "claude"
   | "sessions"
   | "uploads"
-  | "server";
+  | "server"
+  | "labs";
 
 /** Settings as its own layer over the app: the gear, ⌘, or the iOS app's nav */
 export const settingsPageStore = proxy<{
   open: boolean;
   section: SettingsSection;
-}>({ open: false, section: "notifications" });
+  /** Labs shows after a long press on the version line, until reload */
+  labs: boolean;
+}>({ open: false, section: "notifications", labs: false });
 
 export function openSettings(section?: SettingsSection) {
   if (section) settingsPageStore.section = section;
