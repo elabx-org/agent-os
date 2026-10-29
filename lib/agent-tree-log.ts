@@ -44,6 +44,8 @@ export interface AgentLog {
   modelId: string | null;
   /** The model it was asked for, which carries "[1m]" for the long window */
   requestedModel: string | null;
+  /** Its first and latest line's time */
+  startedAt: string | null;
   updatedAt: string | null;
   /** Writes waiting for their result, by tool call id */
   pendingWrites: Map<
@@ -68,6 +70,7 @@ function emptyLog(): AgentLog {
     usage: null,
     modelId: null,
     requestedModel: null,
+    startedAt: null,
     updatedAt: null,
     pendingWrites: new Map(),
     forkHead: false,
@@ -129,8 +132,13 @@ const INTERPRETERS = new Set([
  * nothing from the first flag, `=`, quote or pipe on (where values live)
  */
 export function commandTarget(command: string): string {
+  // A here-document's body is data, never the command
+  const commands = command.replace(
+    /<<-?\s*(['"]?)(\w+)\1[^\n]*\n[\s\S]*?\n[ \t]*\2[ \t]*(?=\n|$)/g,
+    ""
+  );
   // The first part that runs something: `X=1; cd y && node z.js` is z.js
-  for (const part of command.split(/\s*(?:\|\||&&|\||;|\n)\s*/)) {
+  for (const part of commands.split(/\s*(?:\|\||&&|\||;|\n)\s*/)) {
     const words = partWords(part);
     if (words.length && words[0] !== "cd") return words.join(" ");
   }
@@ -270,8 +278,25 @@ function textOf(content: unknown): string {
     .join("\n");
 }
 
+/**
+ * A workflow agent's conversation opens with the harness relaying the
+ * user's request, then the task the script computed, indented under a
+ * notice: the task is what it was asked to do
+ */
+export function harnessTask(text: string): string | null {
+  if (text.startsWith("[Workflow harness — user request]")) return null;
+  if (!text.startsWith("[Workflow harness — computed task]")) return text;
+  return text
+    .split("\n")
+    .slice(1)
+    .filter((l) => l.startsWith("  ") || !l.trim())
+    .map((l) => l.slice(2))
+    .join("\n")
+    .replace(/^\s*The computed task text follows:\s*/, "");
+}
+
 function capPrompt(text: string): string | null {
-  const t = text.trim();
+  const t = harnessTask(text.trim())?.trim();
   if (!t) return null;
   return t.length > PROMPT_CAP ? t.slice(0, PROMPT_CAP - 1) + "…" : t;
 }
@@ -295,7 +320,10 @@ function applyLine(log: AgentLog, line: string) {
     return;
   }
   const at = str(entry.timestamp);
-  if (at) log.updatedAt = at;
+  if (at) {
+    log.startedAt ??= at;
+    log.updatedAt = at;
+  }
   const message = entry.message as Record<string, unknown> | undefined;
   if (!message) return;
   const content = message.content;

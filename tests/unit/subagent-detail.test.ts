@@ -4,7 +4,12 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { subagentDetail } from "../../lib/claude-subagents";
-import { commandTarget, editDelta, lineCount } from "../../lib/agent-tree-log";
+import {
+  commandTarget,
+  editDelta,
+  harnessTask,
+  lineCount,
+} from "../../lib/agent-tree-log";
 
 const lines = (...entries: unknown[]) =>
   entries.map((e) => JSON.stringify(e)).join("\n") + "\n";
@@ -250,6 +255,12 @@ test("commandTarget keeps the program and its first words, never values", () => 
   assert.equal(commandTarget("npx jest tests/unit"), "jest tests/unit");
   assert.equal(commandTarget("timeout 30 npm test"), "npm test");
   assert.equal(commandTarget("echo password=hunter2"), "echo");
+  // A here-document's body is never shown
+  assert.equal(
+    commandTarget("python3 - <<'EOF'\np='x'\nEOF\nnode mockshot.js N-Undo"),
+    "mockshot.js N-Undo"
+  );
+  assert.equal(commandTarget("cat > a.txt <<EOF\nsecret\nEOF"), "cat");
 });
 
 test("line counts and edit deltas", () => {
@@ -259,4 +270,18 @@ test("line counts and edit deltas", () => {
   assert.deepEqual(editDelta("a\nb\nc", "a\nB\nc"), { added: 1, removed: 1 });
   assert.deepEqual(editDelta("", "x\ny"), { added: 2, removed: 0 });
   assert.deepEqual(editDelta("same", "same"), { added: 0, removed: 0 });
+});
+
+test("a workflow agent was asked the computed task, not the relayed request", () => {
+  assert.equal(
+    harnessTask("[Workflow harness — user request] relayed\n  Build it all"),
+    null
+  );
+  assert.equal(
+    harnessTask(
+      "[Workflow harness — computed task] Notice.\n  \n  Mock undo for one hunk.\n  Reuse ui.css."
+    )?.trim(),
+    "Mock undo for one hunk.\nReuse ui.css."
+  );
+  assert.equal(harnessTask("Plain prompt"), "Plain prompt");
 });

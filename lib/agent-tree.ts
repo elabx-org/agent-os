@@ -14,6 +14,8 @@ import type { WorkflowInfo } from "./claude-workflows";
 import { cachedBackgroundAgents } from "./claude-background";
 import type { BackgroundAgent } from "./claude-background";
 import { findTranscript } from "./claude-transcript";
+import { latest } from "./session-watch";
+import { statusDetector } from "./status-detector";
 import {
   fromBackgroundState,
   fromSessionStatus,
@@ -50,6 +52,9 @@ export interface AgentActivity {
   files: string[];
   model: string | null;
   tokens: number | null;
+  /** Its conversation's first and latest line */
+  startedAt?: string | null;
+  updatedAt?: string | null;
 }
 
 export interface AgentTreeInput {
@@ -141,8 +146,17 @@ function agentLeaf(
   model: string | null,
   tokens: number | null
 ): TreeNode {
+  // Its conversation's own times beat the file's (a copied or restored
+  // file has new dates)
+  const startedAt = activity?.startedAt ?? base.startedAt ?? null;
+  const updatedAt = activity?.updatedAt ?? base.updatedAt ?? null;
   return {
     ...base,
+    startedAt,
+    updatedAt,
+    finishedAt: FINISHED.includes(base.state)
+      ? (activity?.updatedAt ?? base.finishedAt ?? updatedAt)
+      : null,
     subtitle: agentSubtitle(base.state, activity, steps),
     model: activity?.model ?? model,
     tokens: activity?.tokens ?? tokens,
@@ -247,6 +261,19 @@ function workflowNode(
 }
 
 /** How a linked Agent-OS session relates: worker, handoff or fork */
+/**
+ * A workflow agent's label without its phase ("design:undo-diff" in Design
+ * is "undo-diff"): the tree already shows it under that phase
+ */
+export function withoutPhase(label: string, phase: string | null): string {
+  if (!phase) return label;
+  const prefix = `${phase.toLowerCase()}:`;
+  const rest = label.toLowerCase().startsWith(prefix)
+    ? label.slice(prefix.length).trim()
+    : "";
+  return rest || label;
+}
+
 function relatedKind(
   session: Session,
   other: Session
@@ -410,7 +437,7 @@ export function buildAgentTree(input: AgentTreeInput): AgentTreeResponse {
           {
             id: `agent:${a.agentId}`,
             kind: "agent",
-            title: a.label,
+            title: withoutPhase(a.label, a.phase),
             state,
             agentType: "claude",
             startedAt: null,
@@ -520,6 +547,8 @@ export function activityOf(file: string): AgentActivity | null {
     files: [...log.files.keys()].map((f) => path.basename(f)),
     model: logModel(log),
     tokens: logTokens(log),
+    startedAt: log.startedAt,
+    updatedAt: log.updatedAt,
   };
 }
 
@@ -570,12 +599,31 @@ function relatedSessions(sessionId: string): Session[] {
   }
 }
 
+/**
+ * The session as it is now: the stored status is not kept up to date, so
+ * the watched one (or one read of its pane) replaces it
+ */
+async function withLiveStatus(session: Session): Promise<Session> {
+  try {
+    const status =
+      latest(session.id)?.status ??
+      (await statusDetector.getStatus(
+        session.tmux_name || `${session.agent_type}-${session.id}`
+      ));
+    return { ...session, status: status as Session["status"] };
+  } catch {
+    return session;
+  }
+}
+
 async function readTree(sessionId: string): Promise<AgentTreeResponse | null> {
-  const session = queries.getSession(getDb()).get(sessionId) as
+  const stored = queries.getSession(getDb()).get(sessionId) as
     | Session
     | undefined;
-  if (!session) return null;
-  const related = relatedSessions(session.id);
+  if (!stored) return null;
+  const [session, ...related] = await Promise.all(
+    [stored, ...relatedSessions(stored.id)].map(withLiveStatus)
+  );
   const now = Date.now();
   if (session.agent_type !== "claude")
     return buildAgentTree({

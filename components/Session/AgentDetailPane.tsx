@@ -252,7 +252,7 @@ export function AgentDetailPane({
     <button
       type="button"
       onClick={() => onOpenTranscript(node)}
-      className="pill pill-primary flex-1"
+      className={cn("pill pill-primary", panel ? "w-full" : "flex-1")}
     >
       Open transcript
     </button>
@@ -271,7 +271,7 @@ export function AgentDetailPane({
     <section
       aria-label="Selected agent"
       className={cn(
-        "flex min-h-0 flex-col overflow-y-auto",
+        "flex min-h-0 flex-col overflow-y-auto *:flex-none",
         panel ? "gap-4" : "gap-3",
         className
       )}
@@ -378,7 +378,7 @@ export function AgentDetailPane({
       )}
 
       {panel ? (
-        <div className="mt-auto flex flex-col gap-2 pt-2">
+        <div className="mt-auto flex flex-none flex-col gap-2 pt-2">
           {transcriptButton}
           {(messageButton || stopButton) && (
             <div className="flex gap-2">
@@ -389,7 +389,7 @@ export function AgentDetailPane({
         </div>
       ) : (
         (stopButton || transcriptButton) && (
-          <div className="mt-auto flex gap-2.5 pt-2">
+          <div className="mt-auto flex flex-none gap-2.5 pt-2">
             {stopButton}
             {transcriptButton}
           </div>

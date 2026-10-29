@@ -6,6 +6,7 @@ import path from "node:path";
 import {
   activityOf,
   buildAgentTree,
+  withoutPhase,
   type AgentActivity,
 } from "../../lib/agent-tree";
 import { listSubagents, subagentFile } from "../../lib/claude-subagents";
@@ -548,4 +549,11 @@ test("background agents link only when named in the conversation", () => {
     linkBackground(me, candidates, mentionedIds(file, ids)).map((a) => a.id),
     ["aaaa1111", "eeee5555"]
   );
+});
+
+test("a workflow agent's label drops its phase", () => {
+  assert.equal(withoutPhase("design:undo-diff", "Design"), "undo-diff");
+  assert.equal(withoutPhase("critique:tree", "Design"), "critique:tree");
+  assert.equal(withoutPhase("tree", null), "tree");
+  assert.equal(withoutPhase("design:", "Design"), "design:");
 });
