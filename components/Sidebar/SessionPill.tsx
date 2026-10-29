@@ -4,11 +4,8 @@ import { ChevronDown } from "lucide-react";
 import type { Session } from "@/lib/db";
 import type { SessionStatus } from "@/components/views/types";
 import { Avatar, agentAvatar } from "@/components/a/Avatar";
-import {
-  STATE_TEXT_CLASS,
-  STATE_WORD,
-  fromSessionStatus,
-} from "@/lib/agent-state";
+import { STATE_TEXT_CLASS, STATE_WORD } from "@/lib/agent-state";
+import { sessionState } from "@/lib/paused";
 import { displayTitle, useListTitles } from "@/hooks/useSessionTitles";
 import { cn } from "@/lib/utils";
 import { shortAge } from "./model";
@@ -34,7 +31,7 @@ export function SessionPill({
 }: SessionPillProps) {
   const titles = useListTitles([session]);
   const { title } = displayTitle(session, titles);
-  const state = fromSessionStatus(status?.status ?? "idle");
+  const state = sessionState(session, status?.status);
   const line =
     state === "work"
       ? `${STATE_WORD.work} · ${shortAge(session.updated_at)}`

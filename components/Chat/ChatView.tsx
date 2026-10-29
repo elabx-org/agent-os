@@ -27,6 +27,8 @@ import {
   useComposer,
 } from "@/components/Composer";
 import { ComposerCard } from "@/components/Composer/ComposerCard";
+import { PausedBar } from "@/components/Session/PausedBar";
+import { isPaused } from "@/lib/handoff-types";
 import {
   RewindSheet,
   useClaudeLive,
@@ -103,6 +105,8 @@ export function ChatView({
   }, [empty, onEmpty]);
   const { statuses, nativeKeyboard } = useSnapshot(mobileNavStore);
   const status = statuses[session.id]?.status;
+  // Handed off to another agent: its tmux ended, the chat stays readable
+  const paused = isPaused(session);
   const { rows, results } = useMemo(() => buildRows(items), [items]);
 
   // Each turn's card after the reply that ended it (flag `snapshots`)
@@ -644,60 +648,67 @@ export function ChatView({
                 : undefined
             }
           >
-            <ComposerPopover composer={composer} />
-            <RewindSheet
-              live={live}
-              cwd={composer.cwd}
-              onRewound={onOpenTerminal}
-            />
-            <ComposerCard
-              composer={composer}
-              sessionId={session.id}
-              agentName="Claude"
-              inlinePlus={mode === "desktop"}
-              queue={queue}
-              onSendDirect={sendDirect}
-              onSent={sent}
-              placeholder={
-                mode === "desktop"
-                  ? "Reply to Claude, / for commands, @ for files"
-                  : "Reply to Claude"
-              }
-              inputProps={{
-                onFocus: () => {
-                  setComposerFocused(true);
-                  // The app's keyboard bar shows no terminal keys in chat
-                  if (isNative())
-                    postToNative({
-                      type: "keys",
-                      context: "chat",
-                      ids: CHAT_KEYS,
-                    });
-                },
-                onBlur: () => setComposerFocused(false),
-                // Shift+Tab and Esc go to Claude; the card sends on Return
-                onKeyDown: (e) => {
-                  live.onKeyDown(e);
-                },
-                enterKeyHint: "send",
-                inputClassName: "max-h-40",
-                autoGrow: true,
-              }}
-              // Half folded, Stop sits beside the composer (Fold-Chat)
-              trailing={deck ? <StopPill session={session} /> : undefined}
-              above={
-                <>
-                  {/* What's being answered, and the passages quoted to answer */}
-                  <ReplyContextBar
-                    composer={composer}
-                    sessionId={session.id}
-                    view="chat"
-                    bounds={rootRef}
-                  />
-                  <ComposerChips composer={composer} historyChip />
-                </>
-              }
-            />
+            {/* Handed off: Open the new session or Resume here, in place
+                of the composer (its transcript still reads above) */}
+            {paused && <PausedBar session={session} />}
+            {!paused && <ComposerPopover composer={composer} />}
+            {!paused && (
+              <RewindSheet
+                live={live}
+                cwd={composer.cwd}
+                onRewound={onOpenTerminal}
+              />
+            )}
+            {!paused && (
+              <ComposerCard
+                composer={composer}
+                sessionId={session.id}
+                agentName="Claude"
+                inlinePlus={mode === "desktop"}
+                queue={queue}
+                onSendDirect={sendDirect}
+                onSent={sent}
+                placeholder={
+                  mode === "desktop"
+                    ? "Reply to Claude, / for commands, @ for files"
+                    : "Reply to Claude"
+                }
+                inputProps={{
+                  onFocus: () => {
+                    setComposerFocused(true);
+                    // The app's keyboard bar shows no terminal keys in chat
+                    if (isNative())
+                      postToNative({
+                        type: "keys",
+                        context: "chat",
+                        ids: CHAT_KEYS,
+                      });
+                  },
+                  onBlur: () => setComposerFocused(false),
+                  // Shift+Tab and Esc go to Claude; the card sends on Return
+                  onKeyDown: (e) => {
+                    live.onKeyDown(e);
+                  },
+                  enterKeyHint: "send",
+                  inputClassName: "max-h-40",
+                  autoGrow: true,
+                }}
+                // Half folded, Stop sits beside the composer (Fold-Chat)
+                trailing={deck ? <StopPill session={session} /> : undefined}
+                above={
+                  <>
+                    {/* What's being answered, and the passages quoted to answer */}
+                    <ReplyContextBar
+                      composer={composer}
+                      sessionId={session.id}
+                      view="chat"
+                      bounds={rootRef}
+                    />
+                    <ComposerChips composer={composer} historyChip />
+                  </>
+                }
+              />
+            )}
           </div>
           {controlPages && (
             <>

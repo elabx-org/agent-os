@@ -11,7 +11,7 @@ import {
   Square,
   Trash2,
 } from "lucide-react";
-import { Avatar, agentAvatar } from "@/components/a/Avatar";
+import { Avatar, agentAvatar, agentName } from "@/components/a/Avatar";
 import { GroupCard, GroupRow } from "@/components/a/GroupCard";
 import { SectionTitle } from "@/components/a/SectionTitle";
 import { StateDot } from "@/components/a/StateDot";
@@ -19,14 +19,15 @@ import { openBackgroundAgent } from "@/components/BackgroundAgents";
 import { ServerLogsModal } from "@/components/DevServers";
 import { shortAge } from "@/components/MissionControl/now-summary";
 import { ActionSheet, type SheetAction } from "@/components/ui/action-sheet";
+import { useSessionsQuery } from "@/data/sessions/queries";
 import { displayTitle } from "@/hooks/useSessionTitles";
 import {
   STATE_WORD,
   fromBackgroundState,
   fromDevServerStatus,
-  fromSessionStatus,
   type AgentState,
 } from "@/lib/agent-state";
+import { handedOffLine, sessionState } from "@/lib/paused";
 import type { BackgroundAgent } from "@/lib/claude-background";
 import type { DevServer, Session } from "@/lib/db";
 import type { GitFile, GitStatus } from "@/lib/git-status";
@@ -60,9 +61,18 @@ export function Section({
   );
 }
 
-/** Asking in amber, Working after a green dot, the rest quiet; then the age */
-function StateLine({ state, age }: { state: AgentState; age?: string | null }) {
-  const word = state === "needs" ? "Asking" : STATE_WORD[state];
+/** Asking in amber, Working after a green dot, the rest quiet; then the age.
+    Paused says where it went instead: "Handed off to Codex" */
+function StateLine({
+  state,
+  age,
+  word: given,
+}: {
+  state: AgentState;
+  age?: string | null;
+  word?: string;
+}) {
+  const word = given ?? (state === "needs" ? "Asking" : STATE_WORD[state]);
   return (
     <span className="flex min-w-0 items-center gap-1.5">
       {(state === "needs" || state === "work") && (
@@ -80,8 +90,12 @@ function StateLine({ state, age }: { state: AgentState; age?: string | null }) {
   );
 }
 
-/** Asking first, then working, then the rest */
-const RANK: Partial<Record<AgentState, number>> = { needs: 0, work: 1 };
+/** Asking first, then working, then the rest; paused (handed off) last */
+const RANK: Partial<Record<AgentState, number>> = {
+  needs: 0,
+  work: 1,
+  paused: 3,
+};
 const rank = (state: AgentState) => RANK[state] ?? 2;
 
 /** The project's sessions: agent tile, title, state and how long ago */
@@ -105,9 +119,10 @@ export function SessionsSection({
   actions: ComponentProps<typeof SessionRowActions>["actions"];
   onOpenSession: (session: Session) => void;
 }) {
+  // A paused session's successor may be listed anywhere
+  const all = useSessionsQuery().data?.sessions ?? sessions;
   if (!sessions.length) return null;
-  const stateOf = (s: Session) =>
-    fromSessionStatus(statuses[s.id]?.status ?? "idle");
+  const stateOf = (s: Session) => sessionState(s, statuses[s.id]?.status);
   // Pinned first within a state, as in the project list, then the latest
   const sorted = [...sessions].sort(
     (a, b) =>
@@ -120,6 +135,7 @@ export function SessionsSection({
     <Section title="Sessions">
       {sorted.map((session) => {
         const { title } = displayTitle(session, titles);
+        const state = stateOf(session);
         return (
           <SessionRowActions
             key={session.id}
@@ -129,11 +145,21 @@ export function SessionsSection({
             actions={actions}
           >
             <GroupRow
-              leading={<Avatar {...agentAvatar(session.agent_type)} />}
+              leading={
+                <Avatar
+                  {...agentAvatar(session.agent_type)}
+                  className={state === "paused" ? "opacity-60" : undefined}
+                />
+              }
               title={title}
               subtitle={
                 <StateLine
-                  state={stateOf(session)}
+                  state={state}
+                  word={
+                    state === "paused"
+                      ? handedOffLine(session, all, agentName)
+                      : undefined
+                  }
                   age={shortAge(session.updated_at)}
                 />
               }

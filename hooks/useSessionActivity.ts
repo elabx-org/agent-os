@@ -8,12 +8,8 @@ import type { WorkflowInfo } from "@/lib/claude-workflows";
 import type { PermissionPrompt } from "@/lib/permission-prompt";
 import type { PlanResponse, PlanState } from "@/lib/claude-plan";
 import type { SessionStatus } from "@/components/views/types";
-import {
-  dbTimeMs,
-  fromSessionStatus,
-  STATE_WORD,
-  type AgentState,
-} from "@/lib/agent-state";
+import { dbTimeMs, STATE_WORD, type AgentState } from "@/lib/agent-state";
+import { sessionState } from "@/lib/paused";
 import { mobileNavStore } from "@/stores/mobileNav";
 import { useGitStatus, usePRStatus } from "@/data/git/queries";
 import { useDevServersQuery } from "@/data/dev-servers";
@@ -212,7 +208,8 @@ export function useSessionActivity(
   const dir = session?.working_directory ?? "";
   const { statuses } = useSnapshot(mobileNavStore);
   const status = statuses[id] as SessionStatus | undefined;
-  const state = fromSessionStatus(status?.status ?? "idle");
+  // Paused (handed off): its tmux ended, whatever the last status said
+  const state = sessionState(session, status?.status);
   const on = active && !!session;
 
   const { data: prompt } = useSessionPrompt(id, {

@@ -39,6 +39,7 @@ import {
 import { useFlag } from "@/hooks/useFlags";
 import { usePaneChrome } from "@/components/Session/usePaneChrome";
 import { takePaneLaunch } from "@/stores/beside";
+import { isPaused } from "@/lib/handoff-types";
 import { ActivityStrip } from "@/components/Session/ActivityStrip";
 import { isNative } from "@/lib/native-bridge";
 import { useSharedFiles } from "@/hooks/useSharedFiles";
@@ -152,6 +153,8 @@ export const Pane = memo(function Pane({
   const session = activeTab
     ? sessions.find((s) => s.id === activeTab.sessionId)
     : null;
+  // Handed off (M4): no terminal to attach or launch, its chat stays
+  const sessionPaused = isPaused(session);
 
   // File editor state - lifted here so it persists across view switches
   const fileEditor = useFileEditor();
@@ -209,7 +212,9 @@ export const Pane = memo(function Pane({
     // Each session opens in the view you last used there, else chat for
     // Claude (flag chatDefault) or the terminal
     const next = session
-      ? openingView(session.id, session.agent_type, chatDefault)
+      ? isPaused(session)
+        ? "chat"
+        : openingView(session.id, session.agent_type, chatDefault)
       : "terminal";
     defaultedRef.current = next;
     setViewMode(next);
@@ -229,10 +234,20 @@ export const Pane = memo(function Pane({
   // Opened in chat by default, but nothing has been said yet: the terminal
   // is where there's something to see
   const chatEmpty = useCallback(() => {
-    if (defaultedRef.current !== "chat") return;
+    if (defaultedRef.current !== "chat" || sessionPaused) return;
     defaultedRef.current = "terminal";
     setViewMode((mode) => (mode === "chat" ? "terminal" : mode));
-  }, [setViewMode]);
+  }, [setViewMode, sessionPaused]);
+
+  // Handed off while showing here: its terminal ended, its chat stays
+  const wasPaused = useRef(sessionPaused);
+  useEffect(() => {
+    if (sessionPaused && !wasPaused.current) {
+      defaultedRef.current = "chat";
+      setViewMode((mode) => (mode === "terminal" ? "chat" : mode));
+    }
+    wasPaused.current = sessionPaused;
+  }, [sessionPaused, setViewMode]);
 
   // Remember a change of view; a switch of session alone isn't one
   const viewSessionId = useRef(session?.id);
@@ -384,6 +399,10 @@ export const Pane = memo(function Pane({
         return;
       }
       initializedTabs.current.add(tab.id);
+
+      // A paused (handed-off) session's tmux ended: nothing to attach, and
+      // never a launch
+      if (isPaused(sessions.find((s) => s.id === tab.sessionId))) return;
 
       // Determine tmux session name to attach
       const tmuxName = tab.sessionId
