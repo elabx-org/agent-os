@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import {
   ChevronLeft,
   MoreHorizontal,
-  Users,
+  Workflow,
   GitBranch,
   SquareTerminal,
   Copy,
@@ -73,7 +73,8 @@ interface SessionTitleBarProps {
   isMobile: boolean;
   isFocused: boolean;
   viewMode: PaneViewMode;
-  workerCount: number;
+  /** Agents the session started: the ⋯ menu's Agents item */
+  agentCount: number;
   onViewModeChange: (mode: PaneViewMode) => void;
   hasAttachedTmux: boolean;
   onDetach: () => void;
@@ -111,7 +112,7 @@ function visibleInput(pane: Element): HTMLTextAreaElement | null {
 /**
  * The session's header: back, its title and a crumb, and ⋯. Views switch
  * from the control column, so nothing here changes what the pane shows
- * except the less used ones (Workers, the drawers). The desktop shell has
+ * except the less used ones (Agents, the drawers). The desktop shell has
  * no column: there the views switch here.
  */
 export function SessionTitleBar({
@@ -121,7 +122,7 @@ export function SessionTitleBar({
   isMobile,
   isFocused,
   viewMode,
-  workerCount,
+  agentCount,
   onViewModeChange,
   hasAttachedTmux,
   onDetach,
@@ -330,17 +331,21 @@ export function SessionTitleBar({
             <DropdownMenuSeparator />
           </>
         )}
-        {workerCount > 0 && (
+        {(agentCount > 0 || viewMode === "agents") && (
           <DropdownMenuItem
             onSelect={() =>
-              onViewModeChange(viewMode === "workers" ? "terminal" : "workers")
+              onViewModeChange(viewMode === "agents" ? "terminal" : "agents")
             }
           >
-            <Users className="h-4 w-4" />
+            <Workflow className="h-4 w-4" />
             <span className="flex-1">
-              {viewMode === "workers" ? "Hide workers" : "Workers"}
+              {viewMode === "agents" ? "Hide agents" : "Agents"}
             </span>
-            <span className="text-muted-foreground text-xs">{workerCount}</span>
+            {agentCount > 0 && (
+              <span className="text-muted-foreground text-xs">
+                {agentCount}
+              </span>
+            )}
           </DropdownMenuItem>
         )}
         {/* Changes is a view too; the drawer keeps it beside the others */}
@@ -399,8 +404,12 @@ export function SessionTitleBar({
     </DropdownMenu>
   );
 
-  // Hidden while typing (the slim line stands in) and beside the pills
-  const hidden = nativeTyping || pilled;
+  // Hidden while typing (the slim line stands in) and beside the pills;
+  // the agents view names the session in its own header (N-Tree, O-Tree)
+  const hidden =
+    nativeTyping ||
+    pilled ||
+    (viewMode === "agents" && (variant === "page" || variant === "large"));
   let header: React.ReactNode;
   if (info && variant === "desktop")
     header = (

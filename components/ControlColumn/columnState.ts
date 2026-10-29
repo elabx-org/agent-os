@@ -9,6 +9,7 @@ import {
 import type { NativeColumnItem } from "@/lib/native-bridge";
 import { layoutStore, type LayoutMode } from "@/hooks/useLayoutMode";
 import { mobileNavStore } from "@/stores/mobileNav";
+import { agentTreeStore } from "@/stores/agentTree";
 import { newSurfaceStore } from "@/stores/newSurface";
 import { focusStore } from "@/stores/focus";
 import { settingsPageStore } from "@/stores/settingsPage";
@@ -33,6 +34,10 @@ interface ColumnSources {
   working: boolean;
   sheet: ColumnContext["sheet"];
   native: boolean;
+  agents: number;
+  showFinished: boolean;
+  allCollapsed: boolean;
+  agentDetail: boolean;
 }
 
 function contextFrom(s: ColumnSources): ColumnContext {
@@ -49,6 +54,10 @@ function contextFrom(s: ColumnSources): ColumnContext {
     liveOpen: s.liveOpen,
     working: s.working,
     sheet: s.sheet,
+    agents: s.agents,
+    showFinished: s.showFinished,
+    allCollapsed: s.allCollapsed,
+    agentDetail: s.agentDetail,
   };
 }
 
@@ -63,6 +72,7 @@ export function useColumn(
   const { paneCount } = useSnapshot(surfaceStore);
   const { detail: settingsDetail } = useSnapshot(settingsPageStore);
   const { mode } = useSnapshot(layoutStore);
+  const tree = useSnapshot(agentTreeStore);
   const surface = useSurface();
   const ctx = contextFrom({
     homeOpen: nav.homeOpen,
@@ -78,6 +88,10 @@ export function useColumn(
     working: nav.working,
     sheet: nav.sheet,
     native,
+    agents: nav.agentCount,
+    showFinished: tree.showFinished,
+    allCollapsed: tree.allCollapsed,
+    agentDetail: tree.detailOpen,
   });
   return { surface, mode, items: columnFor(surface, mode, ctx) };
 }
@@ -114,6 +128,10 @@ export function nativeColumn(): {
       working: mobileNavStore.working,
       sheet: mobileNavStore.sheet,
       native: true,
+      agents: mobileNavStore.agentCount,
+      showFinished: agentTreeStore.showFinished,
+      allCollapsed: agentTreeStore.allCollapsed,
+      agentDetail: agentTreeStore.detailOpen,
     })
   );
   const column = PAGE_BARS.includes(mode)

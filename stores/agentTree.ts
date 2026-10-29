@@ -16,12 +16,18 @@ export const agentTreeStore = proxy<{
   selected: Record<string, string | null>;
   /** The desktop graph's zoom; 1 is Fit */
   zoom: number;
+  /**
+   * The closed Duo and phones: the selected agent's detail is pushed over
+   * the tree (the column's back returns to the tree)
+   */
+  detailOpen: boolean;
 }>({
   showFinished: true,
   allCollapsed: false,
   collapsed: {},
   selected: {},
   zoom: 1,
+  detailOpen: false,
 });
 
 export function toggleShowFinished() {
@@ -48,4 +54,9 @@ export function selectNode(sessionId: string, nodeId: string | null) {
 
 export function setZoom(zoom: number) {
   agentTreeStore.zoom = Math.min(2, Math.max(0.4, zoom));
+}
+
+/** Push the selected agent's detail over the tree, or go back to the tree */
+export function setDetailOpen(open: boolean) {
+  agentTreeStore.detailOpen = open;
 }

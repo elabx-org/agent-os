@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
-import { Check, GitPullRequest } from "lucide-react";
+import { Check, ChevronRight, GitPullRequest, Workflow } from "lucide-react";
+import { useSnapshot } from "valtio";
 import type { Session } from "@/lib/db";
 import type { PlanStep } from "@/lib/claude-plan";
 import type { SubagentInfo } from "@/lib/claude-subagents";
@@ -19,7 +20,7 @@ import {
 } from "@/hooks/useSessionActivity";
 import { NeedsYouCard } from "@/components/Chat/NeedsYouCard";
 import { StateDot } from "@/components/a/StateDot";
-import { mobileNavActions } from "@/stores/mobileNav";
+import { mobileNavActions, mobileNavStore } from "@/stores/mobileNav";
 import { openSubagent } from "@/stores/agentOpen";
 import { runNav } from "@/lib/nav-actions";
 import {
@@ -77,6 +78,8 @@ export function LiveActivity({
     activity;
   useTick(15_000);
   const rail = variant === "rail";
+  // The family tree (N-Tree) opens from here
+  const { agentCount } = useSnapshot(mobileNavStore);
 
   const toChat = () => {
     mobileNavActions.requestViewMode("chat", session.id);
@@ -143,6 +146,29 @@ export function LiveActivity({
         />
       ) : (
         <StatusLine activity={activity} />
+      )}
+
+      {agentCount > 0 && (
+        <button
+          type="button"
+          onClick={() => {
+            runNav("agents");
+            onNavigate?.();
+          }}
+          className="bg-card flex min-h-11 min-w-0 shrink-0 items-center gap-2.5 rounded-2xl px-3.5 text-left text-sm"
+        >
+          <Workflow
+            aria-hidden
+            className="h-4 w-4 shrink-0 text-violet-700 dark:text-[#C4B5FD]"
+          />
+          <span className="min-w-0 flex-1 truncate font-semibold">
+            Agents · {agentCount}
+          </span>
+          <ChevronRight
+            aria-hidden
+            className="text-muted-foreground h-4 w-4 shrink-0"
+          />
+        </button>
       )}
 
       {plan && plan.items.length > 0 && (
