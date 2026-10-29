@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getDb, queries, type Session } from "@/lib/db";
 import { requester, userOnly } from "@/lib/permission-guard";
 import {
+  AutoResumeOffError,
   NotLimitedError,
   cancelResume,
   scheduleResume,
@@ -41,7 +42,8 @@ function refuseAgents(request: NextRequest): NextResponse | null {
 
 // POST /api/sessions/[id]/resume {when: 'reset'|'now'|'snooze', text?} -
 // ResumeResult (lib/limits/types.ts). 409 when the session isn't limited
-// (Resume now also goes for a session with a policy set)
+// (Resume now also goes for a session with a policy set), or for reset while
+// flag autoResume is off (auto_resume_off)
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -63,6 +65,9 @@ export async function POST(
   } catch (error) {
     if (error instanceof NotLimitedError) {
       return NextResponse.json({ error: "not_limited" }, { status: 409 });
+    }
+    if (error instanceof AutoResumeOffError) {
+      return NextResponse.json({ error: "auto_resume_off" }, { status: 409 });
     }
     const msg = error instanceof Error ? error.message : String(error);
     console.error("[resume] schedule failed:", msg);

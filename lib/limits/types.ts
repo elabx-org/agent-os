@@ -65,6 +65,11 @@ export const DEFAULT_RESUME_TEXT = "continue";
 export const RESUME_GRACE_MS = 30_000;
 /** Resumes of different sessions go at least this far apart */
 export const RESUME_STAGGER_MS = 20_000;
+/**
+ * A limit whose reset no source has said counts this long (a session
+ * window), so nothing is held without end
+ */
+export const UNKNOWN_RESET_MS = 5 * 60 * 60_000;
 /** The longest resume text accepted */
 export const MAX_RESUME_TEXT = 10_000;
 
@@ -94,7 +99,8 @@ export function limitStateOf(
   const limitedUntil = session.limited_until ?? null;
   return {
     limited:
-      limitedAt !== null && (limitedUntil === null || now < limitedUntil),
+      limitedAt !== null &&
+      now < (limitedUntil ?? limitedAt + UNKNOWN_RESET_MS),
     limitedAt,
     limitedUntil,
     kind:
@@ -108,6 +114,22 @@ export function limitStateOf(
       : null,
     resumeText: session.resume_text ?? null,
   };
+}
+
+/**
+ * Listed as limited (Now's Limited section, the sidebar, the dots): at a
+ * limit that hasn't reset, or scheduled to resume and not resumed yet (past
+ * the reset while the resume waits for the session to be ready). Such a
+ * session is not also under Needs you or Working
+ */
+export function isLimitShown(
+  session: Partial<LimitColumns>,
+  now: number = Date.now()
+): boolean {
+  const state = limitStateOf(session, now);
+  return (
+    state.limited || (state.policy === "at_reset" && state.limitedAt !== null)
+  );
 }
 
 /** "session limit", "weekly limit", "Opus limit": as the card says it */

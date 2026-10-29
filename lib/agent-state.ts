@@ -11,7 +11,7 @@ import {
   Square,
   type LucideIcon,
 } from "lucide-react";
-import { limitStateOf } from "./limits/types";
+import { isLimitShown } from "./limits/types";
 import type { Session } from "./db/types";
 
 /**
@@ -49,8 +49,8 @@ export function fromSessionStatus(status: string): AgentState {
 }
 
 /**
- * A session's state for its rows and dots: limited while it's at a usage
- * limit that hasn't reset (limitStateOf), else what its status says
+ * A session's state for its rows and dots: limited while it's listed as
+ * limited (isLimitShown), else what its status says
  */
 export function sessionState(
   session: Partial<
@@ -66,7 +66,7 @@ export function sessionState(
   status: string | undefined,
   now: number = Date.now()
 ): AgentState {
-  if (limitStateOf(session, now).limited) return "limited";
+  if (isLimitShown(session, now)) return "limited";
   return fromSessionStatus(status ?? "idle");
 }
 
@@ -127,6 +127,9 @@ export const STATE_WORD: Record<AgentState, string> = {
  */
 export const LIMIT_TEXT_CLASS = "text-[#5B5499] dark:text-[#B9B4E0]";
 export const LIMIT_FILL_CLASS = "bg-[#7B75B3] dark:bg-[#8F8AB8]";
+/** The Limited card's edge, for the status card in the limited tone */
+export const LIMIT_EDGE_CLASS =
+  "border-[rgba(91,84,153,0.28)] dark:border-[rgba(165,160,210,0.30)]";
 
 // The state colours are the dark page's (modern.css: --needs, --work,
 // --meter); on the light page text takes a deeper shade of each

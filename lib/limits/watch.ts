@@ -17,6 +17,7 @@ import {
 } from "../claude-usage";
 import { stripAnsi } from "../session-ready";
 import { onEdge, wantWatch, type WatchEdge } from "../session-watch";
+import { getFlags } from "../flags";
 import { formatReset } from "../usage-reset";
 import { isWatching, readPushConfig } from "../push/config";
 import { sendPush, type PushMessage } from "../push/send";
@@ -72,6 +73,13 @@ export interface LimitWatchDeps {
    * land in a session that already continued
    */
   dropResumes?(sessionId: string): number;
+  /** Flag `limits`: off, no turn end marks a session (clearing still runs) */
+  enabled?(): boolean;
+  /**
+   * Asks the usage API now (rate limited in lib/claude-usage.ts): the limit
+   * words were on screen but the cached figures didn't say a window is full
+   */
+  refreshUsage?(): Promise<UsageResponse | null>;
 }
 
 async function capture(tmuxName: string): Promise<string[] | null> {
@@ -127,6 +135,11 @@ function defaultDeps(): LimitWatchDeps {
     notify,
     now: Date.now,
     dropResumes,
+    enabled: () => getFlags().limits,
+    refreshUsage: async () => {
+      await getClaudeUsage();
+      return cachedClaudeUsage();
+    },
   };
 }
 
@@ -154,6 +167,15 @@ export function limitedBody(
   return at ? `${head} · resets ${at}` : head;
 }
 
+/** The status line carries rate limit figures */
+function hasFigures(status: ClaudeStatus | null): boolean {
+  const rates = status?.rate_limits;
+  return (
+    !!rates &&
+    Object.values(rates).some((r) => typeof r?.used_percentage === "number")
+  );
+}
+
 /**
  * What the end of a turn shows, from the screen, the hook's last
  * notification and the status line, with the reset from the best source
@@ -169,19 +191,31 @@ export function detectLimit(input: {
 }): DetectedLimit | null {
   const { now } = input;
   const at = new Date(now);
-  const fromScreen =
-    (input.screen && parseLimitScreen(input.screen, at)) ||
-    (input.notification?.message &&
+  const fromNote =
+    input.notification?.message &&
     input.notification.at >= input.turnStart - NOTE_SLACK_MS
       ? parseLimitScreen([input.notification.message], at)
-      : null);
+      : null;
+  const fromScreen =
+    (input.screen && parseLimitScreen(input.screen, at)) || fromNote;
+  // The status line alone is a hint, not a limit: Claude carries on past
+  // 100% with extra usage, and every turn end would mark it again
+  if (!fromScreen) return null;
   let fromStatus = limitFromStatus(input.status?.rate_limits ?? null);
   // A full window that has already reset is an old reading
   if (fromStatus && fromStatus.until !== null && fromStatus.until <= now)
     fromStatus = null;
-  if (!fromScreen && !fromStatus) return null;
+  // Words on the screen could be anything that quotes them: with figures to
+  // ask, one of them must say a window is full too
+  if (
+    !fromNote &&
+    !fromStatus &&
+    !limitFromUsage(input.usage, now) &&
+    (hasFigures(input.status) || input.usage !== null)
+  )
+    return null;
 
-  let kind = fromScreen?.kind ?? fromStatus!.kind;
+  let kind = fromScreen.kind;
   if (kind === "unknown") {
     kind = fromStatus?.kind ?? limitFromUsage(input.usage, now)?.kind ?? kind;
   }
@@ -190,7 +224,7 @@ export function detectLimit(input: {
   const until = resolveUntil({
     status: fromStatus?.kind === kind ? ahead(fromStatus.until) : null,
     usage: usageResetFor(input.usage, kind, now),
-    screen: ahead(fromScreen?.until),
+    screen: ahead(fromScreen.until),
   });
   return { kind, until };
 }
@@ -226,9 +260,11 @@ export async function handleLimitEdge(
   if (edge.to === "gone") return;
   if (edge.to === "running") {
     const session = deps.session(edge.sessionId);
-    if (!session || session.limited_at === null) return;
-    // Still pending: this turn isn't the resume, the user went on first
+    if (!session) return;
+    // Still pending: this turn isn't the resume, the user went on first (a
+    // Resume now held by a prompt too, which no longer has its limit)
     const dropped = deps.dropResumes?.(session.id) ?? 0;
+    if (session.limited_at === null) return;
     const resumedAtReset = session.resume_policy === "at_reset" && !dropped;
     deps.store.clearLimited(session.id);
     if (resumedAtReset) {
@@ -246,20 +282,30 @@ export async function handleLimitEdge(
     return;
   }
   if (edge.from !== "running") return;
+  if (deps.enabled && !deps.enabled()) return;
 
   const session = deps.session(edge.sessionId);
   if (!session || (session.agent_type || "claude") !== "claude") return;
   const now = deps.now();
   const claude = deps.claude(session.id);
-  const usage = deps.usage();
-  const found = detectLimit({
+  const input = {
     screen: await deps.screen(edge.tmuxName),
     notification: claude.notification,
     turnStart: edge.at - edge.workedMs,
     status: claude.status,
-    usage,
+    usage: deps.usage(),
     now,
-  });
+  };
+  let found = detectLimit(input);
+  // The words without a full window in the cached figures: ask once more,
+  // they may be older than the limit
+  if (
+    !found &&
+    deps.refreshUsage &&
+    parseLimitScreen(input.screen ?? [], new Date(now))
+  ) {
+    found = detectLimit({ ...input, usage: await deps.refreshUsage() });
+  }
   if (!found) return;
 
   const state = limitStateOf(session, now);

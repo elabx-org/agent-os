@@ -189,9 +189,21 @@ describe("handleLimitEdge", () => {
     assert.equal(s.limited_until, Date.UTC(2026, 9, 29, 15, 42));
   });
 
-  test("a full status window alone marks it", async () => {
+  test("a full status window alone is not a limit (extra usage carries on)", async () => {
     const w = world({
       screen: screen("approaching.txt"),
+      status: status({
+        seven_day: { used_percentage: 100, resets_at: 1_793_642_400 },
+      }),
+    });
+    await watch.handleLimitEdge(edge("running", "waiting"), deps(w));
+    assert.equal(row("s1").limited_at, null);
+    assert.equal(w.sent.length, 0);
+  });
+
+  test("the status line names the kind and reset of a limit on screen", async () => {
+    const w = world({
+      screen: screen("fake-limit.txt"),
       status: status({
         seven_day: { used_percentage: 100, resets_at: 1_793_642_400 },
       }),
@@ -201,6 +213,81 @@ describe("handleLimitEdge", () => {
     assert.equal(s.limit_kind, "week");
     assert.equal(s.limited_until, 1_793_642_400_000);
     assert.equal(w.sent[0].body, "Claude hit the weekly limit · resets Monday");
+  });
+
+  test("a reply quoting the message is not a limit", async () => {
+    const w = world({
+      screen: [
+        "> how does the watcher work?",
+        "",
+        '⏺ The watcher reads the pane: a line like "You\'ve hit your limit · resets 3:40pm (UTC)" marks the session limited.',
+        "",
+        "─".repeat(40),
+        "❯ ",
+        "─".repeat(40),
+      ],
+    });
+    await watch.handleLimitEdge(edge("running", "idle"), deps(w));
+    assert.equal(row("s1").limited_at, null);
+  });
+
+  test("tool output with the message, then a reply: not a limit", async () => {
+    const w = world({
+      screen: [
+        "⏺ Bash(cat tests/unit/fixtures/limits/weekly.txt)",
+        "  ⎿  > Keep going",
+        "     ⏺ You've hit your weekly limit · resets Nov 2, 6pm (UTC)",
+        "",
+        "⏺ That fixture is the weekly screen.",
+        "",
+        "─".repeat(40),
+        "❯ ",
+        "─".repeat(40),
+      ],
+    });
+    await watch.handleLimitEdge(edge("running", "idle"), deps(w));
+    assert.equal(row("s1").limited_at, null);
+  });
+
+  test("the words with figures that say no window is full: asked again, then not a limit", async () => {
+    let asked = 0;
+    const w = world({
+      screen: screen("session-limit.txt"),
+      usage: usage(42, "2026-10-29T15:40:00Z"),
+    });
+    await watch.handleLimitEdge(edge("running", "idle"), {
+      ...deps(w),
+      refreshUsage: async () => (asked++, usage(42, "2026-10-29T15:40:00Z")),
+    });
+    assert.equal(asked, 1);
+    assert.equal(row("s1").limited_at, null);
+    // Fresh figures say it is full: a limit
+    await watch.handleLimitEdge(edge("running", "idle"), {
+      ...deps(w),
+      refreshUsage: async () => usage(100, "2026-10-29T15:40:00Z"),
+    });
+    assert.equal(row("s1").limited_until, RESET);
+  });
+
+  test("flag limits off: nothing is marked", async () => {
+    const w = world({ screen: screen("session-limit.txt") });
+    await watch.handleLimitEdge(edge("running", "idle"), {
+      ...deps(w),
+      enabled: () => false,
+    });
+    assert.equal(row("s1").limited_at, null);
+    assert.equal(w.sent.length, 0);
+  });
+
+  test("busy while not limited: a pending Resume now is dropped too", async () => {
+    const dropped: string[] = [];
+    const w = world();
+    await watch.handleLimitEdge(edge("idle", "running"), {
+      ...deps(w),
+      dropResumes: (id) => (dropped.push(id), 1),
+    });
+    assert.deepEqual(dropped, ["s1"]);
+    assert.equal(w.sent.length, 0);
   });
 
   test("a full status window that already reset is ignored", async () => {

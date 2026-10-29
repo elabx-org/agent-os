@@ -7,7 +7,7 @@ import type { Session } from "@/lib/db";
 import type { SessionStatus, ViewProps } from "@/components/views/types";
 import { StateDot } from "@/components/a/StateDot";
 import { useNeedsYou } from "@/hooks/useNeedsYou";
-import { limitStateOf } from "@/lib/limits/types";
+import { isLimitShown } from "@/lib/limits/types";
 import { displayTitle, useListTitles } from "@/hooks/useSessionTitles";
 import { isMacLike } from "@/hooks/useViewShortcuts";
 import { runNav } from "@/lib/nav-actions";
@@ -131,7 +131,7 @@ export function DesktopSidebar({
   const limited = useMemo(
     () =>
       sessions
-        .filter((s) => !s.conductor_session_id && limitStateOf(s).limited)
+        .filter((s) => !s.conductor_session_id && isLimitShown(s))
         .sort((a, b) => (a.limited_at ?? 0) - (b.limited_at ?? 0)),
     [sessions]
   );
@@ -143,7 +143,7 @@ export function DesktopSidebar({
           (s) =>
             !s.conductor_session_id &&
             sessionStatuses[s.id]?.status === "running" &&
-            !limitStateOf(s).limited
+            !isLimitShown(s)
         )
         .sort((a, b) => b.updated_at.localeCompare(a.updated_at)),
     [sessions, sessionStatuses]

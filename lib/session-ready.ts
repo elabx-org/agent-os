@@ -19,6 +19,7 @@ import {
 } from "./status-detector";
 import { tmuxNameOf } from "./session-launch";
 import { limitStateOf } from "./limits/types";
+import { getFlags } from "./flags";
 import { latest } from "./session-watch";
 
 const execFileAsync = promisify(execFile);
@@ -297,7 +298,9 @@ export function classifyScreen(input: ScreenInput): Readiness {
 
 export async function readiness(session: Session): Promise<Readiness> {
   // Hit a usage limit that hasn't reset: anything typed would bounce
-  if (limitStateOf(session).limited) return hold("limited");
+  // (flag `limits` is its kill switch)
+  if (getFlags().limits && limitStateOf(session).limited)
+    return hold("limited");
   const name = tmuxNameOf(session);
   try {
     // display-message prints nothing (and succeeds) for a missing target

@@ -74,15 +74,16 @@ function harness(
   const resumedIds: string[] = [];
   const kicked: string[] = [];
   let usage: UsageResponse | null = null;
+  const flags = { autoResume: opts.autoResume ?? true };
   const r = resume.createResume({
     db: raw(),
     kick: (id) => kicked.push(id),
     usage: () => usage,
+    resumeOn: () => flags.autoResume,
   });
   const clock = { now: BASE };
   const sent: { id: string; text: string }[] = [];
   const screens = new Map<string, Readiness>();
-  const flags = { autoResume: opts.autoResume ?? true };
   const d = dispatch.createDispatcher({
     store: store.queueStore(raw()),
     getSession: (id) => row(id) ?? null,
@@ -302,17 +303,56 @@ describe("resume at reset through the dispatcher", () => {
     assert.deepEqual(h.sent, [{ id: "s1", text: "continue" }]);
   });
 
-  test("autoResume off: nothing is typed, even with the queue on", async () => {
+  test("autoResume off: Resume at reset is refused, nothing queued", async () => {
     const h = harness({ autoResume: false, queue: true });
+    await assert.rejects(
+      h.r.scheduleResume(limit("s1"), { when: "reset" }, BASE),
+      resume.AutoResumeOffError
+    );
+    assert.equal(row("s1")!.resume_policy, null);
+    assert.equal(store.listQueue("s1").length, 0);
+  });
+
+  test("autoResume switched off after scheduling: dropped, nothing typed, the queue behind it goes", async () => {
+    const h = harness({ queue: true });
     await h.r.scheduleResume(limit("s1"), { when: "reset" }, BASE);
+    store.enqueue("s1", { text: "user msg", origin: "user" });
+    h.flags.autoResume = false;
     h.clock.now = UNTIL + 60_000;
-    await h.d.recheck();
     await h.d.service("s1");
-    assert.deepEqual(h.sent, []);
-    // Switched on: it goes
+    await h.d.service("s1");
+    assert.deepEqual(h.sent, [{ id: "s1", text: "user msg" }]);
+    assert.equal(h.r.pendingResume("s1"), null);
+    // Switched back on: the dropped one doesn't come back
     h.flags.autoResume = true;
     await h.d.recheck();
     assert.equal(h.sent.length, 1);
+  });
+
+  test("autoResume off: the tick takes the at_reset choices back", async () => {
+    const h = harness();
+    await h.r.scheduleResume(limit("s1"), { when: "reset" }, BASE);
+    h.flags.autoResume = false;
+    h.r.parkTick();
+    assert.equal(row("s1")!.resume_policy, null);
+    assert.equal(h.r.pendingResume("s1"), null);
+  });
+
+  test("a scheduled resume cancelled from the queue is not queued again", async () => {
+    const h = harness();
+    const res = await h.r.scheduleResume(limit("s1"), { when: "reset" }, BASE);
+    store.cancelItem("s1", res.item!.id);
+    h.r.resumeTick(BASE + 1000);
+    h.r.resumeTick(UNTIL + 30_000);
+    assert.equal(h.r.pendingResume("s1"), null);
+  });
+
+  test("a resume long past its time that never went is dropped", async () => {
+    const h = harness();
+    await h.r.scheduleResume(limit("s1"), { when: "reset" }, BASE);
+    h.r.resumeTick(UNTIL + 30_000 + resume.STALE_RESUME_MS + 1000);
+    assert.equal(h.r.pendingResume("s1"), null);
+    assert.equal(row("s1")!.resume_policy, null);
   });
 
   test("typed in: the dispatcher says resumed (a short turn has no busy edge)", async () => {
@@ -380,11 +420,16 @@ describe("resume at reset through the dispatcher", () => {
 });
 
 describe("readiness", () => {
-  test("a limited session is held before its screen is read", async () => {
+  test("a limited session is held before its screen is read (flag limits)", async () => {
+    const flags = await import("../../lib/flags");
     const s = limit("s1", Date.now() + 60_000);
+    flags.setFlags({ limits: true });
     assert.deepEqual(await ready.readiness(s), {
       ready: false,
       holdReason: "limited",
     });
+    // The kill switch: off, a limit holds nothing
+    flags.setFlags({ limits: false });
+    assert.notEqual((await ready.readiness(s)).holdReason, "limited");
   });
 });

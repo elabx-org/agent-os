@@ -44,8 +44,15 @@ test("limitView: card, scheduled, snoozed, none", () => {
     limitView(limited({ resume_policy: "at_reset" }), UNTIL + 60_000),
     "scheduled"
   );
-  // Unknown reset: limited until something clears it
-  assert.equal(limitView(limited({ limited_until: null }), NOW + 1e9), "card");
+  // Unknown reset: limited for a session window, then not held on
+  assert.equal(
+    limitView(limited({ limited_until: null }), NOW + 60 * 60_000),
+    "card"
+  );
+  assert.equal(
+    limitView(limited({ limited_until: null }), NOW + 6 * 3600e3),
+    null
+  );
 });
 
 test("limitedSessions: only limited ones, oldest limit first", () => {

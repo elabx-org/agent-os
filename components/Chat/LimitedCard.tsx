@@ -5,6 +5,7 @@ import { Avatar, agentAvatar, agentName } from "@/components/a/Avatar";
 import { haptic } from "@/lib/haptics";
 import { LIMIT_TEXT_CLASS } from "@/lib/agent-state";
 import { useLimitClock, useSessionLimit } from "@/hooks/useSessionLimit";
+import { useFlag } from "@/hooks/useFlags";
 import type { ResumeWhen } from "@/lib/limits/types";
 import type { Session } from "@/lib/db";
 import { cn } from "@/lib/utils";
@@ -27,6 +28,8 @@ export interface LimitedProps {
   /** Its title opens it (Now); in its own chat there's nothing to open */
   onOpen?: () => void;
   className?: string;
+  /** Where it is drawn (data-limited, for tests): "chat" or Now's "now" */
+  place?: "chat" | "now";
 }
 
 const ACTIONS: { when: ResumeWhen; label: string; primary?: boolean }[] = [
@@ -46,9 +49,15 @@ export function LimitedCard({
   title,
   onOpen,
   className,
+  place = "now",
 }: LimitedProps) {
   const { state, resume, pending, error } = useSessionLimit(session);
   const now = useLimitClock([state.limitedUntil], CLOCK_MS);
+  // Nothing types a scheduled resume while auto-resume is off
+  const autoResume = useFlag("autoResume");
+  const actions = autoResume
+    ? ACTIONS
+    : ACTIONS.filter((a) => a.when !== "reset");
   const name = agentName(session.agent_type);
   const left = resetIn(state.limitedUntil, now);
 
@@ -63,6 +72,7 @@ export function LimitedCard({
   return (
     <div
       role="group"
+      data-limited={place}
       aria-label={`${title}: limited`}
       className={cn(
         "bg-card flex flex-col gap-1.5 rounded-[22px] border px-3.5 py-3",
@@ -93,19 +103,21 @@ export function LimitedCard({
         <span className="t-head w-full truncate">{title}</span>
       )}
       <span className="text-foreground/75">{limitLine(state, name, now)}</span>
-      <div className="mt-1 flex items-center gap-1.5">
-        {ACTIONS.map(({ when, label, primary }) => (
+      {/* px, not rem (the root is 15px), and under the mock's padding: the
+          app's Inter sets a little wider than the mock's, and the three
+          labels stay whole in the closed chat, the narrowest place */}
+      <div className="mt-1 flex items-center gap-[4px]">
+        {actions.map(({ when, label, primary }) => (
           <button
             key={when}
             type="button"
             disabled={pending}
             onClick={() => choose(when)}
             className={cn(
-              "pill pill-sm h-[44px] min-w-0 touch-manipulation rounded-[22px] active:opacity-80 disabled:opacity-60",
-              // The primary keeps its whole label; the quiet ones give way
+              "pill pill-sm h-[44px] min-w-0 touch-manipulation rounded-[22px] whitespace-nowrap active:opacity-80 disabled:opacity-60",
               primary
-                ? "pill-primary flex-[1_0_auto] px-2"
-                : "pill-secondary px-2.5"
+                ? "pill-primary flex-[1_1_auto] px-[6px]"
+                : "pill-secondary flex-[0_1_auto] px-[7px]"
             )}
           >
             <span className="truncate">{label}</span>

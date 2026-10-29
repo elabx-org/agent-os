@@ -6,6 +6,7 @@
 import { refusalText } from "@/lib/client/user-fetch";
 import { formatReset } from "@/lib/usage-reset";
 import {
+  isLimitShown,
   limitKindLabel,
   limitStateOf,
   type LimitState,
@@ -33,10 +34,9 @@ export function limitView(
   session: Partial<LimitColumns>,
   now: number = Date.now()
 ): LimitView | null {
+  if (!isLimitShown(session, now)) return null;
   const state = limitStateOf(session, now);
-  if (state.policy === "at_reset" && state.limitedAt !== null)
-    return "scheduled";
-  if (!state.limited) return null;
+  if (state.policy === "at_reset") return "scheduled";
   return state.policy === "snooze" ? "snoozed" : "card";
 }
 

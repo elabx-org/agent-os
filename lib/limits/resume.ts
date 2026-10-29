@@ -12,6 +12,7 @@
 import type Database from "better-sqlite3";
 import { getDb, queries, type Session, type SessionQueueRow } from "../db";
 import { cachedClaudeUsage, type UsageResponse } from "../claude-usage";
+import { usageResetFor } from "./detect";
 import { getFlags, tickersDisabled } from "../flags";
 import { serviceNow } from "../queue/dispatcher";
 import { queueStore, toQueueItem } from "../queue/store";
@@ -22,12 +23,25 @@ import {
   RESUME_GRACE_MS,
   RESUME_STAGGER_MS,
   limitStateOf,
-  type LimitKind,
   type ResumeRequest,
   type ResumeResult,
 } from "./types";
 
 const TICK_MS = 15_000;
+
+/** Resume at reset while flag autoResume is off: nothing would type it */
+export class AutoResumeOffError extends Error {
+  constructor() {
+    super("Auto-resume is off");
+    this.name = "AutoResumeOffError";
+  }
+}
+
+/**
+ * A scheduled resume this far past its time that still hasn't gone (a
+ * prompt held it all along) is dropped: the user has been there since
+ */
+export const STALE_RESUME_MS = 30 * 60_000;
 
 /** scheduleResume on a session whose limit has reset or never was */
 export class NotLimitedError extends Error {
@@ -54,32 +68,14 @@ export function staggeredResumeAt(
   }
 }
 
-/** The usage API's reset for a kind of limit (ms), when it says */
-export function usageResetFor(
-  usage: UsageResponse | null,
-  kind: LimitKind | null
-): number | null {
-  if (!usage) return null;
-  const block =
-    kind === "session"
-      ? usage.five_hour
-      : kind === "week"
-        ? usage.seven_day
-        : kind === "opus"
-          ? usage.seven_day_opus
-          : kind === "sonnet"
-            ? usage.seven_day_sonnet
-            : null;
-  const at = block?.resets_at ? Date.parse(block.resets_at) : NaN;
-  return Number.isFinite(at) ? at : null;
-}
-
 export interface ResumeDeps {
   db: Database.Database;
   /** Has the dispatcher look at the session now (Resume now) */
   kick(sessionId: string): void;
   /** The usage API's last figures, for a reset no other source gave */
   usage(): UsageResponse | null;
+  /** Flag autoResume: off, Resume at reset is refused */
+  resumeOn?(): boolean;
 }
 
 /** The scheduler on one connection (tests open their own) */
@@ -97,12 +93,17 @@ export function createResume(deps: ResumeDeps) {
       `SELECT not_before FROM session_queue WHERE kind = 'resume'
          AND status = 'pending' AND session_id != ? AND not_before IS NOT NULL`
     ),
-    // A resume queued for this limit, whatever became of it: it goes once
+    // A resume queued for this limit, whatever became of it (cancelled from
+    // the queue too): it goes once
     since: db.prepare(
       `SELECT 1 FROM session_queue WHERE session_id = ? AND kind = 'resume'
-         AND status IN ('pending', 'sending', 'sent', 'failed')
+         AND status IN ('pending', 'sending', 'sent', 'failed', 'cancelled')
          AND created_at >= ?
        LIMIT 1`
+    ),
+    stale: db.prepare(
+      `SELECT * FROM session_queue WHERE kind = 'resume' AND origin = 'system'
+         AND status = 'pending' AND not_before IS NOT NULL AND not_before < ?`
     ),
   };
 
@@ -167,6 +168,7 @@ export function createResume(deps: ResumeDeps) {
 
     switch (request.when) {
       case "reset": {
+        if (deps.resumeOn && !deps.resumeOn()) throw new AutoResumeOffError();
         limits.setPolicy(session.id, "at_reset", text);
         // Unknown reset: resumeTick queues it once a source says
         const item =
@@ -215,6 +217,12 @@ export function createResume(deps: ResumeDeps) {
    * ends a snooze whose reset has passed. Nothing is typed here
    */
   function resumeTick(now: number = Date.now()): void {
+    for (const r of s.stale.all(now - STALE_RESUME_MS) as SessionQueueRow[]) {
+      queue.cancelItem(r.session_id, r.id);
+      const row = reread(r.session_id);
+      if (row?.resume_policy === "at_reset")
+        limits.setPolicy(r.session_id, null, null);
+    }
     for (const row of limits.listLimited()) {
       const state = limitStateOf(row, now);
       let until = state.limitedUntil;
@@ -224,7 +232,7 @@ export function createResume(deps: ResumeDeps) {
       }
       if (state.policy !== "at_reset") continue;
       if (until === null) {
-        const usage = usageResetFor(deps.usage(), state.kind);
+        const usage = usageResetFor(deps.usage(), state.kind ?? "unknown", now);
         if (usage === null || usage <= (state.limitedAt ?? 0)) continue;
         limits.setUntil(row.id, usage);
         until = usage;
@@ -234,11 +242,26 @@ export function createResume(deps: ResumeDeps) {
     }
   }
 
+  /**
+   * autoResume is off: nothing will type a scheduled resume, so the at_reset
+   * choices and their queue items go (the card offers Resume now / Snooze)
+   */
+  function parkTick(): void {
+    for (const row of limits.listLimited()) {
+      if (row.resume_policy !== "at_reset") continue;
+      db.transaction(() => {
+        dropPending(row.id);
+        limits.setPolicy(row.id, null, null);
+      })();
+    }
+  }
+
   return {
     scheduleResume,
     cancelResume,
     pendingResume,
     resumeTick,
+    parkTick,
   };
 }
 
@@ -259,6 +282,7 @@ const live = () =>
         return null;
       }
     },
+    resumeOn: () => getFlags().autoResume,
   });
 
 /**
@@ -300,6 +324,7 @@ export function startResumeTicker(): void {
   setInterval(() => {
     try {
       if (getFlags().autoResume) resumeTick();
+      else live().parkTick();
     } catch (error) {
       console.error("[resume] tick:", error);
     }

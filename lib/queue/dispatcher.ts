@@ -62,6 +62,12 @@ export interface DispatcherDeps {
   dropStaleResume?(session: Session, item: QueueItem): boolean;
   /** A resume was typed in: the limit is over (M6) */
   resumed?(session: Session): void;
+  /**
+   * A scheduled resume at the head while autoResume is off: it would never
+   * go and would hold everything behind it, so it is dropped (with its
+   * at_reset choice) and the next item gets its turn (M6)
+   */
+  dropParkedResume?(session: Session, item: QueueItem): void;
 }
 
 export interface DispatcherState {
@@ -175,13 +181,21 @@ export function createDispatcher(
     await withLock(sessionId, async () => {
       const session = deps.getSession(sessionId);
       if (!session) return;
-      const head = store.head(sessionId);
+      let head = store.head(sessionId);
       if (!head) return;
       // autoResume gates the scheduled resume, not the user's Resume now
-      const on =
-        head.kind === "resume"
-          ? head.origin === "user" || !!deps.resumeOn?.()
-          : deps.queueOn(sessionId);
+      if (
+        head.kind === "resume" &&
+        head.origin === "system" &&
+        !deps.resumeOn?.()
+      ) {
+        if (deps.dropParkedResume) deps.dropParkedResume(session, head);
+        else store.cancelItem(sessionId, head.id);
+        head = store.head(sessionId);
+        if (!head) return;
+      }
+      // A resume left here may go (the user's, or autoResume is on)
+      const on = head.kind === "resume" || deps.queueOn(sessionId);
       if (!on) return;
       if (head.notBefore !== null && head.notBefore > deps.now()) return;
       if (
@@ -295,6 +309,11 @@ function dispatcher(): Dispatcher {
         queueStore().cancelItem(session.id, item.id);
         limitStore().clearLimited(session.id);
         return true;
+      },
+      dropParkedResume: (session, item) => {
+        queueStore().cancelItem(session.id, item.id);
+        if (session.resume_policy === "at_reset")
+          limitStore().setPolicy(session.id, null, null);
       },
       resumed: (session) => {
         markResumed(session.id).catch((error) =>

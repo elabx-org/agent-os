@@ -9,7 +9,7 @@ import { fetchAsUser, refusalText } from "@/lib/client/user-fetch";
 import type { SessionStatus } from "@/components/views/types";
 import type { BackgroundAgent } from "@/lib/claude-background";
 import type { Session } from "@/lib/db";
-import { limitStateOf } from "@/lib/limits/types";
+import { isLimitShown } from "@/lib/limits/types";
 import type { NotificationEntry } from "@/lib/push/history";
 
 export type { NotificationEntry };
@@ -124,7 +124,7 @@ export function useNeedsYou(
             !s.conductor_session_id &&
             statuses[s.id]?.status === "waiting" &&
             // A limited session is listed under Limited, not twice
-            !limitStateOf(s).limited
+            !isLimitShown(s)
         )
         .sort((a, b) => b.updated_at.localeCompare(a.updated_at)),
     [sessions, statuses]

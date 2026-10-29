@@ -32,6 +32,16 @@ const HIT = new RegExp(
   `\\byou(?:'|’)ve hit your ${WHICH}?limit\\b|\\b${WHICH}limit reached\\b|\\byou(?:'|’)re out of (?:extra )?usage\\b`,
   "i"
 );
+/*
+ * In the turn's own lines the message starts its line (after Claude's ⏺ or
+ * ⎿): an assistant reply or tool output that quotes it mid-line is not a
+ * limit. The footer under the input box is Claude's own, so it may sit
+ * anywhere on its line
+ */
+const LINE_HIT = new RegExp(
+  `^\\s*(?:[⏺⎿●]\\s*)*(?:claude )?(?:${HIT.source})`,
+  "i"
+);
 const WARNING = /\bapproaching\b/i;
 const RESET = /\breset(?:s)?\b(?:\s+at)?\s+(.*)$/i;
 const ZONE = /\(([A-Za-z_]+(?:\/[A-Za-z_+-]+)*)\)|\b(UTC|GMT)\s*$/;
@@ -53,7 +63,7 @@ function kindOf(word: string | undefined): LimitKind {
 }
 
 /** The lines a current limit message can be on, nearest first */
-function candidates(lines: readonly string[]): string[] {
+function candidates(lines: readonly string[]): Candidate[] {
   let box = -1;
   for (let i = lines.length - 1; i > 0; i--) {
     if (PROMPT.test(lines[i]) && RULE.test(lines[i - 1])) {
@@ -61,7 +71,7 @@ function candidates(lines: readonly string[]): string[] {
       break;
     }
   }
-  const out: string[] = [];
+  const out: Candidate[] = [];
   const join = (i: number) =>
     i + 1 < lines.length ? `${lines[i]} ${lines[i + 1].trim()}` : lines[i];
 
@@ -69,21 +79,28 @@ function candidates(lines: readonly string[]): string[] {
     // The footer under the box shows the limit as a notice too
     const close = lines.findIndex((l, i) => i > box && RULE.test(l));
     if (close >= 0) {
-      for (let i = close + 1; i < lines.length; i++) out.push(join(i));
+      for (let i = close + 1; i < lines.length; i++)
+        out.push({ text: join(i), footer: true });
     }
   }
-  // Up from the box to the turn's own lines; a later turn's prompt or reply
-  // means the message is old
+  // Up from the box to the turn's last bullet or prompt: anything above
+  // that is an earlier part of the turn (a tool's output, a reply) or an
+  // earlier turn, so the message there is not this turn's end
   const end = box >= 0 ? box - 1 : lines.length;
   for (let i = end - 1; i >= 0 && i >= end - REACH; i--) {
     const line = lines[i];
     if (!line.trim() || RULE.test(line)) continue;
     // A narrow pane wraps the message: try it with the line under it
-    out.push(i + 1 < end ? join(i) : line);
-    if (HIT.test(line) || HIT.test(join(i))) continue;
+    out.push({ text: i + 1 < end ? join(i) : line, footer: false });
     if (PROMPT.test(line) || BULLET.test(line)) break;
   }
   return out;
+}
+
+interface Candidate {
+  text: string;
+  /** Under the input box: Claude's own footer */
+  footer: boolean;
 }
 
 /**
@@ -95,8 +112,8 @@ export function parseLimitScreen(
   lines: readonly string[],
   now: Date
 ): DetectedLimit | null {
-  for (const line of candidates(lines)) {
-    const hit = HIT.exec(line);
+  for (const { text: line, footer } of candidates(lines)) {
+    const hit = (footer ? HIT : LINE_HIT).exec(line);
     if (!hit || WARNING.test(line)) continue;
     const kind = kindOf(hit[1] ?? hit[2]);
     const reset = RESET.exec(line.slice(hit.index));

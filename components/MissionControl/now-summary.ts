@@ -12,6 +12,12 @@ export interface NowCounts {
  * working (N-Limited): it waits on you too, and a narrow line cuts the end
  */
 export function nowSubline(counts: NowCounts): string {
+  const parts = nowSublineParts(counts);
+  return parts.length ? parts.join(" · ") : "All quiet";
+}
+
+/** The subline's counts, most pressing first; empty when all are zero */
+export function nowSublineParts(counts: NowCounts): string[] {
   const parts: string[] = [];
   if (counts.needs > 0)
     parts.push(`${counts.needs} ${counts.needs === 1 ? "needs" : "need"} you`);
@@ -19,7 +25,7 @@ export function nowSubline(counts: NowCounts): string {
   if (counts.working > 0) parts.push(`${counts.working} working`);
   if (counts.settledToday > 0)
     parts.push(`${counts.settledToday} settled today`);
-  return parts.length ? parts.join(" · ") : "All quiet";
+  return parts;
 }
 
 export { shortAge } from "@/lib/agent-state";

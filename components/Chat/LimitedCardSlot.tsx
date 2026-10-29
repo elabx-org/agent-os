@@ -28,6 +28,7 @@ export function LimitedCardSlot({ session }: { session: Session }) {
         session={session}
         projectName={projectName}
         title={session.name}
+        place="chat"
       />
     );
   return (
