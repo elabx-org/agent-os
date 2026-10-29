@@ -8,6 +8,13 @@
 import fs from "fs";
 import path from "path";
 import type { SubagentDetail } from "./agent-tree-types";
+import {
+  contextWindowFor,
+  logModel,
+  logTokens,
+  publicTool,
+  readAgentLog,
+} from "./agent-tree-log";
 
 /** No new lines for this long and not finished: it was stopped */
 const STALE_MS = 5 * 60_000;
@@ -119,16 +126,48 @@ export function listSubagents(transcriptFile: string): SubagentInfo[] {
   return out.sort((a, b) => a.startedAt.localeCompare(b.startedAt));
 }
 
+/** A written file's path relative to the session's folder, when inside it */
+function relativeTo(cwd: string | undefined, file: string): string {
+  if (!cwd) return file;
+  const rel = path.relative(cwd, file);
+  return rel && !rel.startsWith("..") && !path.isAbsolute(rel) ? rel : file;
+}
+
+/** The detail of the conversation in `file` (a subagent's or any other) */
+export function conversationDetail(
+  file: string,
+  agentId: string,
+  cwd?: string
+): SubagentDetail | null {
+  const log = readAgentLog(file);
+  if (!log) return null;
+  return {
+    agentId,
+    prompt: log.prompt,
+    lastTools: log.tools.slice(-4).map(publicTool),
+    filesWritten: [...log.files].map(([file, lines]) => ({
+      path: relativeTo(cwd, file),
+      ...lines,
+    })),
+    usage: log.usage && { ...log.usage },
+    model: logModel(log),
+    tokens: logTokens(log),
+    contextWindow: log.usage ? contextWindowFor(log) : null,
+    updatedAt: log.updatedAt,
+  };
+}
+
 /**
  * What one subagent was asked, its last four tool calls, the files it wrote
  * and its usage (O-Tree's right page, D-Tree's panel), reading only what was
  * added since the last call, like agentUsage. Null if there is no such
- * agent. Contract stub (U13.1)
+ * agent.
  */
 export function subagentDetail(
-  _transcriptFile: string,
-  _agentId: string,
-  _cwd?: string
+  transcriptFile: string,
+  agentId: string,
+  cwd?: string
 ): SubagentDetail | null {
-  return null;
+  const file = subagentFile(transcriptFile, agentId);
+  return file ? conversationDetail(file, agentId, cwd) : null;
 }
