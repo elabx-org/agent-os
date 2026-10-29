@@ -179,10 +179,11 @@ export function createResume(deps: ResumeDeps) {
         const item = db.transaction(() => {
           limits.clearLimited(session.id);
           dropPending(session.id);
+          // The user's own click: goes even with autoResume off
           return queue.enqueue(session.id, {
             text,
             kind: "resume",
-            origin: "system",
+            origin: "user",
             notBefore: null,
           });
         })();

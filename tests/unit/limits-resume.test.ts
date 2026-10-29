@@ -305,6 +305,13 @@ describe("resume at reset through the dispatcher", () => {
     assert.equal(h.sent.length, 1);
   });
 
+  test("autoResume off: Resume now, the user's click, still goes", async () => {
+    const h = harness({ autoResume: false, queue: true });
+    await h.r.scheduleResume(limit("s1"), { when: "now" }, BASE);
+    await h.d.service("s1");
+    assert.deepEqual(h.sent, [{ id: "s1", text: "continue" }]);
+  });
+
   test("queue flag off: other messages wait, the resume still goes", async () => {
     const h = harness({ queue: false });
     await h.r.scheduleResume(limit("s1"), { when: "now" }, BASE);

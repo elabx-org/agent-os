@@ -167,8 +167,11 @@ export function createDispatcher(
       if (!session) return;
       const head = store.head(sessionId);
       if (!head) return;
+      // autoResume gates the scheduled resume, not the user's Resume now
       const on =
-        head.kind === "resume" ? !!deps.resumeOn?.() : deps.queueOn(sessionId);
+        head.kind === "resume"
+          ? head.origin === "user" || !!deps.resumeOn?.()
+          : deps.queueOn(sessionId);
       if (!on) return;
       if (head.notBefore !== null && head.notBefore > deps.now()) return;
       if (awaiting(sessionId)) {

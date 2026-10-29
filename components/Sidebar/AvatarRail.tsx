@@ -5,11 +5,7 @@ import { Plus, Sun, Terminal } from "lucide-react";
 import type { Session } from "@/lib/db";
 import type { SessionStatus } from "@/components/views/types";
 import { Avatar, agentAvatar } from "@/components/a/Avatar";
-import {
-  STATE_DOT_CLASS,
-  STATE_WORD,
-  fromSessionStatus,
-} from "@/lib/agent-state";
+import { STATE_DOT_CLASS, STATE_WORD, sessionState } from "@/lib/agent-state";
 import { displayTitle, useListTitles } from "@/hooks/useSessionTitles";
 import { runNav } from "@/lib/nav-actions";
 import { cn } from "@/lib/utils";
@@ -68,7 +64,7 @@ export function AvatarRail({
 
       <div className="-my-1 flex min-h-0 w-full flex-1 flex-col items-center gap-3 overflow-y-auto py-1">
         {live.map((s) => {
-          const state = fromSessionStatus(sessionStatuses[s.id]?.status ?? "");
+          const state = sessionState(s, sessionStatuses[s.id]?.status);
           const { title } = displayTitle(s, titles);
           const dot = state === "needs" || state === "work";
           return (
