@@ -1,110 +1,242 @@
-import { describe, test } from "node:test";
+import { test } from "node:test";
 import assert from "node:assert/strict";
-import type { Session } from "../../lib/db";
+import type { Session } from "@/lib/db";
 import {
-  MODES,
+  capForAgent,
+  cycleToMode,
   effectiveMode,
   flagsFor,
+  isEscalation,
   normalizeMode,
   parseLaunchCaps,
-  type Mode,
-} from "../../lib/permission-mode";
+  permissionFlags,
+} from "@/lib/permission-mode";
+import { claudeProvider, codexProvider, geminiProvider } from "@/lib/providers";
 
-// Written against the plan's table while lib/permission-mode.ts is a stub
-const stub = (() => {
-  try {
-    normalizeMode("manual");
-    return false;
-  } catch {
-    return "lib/permission-mode.ts is a stub until U0.2 lands";
+const session = (fields: Partial<Session>) => fields as Session;
+
+test("normalizeMode", () => {
+  assert.equal(normalizeMode("default"), "manual");
+  assert.equal(normalizeMode("manual"), "manual");
+  assert.equal(normalizeMode("bypassPermissions"), "bypassPermissions");
+  for (const junk of ["plan", "dontAsk", "", null, undefined, 1, {}]) {
+    assert.equal(normalizeMode(junk), null);
   }
-})();
-
-/** The M0 provider mapping, flags joined as they go into the command */
-const TABLE: Record<"claude" | "codex" | "gemini", Record<Mode, string>> = {
-  claude: {
-    manual: "--permission-mode manual",
-    acceptEdits: "--permission-mode acceptEdits",
-    auto: "--permission-mode auto",
-    bypassPermissions: "--dangerously-skip-permissions",
-  },
-  codex: {
-    manual: "-a untrusted",
-    acceptEdits: "--full-auto",
-    auto: "--full-auto",
-    bypassPermissions: "--dangerously-bypass-approvals-and-sandbox",
-  },
-  gemini: {
-    manual: "--approval-mode default",
-    acceptEdits: "--approval-mode auto_edit",
-    auto: "--approval-mode auto_edit",
-    bypassPermissions: "--yolo",
-  },
-};
-
-const session = (fields: Partial<Session>) =>
-  ({ auto_approve: false, permission_mode: null, ...fields }) as Session;
-
-describe("flagsFor", { skip: stub }, () => {
-  for (const [agent, row] of Object.entries(TABLE)) {
-    for (const mode of MODES) {
-      test(`${agent} ${mode}`, () => {
-        assert.equal(
-          flagsFor(agent as keyof typeof TABLE, mode).join(" "),
-          row[mode]
-        );
-      });
-    }
-    test(`${agent} with no mode adds nothing`, () => {
-      assert.deepEqual(flagsFor(agent as keyof typeof TABLE, null), []);
-    });
-  }
-
-  test("never offers bypass through the Shift+Tab cycle", () => {
-    for (const agent of Object.keys(TABLE) as (keyof typeof TABLE)[]) {
-      for (const mode of MODES) {
-        assert.ok(
-          !flagsFor(agent, mode).join(" ").includes("allow-dangerously"),
-          `${agent} ${mode}`
-        );
-      }
-    }
-  });
 });
 
-describe("normalizeMode", { skip: stub }, () => {
-  test("known modes pass, Claude's default is manual, others are null", () => {
-    for (const mode of MODES) assert.equal(normalizeMode(mode), mode);
-    assert.equal(normalizeMode("default"), "manual");
-    for (const value of ["plan", "dontAsk", "", "BYPASS", null, 1, {}]) {
-      assert.equal(normalizeMode(value), null, String(value));
-    }
-  });
+test("effectiveMode: stored, else auto_approve, else manual", () => {
+  assert.equal(
+    effectiveMode(session({ permission_mode: "auto", auto_approve: true })),
+    "auto"
+  );
+  assert.equal(
+    effectiveMode(session({ permission_mode: null, auto_approve: true })),
+    "bypassPermissions"
+  );
+  // SQLite hands back 0/1
+  assert.equal(
+    effectiveMode(
+      session({
+        permission_mode: "junk",
+        auto_approve: 0 as unknown as boolean,
+      })
+    ),
+    "manual"
+  );
 });
 
-describe("effectiveMode", { skip: stub }, () => {
-  test("the stored mode, else auto_approve, else manual", () => {
-    assert.equal(effectiveMode(session({ permission_mode: "auto" })), "auto");
-    assert.equal(
-      effectiveMode(session({ auto_approve: true })),
-      "bypassPermissions"
+test("escalation and the agent cap", () => {
+  assert.equal(isEscalation("auto", "acceptEdits"), true);
+  assert.equal(isEscalation("manual", "bypassPermissions"), false);
+  assert.equal(isEscalation("auto", "auto"), false);
+  assert.equal(capForAgent("bypassPermissions"), "auto");
+  assert.equal(capForAgent("acceptEdits"), "acceptEdits");
+});
+
+test("parseLaunchCaps", () => {
+  assert.deepEqual(parseLaunchCaps('{"allowBypassCycle":true}'), {
+    allowBypassCycle: true,
+  });
+  for (const raw of [null, "", "{", '{"allowBypassCycle":"yes"}', "null"]) {
+    assert.deepEqual(parseLaunchCaps(raw), { allowBypassCycle: false });
+  }
+});
+
+test("flagsFor table", () => {
+  const table: [string, string, string[]][] = [
+    ["claude", "manual", ["--permission-mode", "manual"]],
+    ["claude", "acceptEdits", ["--permission-mode", "acceptEdits"]],
+    ["claude", "auto", ["--permission-mode", "auto"]],
+    ["claude", "bypassPermissions", ["--dangerously-skip-permissions"]],
+    ["minimax", "auto", ["--permission-mode", "auto"]],
+    ["codex", "manual", ["-a", "untrusted"]],
+    ["codex", "acceptEdits", ["--full-auto"]],
+    ["codex", "auto", ["--full-auto"]],
+    [
+      "codex",
+      "bypassPermissions",
+      ["--dangerously-bypass-approvals-and-sandbox"],
+    ],
+    ["gemini", "manual", ["--approval-mode", "default"]],
+    ["gemini", "acceptEdits", ["--approval-mode", "auto_edit"]],
+    ["gemini", "auto", ["--approval-mode", "auto_edit"]],
+    ["gemini", "bypassPermissions", ["--yolo"]],
+    ["aider", "bypassPermissions", ["--yes"]],
+    ["aider", "auto", []],
+    ["cursor", "bypassPermissions", []],
+    ["shell", "bypassPermissions", []],
+  ];
+  for (const [agent, mode, flags] of table) {
+    assert.deepEqual(
+      flagsFor(agent as never, mode as never),
+      flags,
+      `${agent} ${mode}`
     );
-    assert.equal(effectiveMode(session({})), "manual");
-    assert.equal(effectiveMode(session({ permission_mode: "junk" })), "manual");
-  });
+  }
+  assert.deepEqual(flagsFor("claude", null), []);
 });
 
-describe("parseLaunchCaps", { skip: stub }, () => {
-  test("all false when missing or malformed", () => {
-    for (const raw of [null, "", "{", "[]", '{"allowBypassCycle":"yes"}']) {
-      assert.deepEqual(
-        parseLaunchCaps(raw),
-        { allowBypassCycle: false },
-        String(raw)
-      );
-    }
-    assert.deepEqual(parseLaunchCaps('{"allowBypassCycle":true}'), {
+test("permissionFlags: NULL mode keeps the old auto-approve behaviour", () => {
+  assert.deepEqual(permissionFlags("claude", {}), []);
+  assert.deepEqual(permissionFlags("claude", { autoApprove: true }), [
+    "--dangerously-skip-permissions",
+  ]);
+  assert.deepEqual(permissionFlags("codex", { autoApprove: true }), [
+    "--full-auto",
+  ]);
+  // A stored mode wins over auto_approve
+  assert.deepEqual(
+    permissionFlags("claude", { permissionMode: "manual", autoApprove: true }),
+    ["--permission-mode", "manual"]
+  );
+  assert.deepEqual(
+    permissionFlags("claude", {
+      permissionMode: "auto",
       allowBypassCycle: true,
-    });
+    }),
+    ["--permission-mode", "auto", "--allow-dangerously-skip-permissions"]
+  );
+  assert.deepEqual(permissionFlags("claude", { allowBypassCycle: true }), [
+    "--allow-dangerously-skip-permissions",
+  ]);
+  assert.deepEqual(
+    permissionFlags("claude", {
+      permissionMode: "bypassPermissions",
+      allowBypassCycle: true,
+    }),
+    ["--dangerously-skip-permissions"]
+  );
+  assert.deepEqual(
+    permissionFlags("codex", {
+      permissionMode: "auto",
+      allowBypassCycle: true,
+    }),
+    ["--full-auto"]
+  );
+});
+
+test("buildFlags: backfilled full access launches as before", () => {
+  // Migration 22 sets bypassPermissions where auto_approve = 1
+  const before = claudeProvider.buildFlags({
+    autoApprove: true,
+    sessionId: "x",
   });
+  const after = claudeProvider.buildFlags({
+    autoApprove: true,
+    permissionMode: "bypassPermissions",
+    sessionId: "x",
+  });
+  assert.deepEqual(after, before);
+  assert.equal(
+    claudeProvider.buildFlags({ permissionMode: "acceptEdits" }).join(" "),
+    "--permission-mode acceptEdits"
+  );
+  assert.equal(
+    geminiProvider.buildFlags({ autoApprove: true }).join(" "),
+    "--yolo"
+  );
+  assert.equal(
+    codexProvider.buildFlags({ permissionMode: "manual" }).join(" "),
+    "-a untrusted"
+  );
+});
+
+/** Claude's Shift+Tab cycle, as a fake footer */
+function fakeClaude(
+  cycle: string[],
+  start = 0,
+  opts: { covered?: boolean } = {}
+) {
+  let i = start;
+  let presses = 0;
+  return {
+    get presses() {
+      return presses;
+    },
+    io: {
+      read: async () => (opts.covered ? null : cycle[i]),
+      press: async () => {
+        presses++;
+        i = (i + 1) % cycle.length;
+      },
+    },
+  };
+}
+
+test("cycleToMode reaches a mode in the cycle", async () => {
+  const claude = fakeClaude([
+    "default",
+    "acceptEdits",
+    "plan",
+    "auto",
+    "bypassPermissions",
+  ]);
+  assert.deepEqual(await cycleToMode("bypassPermissions", claude.io), {
+    applied: true,
+    live: "bypassPermissions",
+  });
+  assert.equal(claude.presses, 4);
+});
+
+test("cycleToMode: already there presses nothing", async () => {
+  const claude = fakeClaude(["default", "acceptEdits"]);
+  assert.deepEqual(await cycleToMode("manual", claude.io), {
+    applied: true,
+    live: "manual",
+  });
+  assert.equal(claude.presses, 0);
+});
+
+test("cycleToMode stops where it started when the mode isn't in the cycle", async () => {
+  // Launched without --allow-dangerously-skip-permissions
+  const claude = fakeClaude(["default", "acceptEdits", "plan"], 1);
+  assert.deepEqual(await cycleToMode("bypassPermissions", claude.io), {
+    applied: false,
+    live: "acceptEdits",
+  });
+  assert.equal(claude.presses, 3);
+});
+
+test("cycleToMode: bounded, and never presses into a dialog", async () => {
+  const long = fakeClaude([
+    "default",
+    "a",
+    "b",
+    "c",
+    "d",
+    "e",
+    "f",
+    "g",
+    "auto",
+  ]);
+  const result = await cycleToMode("auto", long.io);
+  assert.equal(result.applied, false);
+  assert.equal(long.presses, 6);
+
+  const covered = fakeClaude(["default", "auto"], 0, { covered: true });
+  assert.deepEqual(await cycleToMode("auto", covered.io), {
+    applied: false,
+    live: null,
+  });
+  assert.equal(covered.presses, 0);
 });

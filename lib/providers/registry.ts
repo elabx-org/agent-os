@@ -112,7 +112,7 @@ export const PROVIDERS: ProviderDefinition[] = [
     description: "Google's AI CLI",
     cli: "gemini",
     configDir: "~/.gemini",
-    autoApproveFlag: "--yolomode",
+    autoApproveFlag: "--yolo",
     supportsResume: false,
     supportsFork: false,
     modelFlag: "-m",

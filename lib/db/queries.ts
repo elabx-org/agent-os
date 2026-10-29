@@ -88,6 +88,22 @@ export const queries = {
       `UPDATE sessions SET pr_url = ?, pr_number = ?, pr_status = ?, updated_at = datetime('now') WHERE id = ?`
     ),
 
+  // auto_approve follows the mode (= full access) for code that reads it
+  updateSessionPermissionMode: (db: Database.Database) =>
+    getStmt(
+      db,
+      `UPDATE sessions SET permission_mode = ?, permission_pending = ?, auto_approve = ?, updated_at = datetime('now') WHERE id = ?`
+    ),
+
+  updateSessionLaunchCaps: (db: Database.Database) =>
+    getStmt(db, `UPDATE sessions SET launch_caps = ? WHERE id = ?`),
+
+  clearSessionPermissionPending: (db: Database.Database) =>
+    getStmt(
+      db,
+      `UPDATE sessions SET permission_pending = NULL, launch_caps = NULL WHERE id = ?`
+    ),
+
   updateSessionGroup: (db: Database.Database) =>
     getStmt(
       db,

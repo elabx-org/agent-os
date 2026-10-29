@@ -6,6 +6,8 @@ import { getProvider } from "./providers";
 import { getProviderDefinition } from "./providers/registry";
 import { writeProjectContext } from "./project-context";
 import { writeInitScript } from "./init-script";
+import { getFlag } from "./flags";
+import type { LaunchCaps } from "./permission-mode";
 
 const execFileAsync = promisify(execFile);
 
@@ -73,12 +75,23 @@ export async function launchSession(
     }
   }
 
+  // Full access joins Shift+Tab only when the user opted in (Labs): any
+  // agent could press it in its own tmux
+  const caps: LaunchCaps = {
+    allowBypassCycle: provider.id === "claude" && getFlag("liveFullAccess"),
+  };
+  queries
+    .updateSessionLaunchCaps(getDb())
+    .run(JSON.stringify(caps), session.id);
+
   const flags = provider.buildFlags({
     systemPromptFile,
     settingsFile,
     sessionId: session.claude_session_id,
     parentSessionId,
     autoApprove: session.auto_approve,
+    permissionMode: session.permission_mode,
+    allowBypassCycle: caps.allowBypassCycle,
     continueSession: session.continue_session,
     model: session.model,
     initialPrompt,
