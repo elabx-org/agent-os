@@ -272,11 +272,13 @@ export async function deleteWorktree(
   let branchName: string | null = null;
   if (deleteBranch) {
     try {
-      const { stdout } = await execAsync(
-        `git -C "${resolvedWorktreePath}" rev-parse --abbrev-ref HEAD`,
-        { timeout: 5000 }
-      );
-      branchName = stdout.trim();
+      branchName = (
+        await gitIn(
+          resolvedWorktreePath,
+          ["rev-parse", "--abbrev-ref", "HEAD"],
+          5000
+        )
+      ).trim();
     } catch {
       // Ignore - worktree might already be gone
     }
@@ -284,9 +286,10 @@ export async function deleteWorktree(
 
   // Remove the worktree
   try {
-    await execAsync(
-      `git -C "${resolvedProjectPath}" worktree remove "${resolvedWorktreePath}" --force`,
-      { timeout: 30000 }
+    await gitIn(
+      resolvedProjectPath,
+      ["worktree", "remove", "--force", "--", resolvedWorktreePath],
+      30000
     );
   } catch {
     // If git worktree remove fails, try manual cleanup
@@ -298,9 +301,7 @@ export async function deleteWorktree(
     }
     // Prune worktree references
     try {
-      await execAsync(`git -C "${resolvedProjectPath}" worktree prune`, {
-        timeout: 10000,
-      });
+      await gitIn(resolvedProjectPath, ["worktree", "prune"]);
     } catch {
       // Ignore prune errors
     }
@@ -310,14 +311,12 @@ export async function deleteWorktree(
   if (
     deleteBranch &&
     branchName &&
+    branchName !== "HEAD" &&
     branchName !== "main" &&
     branchName !== "master"
   ) {
     try {
-      await execAsync(
-        `git -C "${resolvedProjectPath}" branch -D "${branchName}"`,
-        { timeout: 10000 }
-      );
+      await gitIn(resolvedProjectPath, ["branch", "-D", "--", branchName]);
     } catch {
       // Ignore branch deletion errors (might be merged or checked out elsewhere)
     }

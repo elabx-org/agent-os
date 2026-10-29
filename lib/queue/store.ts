@@ -43,6 +43,13 @@ export interface NewQueueItem {
   notBefore?: number | null;
 }
 
+/**
+ * not_before of every move row (M5): a build without M5 types a pending
+ * head in, but stops at one that waits for not_before, so it holds a move
+ * forever instead of typing its JSON into the agent. M5 ignores it for moves
+ */
+export const MOVE_HOLD = 8_640_000_000_000_000;
+
 /** The queue's statements on one connection (tests open a second one) */
 export function createQueueStore(db: Database.Database) {
   // Pending and sending items, not the notice nor a scheduled move (M5,
@@ -336,7 +343,7 @@ export function createQueueStore(db: Database.Database) {
         if (s.moveOf.get(sessionId)) return null;
         return insert(
           sessionId,
-          { text, kind: "move", origin: "system" },
+          { text, kind: "move", origin: "system", notBefore: MOVE_HOLD },
           "pending",
           1
         );
@@ -352,7 +359,7 @@ export function createQueueStore(db: Database.Database) {
         if (s.moveOf.get(sessionId)) return null;
         return insert(
           sessionId,
-          { text, kind: "move", origin: "system" },
+          { text, kind: "move", origin: "system", notBefore: MOVE_HOLD },
           "sending",
           1
         );
@@ -409,7 +416,10 @@ export function createQueueStore(db: Database.Database) {
       return db.transaction(() => {
         if (s.sending.get(sessionId)) return null;
         const r = s.next.get(sessionId) as SessionQueueRow | undefined;
-        if (!r || (r.not_before !== null && r.not_before > now)) return null;
+        if (!r) return null;
+        // A move's not_before is MOVE_HOLD: only an older build reads it
+        if (r.kind !== "move" && r.not_before !== null && r.not_before > now)
+          return null;
         if (!move(sessionId, r.id, "pending", "sending")) return null;
         renumber(sessionId);
         return toQueueItem(row(sessionId, r.id)!);

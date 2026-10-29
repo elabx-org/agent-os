@@ -431,6 +431,24 @@ describe("snapshot, materialise, clean, restore", () => {
     await assert.rejects(mg.cleanSource(root, snap), /HEAD moved/);
   });
 
+  test("a file written after the snapshot is neither cleaned nor restored over", async () => {
+    const root = repo();
+    write(root, "a.txt", "alpha changed\n");
+    write(root, "b.txt", "bravo changed\n");
+    const snap = await mg.snapshotForMove(root, "s9");
+    // Saved in the editor after the snapshot: newer work, in neither copy
+    write(root, "a.txt", "alpha changed again\n");
+    assert.equal(await mg.verifyMaterialised(snap, root), false);
+    assert.deepEqual(await mg.cleanSource(root, snap), ["a.txt"]);
+    assert.equal(read(root, "a.txt"), "alpha changed again\n");
+    assert.equal(read(root, "b.txt"), "bravo\n", "the unchanged path cleaned");
+    // Written after the clean: the rollback keeps it
+    write(root, "b.txt", "bravo written after the clean\n");
+    await mg.restoreSource(root, snap);
+    assert.equal(read(root, "a.txt"), "alpha changed again\n");
+    assert.equal(read(root, "b.txt"), "bravo written after the clean\n");
+  });
+
   test("a deleted file replaced by a folder round-trips", async () => {
     const root = repo();
     fs.rmSync(path.join(root, "gone.txt"));

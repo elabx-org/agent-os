@@ -62,6 +62,7 @@ export type MoveRefusal =
   | "bad_folder"
   | "folder_exists"
   | "no_transcript"
+  | "not_agent"
   | "not_scheduled"
   | "started";
 

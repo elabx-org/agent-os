@@ -213,8 +213,9 @@ function fakeRepo() {
       log.push("materialise");
     },
     async verifyMaterialised(snapshot, wt) {
-      if (fail.has("verify")) return false;
-      const tree = worktrees.get(wt)!;
+      // The source too (checked before its clean)
+      const tree = wt === REPO ? files : worktrees.get(wt)!;
+      if (fail.has("verify") && wt !== REPO) return false;
       return [...snapshots.get(snapshot.ref)!].every(([p, c]) =>
         c === null ? !tree.has(p) : tree.get(p) === c
       );
@@ -955,6 +956,130 @@ describe("rollback", () => {
     assert.equal(h.repo.files.get("New.swift"), "new");
     assert.equal(h.repo.files.has("README.md"), false);
     assert.equal(m.moveStateOf("a")?.error, "Cut off by a restart");
+  });
+});
+
+describe("review fixes", () => {
+  test("edited after the snapshot: moved, the source kept", async () => {
+    const h = harness();
+    const s = addSession("a");
+    h.running.add("a");
+    const materialise = h.repo.git.materialise;
+    h.deps.git = {
+      ...h.repo.git,
+      materialise: async (snap, src, wt) => {
+        await materialise(snap, src, wt);
+        h.repo.files.set("KeyboardBar.swift", "kb v3");
+      },
+    };
+    const m = mod.createWorktreeMove(h.deps);
+    const r = await m.moveToWorktree(s, request());
+    assert.equal(r.sourceKept, true);
+    assert.equal(h.repo.files.get("KeyboardBar.swift"), "kb v3");
+    assert.equal(h.repo.files.get("New.swift"), "new", "not cleaned");
+    assert.ok(!h.repo.log.includes("clean"));
+  });
+
+  test("a shell session is refused, by the preview and the move", async () => {
+    const h = harness();
+    const s = addSession("sh", { agent_type: "shell" });
+    assert.equal((await h.m.movePreview(s)).refusal?.reason, "not_agent");
+    const r = await refusal(h.m.moveToWorktree(s, request()));
+    assert.equal(r.reason, "not_agent");
+    assert.equal(h.tmux.length, 0);
+  });
+
+  test("the other sessions are looked up by the repository's top folder", async () => {
+    let asked: string | null = null;
+    const h = harness({
+      otherSessions: async (_s, top) => {
+        asked = top;
+        return [];
+      },
+    });
+    const s = addSession("a");
+    await h.m.movePreview(s);
+    assert.equal(asked, REPO);
+    assert.equal(mod.inRepository(REPO, REPO), true);
+    assert.equal(mod.inRepository(path.join(REPO, "web", "x"), REPO), true);
+    assert.equal(mod.inRepository(REPO + "-other", REPO), false);
+    assert.equal(mod.inRepository(path.dirname(REPO), REPO), false);
+  });
+
+  test("a folder trust screen in the worktree is accepted when the source is trusted", async () => {
+    const accepted: string[] = [];
+    const h = harness();
+    const tmux = h.deps.tmux;
+    h.deps.tmux = async (args) => {
+      const out = await tmux(args);
+      if (args[0] === "respawn-pane" && args.includes(FOLDER())) {
+        h.reads.set("a", { ready: false, holdReason: "asking" });
+      }
+      return out;
+    };
+    h.deps.acceptTrust = async (s, from) => {
+      accepted.push(from);
+      h.reads.delete(s.id);
+      return true;
+    };
+    const m = mod.createWorktreeMove(h.deps);
+    const s = addSession("a");
+    h.running.add("a");
+    const r = await m.moveToWorktree(s, request());
+    assert.equal(r.worktreePath, FOLDER());
+    assert.deepEqual(accepted, [REPO]);
+    assert.equal(row("a")!.worktree_path, FOLDER());
+  });
+
+  test("folderTrusted reads Claude's config, a parent folder counts", async () => {
+    const file = path.join(tmp, "trust.json");
+    fs.writeFileSync(
+      file,
+      JSON.stringify({
+        projects: {
+          "/work/repo": { hasTrustDialogAccepted: true },
+          "/work/other": { hasTrustDialogAccepted: false },
+        },
+      })
+    );
+    assert.equal(await mod.folderTrusted("/work/repo", [file]), true);
+    assert.equal(await mod.folderTrusted("/work/repo/sub", [file]), true);
+    assert.equal(await mod.folderTrusted("/work/repo-2", [file]), false);
+    assert.equal(await mod.folderTrusted("/work/other", [file]), false);
+    assert.equal(await mod.folderTrusted("/work/repo", ["/nope.json"]), false);
+  });
+
+  test("a restart after the row moved: done, the dead agent resumed there", async () => {
+    const h = harness();
+    const s = addSession("a");
+    h.running.add("a");
+    await h.m.moveToWorktree(s, request());
+    const q = store.queueStore();
+    q.clearQueue("a");
+    const payload = {
+      v: 1,
+      request: { branch: BRANCH, folder: FOLDER(), takeChanges: true },
+      worktreePath: FOLDER(),
+      scheduledAt: 1,
+      progress: {
+        toplevel: REPO,
+        oldCwd: REPO,
+        snapshot: null,
+        cleaned: true,
+        rowMoved: true,
+      },
+    };
+    q.startMove("a", JSON.stringify(payload));
+    h.dead.add("a");
+    const before = respawns(h).length;
+    const [cut] = q.failInterruptedMoves();
+    await h.m.recoverMove(cut);
+    assert.equal(h.m.moveStateOf("a"), null, "not listed as failed");
+    const again = respawns(h).slice(before);
+    assert.equal(again.length, 1);
+    assert.equal(again[0][again[0].indexOf("-c") + 1], FOLDER());
+    assert.match(again[0][6], new RegExp(`--resume ${SID}`));
+    assert.match(q.listQueue("a")[0].text, /moved from .* to the worktree/);
   });
 });
 

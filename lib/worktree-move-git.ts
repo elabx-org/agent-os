@@ -170,7 +170,11 @@ async function headOf(cwd: string): Promise<string> {
   ).trim();
 }
 
-async function branchTaken(cwd: string, branch: string): Promise<boolean> {
+/** A branch of that name exists */
+export async function branchTaken(
+  cwd: string,
+  branch: string
+): Promise<boolean> {
   const out = await git(
     ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`],
     { cwd, okCodes: [0, 1] }
@@ -556,7 +560,9 @@ async function diskMode(abs: string): Promise<string | null> {
     if (!st.isFile()) return "dir";
     return st.mode & 0o111 ? "100755" : "100644";
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    const code = (error as NodeJS.ErrnoException).code;
+    // ENOTDIR: a file stands where a folder on its path would be
+    if (code === "ENOENT" || code === "ENOTDIR") return null;
     throw error;
   }
 }
@@ -587,37 +593,50 @@ async function diskBlob(
   ).trim();
 }
 
-/** The worktree's files match the snapshot for every snapshot path */
+/**
+ * The snapshot paths whose file on disk under `top` is what `treeish` has
+ * there: same mode and blob, or absent (a folder may stand there) when
+ * `treeish` has no such file
+ */
+async function pathsMatching(
+  top: string,
+  treeish: string,
+  files: string[]
+): Promise<Set<string>> {
+  const entries = await treeEntries(top, treeish, files);
+  const same = new Set<string>();
+  for (const rel of files) {
+    const mode = await diskMode(path.join(top, rel));
+    const want = entries.get(rel);
+    if (!want) {
+      if (mode === null || mode === "dir") same.add(rel);
+      continue;
+    }
+    if (mode !== want.mode) continue;
+    if ((await diskBlob(top, rel, mode)) === want.sha) same.add(rel);
+  }
+  return same;
+}
+
+/** The checkout's files match the snapshot for every snapshot path */
 export async function verifyMaterialised(
   snapshot: MoveSnapshot,
   worktreePath: string
 ): Promise<boolean> {
   const top = await topOf(worktreePath);
-  const present = snapshot.paths.filter((p) => p.change !== "deleted");
-  const entries = await treeEntries(
-    top,
-    snapshot.tree,
-    present.map((p) => p.path)
-  );
-  for (const p of snapshot.paths) {
-    const mode = await diskMode(path.join(top, p.path));
-    if (p.change === "deleted") {
-      // Gone, or a folder of the snapshot's now stands there
-      if (mode !== null && mode !== "dir") return false;
-      continue;
-    }
-    const want = entries.get(p.path);
-    if (!want || mode !== want.mode) return false;
-    if ((await diskBlob(top, p.path, mode)) !== want.sha) return false;
-  }
-  return true;
+  const files = snapshot.paths.map((p) => p.path);
+  return (await pathsMatching(top, snapshot.tree, files)).size === files.length;
 }
 
-/** Returns the source's snapshot paths to HEAD (only those paths) */
+/**
+ * Returns the source's snapshot paths to HEAD (only those paths). A path
+ * written since the snapshot is left alone (it holds newer work, in
+ * neither the snapshot nor the worktree); those are returned
+ */
 export async function cleanSource(
   cwd: string,
   snapshot: MoveSnapshot
-): Promise<void> {
+): Promise<string[]> {
   if (snapshot.skipped.length > 0) {
     throw new Error(
       `Not cleaned: ${snapshot.skipped.length} file(s) were left out of the snapshot`
@@ -630,31 +649,52 @@ export async function cleanSource(
   if (state.staged)
     throw new Error("Staged changes appeared since the snapshot");
   const top = state.toplevel;
+  const same = await pathsMatching(
+    top,
+    snapshot.tree,
+    snapshot.paths.map((p) => p.path)
+  );
+  const changed = snapshot.paths
+    .filter((p) => !same.has(p.path))
+    .map((p) => p.path);
   const fromHead = snapshot.paths
-    .filter((p) => p.change !== "added")
+    .filter((p) => p.change !== "added" && same.has(p.path))
     .map((p) => p.path);
   const added = snapshot.paths
-    .filter((p) => p.change === "added")
+    .filter((p) => p.change === "added" && same.has(p.path))
     .map((p) => p.path);
   // Removals first: an added file may sit where HEAD has a folder
   await removeFiles(top, added);
   await writeFromTree(top, snapshot.head, fromHead, "clean");
+  return changed;
 }
 
-/** Puts the snapshot's content back in the source (rollback of cleanSource) */
+/**
+ * Puts the snapshot's content back in the source (rollback of
+ * cleanSource), only where the file is still what the clean left (HEAD's):
+ * anything written since is kept
+ */
 export async function restoreSource(
   cwd: string,
   snapshot: MoveSnapshot
 ): Promise<void> {
   const top = await topOf(cwd);
-  const written = snapshot.paths
-    .filter((p) => p.change !== "deleted")
-    .map((p) => p.path);
+  const cleaned = await pathsMatching(
+    top,
+    snapshot.head,
+    snapshot.paths.map((p) => p.path)
+  );
+  const mine = snapshot.paths.filter((p) => cleaned.has(p.path));
   await removeFiles(
     top,
-    snapshot.paths.filter((p) => p.change === "deleted").map((p) => p.path)
+    mine.filter((p) => p.change === "deleted").map((p) => p.path)
   );
-  await writeFromTree(top, snapshot.tree, written, "restore");
+  await writeFromTree(
+    top,
+    snapshot.tree,
+    mine.filter((p) => p.change !== "deleted").map((p) => p.path),
+    "restore"
+  );
 }
 
 /** Deletes the snapshot ref (after a successful move it is kept a while) */

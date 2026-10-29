@@ -132,6 +132,9 @@ function harness(
 const add = (id: string, text: string, extra = {}) =>
   store.enqueue(id, { text, origin: "user", ...extra });
 
+/** Lets a started move (not awaited by service) settle */
+const settle = () => new Promise((r) => setImmediate(r));
+
 describe("dispatcher", () => {
   test("sends the head after two ready reads and a last one", async () => {
     const h = harness();
@@ -570,6 +573,7 @@ describe("dispatcher: scheduled moves (M5)", () => {
       .setUndoNotice("s1", "[AgentOS: the user undid turn 1; a is back.]");
 
     await h.d.service("s1");
+    await settle();
     assert.deepEqual(moved, [move.id]);
     assert.equal(pending, 1, "claimed (sending) while it runs");
     assert.deepEqual(h.sent, [], "nothing typed for the move");
@@ -628,6 +632,7 @@ describe("dispatcher: scheduled moves (M5)", () => {
     console.error = () => {};
     try {
       await h.d.service("s1");
+      await settle();
     } finally {
       console.error = errors;
     }
@@ -637,6 +642,27 @@ describe("dispatcher: scheduled moves (M5)", () => {
     assert.deepEqual(h.sent, []);
     assert.deepEqual(store.queueStore().listFailed("s1", 0), []);
     assert.equal(store.queueStore().hasActive("s1"), false);
+  });
+
+  test("a build without M5 holds a move row instead of typing it in", () => {
+    const q = store.queueStore();
+    const move = schedule();
+    // The pre-M5 dispatcher's head and claim: first pending by position,
+    // held while notBefore is in the future
+    const oldHead = db
+      .getDb()
+      .prepare(
+        `SELECT * FROM session_queue WHERE session_id = ? AND status = 'pending'
+           AND kind != 'undo_notice' ORDER BY position, id`
+      )
+      .get("s1") as { id: number; not_before: number | null };
+    assert.equal(oldHead.id, move.id);
+    const farFuture = Date.UTC(9999, 0, 1);
+    assert.ok(oldHead.not_before !== null && oldHead.not_before > farFuture);
+    // This build claims it all the same
+    assert.equal(q.claimNext("s1", Date.now())?.id, move.id);
+    const running = q.startMove("s2", "{}")!;
+    assert.ok((running.notBefore ?? 0) > farFuture);
   });
 
   test("one move per session; a restart fails a running move on its own", () => {

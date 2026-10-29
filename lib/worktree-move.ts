@@ -119,6 +119,7 @@ const REFUSALS: Record<MoveRefusal, [number, string]> = {
   ],
   folder_exists: [409, "That folder already exists"],
   no_transcript: [400, "No Claude conversation to resume yet"],
+  not_agent: [400, "Only an agent's session can be moved"],
   not_scheduled: [404, "No move is scheduled"],
   started: [409, "The move has already started"],
 };
@@ -157,7 +158,8 @@ export interface MoveGit {
     snapshot: MoveSnapshot,
     worktreePath: string
   ): Promise<boolean>;
-  cleanSource(cwd: string, snapshot: MoveSnapshot): Promise<void>;
+  /** Paths left alone because they changed since the snapshot */
+  cleanSource(cwd: string, snapshot: MoveSnapshot): Promise<string[] | void>;
   restoreSource(cwd: string, snapshot: MoveSnapshot): Promise<void>;
   dropSnapshot(cwd: string, snapshot: MoveSnapshot): Promise<void>;
 }
@@ -191,8 +193,17 @@ export interface WorktreeMoveDeps {
     fromCwd: string,
     toCwd: string
   ): Promise<string[]>;
-  /** Other live, unpaused sessions working in the same folder */
-  otherSessions(session: Session): Promise<OtherSession[]>;
+  /**
+   * Other live, unpaused sessions working anywhere in the same repository
+   * (`toplevel`, its subfolders included): the snapshot and the clean
+   * cover the whole repository
+   */
+  otherSessions(session: Session, toplevel: string): Promise<OtherSession[]>;
+  /**
+   * The relaunched agent shows the folder trust screen: accepts it (Enter)
+   * when `sourceCwd` was trusted. True when it pressed Enter
+   */
+  acceptTrust?(session: Session, sourceCwd: string): Promise<boolean>;
   /** M3 setup steps in the background (trust honoured by setupWorktree) */
   setup(options: {
     sessionId: string;
@@ -377,6 +388,8 @@ export function createWorktreeMove(deps: WorktreeMoveDeps) {
   /** The refusals that don't depend on the request */
   async function baseRefusal(session: Session): Promise<MoveRefusal | null> {
     if (session.paused_at) return "paused";
+    // A shell has no conversation to carry, and respawning it kills its job
+    if ((session.agent_type || "claude") === "shell") return "not_agent";
     let worktreeFlag: string | undefined;
     try {
       worktreeFlag = getProviderDefinition(
@@ -483,7 +496,7 @@ export function createWorktreeMove(deps: WorktreeMoveDeps) {
       folder,
       folderDisplay: folder ? display(folder) : "",
       staged: wt?.staged ?? false,
-      otherSessions: await deps.otherSessions(session),
+      otherSessions: wt ? await deps.otherSessions(session, wt.toplevel) : [],
       repoName,
       currentBranch: wt?.branch ?? null,
       busy,
@@ -697,15 +710,32 @@ export function createWorktreeMove(deps: WorktreeMoveDeps) {
     ]);
   }
 
-  /** Ready twice in a row before the deadline; false if it died or timed out */
-  async function waitReady(session: Session, until: number): Promise<boolean> {
+  /**
+   * Ready twice in a row before the deadline; false if it died or timed
+   * out. A folder trust screen is accepted when `trustFrom` was trusted
+   */
+  async function waitReady(
+    session: Session,
+    until: number,
+    trustFrom?: string
+  ): Promise<boolean> {
     let readyOnce = false;
+    let accepted = 0;
     while (deps.now() < until) {
       if (!(await deps.isRunning(session)) || (await paneDead(session))) {
         return false;
       }
-      const { ready } = await deps.readiness(session);
+      const { ready, holdReason } = await deps.readiness(session);
       if (ready && readyOnce) return true;
+      if (
+        holdReason === "asking" &&
+        trustFrom &&
+        deps.acceptTrust &&
+        accepted < 2 &&
+        (await deps.acceptTrust(session, trustFrom).catch(() => false))
+      ) {
+        accepted++;
+      }
       readyOnce = ready;
       await deps.sleep(ready ? CONFIRM_MS : POLL_MS);
     }
@@ -817,14 +847,20 @@ export function createWorktreeMove(deps: WorktreeMoveDeps) {
         if (!(await git.verifyMaterialised(snapshot, wtPath))) {
           throw new Error("The worktree doesn't match the changes");
         }
-        const others = await deps.otherSessions(session);
-        if (others.length || snapshot.skipped.length) {
+        const others = await deps.otherSessions(session, top);
+        if (
+          others.length ||
+          snapshot.skipped.length ||
+          // Written since the snapshot: that work is in neither copy
+          !(await git.verifyMaterialised(snapshot, top))
+        ) {
           sourceKept = true;
         } else {
           // Marked first: a clean that fails half-way is still undone
           progress.cleaned = true;
           save();
-          await git.cleanSource(top, snapshot);
+          const left = await git.cleanSource(top, snapshot);
+          if (left && left.length) sourceKept = true;
         }
       }
     } catch (error) {
@@ -892,7 +928,7 @@ export function createWorktreeMove(deps: WorktreeMoveDeps) {
       let ready = false;
       try {
         await relaunch(moved, wtPath);
-        ready = await waitReady(moved, deps.now() + READY_TIMEOUT_MS);
+        ready = await waitReady(moved, deps.now() + READY_TIMEOUT_MS, cwd);
       } catch (error) {
         console.error("[move] relaunch:", error);
       }
@@ -1011,6 +1047,11 @@ export function createWorktreeMove(deps: WorktreeMoveDeps) {
     const session = getSession(item.sessionId);
     if (!payload || !session) return;
     const progress = payload.progress;
+    if (progress?.rowMoved && workFolder(session) === payload.worktreePath) {
+      // The session had moved: the move is done, only its agent may be down
+      await finishMoved(session, progress);
+      return;
+    }
     if (
       progress?.snapshot &&
       progress.cleaned &&
@@ -1043,6 +1084,33 @@ export function createWorktreeMove(deps: WorktreeMoveDeps) {
           : null,
       })
     );
+  }
+
+  /** A restart cut off a move after the row moved: the agent started there */
+  async function finishMoved(
+    session: Session,
+    progress: MoveProgress
+  ): Promise<void> {
+    if (session.paused_at || !(await deps.isRunning(session))) return;
+    if (!(await paneDead(session))) {
+      await keepPane(session, false);
+      return;
+    }
+    await relaunchOld(session, workFolder(session));
+    if (
+      deps.queueOn(session.id) &&
+      moveModeFor(session.agent_type) === "resumed"
+    ) {
+      store.enqueueFirst(session.id, {
+        text: movedNoticeText(
+          workFolder(session),
+          session.branch_name ?? "",
+          display(progress.oldCwd)
+        ),
+        kind: "message",
+        origin: "system",
+      });
+    }
   }
 
   async function cancelMove(session: Session): Promise<CancelMoveResult> {
@@ -1111,18 +1179,7 @@ const shared = globalThis as unknown as {
 const liveGit: MoveGit = {
   readWorkingTree: moveGit.readWorkingTree,
   isValidBranchName: moveGit.isValidBranchName,
-  branchExists: async (cwd, branch) => {
-    try {
-      await execFileAsync(
-        "git",
-        ["-C", cwd, "show-ref", "--verify", "--quiet", `refs/heads/${branch}`],
-        { timeout: 10_000 }
-      );
-      return true;
-    } catch {
-      return false;
-    }
-  },
+  branchExists: moveGit.branchTaken,
   suggestBranch: moveGit.suggestBranch,
   suggestFolder: moveGit.suggestFolder,
   snapshotForMove: moveGit.snapshotForMove,
@@ -1132,6 +1189,46 @@ const liveGit: MoveGit = {
   restoreSource: moveGit.restoreSource,
   dropSnapshot: moveGit.dropSnapshot,
 };
+
+/** `folder` is the repository's top folder or inside it */
+export function inRepository(folder: string, toplevel: string): boolean {
+  const f = path.resolve(folder);
+  const top = path.resolve(toplevel);
+  return f === top || f.startsWith(top + path.sep);
+}
+
+/** Claude's folder trust screen (lib/session-ready.ts CLAUDE_DIALOGS) */
+const TRUST_SCREEN =
+  /trust (the files in |the contents of )?this (folder|directory|project)|Is this a project you created or one you trust/i;
+
+/**
+ * Claude trusts `cwd` (or a folder above it) in its config: read only,
+ * never written (Claude rewrites that file itself)
+ */
+export async function folderTrusted(
+  cwd: string,
+  files = [
+    path.join(claudeDir(), ".claude.json"),
+    path.join(os.homedir(), ".claude.json"),
+  ]
+): Promise<boolean> {
+  const dir = path.resolve(cwd);
+  for (const file of files) {
+    let projects: Record<string, { hasTrustDialogAccepted?: boolean }>;
+    try {
+      projects = JSON.parse(await fsp.readFile(file, "utf8"))?.projects ?? {};
+    } catch {
+      continue;
+    }
+    for (const [folder, entry] of Object.entries(projects)) {
+      if (!entry?.hasTrustDialogAccepted) continue;
+      const f = path.resolve(folder);
+      if (dir === f || dir.startsWith(f.endsWith(path.sep) ? f : f + path.sep))
+        return true;
+    }
+  }
+  return false;
+}
 
 const liveDeps = (): WorktreeMoveDeps => {
   const db = getDb();
@@ -1153,10 +1250,12 @@ const liveDeps = (): WorktreeMoveDeps => {
     locateTranscript,
     copyTranscript: (sid, file, fromCwd, toCwd) =>
       copyClaudeTranscript(claudeDir(), sid, file, fromCwd, toCwd),
-    otherSessions: async (session) => {
-      const folder = workFolder(session);
+    otherSessions: async (session, toplevel) => {
       const others = (queries.getAllSessions(db).all() as Session[]).filter(
-        (s) => s.id !== session.id && !s.paused_at && workFolder(s) === folder
+        (s) =>
+          s.id !== session.id &&
+          !s.paused_at &&
+          inRepository(workFolder(s), toplevel)
       );
       const live: OtherSession[] = [];
       for (const s of others) {
@@ -1178,6 +1277,20 @@ const liveDeps = (): WorktreeMoveDeps => {
           success: result.success,
         });
       }, `setup-worktree-${sessionId}`);
+    },
+    acceptTrust: async (session, sourceCwd) => {
+      const pane = `=${tmuxNameOf(session)}:`;
+      const { stdout } = await execFileAsync("tmux", [
+        "capture-pane",
+        "-p",
+        "-t",
+        pane,
+      ]);
+      const bottom = String(stdout).trimEnd().split("\n").slice(-20).join("\n");
+      if (!TRUST_SCREEN.test(bottom)) return false;
+      if (!(await folderTrusted(sourceCwd))) return false;
+      await execFileAsync("tmux", ["send-keys", "-t", pane, "Enter"]);
+      return true;
     },
     findPort: findAvailablePort,
     tmux: async (args) => {

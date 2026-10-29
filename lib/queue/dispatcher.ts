@@ -226,7 +226,13 @@ export function createDispatcher(
         head.kind === "move" ||
         deps.queueOn(sessionId);
       if (!on) return;
-      if (head.notBefore !== null && head.notBefore > deps.now()) return;
+      // A move's notBefore only holds builds without M5 (store MOVE_HOLD)
+      if (
+        head.kind !== "move" &&
+        head.notBefore !== null &&
+        head.notBefore > deps.now()
+      )
+        return;
       if (
         head.kind === "resume" &&
         head.origin === "system" &&
@@ -248,7 +254,9 @@ export function createDispatcher(
       const sent = await deliver(session, item);
       if (sent && item.kind === "resume") deps.resumed?.(session);
     });
-    if (started.move) await started.move;
+    // Not awaited: a move may take a minute or more, and the 2s re-check
+    // waits for every service() call. The move holds its session itself
+    void started.move;
   }
 
   /**
@@ -264,16 +272,18 @@ export function createDispatcher(
     } catch (error) {
       running = Promise.reject(error);
     }
-    return running.then(
-      () => {
-        store.markSent(session.id, item.id);
-      },
-      (error) => {
-        const why = error instanceof Error ? error.message : String(error);
-        store.markFailed(session.id, item.id, why);
-        console.error("[queue] move:", why);
-      }
-    );
+    return running
+      .then(
+        () => {
+          store.markSent(session.id, item.id);
+        },
+        (error) => {
+          const why = error instanceof Error ? error.message : String(error);
+          store.markFailed(session.id, item.id, why);
+          console.error("[queue] move:", why);
+        }
+      )
+      .catch((error) => console.error("[queue] move:", error));
   }
 
   /**
