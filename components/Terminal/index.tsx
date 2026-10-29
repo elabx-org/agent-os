@@ -167,6 +167,19 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
       typeof window === "undefined" ? true : getComposerEnabled()
     );
     const [composerText, setComposerText] = useSessionDraft(draftId);
+    // The composer mirrors Claude's own box: what Claude holds there (↑ ↓
+    // recalled history, Esc put back, typed on another device) shows in the
+    // composer, and the composer's send replaces it. mirrorRef is the text
+    // last copied from Claude's box, null while that box is empty
+    const composerTextRef = useRef(composerText);
+    composerTextRef.current = composerText;
+    const mirrorRef = useRef<string | null>(null);
+    const clearClaudeRef = useRef<() => Promise<boolean>>(async () => false);
+    const checkMirrorRef = useRef<() => void>(() => {});
+    // Another session's box is another mirror
+    useEffect(() => {
+      mirrorRef.current = null;
+    }, [draftId]);
 
     useEffect(() => {
       const onChange = (e: Event) =>
@@ -555,9 +568,23 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
               ? [...queuedRef.current, text]
               : [text];
         lastSendRef.current = Date.now();
-        if (text.includes("\n")) sendPaste(text);
-        else if (text) sendInput(text);
-        setTimeout(() => sendInput("\r"), text ? 80 : 0);
+        // Claude's box holds text: unchanged in the composer, Claude sends
+        // its own; edited, the composer's replaces it
+        const mirrored = mirrorRef.current;
+        mirrorRef.current = null;
+        if (mirrored !== null && text === mirrored) {
+          sendInput("\r");
+          return;
+        }
+        const type = () => {
+          lastSendRef.current = Date.now();
+          if (text.includes("\n")) sendPaste(text);
+          else if (text) sendInput(text);
+          setTimeout(() => sendInput("\r"), text ? 80 : 0);
+        };
+        if (mirrored !== null && term && readClaudeInput(term))
+          void clearClaudeRef.current().then(type);
+        else type();
         // A long paste (an image's in it) can still be arriving when the
         // Enter does, and Claude takes the Enter in with it: the text then
         // sits in Claude's box, unsent. Still there with Claude idle, Enter
@@ -701,12 +728,46 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
           isClaudeBusy(term)
             ? null
             : readClaudeInput(term);
-        setStrayInput(text || null);
+        if (text === null) return;
+        const current = composerTextRef.current;
+        const mirrored = mirrorRef.current;
+        if (text) {
+          // Claude's box changed and the composer is empty or still showing
+          // the last copy: the composer follows it
+          if (text !== mirrored && (!current || current === mirrored)) {
+            mirrorRef.current = text;
+            setComposerText(text);
+            setStrayInput(null);
+            return;
+          }
+          // Unchanged: the composer may be editing its copy. Emptied
+          // there, Claude's empties too
+          if (text === mirrored) {
+            if (!current) {
+              mirrorRef.current = null;
+              void clearClaudeRef.current();
+            }
+            setStrayInput(null);
+            return;
+          }
+          // The composer has a draft of its own: offer Claude's text
+          setStrayInput(text);
+          return;
+        }
+        // Claude's box emptied (sent from the keys, cleared): so does a
+        // composer still showing its copy
+        if (mirrored !== null && current === mirrored) setComposerText("");
+        mirrorRef.current = null;
+        setStrayInput(null);
       };
+      checkMirrorRef.current = check;
       check();
-      const timer = setInterval(check, 1000);
-      return () => clearInterval(timer);
-    }, [watchStray, xtermRef]);
+      const timer = setInterval(check, 600);
+      return () => {
+        clearInterval(timer);
+        checkMirrorRef.current = () => {};
+      };
+    }, [watchStray, xtermRef, setComposerText]);
 
     /** Empties Claude's box: from its end, ^U a row at a time and ⌫ to
         join the row above, until it reads empty */
@@ -728,6 +789,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
         movingRef.current = false;
       }
     }, [xtermRef, sendInput]);
+    clearClaudeRef.current = clearClaudeInput;
     const moveStray = useCallback(() => {
       const term = xtermRef.current;
       const text = term ? readClaudeInput(term) : null;
@@ -748,25 +810,28 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
       (key: string) => {
         if (isTextKey(key) && insertInComposer(key)) return;
         const term = xtermRef.current;
-        // ↑ ↓ at Claude's empty prompt recall its history: into the
-        // composer, as they do typed there, not into Claude's hidden box
+        // ↑ ↓ step through Claude's history in its box, which the composer
+        // mirrors; with a draft of the composer's own they move its caret
+        const arrow = key === "\x1b[A" || key === "\x1b[B";
+        const draft = composerTextRef.current;
         if (
-          (key === "\x1b[A" || key === "\x1b[B") &&
+          arrow &&
           composerOnRef.current &&
           term &&
           !isClaudeBusy(term) &&
-          readClaudeInput(term) === ""
+          !!draft &&
+          draft !== mirrorRef.current
         ) {
           const box = keybarRef.current?.querySelector<HTMLTextAreaElement>(
             "textarea[data-composer]"
           );
-          const arrow = new KeyboardEvent("keydown", {
+          const keyEvent = new KeyboardEvent("keydown", {
             key: key === "\x1b[A" ? "ArrowUp" : "ArrowDown",
             bubbles: true,
             cancelable: true,
           });
-          box?.dispatchEvent(arrow);
-          if (arrow.defaultPrevented) return;
+          box?.dispatchEvent(keyEvent);
+          if (keyEvent.defaultPrevented) return;
         }
         const queued =
           (key === "\x1b[A" || key === "\x1b") &&
@@ -776,6 +841,11 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
           hasQueued(term);
         sendInput(key);
         if (queued) reclaimQueued();
+        // Show the recalled text without waiting for the next poll
+        if (arrow)
+          [120, 350].forEach((ms) =>
+            setTimeout(() => checkMirrorRef.current(), ms)
+          );
       },
       [sendInput, insertInComposer, reclaimQueued, xtermRef]
     );
