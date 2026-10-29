@@ -206,3 +206,126 @@ describe("scripts/migrate-only.mjs", () => {
     }
   });
 });
+
+describe("migration 24", () => {
+  const unapply24 = (db: Database.Database, drop: string[]) => {
+    for (const column of drop)
+      db.exec(`ALTER TABLE projects DROP COLUMN ${column}`);
+    db.exec(`DELETE FROM _migrations WHERE id = 24`);
+  };
+
+  test("adds pinned (default 0) and group_name to projects", () => {
+    const db = migrated();
+    assert.ok(columns(db, "projects").includes("pinned"));
+    assert.ok(columns(db, "projects").includes("group_name"));
+    assert.ok(applied(db).includes(24));
+    db.prepare(
+      `INSERT INTO projects (id, name, working_directory) VALUES ('p', 'p', '/tmp')`
+    ).run();
+    assert.deepEqual(
+      db
+        .prepare(`SELECT pinned, group_name FROM projects WHERE id = 'p'`)
+        .get(),
+      { pinned: 0, group_name: null }
+    );
+  });
+
+  test("runs twice, and over a database with one column already there", () => {
+    const db = migrated();
+    unapply24(db, ["group_name"]);
+    quietly(() => runMigrations(db));
+    assert.ok(columns(db, "projects").includes("group_name"));
+    unapply24(db, []);
+    quietly(() => runMigrations(db));
+    assert.ok(applied(db).includes(24));
+  });
+});
+
+describe("migrations 25 and 26", () => {
+  const QUEUE = [
+    "id",
+    "session_id",
+    "position",
+    "text",
+    "attachments",
+    "origin",
+    "kind",
+    "status",
+    "not_before",
+    "created_at",
+    "sent_at",
+    "error",
+  ];
+  const TURNS = [
+    "id",
+    "session_id",
+    "turn_no",
+    "cwd",
+    "prompt_excerpt",
+    "transcript_uuid",
+    "pre_ref",
+    "post_ref",
+    "started_at",
+    "ended_at",
+    "files_json",
+    "touched_json",
+    "added",
+    "removed",
+    "undone_at",
+  ];
+
+  test("create session_queue and session_turns", () => {
+    const db = migrated();
+    assert.deepEqual(columns(db, "session_queue"), QUEUE);
+    assert.deepEqual(columns(db, "session_turns"), TURNS);
+    assert.ok(indexes(db, "session_queue").includes("idx_queue_session"));
+    assert.ok(applied(db).includes(25));
+    assert.ok(applied(db).includes(26));
+    db.prepare(
+      `INSERT INTO session_queue (session_id, position, text, created_at) VALUES ('s', 1, 'hi', 0)`
+    ).run();
+    assert.deepEqual(
+      db.prepare(`SELECT origin, kind, status FROM session_queue`).get(),
+      { origin: "user", kind: "message", status: "pending" }
+    );
+    const turn = db.prepare(
+      `INSERT INTO session_turns (session_id, turn_no, cwd) VALUES ('s', 1, '/tmp')`
+    );
+    turn.run();
+    assert.throws(() => turn.run(), /UNIQUE/);
+  });
+
+  test("run twice: applied, nothing duplicated, rows kept", () => {
+    const db = migrated();
+    db.prepare(
+      `INSERT INTO session_queue (session_id, position, text, created_at) VALUES ('s', 1, 'hi', 0)`
+    ).run();
+    db.exec(`DELETE FROM _migrations WHERE id IN (25, 26)`);
+    quietly(() => runMigrations(db));
+    assert.ok(applied(db).includes(25));
+    assert.ok(applied(db).includes(26));
+    assert.equal(
+      indexes(db, "session_queue").filter((n) => n === "idx_queue_session")
+        .length,
+      1
+    );
+    assert.equal(
+      (
+        db.prepare(`SELECT COUNT(*) AS n FROM session_queue`).get() as {
+          n: number;
+        }
+      ).n,
+      1
+    );
+  });
+
+  test("an older database without either table gets both", () => {
+    const db = migrated();
+    db.exec(`DROP TABLE session_queue`);
+    db.exec(`DROP TABLE session_turns`);
+    db.exec(`DELETE FROM _migrations WHERE id IN (25, 26)`);
+    quietly(() => runMigrations(db));
+    assert.deepEqual(columns(db, "session_queue"), QUEUE);
+    assert.deepEqual(columns(db, "session_turns"), TURNS);
+  });
+});

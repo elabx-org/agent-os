@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useSnapshot } from "valtio";
 import type { DevServer, Session } from "@/lib/db";
 import type { GitFile } from "@/lib/git-status";
 import type { SubagentInfo } from "@/lib/claude-subagents";
 import type { WorkflowInfo } from "@/lib/claude-workflows";
 import type { PermissionPrompt } from "@/lib/permission-prompt";
+import type { PlanResponse, PlanState } from "@/lib/claude-plan";
 import type { SessionStatus } from "@/components/views/types";
 import {
+  dbTimeMs,
   fromSessionStatus,
   STATE_WORD,
   type AgentState,
@@ -16,6 +19,7 @@ import { useGitStatus, usePRStatus } from "@/data/git/queries";
 import { useDevServersQuery } from "@/data/dev-servers";
 import { useSessionPrompt } from "@/data/prompts/queries";
 import { useSubagents, useWorkflows } from "./useSubagents";
+import { useSharedPoll } from "./useSharedPoll";
 
 export interface SessionActivity {
   state: AgentState;
@@ -29,6 +33,39 @@ export interface SessionActivity {
   workflows: { list: WorkflowInfo[]; running: number };
   devServer?: DevServer;
   pr?: { number: number; url: string; status: string; title?: string };
+  /** Claude's plan (lib/claude-plan.ts, GET /plan), with `rail` or `plan` (M2) */
+  plan?: PlanState | null;
+  /** Context tokens, as "41k tokens" in the Live activity (M2) */
+  tokens?: number | null;
+}
+
+const PLAN_POLL_MS = 5000;
+
+export const planKeys = {
+  session: (sessionId: string) => ["plan", sessionId] as const,
+};
+
+const NO_PLAN: PlanResponse = { plan: null, tokens: null };
+
+// No plan (or no route yet) reads as none rather than an error
+async function fetchPlan(sessionId: string): Promise<PlanResponse> {
+  const res = await fetch(`/api/sessions/${sessionId}/plan`);
+  if (!res.ok) return NO_PLAN;
+  const body = (await res.json()) as Partial<PlanResponse>;
+  return { plan: body.plan ?? null, tokens: body.tokens ?? null };
+}
+
+/** Claude's plan and context tokens, one poll for every view of a session */
+function usePlan(sessionId: string, enabled: boolean) {
+  const queryKey = planKeys.session(sessionId);
+  const { data } = useQuery({
+    queryKey,
+    queryFn: () => fetchPlan(sessionId),
+    enabled,
+    staleTime: PLAN_POLL_MS,
+  });
+  useSharedPoll(queryKey, PLAN_POLL_MS, enabled);
+  return enabled ? data : undefined;
 }
 
 // Claude Code's tool lines ("● Bash(npm run build)") and spinner
@@ -99,11 +136,20 @@ const tracked = new Map<
 function track(
   sessionId: string,
   state: AgentState,
-  lines: readonly string[] | undefined
+  lines: readonly string[] | undefined,
+  /** The server's last change (ms): the clock's start when first seen */
+  seed: number | null
 ) {
   let entry = tracked.get(sessionId);
   if (!entry || entry.state !== state) {
-    entry = { state, since: Date.now() };
+    // Seen changing here: now. First seen: since the server's last change,
+    // not since the page loaded
+    const now = Date.now();
+    const since =
+      !entry && seed !== null && !Number.isNaN(seed)
+        ? Math.min(seed, now)
+        : now;
+    entry = { state, since };
     tracked.set(sessionId, entry);
   }
   if (state !== "work") return entry;
@@ -112,14 +158,19 @@ function track(
   if (tool) {
     // A new tool restarts the clock
     if (tool.label !== doing?.label || tool.command !== doing?.command) {
-      entry.doing = { ...tool, startedAt: Date.now(), fromTool: true };
+      // The first step seen in this state started no later than the state
+      entry.doing = {
+        ...tool,
+        startedAt: doing ? Date.now() : entry.since,
+        fromTool: true,
+      };
     }
   } else if (spinner && !doing?.fromTool) {
     // The spinner only names the spell until a tool shows; its verb
     // changing isn't a new step
     entry.doing = {
       ...spinner,
-      startedAt: doing?.startedAt ?? Date.now(),
+      startedAt: doing?.startedAt ?? entry.since,
       fromTool: false,
     };
   }
@@ -141,11 +192,21 @@ function sameDir(a: string, b: string): boolean {
  * Everything the activity strip and rail show about one session: its state
  * and what it's doing, the prompt it waits on, changed files, subagents, its
  * dev server and pull request. Polls only while `active`; the PR lookup
- * (a GitHub call) only with `rail`.
+ * (a GitHub call) only with `rail`, the plan and tokens with `rail` or
+ * `plan`.
  */
 export function useSessionActivity(
   session: Session | undefined,
-  { active = true, rail = false }: { active?: boolean; rail?: boolean } = {}
+  {
+    active = true,
+    rail = false,
+    plan: withPlan = false,
+  }: {
+    active?: boolean;
+    rail?: boolean;
+    /** Also read the plan and tokens without the rest of the rail (M2) */
+    plan?: boolean;
+  } = {}
 ): SessionActivity {
   const id = session?.id ?? "";
   const dir = session?.working_directory ?? "";
@@ -162,11 +223,16 @@ export function useSessionActivity(
   const workflowList = useWorkflows(id, on);
   const { data: servers } = useDevServersQuery();
   const { data: prData } = usePRStatus(on && rail ? dir : "");
+  // Claude's transcript has the plan; other agents have none
+  const planOn =
+    on && (rail || withPlan) && (session?.agent_type || "claude") === "claude";
+  const planData = usePlan(id, planOn);
 
   const entry = track(
     id,
     state,
-    status?.recentLines ?? (status?.lastLine ? [status.lastLine] : undefined)
+    status?.recentLines ?? (status?.lastLine ? [status.lastLine] : undefined),
+    session?.updated_at ? dbTimeMs(session.updated_at) : null
   );
   const { since, doing } = entry;
 
@@ -249,6 +315,8 @@ export function useSessionActivity(
     workflows,
     devServer,
     pr,
+    plan: planOn ? (planData?.plan ?? null) : undefined,
+    tokens: planOn ? (planData?.tokens ?? null) : undefined,
   };
 }
 

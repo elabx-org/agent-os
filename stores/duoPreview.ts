@@ -3,14 +3,16 @@ import { proxy } from "valtio";
 const KEY = "agentos:duo-preview";
 
 /**
- * The closed-display layout on trial in the iOS app: a session title in the
- * page instead of the header band. Per device.
+ * The session's title in the page (the closed Duo's crumb and 22px title,
+ * half folded's title pill, the open Duo's large title) instead of the
+ * classic header band. On unless turned off in Settings → iPhone Duo. Per
+ * device.
  */
-export const duoPreviewStore = proxy<{ on: boolean }>({ on: false });
+export const duoPreviewStore = proxy<{ on: boolean }>({ on: true });
 
 export function loadDuoPreview() {
   try {
-    duoPreviewStore.on = localStorage.getItem(KEY) === "1";
+    duoPreviewStore.on = localStorage.getItem(KEY) !== "0";
   } catch {}
 }
 

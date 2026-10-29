@@ -1,0 +1,753 @@
+/* =============================================================================
+   AGENT-OS MODERN LOOK: shared tokens and parts
+   Mirrors the mocks' ui.css. Colour tokens are raw HSL like themes.css
+   (Tailwind: bg-needs, text-work, bg-meter, bg-page, border-hair), except
+   --hair, which is a full colour because it carries its own alpha.
+   ============================================================================= */
+
+@layer base {
+  :root {
+    --needs: 43 96% 56%; /* #FBBF24 */
+    --work: 158 64% 52%; /* #34D399 */
+    --meter: 255 92% 76%; /* #A78BFA */
+    --page: 240 24% 96%; /* light: #F2F2F7 */
+    --hair: rgba(0, 0, 0, 0.08);
+    --glass-bg: rgba(255, 255, 255, 0.72);
+    --glass-border: rgba(0, 0, 0, 0.08);
+    --glass-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 8px 24px rgba(0, 0, 0, 0.12);
+    --row-sel: hsl(var(--primary) / 0.1);
+    /* M2: diff lines and counts, the sheet and terminal blocks */
+    --add: #059669;
+    --del: #dc2626;
+    --add-line: #047857;
+    --del-line: #b91c1c;
+    --add-bg: rgba(52, 211, 153, 0.14);
+    --del-bg: rgba(248, 113, 113, 0.14);
+    --diff-bg: #f7f7f9;
+    --sheet: #ffffff;
+    --block: #ffffff;
+    --say: #1c1c1f;
+    /* The edge of what needs you: amber-600 here, readable on white */
+    --needs-edge: rgba(217, 119, 6, 0.45);
+    /* M2b: git letters, the PR card's edge, code (D-Files) */
+    --git-mod: #d97706;
+    --checks-edge: rgba(5, 150, 105, 0.35);
+    --fail-edge: rgba(220, 38, 38, 0.35);
+    --code-gutter: #aeaeb2;
+    /* The code panel and its open tab: a white card on the light page */
+    --code-bg: #ffffff;
+    --syn-key: #7c3aed;
+    --syn-str: #047857;
+    --syn-fn: #2563eb;
+    --syn-com: #8e8e93;
+  }
+
+  .dark {
+    --needs-edge: hsl(var(--needs) / 0.4);
+    --page: 240 8% 5%; /* #0B0B0D */
+    --hair: rgba(255, 255, 255, 0.08);
+    --glass-bg: rgba(44, 44, 50, 0.62);
+    --glass-border: rgba(255, 255, 255, 0.12);
+    --glass-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.14), 0 10px 30px rgba(0, 0, 0, 0.45);
+    --row-sel: hsl(var(--primary) / 0.16);
+    --add: #34d399;
+    --del: #f87171;
+    --add-line: #6ee7b7;
+    --del-line: #fca5a5;
+    --add-bg: rgba(52, 211, 153, 0.1);
+    --del-bg: rgba(248, 113, 113, 0.1);
+    --diff-bg: #0e0e10;
+    --sheet: #1c1c1e;
+    --block: #0e0e10;
+    --say: #e5e5ea;
+    --git-mod: hsl(var(--needs));
+    --checks-edge: rgba(52, 211, 153, 0.3);
+    --fail-edge: rgba(248, 113, 113, 0.3);
+    --code-gutter: #4b4b52;
+    --code-bg: var(--diff-bg);
+    --syn-key: #c4b5fd;
+    --syn-str: #86efac;
+    --syn-fn: #93c5fd;
+    --syn-com: #6b6b70;
+  }
+}
+
+@layer components {
+  /* Translucent over what scrolls behind: bars, the usage pill, the FAB row */
+  .glass {
+    background: var(--glass-bg);
+    /* Unprefixed last: before it, the minifier keeps only the -webkit- one */
+    -webkit-backdrop-filter: blur(24px) saturate(170%);
+    backdrop-filter: blur(24px) saturate(170%);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--glass-shadow);
+  }
+
+  .t-large {
+    font-size: 34px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+  }
+  .t-title {
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    line-height: 1.2;
+  }
+  .t-head {
+    font-size: 17px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+  /* Section title above a group card */
+  .t-sec {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 4px;
+    font-size: 15px;
+    font-weight: 600;
+    color: hsl(var(--muted-foreground));
+  }
+
+  /* Rows on one rounded card, hairlines between them */
+  /* No flex-shrink: overflow:hidden drops the min-content floor, so in a
+     scrolling flex column the card would shrink to nothing */
+  .group-card {
+    flex-shrink: 0;
+    background: hsl(var(--card));
+    border-radius: 20px;
+    overflow: hidden;
+  }
+  .row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 56px;
+    padding: 12px 14px;
+  }
+  /* .row-wrap: a row inside a wrapper of its own (a menu's trigger) */
+  .group-card .row + .row,
+  .group-card .row-wrap + .row-wrap > .row {
+    border-top: 1px solid var(--hair);
+  }
+  /* A touch quieter than other hairlines on black */
+  .dark .group-card .row + .row,
+  .dark .group-card .row-wrap + .row-wrap > .row {
+    border-top-color: rgba(255, 255, 255, 0.06);
+  }
+  .row.sel {
+    background: var(--row-sel);
+  }
+
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    height: 44px;
+    padding: 0 18px;
+    border-radius: 22px;
+    font-size: 15px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .pill-primary {
+    background: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+  }
+  /* The mocks' .btn.sec2: the quiet answer beside the primary one */
+  .pill-secondary {
+    background: hsl(var(--foreground) / 0.08);
+    border: 1px solid hsl(var(--foreground) / 0.12);
+    font-weight: 500;
+  }
+  .light .pill-secondary {
+    background: hsl(var(--foreground) / 0.05);
+    border-color: hsl(var(--foreground) / 0.1);
+  }
+  /* The mocks' .btn.sm: answers inline on a Now card */
+  .pill-sm {
+    height: 36px;
+    padding: 0 14px;
+    border-radius: 18px;
+    font-size: 14px;
+  }
+
+  /* Segmented control: buttons with aria-pressed */
+  .seg {
+    display: flex;
+    gap: 2px;
+    padding: 3px;
+    border-radius: 22px;
+  }
+  .seg > button {
+    height: 36px;
+    padding: 0 14px;
+    border-radius: 18px;
+    font-size: 14px;
+    color: hsl(var(--foreground) / 0.8);
+  }
+  .seg > button[aria-pressed="true"] {
+    background: hsl(var(--foreground) / 0.14);
+    color: hsl(var(--foreground));
+    font-weight: 600;
+  }
+  /* ---- M1b: shell surfaces ---- */
+
+  /* A question waiting on you (E-NeedsYou, Open-Now): amber-edged card */
+  .ask-card {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 14px;
+    border-radius: 22px;
+    background: hsl(var(--card));
+    border: 1px solid var(--needs-edge);
+  }
+
+  /* A mono chip beside a title: the Project page's branch (Closed-Project) */
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 30px;
+    padding: 0 12px;
+    border-radius: 15px;
+    background: hsl(var(--foreground) / 0.08);
+    font-size: 13px;
+    color: hsl(var(--foreground) / 0.78);
+    white-space: nowrap;
+  }
+
+  /* New's agent tiles (E-New 4x2, D-New one row): .pick.on is the choice */
+  .pick {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 12px 4px;
+    border-radius: 16px;
+    background: hsl(var(--card));
+    border: 1.5px solid transparent;
+    font-size: 13px;
+    color: hsl(var(--foreground) / 0.9);
+  }
+  .pick.on,
+  .pick[aria-pressed="true"] {
+    border-color: hsl(var(--meter));
+    background: hsl(var(--primary) / 0.16);
+  }
+  .light .pick.on,
+  .light .pick[aria-pressed="true"] {
+    border-color: hsl(var(--primary));
+    background: hsl(var(--primary) / 0.1);
+  }
+
+  /* The desktop sidebar's rows (Desk-Chat, D-New): 40px, radius 10 */
+  .srow {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    height: 40px;
+    padding: 0 10px;
+    border-radius: 10px;
+    font-size: 14px;
+  }
+  .srow.sel {
+    background: hsl(var(--primary) / 0.18);
+  }
+
+  /* ---- M2: session view ---- */
+
+  /* The user's message (Closed-Chat): purple, the tail corner squared */
+  .bubble-me {
+    align-self: flex-end;
+    max-width: 82%;
+    padding: 10px 14px;
+    border-radius: 20px 20px 6px 20px;
+    background: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+  }
+  /* The agent's prose */
+  .say {
+    color: var(--say);
+    line-height: 1.5;
+  }
+
+  /* Grouped tool calls: "Read 3 files", "Edited X +38 −9", a check row */
+  .tools {
+    flex-shrink: 0;
+    background: hsl(var(--card));
+    border-radius: 16px;
+    overflow: hidden;
+  }
+  .tool {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    font-size: 14px;
+    color: hsl(var(--foreground) / 0.8);
+  }
+  .tools .tool + .tool,
+  .tools .tool + .mini-diff,
+  .tools .mini-diff + .tool {
+    border-top: 1px solid var(--hair);
+  }
+
+  /* A few diff lines under a tool, a turn or a file */
+  .mini-diff {
+    padding: 8px 0;
+    background: var(--diff-bg);
+    font-family: var(--font-geist-mono), ui-monospace, monospace;
+    font-size: 12px;
+    line-height: 1.65;
+  }
+  .mini-diff > * {
+    padding: 0 14px;
+    white-space: pre;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .dl-add {
+    color: var(--add-line);
+    background: var(--add-bg);
+  }
+  .dl-del {
+    color: var(--del-line);
+    background: var(--del-bg);
+  }
+  .dl-ctx {
+    color: hsl(var(--muted-foreground));
+  }
+  /* +38 −9 */
+  .n-add,
+  .n-del {
+    font-family: var(--font-geist-mono), ui-monospace, monospace;
+    font-size: 13px;
+  }
+  .n-add {
+    color: var(--add);
+  }
+  .n-del {
+    color: var(--del);
+  }
+
+  /* The working / waiting line under the title (N-Queue): 44px, toned edge */
+  .status-card {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 44px;
+    padding: 0 6px 0 12px;
+    border-radius: 16px;
+    background: hsl(var(--card));
+    border: 1px solid transparent;
+    font-size: 14px;
+  }
+  .status-card.tone-work {
+    border-color: hsl(var(--work) / 0.3);
+  }
+  .status-card.tone-needs {
+    border-color: var(--needs-edge);
+  }
+
+  /* Plan (Closed-Chat chip, E-Live list): segments and steps */
+  .plan-card {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px 14px;
+    border-radius: 16px;
+    background: hsl(var(--card));
+  }
+  .plan-segs {
+    display: grid;
+    grid-auto-columns: minmax(0, 1fr);
+    grid-auto-flow: column;
+    gap: 4px;
+  }
+  .plan-segs > span {
+    height: 5px;
+    border-radius: 3px;
+    background: hsl(var(--foreground) / 0.12);
+  }
+  .plan-segs > span.done {
+    background: hsl(var(--meter));
+  }
+  .plan-segs > span.active {
+    background: hsl(var(--needs));
+  }
+  .plan-step {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 14px;
+    color: hsl(var(--muted-foreground));
+  }
+  .plan-step.active {
+    color: hsl(var(--foreground));
+    font-weight: 600;
+  }
+  /* The step's mark: .done ticked purple, .active amber ring, else a ring */
+  .step-mark {
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border-radius: 10px;
+    border: 2px solid hsl(var(--foreground) / 0.22);
+  }
+  .step-mark.done {
+    border: 0;
+    background: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+  }
+  .step-mark.active {
+    border-color: hsl(var(--needs));
+  }
+  .step-mark.active::after {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 3px;
+    background: hsl(var(--needs));
+  }
+
+  /* A turn's card (N-Undo): "Turn 4 changed 3 files +40 −9 · Diff · Undo turn" */
+  .turn-card {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px 12px;
+    border-radius: 16px;
+    background: hsl(var(--card));
+  }
+  /* The purple-edged secondary pill: Undo turn */
+  .pill-outline {
+    background: hsl(var(--foreground) / 0.08);
+    border: 1px solid hsl(var(--meter));
+    color: hsl(var(--meter));
+    font-weight: 500;
+  }
+  .light .pill-outline {
+    border-color: hsl(var(--primary));
+    color: hsl(var(--primary));
+  }
+
+  /* Bottom sheets (E-Live, N-Undo): raised surface, 28px top corners */
+  .sheet-surface {
+    background: var(--sheet);
+    border-radius: 28px 28px 0 0;
+    box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.6);
+  }
+  .sheet-grab {
+    width: 40px;
+    height: 5px;
+    margin: 8px auto 4px;
+    border-radius: 3px;
+    background: hsl(var(--foreground) / 0.25);
+  }
+
+  /* Composer (Closed-Chat, E-Composer, N-Queue) */
+  /* Collapsed: a 52px glass capsule beside the + circle */
+  .composer-field {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    min-height: 52px;
+    padding: 0 6px 0 18px;
+    border-radius: 26px;
+  }
+  /* Open: one glass card, attachments / text / + mode history send */
+  .composer-card {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px;
+    border-radius: 26px;
+  }
+  .send-btn {
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 20px;
+    background: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+  }
+  /* A queued message (N-Queue): dashed violet, drag | text + Edit | × */
+  .queue-item {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    min-height: 52px;
+    padding: 0 2px 0 0;
+    border-radius: 16px;
+    background: hsl(var(--primary) / 0.12);
+    border: 1px dashed hsl(var(--meter) / 0.45);
+  }
+  /* The mode pill (E-Composer "Auto mode"): 28px, toned by the caller */
+  .mode-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 28px;
+    padding: 0 10px;
+    border-radius: 14px;
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  /* Terminal skin (Closed-Terminal, Fold-Terminal, Desk-Beside) */
+  .term-blk {
+    padding: 9px 12px;
+    border-radius: 14px;
+    background: var(--block);
+    border: 1px solid hsl(var(--foreground) / 0.07);
+    font-family: var(--font-geist-mono), ui-monospace, monospace;
+    font-size: 13px;
+    line-height: 1.55;
+  }
+  .term-blk.you {
+    background: hsl(var(--card));
+    border-color: transparent;
+  }
+  .term-blk.ask {
+    border-color: var(--needs-edge);
+  }
+  /* A terminal key: 42px row key; .big is Fold-Terminal's 56px grid key */
+  .tkey {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    height: 42px;
+    min-width: 42px;
+    padding: 0 10px;
+    border-radius: 12px;
+    border: 1px solid hsl(var(--foreground) / 0.1);
+    background: linear-gradient(#2a2a30, #202025);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.1),
+      0 2px 0 rgba(0, 0, 0, 0.7);
+    font-size: 14px;
+    color: hsl(var(--foreground));
+  }
+  .light .tkey {
+    background: linear-gradient(#ffffff, #f0f0f3);
+    box-shadow:
+      inset 0 1px 0 #fff,
+      0 1px 0 rgba(0, 0, 0, 0.15);
+  }
+  .tkey.big {
+    flex: 1;
+    min-width: 0;
+    height: 56px;
+    border-radius: 14px;
+    font-size: 16px;
+  }
+  .tkey.esc {
+    color: var(--del-line);
+  }
+  /* ^C */
+  .tkey.danger {
+    color: var(--del-line);
+    background: linear-gradient(#3a1d20, #2c1618);
+    border-color: rgba(248, 113, 113, 0.35);
+  }
+  .light .tkey.danger {
+    background: linear-gradient(#fdecec, #f9dede);
+  }
+  /* ---- M2b: Changes and Files ---- */
+
+  /* A file's git letter: M amber, A green, D red, ? muted (E-Git, E-Files) */
+  .git-m {
+    color: var(--git-mod);
+  }
+  .git-a {
+    color: var(--add);
+  }
+  .git-d {
+    color: var(--del);
+  }
+  .git-u {
+    color: hsl(var(--muted-foreground));
+  }
+  /* The letter before a changed file's path (E-Git, D-Git) */
+  .git-letter {
+    flex-shrink: 0;
+    width: 14px;
+    font-family: var(--font-geist-mono), ui-monospace, monospace;
+    font-size: 12px;
+  }
+  /* The letter at a tree row's end (E-Files) */
+  .git-st {
+    flex-shrink: 0;
+    width: 16px;
+    text-align: center;
+    font-family: var(--font-geist-mono), ui-monospace, monospace;
+    font-size: 11px;
+    font-weight: 600;
+  }
+  /* A folder with changes inside */
+  .dirty-dot {
+    flex-shrink: 0;
+    width: 6px;
+    height: 6px;
+    border-radius: 3px;
+    background: hsl(var(--needs));
+  }
+
+  /* The branch's PR: edged green when its checks passed (E-Git, D-Git) */
+  .pr-card {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 14px;
+    border-radius: 20px;
+    background: hsl(var(--card));
+    border: 1px solid transparent;
+  }
+  .pr-card.checks-passed {
+    border-color: var(--checks-edge);
+  }
+  .pr-card.checks-failed {
+    border-color: var(--fail-edge);
+  }
+  .pr-card.checks-pending {
+    border-color: var(--needs-edge);
+  }
+  /* The checks' dot: 8px, the card's tone */
+  .check-dot {
+    flex-shrink: 0;
+    width: 8px;
+    height: 8px;
+    border-radius: 4px;
+    background: hsl(var(--muted-foreground));
+  }
+  .check-dot.passed {
+    background: hsl(var(--work));
+  }
+  .check-dot.failed {
+    background: var(--del);
+  }
+  .check-dot.pending {
+    background: hsl(var(--needs));
+  }
+
+  /* History (D-Git): 56px commits, a ring each, filled for the branch's own */
+  .commit-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    height: 56px;
+    padding: 0 16px;
+  }
+  .commit-row + .commit-row {
+    border-top: 1px solid var(--hair);
+  }
+  .commit-node {
+    flex-shrink: 0;
+    width: 12px;
+    height: 12px;
+    border-radius: 6px;
+    border: 2px solid hsl(var(--meter));
+    background: hsl(var(--background));
+  }
+  .commit-node.own {
+    background: hsl(var(--meter));
+  }
+
+  /* The commit message as a pill beside Commit (E-Git) */
+  .pill-field {
+    flex: 1;
+    min-width: 0;
+    height: 44px;
+    padding: 0 16px;
+    border-radius: 22px;
+    border: 1px solid hsl(var(--foreground) / 0.1);
+    background: hsl(var(--card));
+    font-size: 15px;
+    outline: 0;
+  }
+
+  /* Find a file or text (E-Files 40px; .sm: D-Files' sidebar, 34px) */
+  .search-field {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 40px;
+    padding: 0 12px;
+    border-radius: 12px;
+    background: hsl(var(--card));
+    color: hsl(var(--muted-foreground));
+  }
+  .search-field > input {
+    flex: 1;
+    min-width: 0;
+    background: transparent;
+    border: 0;
+    outline: 0;
+    font-size: 15px;
+    color: hsl(var(--foreground));
+  }
+  .search-field.sm {
+    height: 34px;
+    padding: 0 10px;
+    border-radius: 10px;
+    font-size: 13px;
+  }
+  .search-field.sm > input {
+    font-size: 13px;
+  }
+
+  /* The file tree's rows: 38px, indented by depth inline (E-Files, D-Files) */
+  .tree-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 38px;
+    padding-right: 8px;
+    font-size: 14px;
+  }
+  .tree-row.sel {
+    background: var(--row-sel);
+    border-radius: 8px;
+  }
+
+  /* Open files over the code (D-Files) */
+  .file-tab {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 40px;
+    padding: 0 14px;
+    border-radius: 10px 10px 0 0;
+    font-size: 13px;
+    color: hsl(var(--muted-foreground));
+  }
+  .file-tab.on {
+    background: var(--code-bg);
+    color: hsl(var(--foreground));
+  }
+  /* The code under them: true black page, 44px gutter (CodeMirror's theme reads the --syn-* tokens) */
+  .code-view {
+    background: var(--code-bg);
+    font-family: var(--font-geist-mono), ui-monospace, monospace;
+    font-size: 13px;
+    line-height: 1.75;
+  }
+}

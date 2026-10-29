@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import { queries, getDb, type Session } from "@/lib/db";
-import { readClaudeSessionMeta } from "@/lib/claude-transcript";
 import { readClaudeState } from "@/lib/claude-state";
 import { readClaudeScreen } from "@/lib/claude-screen";
 import { readScreenPrompt } from "@/lib/agent-origin";
@@ -11,6 +10,7 @@ import { effectiveMode, isEscalation } from "@/lib/permission-mode";
 import { readLiveMode } from "@/lib/permission-mode-live";
 import { userOnly } from "@/lib/permission-guard";
 import { requireUser } from "@/lib/user-proof";
+import { restartWithStoredMode } from "@/lib/apply-pending-mode";
 
 const execFileAsync = promisify(execFile);
 
@@ -88,30 +88,9 @@ export async function POST(
     );
   }
 
-  // The running conversation, not the newest transcript in the folder
-  const meta = await readClaudeSessionMeta(target);
-  const claudeSessionId = meta?.sessionId || session.claude_session_id;
-  if (!claudeSessionId) {
-    return NextResponse.json(
-      { error: "Couldn't find this session's conversation to resume" },
-      { status: 409 }
-    );
+  const restarted = await restartWithStoredMode(session);
+  if (!restarted.ok) {
+    return NextResponse.json({ error: restarted.error }, { status: 409 });
   }
-  if (claudeSessionId !== session.claude_session_id) {
-    db.prepare(
-      "UPDATE sessions SET claude_session_id = ?, updated_at = datetime('now') WHERE id = ?"
-    ).run(claudeSessionId, id);
-  }
-
-  // The relaunch takes permission_mode; its caps are recorded anew
-  queries.clearSessionPermissionPending(db).run(id);
-
-  try {
-    await execFileAsync("tmux", ["kill-session", "-t", target]);
-  } catch {
-    // Not running: the next attach starts it anyway
-  }
-  return NextResponse.json({
-    session: queries.getSession(db).get(id) as Session,
-  });
+  return NextResponse.json({ session: restarted.session });
 }

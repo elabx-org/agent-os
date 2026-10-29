@@ -6,6 +6,7 @@ import {
   useEffect,
   useLayoutEffect,
   useMemo,
+  useRef,
   useState,
   type CSSProperties,
   type ReactNode,
@@ -18,14 +19,22 @@ import type { ProjectWithRepositories } from "@/lib/projects";
 import { cn } from "@/lib/utils";
 import { ActivityRail } from "@/components/Session/ActivityRail";
 import { ControlColumn } from "@/components/ControlColumn";
+import { LiveSheet } from "@/components/ControlColumn/LiveSheet";
 import { usePanes } from "@/contexts/PaneContext";
 import { GitPanelSkeleton } from "@/components/Pane/PaneSkeletons";
 import { useIsNative } from "@/hooks/useIsNative";
 import { FOLD_CLEAR, useHinge } from "@/hooks/useHinge";
+import { useLayoutMode } from "@/hooks/useLayoutMode";
+import { registerNavHandlers } from "@/lib/nav-actions";
+import { setHome } from "@/stores/surface";
+import { isNative, nativeCaps } from "@/lib/native-bridge";
 import { postureStore } from "@/stores/posture";
+import { resetSwap, toggleSwap } from "@/stores/paneOrder";
 import { focusStore } from "@/stores/focus";
 import { mobileNavStore } from "@/stores/mobileNav";
 import { ContextPanel } from "@/components/ReplyContext/ContextPanel";
+import { ChangesPage } from "@/components/Changes/ChangesPage";
+import { spreadLayout } from "./spread-layout";
 import { useReplyContext } from "@/hooks/useReplyContext";
 import {
   setContextShownElsewhere,
@@ -78,6 +87,15 @@ const SpreadPanesContext = createContext<SpreadPanes>(null);
 
 export function useSpreadPanes(): SpreadPanes {
   return useContext(SpreadPanesContext);
+}
+
+/**
+ * Open-Beside's session pills name the two pages, and the column holds
+ * their actions, so the panes drop their title bars. The iOS app before
+ * the column (0.1.62) keeps the bars: swap lives there
+ */
+export function besidePills(): boolean {
+  return !isNative() || nativeCaps().column;
 }
 
 /**
@@ -158,6 +176,11 @@ interface SessionSpreadProps {
   /** The home (Now); shown while homeOpen */
   home: ReactNode;
   homeOpen: boolean;
+  /**
+   * The desktop's home width (its sidebar or avatar rail): flat against the
+   * panes, no shadow; the web's default sidebar width otherwise
+   */
+  homeWidth?: number;
   /** A workspace page standing in for the panes and the rail, or null */
   page?: ReactNode;
   /**
@@ -171,12 +194,15 @@ interface SessionSpreadProps {
 
 /**
  * The session and what sits around it. Web: home | pane | live activity |
- * control column. The open iPhone Duo lays it out as two pages: pane left and
+ * control column; the desktop has its sidebar (or avatar rail) for the home
+ * and no column. The open iPhone Duo lays it out as two pages: pane left and
  * rail right, or the home left (back) and the pane right. Focus (and the
  * views other than terminal and chat) drop the home and rail; the pane then
  * spans the fold flat (only controls avoid it, see .fold-controls). Half open
  * the chat reads as a book, the terminal takes the right page with Changes on
- * the left, and anything else takes the right page.
+ * the left, and anything else takes the right page. The column's Changes
+ * puts Changes on the right page beside the conversation, in the rail's
+ * place (Open-Changes). spread-layout.ts decides what goes where.
  *
  * Typing a reply in the one session open, Claude's last turn takes the left
  * page and holds still while the pane, with its composer, takes the right.
@@ -192,20 +218,26 @@ export function SessionSpread({
   projects,
   home,
   homeOpen: homeWanted,
+  homeWidth,
   page,
   pageSpread,
   children,
 }: SessionSpreadProps) {
   const native = useIsNative();
+  const mode = useLayoutMode();
+  // The Duo lays out as two pages in the app and in Safari alike
+  const duo = native || mode === "duo-open" || mode === "book";
+  // The desktop shell (sidebar, no column) never reaches the open Duo
+  const desktop = mode === "desktop" && !native;
   const { fold } = useSnapshot(postureStore);
   const book = fold?.axis === "vertical" ? fold : null;
-  const hingeX = useHinge(native && !fold);
+  const hingeX = useHinge(duo && !fold);
   const { on: focus } = useSnapshot(focusStore);
-  const { viewMode } = useSnapshot(mobileNavStore);
+  const { viewMode, liveOpen, changesOpen } = useSnapshot(mobileNavStore);
   const roomForRail = useMinWidth(RAIL_MIN_VIEWPORT);
 
   // Two pages either side of the fold: the left one's width, then the gap
-  const pages = native && (book || hingeX !== null);
+  const pages = duo && (book || hingeX !== null);
   const leftPage = book
     ? `calc(${book.start}px - env(safe-area-inset-left))`
     : `calc(var(--hinge-x) - ${FOLD_CLEAR}px - env(safe-area-inset-left))`;
@@ -213,56 +245,48 @@ export function SessionSpread({
 
   const folder = session?.working_directory;
   const pageOpen = !!page;
-  const pageWide = !!pages && pageOpen && !!pageSpread;
-  // Two sessions open: one on each page, in place of the rail
-  const { paneCount } = usePanes();
-  const twoPages = !!pages && paneCount > 1 && !pageOpen;
+  const { paneCount, swap } = usePanes();
   // Replying to the one session open: its context on the left page, the
   // pane on the right (two open keep their own cards above each composer)
   // (only with something to show: a shell session has no Claude turn)
   const typing = useReplying(session?.id);
   const replyContext = useReplyContext(session?.id, !!pages && typing);
-  const replyLeft =
-    !!pages && !!session && !pageOpen && !twoPages && typing && !!replyContext;
-  const homeOpen = homeWanted && !pageWide && !replyLeft;
-  const splitFold = twoPages && !homeOpen;
-  const changesLeft =
-    !!book &&
-    focus &&
-    !homeOpen &&
-    !pageOpen &&
-    !twoPages &&
-    !replyLeft &&
-    viewMode === "terminal" &&
-    !!folder;
-  // On the pages the rail sits beside a conversation; Changes, Files and
-  // Workers take both pages for their own list | detail split
-  const showRail =
-    !!session &&
-    !pageOpen &&
-    !focus &&
-    !splitFold &&
-    !replyLeft &&
-    (pages
-      ? !homeOpen && (viewMode === "terminal" || viewMode === "chat")
-      : roomForRail && !native);
-  // Pane on the left page, the rail on the right (the home and Changes left
-  // pages only come with no rail)
-  const paneLeft = pages && showRail;
-  // Half open nothing may sit in the bend: only the chat lays itself out as
-  // a book, anything else takes the right page. A workspace page takes it
-  // flat too: its centred form would sit across the hinge.
-  const paneRight =
-    pages &&
-    !homeOpen &&
-    !changesLeft &&
-    !showRail &&
-    !splitFold &&
-    (replyLeft || (pageOpen ? !pageWide : !!book && viewMode !== "chat"));
-  // Across the fold: content may cross it, controls move right of it
-  const paneWide =
-    pages && !homeOpen && !changesLeft && !showRail && !paneRight && !splitFold;
-  const pageGap = pages && (homeOpen || changesLeft || paneRight);
+  // An iOS app without the column has no Live to ask with, so there the
+  // rail stays as before
+  const railByDefault = native && !nativeCaps().column;
+  const {
+    pageWide,
+    twoPages,
+    replyLeft,
+    homeOpen,
+    splitFold,
+    changesLeft,
+    changesRoom,
+    changesBeside,
+    showRail,
+    paneLeft,
+    paneRight,
+    paneWide,
+    pageGap,
+  } = spreadLayout({
+    duo,
+    desktop,
+    pages: !!pages,
+    book: !!book,
+    focus,
+    homeWanted,
+    pageOpen,
+    pageSpread: !!pageSpread,
+    paneCount,
+    hasSession: !!session,
+    hasFolder: !!folder,
+    replying: typing && !!replyContext,
+    viewMode,
+    liveOpen,
+    railByDefault,
+    changesOpen,
+    roomForRail,
+  });
   // Flat there's no gutter: the pages meet at the hinge
   const spreadStart = book ? book.start : hingeX;
   const spreadEnd = book ? book.end : hingeX;
@@ -298,6 +322,66 @@ export function SessionSpread({
     mobileNavStore.railActive = true;
   }, []);
 
+  // The home beside the panes, for the surface (Now)
+  useEffect(() => {
+    setHome(homeWanted);
+    return () => {
+      setHome(false);
+    };
+  }, [homeWanted]);
+
+  // Two on the pages trade sides in place (CSS order, nothing remounts);
+  // elsewhere the split itself swaps
+  useEffect(
+    () => registerNavHandlers({ swapPanes: twoPages ? toggleSwap : swap }),
+    [twoPages, swap]
+  );
+  // Open-Changes: the column's Changes opens Changes on the right page,
+  // beside the conversation, where Live would go (they share the page)
+  const changesHere = changesRoom && !replyLeft;
+  // The iOS app before the column (0.1.62) sends `git` from its toolbar:
+  // that keeps opening the git view, as it always did
+  const changesFromColumn = changesHere && (!native || nativeCaps().column);
+  useEffect(() => {
+    if (!changesHere) return;
+    return registerNavHandlers({
+      ...(changesFromColumn && {
+        openChanges: () => {
+          mobileNavStore.changesOpen = !mobileNavStore.changesOpen;
+          mobileNavStore.liveOpen = false;
+        },
+      }),
+      openLive: () => {
+        mobileNavStore.changesOpen = false;
+        mobileNavStore.liveOpen = !mobileNavStore.liveOpen;
+      },
+    });
+  }, [changesHere, changesFromColumn]);
+  // It closes once the pages go away or something else takes them
+  useEffect(() => {
+    if (!changesRoom) mobileNavStore.changesOpen = false;
+  }, [changesRoom]);
+  // Live opened another way (the session's status card) takes the page too
+  useEffect(() => {
+    if (liveOpen) mobileNavStore.changesOpen = false;
+  }, [liveOpen]);
+  // A different session starts without it
+  const sessionId = session?.id;
+  useEffect(
+    () => () => {
+      mobileNavStore.changesOpen = false;
+    },
+    [sessionId]
+  );
+
+  // A new pair starts in order. Only on the way down from two: the saved
+  // layout loads after the first render, and its pair keeps its sides
+  const lastPaneCount = useRef(paneCount);
+  useEffect(() => {
+    if (paneCount < 2 && lastPaneCount.current >= 2) resetSwap();
+    lastPaneCount.current = paneCount;
+  }, [paneCount]);
+
   const spreadPanes = useMemo<SpreadPanes>(
     () =>
       splitFold
@@ -319,23 +403,30 @@ export function SessionSpread({
     ? { width: 0 }
     : pages
       ? { width: leftPage }
-      : undefined;
+      : homeWidth
+        ? { width: homeWidth }
+        : undefined;
 
   return (
     <div className="relative flex min-h-0 min-w-0 flex-1">
       {/* The home: a sidebar on the web, the left page on the open Duo */}
       <div
         className={cn(
-          "kb-compact-hide bg-sidebar-background flex-shrink-0 overflow-hidden shadow-xl shadow-black/10 transition-all duration-200 dark:shadow-black/30",
-          homeOpen && !pages && (native ? "w-1/2" : "w-[22rem]"),
-          homeOpen && native && !book && "border-border border-r"
+          "kb-compact-hide bg-sidebar-background flex-shrink-0 overflow-hidden transition-all duration-200",
+          !homeWidth && "shadow-xl shadow-black/10 dark:shadow-black/30",
+          homeOpen && !pages && !homeWidth && (duo ? "w-1/2" : "w-[22rem]"),
+          homeOpen && duo && !book && "border-border border-r"
         )}
         style={homeStyle}
       >
-        {/* Its rows are inset px-4 already: px-1 more makes the 20px that,
-            with the bottom inset, keeps the last row clear of the open
-            Duo's round screen corner */}
-        <div className="bg-background h-full px-1 pb-[max(1rem,env(safe-area-inset-bottom))]">
+        {/* The page's own colour edge to edge (Open-Now); the bottom inset
+            keeps the last row clear of the open Duo's round screen corner */}
+        <div
+          className={cn(
+            "bg-page h-full",
+            !homeWidth && "pb-[max(1rem,env(safe-area-inset-bottom))]"
+          )}
+        >
           {home}
         </div>
       </div>
@@ -347,6 +438,7 @@ export function SessionSpread({
           style={{ width: leftPage }}
         >
           <GitPanel
+            sessionId={session?.id}
             workingDirectory={folder}
             projectId={session?.project_id ?? undefined}
             repositories={repositories}
@@ -395,7 +487,7 @@ export function SessionSpread({
       >
         <div
           className="mx-auto h-full w-full"
-          style={focus && !native ? { maxWidth: FOCUS_MAX_WIDTH } : undefined}
+          style={focus && !duo ? { maxWidth: FOCUS_MAX_WIDTH } : undefined}
         >
           {/* Hidden rather than unmounted: the terminal refits when shown */}
           <div className={cn("h-full w-full", pageOpen && "hidden")}>
@@ -419,6 +511,15 @@ export function SessionSpread({
         />
       )}
 
+      {/* Changes: beside the conversation, in the rail's place */}
+      {changesBeside && session && folder && (
+        <ChangesPage
+          sessionId={session.id}
+          workingDirectory={folder}
+          className="bg-page min-w-0 flex-1"
+        />
+      )}
+
       {/* Live activity: solid, beside the pane */}
       {showRail && session && (
         <aside
@@ -434,12 +535,22 @@ export function SessionSpread({
         </aside>
       )}
 
-      {/* The one view switcher; the iOS app has its own */}
-      {!native && (
-        <div className="flex w-16 flex-shrink-0 justify-center py-2">
+      {/* The one view switcher; the iOS app has its own. On the open Duo
+          it sits in the system column's 86px, below the camera (Open-Now:
+          20 + 16 + 24 + 40) */}
+      {!native && !desktop && (
+        <div
+          className={cn(
+            "flex flex-shrink-0 justify-center",
+            duo ? "w-[86px] pt-[100px]" : "w-16 py-2"
+          )}
+        >
           <ControlColumn variant="column" className="self-start" />
         </div>
       )}
+
+      {/* Live activity where the rail isn't showing */}
+      <LiveSheet session={session} />
     </div>
   );
 }

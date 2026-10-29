@@ -62,3 +62,14 @@ export {
   ASheetTitle,
   ASheetDescription,
 } from "./ASheet";
+
+// The modern look's parts (M1a)
+export {
+  Avatar,
+  avatarTone,
+  type AvatarProps,
+  type AvatarTone,
+} from "./Avatar";
+export { GroupCard, GroupRow, type GroupRowProps } from "./GroupCard";
+export { SectionTitle } from "./SectionTitle";
+export { StateDot } from "./StateDot";

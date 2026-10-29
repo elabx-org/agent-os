@@ -8,29 +8,38 @@ import { ConfirmHost } from "@/components/ui/confirm";
 import { BrowserUndo } from "@/components/BrowserUndo";
 import { VideoReview } from "@/components/Composer/VideoReview";
 import { createQueryClient } from "@/lib/query-client";
-import { parseTheme, getAllThemes } from "@/lib/theme-config";
+import { THEMES } from "@/lib/theme-config";
+import {
+  applyAccent,
+  isLookMode,
+  legacyThemeToLook,
+  readAccent,
+} from "@/lib/look";
 import { applyBackground } from "@/lib/background";
 import { useUpdatePrompt } from "@/hooks/useUpdatePrompt";
+import { useSyncedLook } from "@/hooks/useSyncedLook";
 
 function ThemeClassHandler({ children }: { children: React.ReactNode }) {
-  const { theme, systemTheme } = useTheme();
+  const { theme, systemTheme, setTheme } = useTheme();
+  // A synced look from the server wins over this device's on load
+  useSyncedLook();
 
   useEffect(() => {
+    // A pre-redesign value (another tab, an old caller): its mode and accent
+    if (theme && !isLookMode(theme)) {
+      const look = legacyThemeToLook(theme);
+      applyAccent(look.accent);
+      setTheme(look.mode);
+      return;
+    }
     const root = document.documentElement;
-    let actualTheme = theme;
-    if (theme === "system") {
-      actualTheme = systemTheme || "dark";
-    }
-    const { mode, variant } = parseTheme(actualTheme || "dark");
+    const mode = theme === "system" ? systemTheme || "dark" : theme || "dark";
     root.classList.remove("dark", "light");
-    root.removeAttribute("data-theme-variant");
-    root.classList.add(mode === "system" ? "dark" : mode);
-    if (variant && variant !== "default" && variant !== "deep") {
-      root.setAttribute("data-theme-variant", variant);
-    }
+    root.classList.add(mode === "light" ? "light" : "dark");
+    root.setAttribute("data-accent", readAccent());
     // Light and dark keep separate backgrounds
     applyBackground();
-  }, [theme, systemTheme]);
+  }, [theme, systemTheme, setTheme]);
 
   return <>{children}</>;
 }
@@ -43,10 +52,10 @@ export function Providers({ children }: { children: React.ReactNode }) {
     <QueryClientProvider client={queryClient}>
       <NextThemesProvider
         attribute="data-theme"
-        defaultTheme="dark-graphite"
+        defaultTheme="dark"
         enableSystem
         disableTransitionOnChange
-        themes={getAllThemes()}
+        themes={[...THEMES]}
       >
         <ThemeClassHandler>
           <TooltipProvider delayDuration={200}>

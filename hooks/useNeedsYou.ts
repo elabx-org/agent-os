@@ -2,8 +2,10 @@
 
 import { useCallback, useEffect, useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { useBackgroundAgents } from "@/components/BackgroundAgents";
 import { useSharedPoll } from "@/hooks/useSharedPoll";
+import { fetchAsUser, refusalText } from "@/lib/client/user-fetch";
 import type { SessionStatus } from "@/components/views/types";
 import type { BackgroundAgent } from "@/lib/claude-background";
 import type { Session } from "@/lib/db";
@@ -45,6 +47,8 @@ export interface NeedsYou {
   unread: number;
   /** Marks history read: some ids, or "all" */
   markRead: (ids: string[] | "all") => void;
+  /** Empties the history (DELETE /api/notifications), shown at once */
+  clearHistory: () => void;
 }
 
 /**
@@ -84,6 +88,33 @@ export function useNeedsYou(
     [mutate]
   );
 
+  // Empty at once; the server's list (or, failing that, a refetch) follows
+  const { mutate: clear } = useMutation({
+    mutationFn: async () => {
+      const res = await fetchAsUser("/api/notifications", {
+        method: "DELETE",
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(refusalText(body));
+      return body as NotificationHistory;
+    },
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: notificationKeys.all });
+      queryClient.setQueryData<NotificationHistory>(notificationKeys.all, {
+        items: [],
+        unread: 0,
+        lastSeen: Date.now(),
+      });
+    },
+    onSuccess: (history) =>
+      queryClient.setQueryData(notificationKeys.all, history),
+    onError: (error) => {
+      toast.error(`Couldn't clear the history: ${error.message}`);
+      queryClient.invalidateQueries({ queryKey: notificationKeys.all });
+    },
+  });
+  const clearHistory = useCallback(() => clear(), [clear]);
+
   const waiting = useMemo(
     () =>
       sessions
@@ -106,6 +137,7 @@ export function useNeedsYou(
     history: data?.items ?? EMPTY_ITEMS,
     unread: data?.unread ?? 0,
     markRead,
+    clearHistory,
   };
 }
 

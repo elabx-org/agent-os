@@ -12,6 +12,7 @@ import os from "os";
 import path from "path";
 import { execFile } from "child_process";
 import { promisify } from "util";
+import { PLAN_TOOLS } from "./claude-plan";
 
 const execFileAsync = promisify(execFile);
 
@@ -35,6 +36,8 @@ export type ChatItem =
       ts: string;
       /** An AskUserQuestion's first question, for replying with context */
       ask?: AskQuestion;
+      /** A plan tool's input (TodoWrite, TaskCreate, TaskUpdate): lib/claude-plan */
+      input?: unknown;
     }
   | {
       kind: "result";
@@ -329,6 +332,7 @@ function toItems(entry: any, cwd: string, subagent = false): ChatItem[] {
           ...(part.name === "AskUserQuestion" && {
             ask: askQuestion(part.input),
           }),
+          ...(PLAN_TOOLS.has(part.name) && { input: part.input }),
         });
       }
     });

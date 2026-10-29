@@ -371,6 +371,71 @@ const migrations: Migration[] = [
       );
     }),
   },
+  {
+    id: 24,
+    name: "add_pinned_and_group_to_projects",
+    up: atomic((db) => {
+      // Projects page: pinned ones on top, then the user's own groups
+      addColumnIfMissing(db, "projects", "pinned", "INTEGER NOT NULL DEFAULT 0");
+      addColumnIfMissing(db, "projects", "group_name", "TEXT");
+    }),
+  },
+  {
+    id: 25,
+    name: "add_session_queue_table",
+    up: atomic((db) => {
+      // Messages waiting for a session to be ready (lib/queue/store.ts).
+      // origin: user|system|agent; kind: message|command|resume|undo_notice
+      // (an undo_notice is never sent alone: it prefixes the next message);
+      // status: pending|sending|sent|cancelled|failed
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS session_queue (
+          id INTEGER PRIMARY KEY,
+          session_id TEXT NOT NULL,
+          position INTEGER NOT NULL,
+          text TEXT NOT NULL,
+          attachments TEXT,
+          origin TEXT NOT NULL DEFAULT 'user',
+          kind TEXT NOT NULL DEFAULT 'message',
+          status TEXT NOT NULL DEFAULT 'pending',
+          not_before INTEGER,
+          created_at INTEGER NOT NULL,
+          sent_at INTEGER,
+          error TEXT
+        )
+      `);
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_queue_session ON session_queue(session_id, status, position)`
+      );
+    }),
+  },
+  {
+    id: 26,
+    name: "add_session_turns_table",
+    up: atomic((db) => {
+      // One row per agent turn with its snapshot refs (lib/turns.ts)
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS session_turns (
+          id INTEGER PRIMARY KEY,
+          session_id TEXT NOT NULL,
+          turn_no INTEGER NOT NULL,
+          cwd TEXT NOT NULL,
+          prompt_excerpt TEXT,
+          transcript_uuid TEXT,
+          pre_ref TEXT,
+          post_ref TEXT,
+          started_at INTEGER,
+          ended_at INTEGER,
+          files_json TEXT,
+          touched_json TEXT,
+          added INTEGER,
+          removed INTEGER,
+          undone_at INTEGER,
+          UNIQUE(session_id, turn_no)
+        )
+      `);
+    }),
+  },
 ];
 
 export function runMigrations(db: Database.Database): void {

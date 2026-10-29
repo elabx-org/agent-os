@@ -744,8 +744,17 @@ export function useComposer({
     if (sessionId && !command) clearQuotes(sessionId);
   }, [setPastes, sessionId, command]);
 
+  /** The whole draft becomes `text` (cleared after a send, a queued
+      message brought back to edit); no pills */
+  const replace = useCallback(
+    (next: string) => setDisplay(next, next.length, []),
+    [setDisplay]
+  );
+
   return {
     textareaRef,
+    /** The draft as saved: pills expanded, no quotes */
+    draft: value,
     /** The full text, pills expanded and quotes first: what to send */
     text,
     quotes,
@@ -782,6 +791,7 @@ export function useComposer({
     unfoldChip,
     // editing
     insert,
+    replace,
     attach,
     pasteText,
     onTextChange,

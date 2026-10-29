@@ -11,6 +11,8 @@ import type { PaneViewMode } from "@/stores/mobileNav";
 import type { Fold } from "@/stores/posture";
 import type { NavAction } from "@/lib/nav-actions";
 import type { WorkspacePageKind } from "@/stores/workspacePage";
+import type { ColumnItem } from "@/lib/column-spec";
+import type { Surface } from "@/stores/surface";
 
 export type NativeNavAction = NavAction;
 
@@ -67,7 +69,24 @@ export interface NativeState {
   /** The theme's accent (--primary) as rgb(), for the app's own controls */
   accent?: string;
   scheme?: "light" | "dark";
+  /** What fills the screen (older app builds ignore it) */
+  surface?: Surface;
+  /**
+   * The column for this surface (lib/column-spec.ts), for app builds that
+   * draw it (agentosNative.column). Only ever sent to those builds; an
+   * explicit [] hides the native column, absent keeps the fixed one
+   */
+  column?: NativeColumnItem[];
+  /** The column's first item is back */
+  canGoBack?: boolean;
+  /** The live activity is showing: More offers Hide live activity */
+  liveOpen?: boolean;
+  /** A wide layout (open Duo, book, desktop): More offers Open beside */
+  wide?: boolean;
 }
+
+/** A column item as the app gets it: the SF Symbol, not the web icon */
+export type NativeColumnItem = Omit<ColumnItem, "icon">;
 
 export const NATIVE_EVENT = "agentos-native";
 
@@ -85,6 +104,8 @@ declare global {
       open?: string;
       /** A file shared to the app before the page was ready */
       file?: SharedFile;
+      /** The app draws the column from NativeState.column (the M14 build) */
+      column?: boolean;
     };
     webkit?: {
       messageHandlers?: Record<string, { postMessage: (msg: unknown) => void }>;
@@ -94,6 +115,22 @@ declare global {
 
 export function isNative(): boolean {
   return typeof window !== "undefined" && !!window.agentosNative;
+}
+
+/** What this app build can do; all false in a browser */
+export interface NativeCaps {
+  /**
+   * Draws NativeState.column, and hides its bar for an empty one: the page
+   * then draws its own tab bar or tabletop bar. Without it the web draws no
+   * bar inside the app
+   */
+  column: boolean;
+}
+
+export function nativeCaps(): NativeCaps {
+  return {
+    column: typeof window !== "undefined" && !!window.agentosNative?.column,
+  };
 }
 
 /**

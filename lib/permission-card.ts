@@ -14,13 +14,16 @@ import type {
 import type { SetPermissionModeResult } from "@/lib/permission-mode";
 import type { ReplyContext } from "@/lib/reply-context";
 
-// Amber is "needs you" throughout: the answer that lets Claude go on is the
-// filled one, the rest are outlined
+// The answer that lets Claude go on is the accent-filled one (the card's
+// amber ring says "needs you"); the rest are quiet secondary buttons
+const SECONDARY =
+  "border border-black/10 bg-black/5 font-medium text-foreground active:bg-accent dark:border-white/12 dark:bg-white/8";
+
 export const KIND_STYLE: Record<PromptOptionKind, string> = {
-  allow: "bg-amber-400 font-semibold text-amber-950 active:opacity-80",
-  always: "border-border border text-foreground active:bg-accent",
-  deny: "border-border border text-foreground active:bg-accent",
-  other: "border-border border text-foreground active:bg-accent",
+  allow: "bg-primary font-semibold text-primary-foreground active:opacity-80",
+  always: SECONDARY,
+  deny: SECONDARY,
+  other: SECONDARY,
 };
 
 /**

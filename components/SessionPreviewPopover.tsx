@@ -17,8 +17,8 @@ interface TerminalSnapshot {
 }
 
 const statusColors: Record<string, string> = {
-  running: "text-blue-400 bg-blue-500/20",
-  waiting: "text-yellow-400 bg-yellow-500/20",
+  running: "text-work bg-work/20",
+  waiting: "text-needs bg-needs/20",
   idle: "text-gray-400 bg-gray-500/20",
   dead: "text-red-400 bg-red-500/20",
   error: "text-red-400 bg-red-500/20",
