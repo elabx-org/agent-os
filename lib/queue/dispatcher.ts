@@ -6,7 +6,8 @@
 
 import { getDb, queries, type Session } from "../db";
 import { claudeHookAt } from "../claude-state";
-import { flagOnFor, tickersDisabled } from "../flags";
+import { flagOnFor, getFlag, tickersDisabled } from "../flags";
+import { applyPendingMode } from "../permission-apply";
 import { readiness, type Readiness } from "../session-ready";
 import { onEdge, type WatchEdge } from "../session-watch";
 import { sendText } from "../tmux-send";
@@ -47,6 +48,12 @@ export interface DispatcherDeps {
    * before a read saw it busy
    */
   hookAt?(session: Session): number | null;
+  /**
+   * Applies the session's pending permission mode (flag modeAtIdle), so
+   * the next turn runs in it. Called under the session's lock before a
+   * queued send; its failure never holds the send back
+   */
+  applyPendingMode?(session: Session): Promise<unknown>;
 }
 
 export interface DispatcherState {
@@ -119,6 +126,11 @@ export function createDispatcher(
       if (notice) store.setUndoNotice(session.id, notice);
     };
     const text = composeText(notice, item);
+    if (session.permission_pending && deps.applyPendingMode) {
+      await deps.applyPendingMode(session).catch((error) => {
+        console.error("[queue] pending mode before send:", error);
+      });
+    }
     try {
       if (SNAPSHOT_BEFORE_SEND.has(session.agent_type)) {
         await deps.beforeAgentSend(session, text).catch((error) => {
@@ -152,8 +164,9 @@ export function createDispatcher(
 
   /**
    * One look at a session: sends its next item when it is ready. Skipped
-   * while another look holds the lock. A pending permission mode is left to
-   * the user's own restart: the session is never restarted from here
+   * while another look holds the lock. A pending permission mode goes in
+   * through deliver's applyPendingMode (flag modeAtIdle), or waits for the
+   * user's own restart: the session is never restarted from here
    */
   async function service(sessionId: string): Promise<void> {
     if (state.locks.has(sessionId)) return;
@@ -207,6 +220,19 @@ export function createDispatcher(
     });
   }
 
+  /**
+   * The pending permission mode at an idle edge, after any send or look
+   * already holding the session's lock (lib/permission-apply)
+   */
+  async function applyPending(sessionId: string): Promise<unknown> {
+    if (!deps.applyPendingMode) return null;
+    return withLock(sessionId, async () => {
+      const session = deps.getSession(sessionId);
+      if (!session?.permission_pending) return null;
+      return deps.applyPendingMode!(session);
+    });
+  }
+
   function handleEdge(edge: WatchEdge): void {
     if (edge.to === "running") {
       state.awaitBusy.delete(edge.sessionId);
@@ -231,7 +257,7 @@ export function createDispatcher(
     );
   }
 
-  return { service, sendOrQueue, handleEdge, recheck };
+  return { service, sendOrQueue, handleEdge, recheck, applyPending };
 }
 
 export type Dispatcher = ReturnType<typeof createDispatcher>;
@@ -261,6 +287,8 @@ function dispatcher(): Dispatcher {
       sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
       hookAt: (session) =>
         session.agent_type === "claude" ? claudeHookAt(session.id) : null,
+      applyPendingMode: async (session) =>
+        getFlag("modeAtIdle") ? applyPendingMode(session) : null,
     },
     shared.__agentosDispatch.state
   );
@@ -303,4 +331,12 @@ export async function sendOrQueue(
   origin: QueueOrigin
 ): Promise<EnqueueResult> {
   return live().sendOrQueue(session, request, origin);
+}
+
+/**
+ * Applies a session's pending permission mode under its dispatcher lock, so
+ * the keys never interleave with a queued paste (lib/permission-apply)
+ */
+export async function applyPendingAtIdle(sessionId: string): Promise<unknown> {
+  return live().applyPending(sessionId);
 }
