@@ -67,14 +67,12 @@ export function SwitchSheet({
   // The column's × (web and the iOS app's) closes it while it's open
   useEffect(() => {
     if (!open) return;
-    // stores/mobileNav's sheet gains "switch" at integration (column-spec
-    // then shows close alone); until then the column keeps its items
-    const nav = mobileNavStore as { sheet: string | null };
-    nav.sheet = SHEET_ID;
+    // N-Switch: the column shows its close alone
+    mobileNavStore.sheet = SHEET_ID;
     const unregister = registerNavHandlers({ closeSheet: close });
     return () => {
       unregister();
-      if (nav.sheet === SHEET_ID) nav.sheet = null;
+      if (mobileNavStore.sheet === SHEET_ID) mobileNavStore.sheet = null;
     };
   }, [open, close]);
 

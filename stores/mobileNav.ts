@@ -38,7 +38,7 @@ export const mobileNavStore = proxy<{
   /** The session in view is working (the closed column's Stop, M2) */
   working: boolean;
   /** A sheet over the session other than Live activity (N-Undo, M2) */
-  sheet: "undo" | null;
+  sheet: "undo" | "switch" | null;
 }>({
   viewMode: "terminal",
   request: null,

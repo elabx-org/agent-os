@@ -47,7 +47,7 @@ export interface ColumnContext {
   /** The session in view is working: closed, Stop ends its column (N-Queue) */
   working?: boolean;
   /** A sheet over the session other than Live activity (N-Undo's undo) */
-  sheet?: "undo" | null;
+  sheet?: "undo" | "switch" | null;
 }
 
 type Base = Pick<ColumnItem, "id" | "symbol" | "icon" | "label">;
@@ -221,6 +221,8 @@ function otherView(ctx: ColumnContext, extra: Partial<ColumnItem> = {}) {
 function sheetColumn(ctx: ColumnContext): ColumnItem[] | null {
   if (ctx.sheet === "undo")
     return [item(BASE.closeSheet), changes(ctx, { selected: false, ...sep })];
+  // N-Switch: the close alone
+  if (ctx.sheet === "switch") return [item(BASE.closeSheet)];
   if (ctx.liveOpen)
     return [
       item(BASE.closeSheet),

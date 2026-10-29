@@ -57,6 +57,7 @@ import { readiness, type Readiness } from "./session-ready";
 import { isRunning, launchSession, tmuxNameOf } from "./session-launch";
 import { buildSummary } from "./summarize";
 import { sendText } from "./tmux-send";
+import { locateTranscript } from "./transcript-locate";
 
 const execFileAsync = promisify(execFile);
 
@@ -102,6 +103,11 @@ export interface HandoffDeps {
   discard(session: Session): void;
   /** The push for a new session with full access */
   announceFullAccess(session: Session): void;
+  /**
+   * Keeps the conversation the pane shows as claude_session_id (it moves on
+   * /clear), so the paused chat and --resume open that one
+   */
+  rememberTranscript?(session: Session): Promise<void>;
 }
 
 function getSession(db: Database.Database, id: string): Session | null {
@@ -385,6 +391,11 @@ export function createHandoff(deps: HandoffDeps) {
         const ready = await waitReady(successor, deps.now() + READY_TIMEOUT_MS);
         if (!ready) throw new Error("The new session didn't reach its prompt");
         await deps.sendSummary(successor, summary.text);
+        if (running && deps.rememberTranscript) {
+          await deps.rememberTranscript(source).catch((error) => {
+            console.error("[handoff] keeping the transcript id:", error);
+          });
+        }
         // The source changed while we waited (a resume, a second handoff)
         if (!markHandedOff(deps.db, source.id, successor.id, deps.now())) {
           throw new Error("The session changed during the handoff");
@@ -567,6 +578,12 @@ const liveDeps = (): HandoffDeps => ({
     import("./permission-guard")
       .then((m) => m.announceFullAccess(session))
       .catch(() => {});
+  },
+  rememberTranscript: async (session) => {
+    const located = await locateTranscript(session);
+    if (located && located.sessionId !== session.claude_session_id) {
+      queries.updateSessionClaudeId(getDb()).run(located.sessionId, session.id);
+    }
   },
 });
 

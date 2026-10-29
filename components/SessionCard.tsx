@@ -368,7 +368,7 @@ export function SessionCard({
       ...(onFork && session.agent_type === "claude"
         ? [{ label: "Fork session", icon: Copy, onSelect: onFork }]
         : []),
-      ...(session.agent_type === "claude"
+      ...(session.agent_type === "claude" && state !== "paused"
         ? [
             {
               label: "Restart",
@@ -524,7 +524,7 @@ export function SessionCard({
             Fork session
           </MenuItem>
         )}
-        {session.agent_type === "claude" && (
+        {session.agent_type === "claude" && state !== "paused" && (
           <MenuItem
             onSelect={() => afterMenuCloses(() => restartSession(session))}
           >

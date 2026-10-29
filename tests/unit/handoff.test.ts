@@ -320,6 +320,24 @@ describe("handoff", () => {
     ]);
   });
 
+  test("keeps the pane's conversation id before ending the source", async () => {
+    const f = fakes();
+    f.deps.rememberTranscript = async (s) => {
+      f.log.push(`remember ${s.id}`);
+    };
+    const s = addSession("r");
+    f.running.add("r");
+    const r = await mod
+      .createHandoff(f.deps)
+      .handoff(s, { agentType: "codex" });
+    assert.deepEqual(f.log.slice(0, 4), [
+      `launch codex ${r.newSessionId}`,
+      `send ${r.newSessionId} Summary of the work so far`,
+      "remember r",
+      "kill r",
+    ]);
+  });
+
   test("busy source: refused, nothing created", async () => {
     const f = fakes({
       readiness: async () => ({ ready: false, holdReason: "busy" }),
