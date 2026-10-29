@@ -169,6 +169,10 @@ function MoreMenu(props: MoreProps) {
         {inSession && (
           <DropdownMenuItem onSelect={go("scripts")}>Scripts</DropdownMenuItem>
         )}
+        {/* A session's column has no Find of its own (M11) */}
+        {inSession && (
+          <DropdownMenuItem onSelect={go("search")}>Find</DropdownMenuItem>
+        )}
         {inSession && wide && surface !== "beside" && (
           <DropdownMenuItem onSelect={go("beside")}>
             Open beside
