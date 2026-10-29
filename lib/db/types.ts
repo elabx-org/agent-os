@@ -32,6 +32,24 @@ export interface Session {
   worker_status: "pending" | "running" | "completed" | "failed" | null;
   // Pinned sessions lead their project, in this order; null when not pinned
   pinned_order: number | null;
+  // Permission mode (lib/permission-mode.ts normalizeMode); NULL = agent default
+  permission_mode: string | null;
+  // Mode waiting to be applied at the next idle edge
+  permission_pending: string | null;
+  // JSON LaunchCaps recorded at launch
+  launch_caps: string | null;
+}
+
+/** What an agent tried on a session's permissions (lib/agent-actions.ts) */
+export interface AgentActionRow {
+  id: number;
+  actor_session_id: string | null;
+  actor_tmux: string | null;
+  target_session_id: string;
+  action: string;
+  allowed: number; // 0 or 1
+  detail: string | null;
+  at: number; // ms
 }
 
 export interface Group {

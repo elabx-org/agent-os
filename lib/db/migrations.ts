@@ -6,6 +6,29 @@ interface Migration {
   up: (db: Database.Database) => void;
 }
 
+/**
+ * ALTER TABLE ADD COLUMN unless the column is there. The runner records a
+ * migration that throws "duplicate column" as applied, which would skip the
+ * statements after it; new migrations use this instead.
+ */
+export function addColumnIfMissing(
+  db: Database.Database,
+  table: string,
+  column: string,
+  type: string
+): void {
+  const columns = db.prepare(`PRAGMA table_info(${table})`).all() as {
+    name: string;
+  }[];
+  if (columns.some((c) => c.name === column)) return;
+  db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
+}
+
+/** A migration of several statements that applies fully or not at all */
+function atomic(up: Migration["up"]): Migration["up"] {
+  return (db) => db.transaction(() => up(db))();
+}
+
 // All migrations in order - never modify existing ones, only add new
 const migrations: Migration[] = [
   {
@@ -311,6 +334,40 @@ const migrations: Migration[] = [
         )
       `);
     },
+  },
+  {
+    id: 22,
+    name: "add_permission_mode_to_sessions",
+    up: atomic((db) => {
+      addColumnIfMissing(db, "sessions", "permission_mode", "TEXT");
+      addColumnIfMissing(db, "sessions", "permission_pending", "TEXT");
+      addColumnIfMissing(db, "sessions", "launch_caps", "TEXT");
+      db.exec(
+        `UPDATE sessions SET permission_mode = 'bypassPermissions' WHERE auto_approve = 1 AND permission_mode IS NULL`
+      );
+    }),
+  },
+  {
+    id: 23,
+    name: "add_agent_actions_table",
+    up: atomic((db) => {
+      // What agents tried on other sessions' permissions, allowed or refused
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS agent_actions (
+          id INTEGER PRIMARY KEY,
+          actor_session_id TEXT,
+          actor_tmux TEXT,
+          target_session_id TEXT NOT NULL,
+          action TEXT NOT NULL,
+          allowed INTEGER NOT NULL,
+          detail TEXT,
+          at INTEGER NOT NULL
+        )
+      `);
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_agent_actions_target ON agent_actions(target_session_id, at)`
+      );
+    }),
   },
 ];
 
