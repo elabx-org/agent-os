@@ -1,12 +1,20 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
-import { ChevronRight, Folder } from "lucide-react";
+import { useState, type ComponentProps, type ReactNode } from "react";
+import {
+  ChevronDown,
+  ChevronRight,
+  Folder,
+  GitBranch,
+  Layers,
+  Loader2,
+  Shield,
+  type LucideIcon,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { AgentType } from "@/lib/providers";
 import type { ProjectWithDevServers } from "@/lib/projects";
+import { MODES, MODE_LABELS, type Mode } from "@/lib/permission-mode";
 import { Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -14,22 +22,24 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { DirectoryPicker } from "@/components/DirectoryPicker";
 import { MODELS } from "@/components/BackgroundAgents";
+import { GroupCard } from "@/components/a/GroupCard";
 import { ProjectSelector } from "@/components/NewSessionDialog/ProjectSelector";
 import { AgentSelector } from "@/components/NewSessionDialog/AgentSelector";
 import { WorkingDirectoryInput } from "@/components/NewSessionDialog/WorkingDirectoryInput";
 import { CreatingOverlay } from "@/components/NewSessionDialog/CreatingOverlay";
 import { getProviderDefinition } from "@/lib/providers/registry";
-import type { NewFormState, RunAs } from "./useNewForm";
-
-const PROJECT_CHIPS = 3;
-
-const AGENT_CHIPS: { value: AgentType; label: string }[] = [
-  { value: "claude", label: "Claude" },
-  { value: "codex", label: "Codex" },
-  { value: "gemini", label: "Gemini" },
-];
+import type { NewFormState } from "./useNewForm";
 
 /**
  * A session's "sonnet" is what the server stores when none was chosen, so a
@@ -37,69 +47,239 @@ const AGENT_CHIPS: { value: AgentType; label: string }[] = [
  */
 const SESSION_MODELS = MODELS.filter((m) => m.id !== "sonnet");
 
-function Field({
-  label,
-  children,
-  className,
-}: {
-  label: ReactNode;
-  children: ReactNode;
-  className?: string;
-}) {
-  return (
-    <div className={cn("min-w-0 space-y-1.5", className)}>
-      <div className="text-muted-foreground text-xs font-medium">{label}</div>
-      {children}
-    </div>
-  );
-}
+/** One line per mode in the Permissions picker */
+const MODE_HINTS: Record<Mode, string> = {
+  manual: "Asks before it edits a file or runs a command",
+  acceptEdits: "Edits files freely, asks before commands",
+  auto: "Goes ahead with safe steps, asks about risky ones",
+  bypassPermissions: "Never asks, even to delete files",
+};
 
-function Chip({
-  selected,
-  onClick,
-  children,
+// The radio value for no mode: the agent's (or project's) own default
+const DEFAULT_MODE = "default";
+
+/** A chosen permission mode stands out (N-PermNew's violet value) */
+const MODE_SET = "text-violet-700 dark:text-violet-300";
+
+const ROW_ICON = "text-muted-foreground h-4 w-4 flex-none";
+const CHEVRON = "h-4 w-4 flex-none text-[#AEAEB2] dark:text-[#636366]";
+
+/** E-New's switch: 51x31, iOS green */
+function Toggle({
+  checked,
+  onChange,
+  disabled,
+  label,
   className,
 }: {
-  selected?: boolean;
-  onClick: () => void;
-  children: ReactNode;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  disabled?: boolean;
+  label: string;
   className?: string;
 }) {
   return (
     <button
       type="button"
-      aria-pressed={selected}
-      onClick={onClick}
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      disabled={disabled}
+      onClick={() => onChange(!checked)}
       className={cn(
-        // 44pt to a finger, as New's main input on touch
-        "flex h-8 max-w-full min-w-0 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors [@media(pointer:coarse)]:h-11",
-        selected
-          ? "bg-accent text-foreground border-transparent"
-          : "border-border text-muted-foreground hover:text-foreground",
+        "relative h-[31px] w-[51px] flex-none rounded-full transition-colors disabled:opacity-40",
+        checked ? "bg-[#34C759]" : "bg-[rgba(120,120,128,0.32)]",
         className
       )}
     >
-      {children}
+      <span
+        aria-hidden
+        className={cn(
+          "absolute top-[2px] left-[2px] h-[27px] w-[27px] rounded-full bg-white shadow-[0_2px_4px_rgba(0,0,0,0.25)] transition-transform",
+          checked && "translate-x-5"
+        )}
+      />
     </button>
   );
 }
 
-function CheckRow({
-  id,
-  checked,
-  onChange,
-  disabled,
+/** An E-New option row: icon, name, value, chevron. A menu's trigger too */
+function OptionRow({
+  icon: Icon,
   label,
-  hint,
+  value,
+  valueClassName,
+  ...button
 }: {
-  id: string;
-  checked: boolean;
-  onChange: (checked: boolean) => void;
-  disabled?: boolean;
+  icon: LucideIcon;
   label: string;
-  hint: string;
+  value: ReactNode;
+  valueClassName?: string;
+} & Omit<ComponentProps<"button">, "value">) {
+  return (
+    <button
+      type="button"
+      {...button}
+      className="row active:bg-accent [@media(pointer:fine)]:hover:bg-accent/50 w-full text-left"
+    >
+      <Icon aria-hidden className={ROW_ICON} />
+      <span className="min-w-0 flex-1 text-[16px]">{label}</span>
+      <span
+        className={cn(
+          "text-muted-foreground max-w-[60%] truncate text-[14px]",
+          valueClassName
+        )}
+      >
+        {value}
+      </span>
+      <ChevronRight aria-hidden strokeWidth={2} className={CHEVRON} />
+    </button>
+  );
+}
+
+/** Own worktree's branch: mono, edited in place */
+function BranchInput({
+  form,
+  className,
+}: {
+  form: NewFormState;
+  className?: string;
 }) {
   return (
+    <input
+      value={form.branchInput}
+      onChange={(e) => form.setBranch(e.target.value)}
+      // Left, it reads as the branch the server will make of it; emptied,
+      // the suggestion comes back
+      onBlur={() => {
+        if (form.branchEdited)
+          form.setBranch(form.branchInput.trim() ? form.branch : null);
+      }}
+      aria-label="Branch"
+      spellCheck={false}
+      autoCapitalize="off"
+      autoCorrect="off"
+      size={Math.max(8, form.branchInput.length)}
+      className={cn(
+        "text-muted-foreground focus:text-foreground max-w-full min-w-0 bg-transparent font-mono text-[12px] outline-none",
+        className
+      )}
+    />
+  );
+}
+
+/**
+ * The Permissions choices: a menu on a pointer, a sheet on touch
+ * (ui/dropdown-menu). Full access is offered: this is the user's own UI,
+ * and the server caps an agent's request anyway.
+ */
+function ModeItems({ form }: { form: NewFormState }) {
+  const { mode } = choiceLabels(form);
+  return (
+    <DropdownMenuRadioGroup
+      value={mode ?? DEFAULT_MODE}
+      onValueChange={(v) => {
+        if (v === DEFAULT_MODE) {
+          form.setPermissionMode(null);
+          // Else the old auto-approve toggle would still skip every prompt
+          form.handleSkipPermissionsChange(false);
+        } else form.setPermissionMode(v as Mode);
+      }}
+    >
+      <DropdownMenuRadioItem value={DEFAULT_MODE}>
+        <span className="flex min-w-0 flex-col">
+          <span>Default</span>
+          <span className="text-muted-foreground text-xs">
+            As the project and agent are set up
+          </span>
+        </span>
+      </DropdownMenuRadioItem>
+      {MODES.map((m) => (
+        <DropdownMenuRadioItem key={m} value={m}>
+          <span className="flex min-w-0 flex-col">
+            <span>{MODE_LABELS[m]}</span>
+            <span className="text-muted-foreground text-xs">
+              {MODE_HINTS[m]}
+            </span>
+          </span>
+        </DropdownMenuRadioItem>
+      ))}
+    </DropdownMenuRadioGroup>
+  );
+}
+
+function sessionModels(form: NewFormState) {
+  return form.runAs === "background" ? MODELS : SESSION_MODELS;
+}
+
+function ModelItems({ form }: { form: NewFormState }) {
+  return (
+    <DropdownMenuRadioGroup value={form.model} onValueChange={form.setModel}>
+      {sessionModels(form).map((m) => (
+        <DropdownMenuRadioItem key={m.id} value={m.id}>
+          {m.label}
+        </DropdownMenuRadioItem>
+      ))}
+    </DropdownMenuRadioGroup>
+  );
+}
+
+/** What the rows and boxes say for the model and the mode */
+function choiceLabels(form: NewFormState) {
+  const model =
+    sessionModels(form).find((m) => m.id === form.model)?.label ?? "Default";
+  // The old auto-approve toggle, still on, is full access
+  const mode: Mode | null =
+    form.permissionMode ?? (form.skipPermissions ? "bypassPermissions" : null);
+  return { model, mode, modeLabel: mode ? MODE_LABELS[mode] : "Default" };
+}
+
+/** "Start Claude in agent-os"; short: "Start Claude" (D-New) */
+export function startLabel(form: NewFormState, short?: boolean): string {
+  if (form.runAs === "background")
+    return short ? "Start" : `Start in ${form.projectName}`;
+  return short
+    ? `Start ${form.agentLabel}`
+    : `Start ${form.agentLabel} in ${form.projectName}`;
+}
+
+/** E-New's full-width Start: 52px, radius 26 */
+export function StartPill({
+  form,
+  className,
+}: {
+  form: NewFormState;
+  className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={form.submit}
+      disabled={!form.canSubmit}
+      className={cn(
+        "pill pill-primary h-[52px] w-full min-w-0 rounded-[26px] text-[16px] disabled:opacity-50",
+        className
+      )}
+    >
+      {form.busy && <Loader2 className="h-4 w-4 animate-spin" />}
+      <span className="truncate">{startLabel(form)}</span>
+    </button>
+  );
+}
+
+/** Folded away: run as a background agent, the folder, name, old toggles */
+function MoreOptions({ form, wide }: { form: NewFormState; wide?: boolean }) {
+  const [open, setOpen] = useState(false);
+  const background = form.runAs === "background";
+  const provider = getProviderDefinition(form.agentType);
+  const check = (
+    id: string,
+    checked: boolean,
+    onChange: (checked: boolean) => void,
+    label: string,
+    hint: string,
+    disabled?: boolean
+  ) => (
     <div className="flex items-center gap-2">
       <input
         type="checkbox"
@@ -115,334 +295,451 @@ function CheckRow({
       </label>
     </div>
   );
+
+  return (
+    <div className={cn(!wide && "text-center")}>
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        aria-expanded={open}
+        className="text-muted-foreground hover:text-foreground inline-flex h-9 items-center gap-1 text-[14px] transition-colors"
+      >
+        More options
+        <ChevronDown
+          aria-hidden
+          className={cn("h-4 w-4 transition-transform", open && "rotate-180")}
+        />
+      </button>
+      {open && (
+        <div className="group-card mt-1 space-y-3 p-4 text-left">
+          <div className="flex items-center justify-between gap-3">
+            <span className="min-w-0 text-[15px]">
+              Run as a background agent
+              <span className="text-muted-foreground block text-[13px]">
+                Claude Code works on the task with nobody watching
+              </span>
+            </span>
+            <Toggle
+              checked={background}
+              onChange={(on) => form.setRunAs(on ? "background" : "session")}
+              label="Run as a background agent"
+            />
+          </div>
+          <WorkingDirectoryInput
+            value={form.workingDirectory}
+            onChange={form.setWorkingDirectory}
+            gitInfo={form.gitInfo}
+            checkingGit={form.checkingGit}
+            onBrowse={() => form.setShowDirectoryPicker(true)}
+          />
+          {!background && (
+            <>
+              <div className="space-y-1.5">
+                <div className="text-muted-foreground text-xs font-medium">
+                  Name
+                </div>
+                <Input
+                  value={form.name}
+                  onChange={(e) => form.setName(e.target.value)}
+                  placeholder="Auto-generated if empty"
+                />
+              </div>
+              {form.worktree && form.gitInfo && (
+                <div className="space-y-1.5">
+                  <div className="text-muted-foreground text-xs font-medium">
+                    Base branch
+                  </div>
+                  <Select
+                    value={form.baseBranch}
+                    onValueChange={form.setBaseBranch}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {form.gitInfo.branches.map((branch) => (
+                        <SelectItem key={branch} value={branch}>
+                          {branch}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              {check(
+                "new-use-tmux",
+                form.useTmux,
+                form.handleUseTmuxChange,
+                "Use tmux session",
+                "(enables detach/attach)"
+              )}
+              {/* Agents with modes choose under Permissions instead */}
+              {!form.showPermissions &&
+                check(
+                  "new-skip-permissions",
+                  form.skipPermissions,
+                  form.handleSkipPermissionsChange,
+                  "Auto-approve tool calls",
+                  provider.autoApproveFlag
+                    ? `(${provider.autoApproveFlag})`
+                    : "(not supported)"
+                )}
+              {check(
+                "new-continue-session",
+                form.continueSession,
+                form.handleContinueSessionChange,
+                "Continue last session",
+                provider.continueFlag
+                  ? `(${provider.continueFlag})`
+                  : "(not supported)",
+                !provider.continueFlag
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface NewFormProps {
+  form: NewFormState;
+  projects: ProjectWithDevServers[];
+  canCreateProject?: boolean;
+  /**
+   * compact: E-New / N-PermNew (closed, phone, the open Duo's page);
+   * wide: D-New's centred column, with Cancel and Start on one line
+   */
+  layout?: "compact" | "wide";
+  /** The large title; off where the surface draws its own */
+  title?: boolean;
+  /** compact: Start under the options; off where the surface pins it
+      (tabletop's base, the touch sheet) */
+  start?: boolean;
+  /** wide: Cancel */
+  onCancel?: () => void;
+  className?: string;
 }
 
 /**
- * The New form's fields: project, run as, task, agent and model, worktree,
- * and the rest folded away. Layout-agnostic: the surface around it (page,
- * dialog or sheet) draws the title and the Start button from form.submit,
- * form.canSubmit and form.busy. ⌘↵ submits from anywhere in it.
+ * New: agent tiles, the task, project / model / permissions / Own worktree,
+ * Start. ⌘↵ submits from anywhere in it, and so does the column's ✓
+ * (useNewForm registers startNew).
  */
 export function NewForm({
   form,
   projects,
   canCreateProject,
+  layout = "compact",
+  title = true,
+  start = true,
+  onCancel,
   className,
-}: {
-  form: NewFormState;
-  projects: ProjectWithDevServers[];
-  canCreateProject?: boolean;
-  className?: string;
-}) {
-  const [moreProjects, setMoreProjects] = useState(false);
-  const [moreAgents, setMoreAgents] = useState(false);
-  const [optionsOpen, setOptionsOpen] = useState(false);
-
+}: NewFormProps) {
+  const [projectsOpen, setProjectsOpen] = useState(false);
+  const wide = layout === "wide";
   const background = form.runAs === "background";
+  const { model, mode, modeLabel } = choiceLabels(form);
+  const worktreeShown = !background && form.isGit;
 
-  // The chosen project always shows as a chip: first, unless it's already
-  // among the first few, so tapping one doesn't reorder them. A wide form
-  // has room for one more.
-  const named = projects.filter((p) => !p.is_uncategorized);
-  const selected = named.find((p) => p.id === form.projectId);
-  const first = named.slice(0, PROJECT_CHIPS + 1);
-  const chips =
-    selected && !first.slice(0, PROJECT_CHIPS).includes(selected)
-      ? [selected, ...first.filter((p) => p !== selected)].slice(
-          0,
-          PROJECT_CHIPS + 1
-        )
-      : first;
-  // more… only for what neither width shows
-  const moreChip =
-    named.length > PROJECT_CHIPS + 1 || canCreateProject
-      ? ""
-      : named.length > PROJECT_CHIPS
-        ? "@lg:hidden"
-        : null;
+  const projectPicker = projectsOpen && (
+    <div className="group-card p-4">
+      <ProjectSelector
+        projects={projects}
+        projectId={form.projectId}
+        onProjectChange={(id) => {
+          form.handleProjectChange(id);
+          setProjectsOpen(false);
+        }}
+        workingDirectory={form.workingDirectory}
+        agentType={form.agentType}
+        showNewProject={form.showNewProject}
+        onShowNewProjectChange={form.setShowNewProject}
+        newProjectName={form.newProjectName}
+        onNewProjectNameChange={form.setNewProjectName}
+        creatingProject={form.creatingProject}
+        onCreateProject={form.handleCreateProject}
+        canCreateProject={!!canCreateProject}
+      />
+    </div>
+  );
 
-  const agentChips = AGENT_CHIPS.some((a) => a.value === form.agentType)
-    ? AGENT_CHIPS
-    : [
-        ...AGENT_CHIPS,
-        {
-          value: form.agentType,
-          label: getProviderDefinition(form.agentType).name,
-        },
-      ];
-  const models = background ? MODELS : SESSION_MODELS;
-  const provider = getProviderDefinition(form.agentType);
+  const heading = title && (
+    <h1 className={cn("t-large", !wide && "text-[30px]")}>
+      {background ? "Background agent" : "New session"}
+    </h1>
+  );
+
+  const task = (
+    <label
+      className={cn(
+        "group-card block",
+        wide ? "border border-[var(--hair)] p-4" : "px-3.5 py-3"
+      )}
+    >
+      <span
+        className={cn(
+          "text-muted-foreground block text-[13px]",
+          wide ? "mb-2" : "mb-1.5"
+        )}
+      >
+        {background
+          ? "Task"
+          : wide
+            ? "Task (optional) · / for commands, @ for files"
+            : "Task (optional)"}
+      </span>
+      <textarea
+        value={form.task}
+        onChange={(e) => form.setTask(e.target.value)}
+        rows={2}
+        placeholder="What should it do?"
+        className={cn(
+          "placeholder:text-muted-foreground/60 block w-full resize-none bg-transparent outline-none",
+          wide ? "h-[120px] text-[17px] leading-[1.5]" : "text-[16px]"
+        )}
+      />
+    </label>
+  );
+
+  const keys = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    // Not from the folder picker, which React bubbles through its portal
+    if (
+      e.key === "Enter" &&
+      (e.metaKey || e.ctrlKey) &&
+      e.currentTarget.contains(e.target as Node)
+    ) {
+      e.preventDefault();
+      form.submit();
+    }
+  };
+
+  const overlay = form.isLoading && (
+    <CreatingOverlay isWorktree={form.worktree} step={form.creationStep} />
+  );
+  const directoryPicker = (
+    <DirectoryPicker
+      open={form.showDirectoryPicker}
+      onClose={() => form.setShowDirectoryPicker(false)}
+      onSelect={(path) => form.setWorkingDirectory(path)}
+      initialPath={form.workingDirectory}
+    />
+  );
+  const error = form.error && (
+    <p className="text-sm text-red-500">{form.error}</p>
+  );
+
+  if (wide) {
+    // D-New's .opt boxes
+    const opt =
+      "bg-card flex h-12 min-w-0 items-center gap-2.5 rounded-[14px] px-3.5 text-[14px]";
+    const choices = [
+      form.showModel ? model : null,
+      form.showPermissions && mode ? modeLabel : null,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+    return (
+      <div
+        className={cn("relative flex flex-col gap-5", className)}
+        onKeyDown={keys}
+      >
+        {overlay}
+        {heading}
+        {!background && (
+          <AgentSelector
+            layout="row"
+            value={form.agentType}
+            onChange={form.handleAgentTypeChange}
+          />
+        )}
+        {task}
+        <div className="grid grid-cols-3 gap-2.5">
+          <button
+            type="button"
+            onClick={() => setProjectsOpen(!projectsOpen)}
+            aria-expanded={projectsOpen}
+            className={cn(opt, "hover:bg-accent/50 text-left")}
+          >
+            <Folder aria-hidden className={ROW_ICON} />
+            <span className="min-w-0 flex-1 truncate">{form.projectName}</span>
+            <ChevronDown aria-hidden className={CHEVRON} />
+          </button>
+          {form.showModel || form.showPermissions ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className={cn(opt, "hover:bg-accent/50 text-left")}
+                >
+                  <Layers aria-hidden className={ROW_ICON} />
+                  <span className="min-w-0 flex-1 truncate">
+                    {choices || "Default"}
+                  </span>
+                  <ChevronDown aria-hidden className={CHEVRON} />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="max-w-80 min-w-64">
+                {form.showModel && (
+                  <>
+                    <DropdownMenuLabel>Model</DropdownMenuLabel>
+                    <ModelItems form={form} />
+                  </>
+                )}
+                {form.showModel && form.showPermissions && (
+                  <DropdownMenuSeparator />
+                )}
+                {form.showPermissions && (
+                  <>
+                    <DropdownMenuLabel>Permissions</DropdownMenuLabel>
+                    <ModeItems form={form} />
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : (
+            <div className={cn(opt, "text-muted-foreground")}>
+              <Layers aria-hidden className={ROW_ICON} />
+              <span className="min-w-0 flex-1 truncate">
+                {form.agentLabel}&apos;s own settings
+              </span>
+            </div>
+          )}
+          <div className={opt}>
+            <GitBranch aria-hidden className={ROW_ICON} />
+            <span className="min-w-0 flex-1 truncate">Own worktree</span>
+            <Toggle
+              checked={form.worktree}
+              onChange={form.setWorktree}
+              disabled={!worktreeShown}
+              label="Own worktree"
+              className="-mr-1 scale-[0.8]"
+            />
+          </div>
+        </div>
+        {projectPicker}
+        <div className="flex flex-wrap items-center gap-3">
+          <p className="text-muted-foreground min-w-0 flex-1 text-[13px] leading-relaxed">
+            Starts in{" "}
+            <span className="font-mono text-[12px] break-all">
+              {form.workingDirectory}
+            </span>
+            {form.worktree && form.branch ? (
+              <>
+                {" "}
+                on a new branch <BranchInput form={form} />
+              </>
+            ) : form.gitInfo?.currentBranch && !background ? (
+              <>
+                {" "}
+                on{" "}
+                <span className="font-mono text-[12px]">
+                  {form.gitInfo.currentBranch}
+                </span>
+              </>
+            ) : null}
+          </p>
+          {onCancel && (
+            <button
+              type="button"
+              onClick={onCancel}
+              disabled={form.busy}
+              className="pill pill-secondary"
+            >
+              Cancel
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={form.submit}
+            disabled={!form.canSubmit}
+            className="pill pill-primary disabled:opacity-50"
+          >
+            {form.busy && <Loader2 className="h-4 w-4 animate-spin" />}
+            {startLabel(form, true)}
+            <kbd className="font-mono text-[12px] font-normal opacity-80">
+              ⌘↵
+            </kbd>
+          </button>
+        </div>
+        {error}
+        <MoreOptions form={form} wide />
+        {directoryPicker}
+      </div>
+    );
+  }
 
   return (
     <div
-      className={cn("@container relative space-y-4", className)}
-      onKeyDown={(e) => {
-        // Not from the folder picker, which React bubbles through its portal
-        if (
-          e.key === "Enter" &&
-          (e.metaKey || e.ctrlKey) &&
-          e.currentTarget.contains(e.target as Node)
-        ) {
-          e.preventDefault();
-          form.submit();
-        }
-      }}
+      className={cn("relative flex flex-col gap-3", className)}
+      onKeyDown={keys}
     >
-      {form.isLoading && (
-        <CreatingOverlay isWorktree={form.worktree} step={form.creationStep} />
-      )}
-
-      <Field label="Project">
-        <div className="flex flex-wrap gap-1.5">
-          {chips.map((project, i) => (
-            <Chip
-              key={project.id}
-              selected={project.id === form.projectId}
-              onClick={() => form.handleProjectChange(project.id)}
-              className={cn(i >= PROJECT_CHIPS && "hidden @lg:flex")}
-            >
-              {project.id === form.projectId && (
-                <Folder className="h-3.5 w-3.5 shrink-0" />
-              )}
-              <span className="truncate">{project.name}</span>
-            </Chip>
-          ))}
-          {moreChip !== null && (
-            <Chip
-              selected={moreProjects}
-              onClick={() => setMoreProjects(!moreProjects)}
-              className={moreChip}
-            >
-              more…
-            </Chip>
-          )}
-        </div>
-        {moreProjects && (
-          <ProjectSelector
-            projects={projects}
-            projectId={form.projectId}
-            onProjectChange={form.handleProjectChange}
-            workingDirectory={form.workingDirectory}
-            agentType={form.agentType}
-            showNewProject={form.showNewProject}
-            onShowNewProjectChange={form.setShowNewProject}
-            newProjectName={form.newProjectName}
-            onNewProjectNameChange={form.setNewProjectName}
-            creatingProject={form.creatingProject}
-            onCreateProject={form.handleCreateProject}
-            canCreateProject={!!canCreateProject}
-          />
-        )}
-      </Field>
-
-      <Field label="Run as">
-        <div
-          role="tablist"
-          className="bg-secondary flex rounded-lg p-0.5 text-sm font-medium"
-        >
-          {(["session", "background"] as RunAs[]).map((id) => (
-            <button
-              key={id}
-              type="button"
-              role="tab"
-              aria-selected={form.runAs === id}
-              onClick={() => form.setRunAs(id)}
-              className={cn(
-                "h-8 min-w-0 flex-1 truncate rounded-md px-2 transition-colors [@media(pointer:coarse)]:h-11",
-                form.runAs === id
-                  ? "bg-background text-foreground shadow-sm"
-                  : "text-muted-foreground"
-              )}
-            >
-              {id === "session" ? "Session" : "Background agent"}
-            </button>
-          ))}
-        </div>
-      </Field>
-
-      <Field
-        label={
-          <>
-            Task
-            {!background && <span className="font-normal"> (optional)</span>}
-          </>
-        }
-      >
-        <textarea
-          value={form.task}
-          onChange={(e) => form.setTask(e.target.value)}
-          rows={3}
-          placeholder={
-            background ? "What should it do?" : "Sent when the session starts"
-          }
-          className="bg-secondary/70 focus:ring-primary block w-full resize-none rounded-xl px-3 py-2.5 text-base outline-none focus:ring-2 md:text-sm"
+      {overlay}
+      {heading}
+      {!background && (
+        <AgentSelector
+          value={form.agentType}
+          onChange={form.handleAgentTypeChange}
         />
-      </Field>
-
-      {(!background || form.showModel) && (
-        <div className="grid gap-4 @lg:grid-cols-2">
-          {!background && (
-            <Field label="Agent">
-              <div className="flex flex-wrap gap-1.5">
-                {agentChips.map((agent) => (
-                  <Chip
-                    key={agent.value}
-                    selected={agent.value === form.agentType}
-                    onClick={() => form.handleAgentTypeChange(agent.value)}
-                  >
-                    {agent.label}
-                  </Chip>
-                ))}
-                <Chip
-                  selected={moreAgents}
-                  onClick={() => setMoreAgents(!moreAgents)}
-                >
-                  more…
-                </Chip>
-              </div>
-              {moreAgents && (
-                <AgentSelector
-                  value={form.agentType}
-                  onChange={form.handleAgentTypeChange}
-                />
+      )}
+      {task}
+      <GroupCard aria-label="Options">
+        <OptionRow
+          icon={Folder}
+          label="Project"
+          value={form.projectName}
+          aria-expanded={projectsOpen}
+          onClick={() => setProjectsOpen(!projectsOpen)}
+        />
+        {form.showModel && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <OptionRow icon={Layers} label="Model" value={model} />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="min-w-56">
+              <DropdownMenuLabel>Model</DropdownMenuLabel>
+              <ModelItems form={form} />
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+        {form.showPermissions && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <OptionRow
+                icon={Shield}
+                label="Permissions"
+                value={modeLabel}
+                valueClassName={mode ? MODE_SET : undefined}
+              />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="max-w-80 min-w-64">
+              <DropdownMenuLabel>Permissions</DropdownMenuLabel>
+              <ModeItems form={form} />
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+        {worktreeShown && (
+          <div className="row">
+            <GitBranch aria-hidden className={ROW_ICON} />
+            <span className="flex min-w-0 flex-1 flex-col">
+              <span className="text-[16px]">Own worktree</span>
+              {form.worktree && form.branch && (
+                <BranchInput form={form} className="w-full" />
               )}
-            </Field>
-          )}
-          {form.showModel && (
-            <Field label="Model">
-              <div className="flex flex-wrap gap-1.5">
-                {models.map((m) => (
-                  <Chip
-                    key={m.id}
-                    selected={form.model === m.id}
-                    onClick={() => form.setModel(m.id)}
-                  >
-                    {m.label}
-                  </Chip>
-                ))}
-              </div>
-            </Field>
-          )}
-        </div>
-      )}
-
-      {!background && form.isGit && (
-        <Field label="Worktree">
-          <label className="flex min-h-8 cursor-pointer items-center justify-between gap-3 text-sm">
-            <span className="min-w-0">New branch in its own folder</span>
-            <Switch
+            </span>
+            <Toggle
               checked={form.worktree}
-              onCheckedChange={form.setWorktree}
+              onChange={form.setWorktree}
+              label="Own worktree"
             />
-          </label>
-        </Field>
-      )}
-
-      <div className="border-border rounded-lg border">
-        <button
-          type="button"
-          onClick={() => setOptionsOpen(!optionsOpen)}
-          aria-expanded={optionsOpen}
-          className="text-muted-foreground hover:text-foreground flex w-full items-center gap-2 px-3 py-2 text-sm transition-colors"
-        >
-          <ChevronRight
-            className={cn(
-              "h-4 w-4 transition-transform",
-              optionsOpen && "rotate-90"
-            )}
-          />
-          More options
-        </button>
-        {optionsOpen && (
-          <div className="space-y-3 border-t px-3 py-3">
-            <WorkingDirectoryInput
-              value={form.workingDirectory}
-              onChange={form.setWorkingDirectory}
-              gitInfo={form.gitInfo}
-              checkingGit={form.checkingGit}
-              onBrowse={() => form.setShowDirectoryPicker(true)}
-            />
-            {!background && (
-              <>
-                <Field label="Name">
-                  <Input
-                    value={form.name}
-                    onChange={(e) => form.setName(e.target.value)}
-                    placeholder="Auto-generated if empty"
-                  />
-                </Field>
-                {form.worktree && form.gitInfo && (
-                  <div className="grid gap-3 @md:grid-cols-2">
-                    <Field label="Feature name">
-                      <Input
-                        value={form.featureName}
-                        onChange={(e) => form.setFeatureName(e.target.value)}
-                        placeholder="add-dark-mode"
-                      />
-                    </Field>
-                    <Field label="Base branch">
-                      <Select
-                        value={form.baseBranch}
-                        onValueChange={form.setBaseBranch}
-                      >
-                        <SelectTrigger className="w-full">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {form.gitInfo.branches.map((branch) => (
-                            <SelectItem key={branch} value={branch}>
-                              {branch}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </Field>
-                  </div>
-                )}
-                <CheckRow
-                  id="new-use-tmux"
-                  checked={form.useTmux}
-                  onChange={form.handleUseTmuxChange}
-                  label="Use tmux session"
-                  hint="(enables detach/attach)"
-                />
-                <CheckRow
-                  id="new-skip-permissions"
-                  checked={form.skipPermissions}
-                  onChange={form.handleSkipPermissionsChange}
-                  label="Auto-approve tool calls"
-                  hint={
-                    provider.autoApproveFlag
-                      ? `(${provider.autoApproveFlag})`
-                      : "(not supported)"
-                  }
-                />
-                <CheckRow
-                  id="new-continue-session"
-                  checked={form.continueSession}
-                  onChange={form.handleContinueSessionChange}
-                  disabled={!provider.continueFlag}
-                  label="Continue last session"
-                  hint={
-                    provider.continueFlag
-                      ? `(${provider.continueFlag})`
-                      : "(not supported)"
-                  }
-                />
-              </>
-            )}
           </div>
         )}
-      </div>
-
-      {form.error && <p className="text-sm text-red-500">{form.error}</p>}
-
-      <DirectoryPicker
-        open={form.showDirectoryPicker}
-        onClose={() => form.setShowDirectoryPicker(false)}
-        onSelect={(path) => form.setWorkingDirectory(path)}
-        initialPath={form.workingDirectory}
-      />
+      </GroupCard>
+      {projectPicker}
+      {error}
+      {start && <StartPill form={form} />}
+      <MoreOptions form={form} />
+      {directoryPicker}
     </div>
   );
 }

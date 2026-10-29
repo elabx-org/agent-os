@@ -1,21 +1,25 @@
 "use client";
 
-import { Loader2 } from "lucide-react";
+import { useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { useSnapshot } from "valtio";
 import { cn } from "@/lib/utils";
 import type { AgentType } from "@/lib/providers";
 import type { ProjectWithDevServers } from "@/lib/projects";
-import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
   DialogTitle,
   GLASS_DIALOG,
 } from "@/components/ui/dialog";
+import { DESKTOP_SIDEBAR_WIDTH } from "@/components/Sidebar";
 import { useViewport } from "@/hooks/useViewport";
+import { useLayoutMode, type LayoutMode } from "@/hooks/useLayoutMode";
+import { mobileNavStore } from "@/stores/mobileNav";
 import { closeNew, newSurfaceStore } from "@/stores/newSurface";
-import { NewForm } from "./NewForm";
-import { useNewForm, type RunAs } from "./useNewForm";
+import { NewForm, StartPill } from "./NewForm";
+import { NewScreen } from "./NewPage";
+import { useNewForm, type NewFormState, type RunAs } from "./useNewForm";
 
 interface NewSurfaceProps {
   open: boolean;
@@ -31,10 +35,70 @@ interface NewSurfaceProps {
   ) => Promise<string | null>;
 }
 
+/** Postures where New fills the screen as a page rather than a dialog */
+const SCREEN: LayoutMode[] = ["phone", "duo-closed", "tabletop"];
+
 /**
- * New on the web: a sized glass dialog, keyboard first (Esc, ⌘↵), or the
- * bottom sheet with Start always in reach on touch phones. The iOS app
- * shows NewPage instead.
+ * A full-screen layer over the app: Esc closes it (unless a menu or dialog
+ * on top takes it), and a keyboard goes straight to the task
+ */
+function Layer({
+  form,
+  label,
+  autoFocus,
+  className,
+  style,
+  children,
+}: {
+  form: NewFormState;
+  label: string;
+  autoFocus?: boolean;
+  className?: string;
+  style?: React.CSSProperties;
+  children: React.ReactNode;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const formRef = useRef(form);
+  formRef.current = form;
+
+  useEffect(() => {
+    const previous = document.activeElement as HTMLElement | null;
+    const layer = ref.current;
+    if (autoFocus) layer?.querySelector("textarea")?.focus();
+    else layer?.focus({ preventScroll: true });
+    // Capture: the terminal behind would swallow Esc
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (document.querySelector('[role="dialog"], [role="menu"]')) return;
+      e.preventDefault();
+      if (!formRef.current.busy) formRef.current.handleClose();
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => {
+      window.removeEventListener("keydown", onKey, true);
+      if (previous?.isConnected) previous.focus({ preventScroll: true });
+    };
+  }, [autoFocus]);
+
+  return createPortal(
+    <section
+      ref={ref}
+      tabIndex={-1}
+      aria-label={label}
+      style={style}
+      className={cn("bg-background fixed z-[45] outline-none", className)}
+    >
+      {children}
+    </section>,
+    document.body
+  );
+}
+
+/**
+ * New on the web. Desktop: D-New's centred column beside the sidebar.
+ * Closed Duo, phone and tabletop: the page New is in the iOS app, with the
+ * web column's Cancel | ✓ when it shows. The open Duo and the book pose:
+ * the sized glass dialog (a sheet on touch), Start always in reach.
  */
 export function NewSurface({
   open,
@@ -47,6 +111,8 @@ export function NewSurface({
 }: NewSurfaceProps) {
   // ui/dialog is a vaul sheet on touch
   const { isTouch } = useViewport();
+  const mode = useLayoutMode();
+  const { railWidth } = useSnapshot(mobileNavStore);
   const form = useNewForm({
     open,
     projects,
@@ -57,21 +123,48 @@ export function NewSurface({
     onCreateProject,
   });
 
-  const start = (
-    <Button
-      onClick={form.submit}
-      disabled={!form.canSubmit}
-      className={isTouch ? "h-12 w-full rounded-2xl" : undefined}
-    >
-      {form.busy && <Loader2 className="animate-spin" />}
-      Start
-      {!isTouch && (
-        <kbd className="rounded border border-current/30 px-1 font-mono text-[11px] font-normal opacity-70">
-          ⌘↵
-        </kbd>
-      )}
-    </Button>
-  );
+  if (mode === "desktop") {
+    if (!open) return null;
+    return (
+      <Layer
+        form={form}
+        label="New session"
+        autoFocus={!isTouch}
+        className="inset-y-0 right-0 overflow-y-auto overscroll-contain"
+        style={{ left: DESKTOP_SIDEBAR_WIDTH }}
+      >
+        <NewForm
+          form={form}
+          projects={projects}
+          canCreateProject={!!onCreateProject}
+          layout="wide"
+          onCancel={form.handleClose}
+          className="mx-auto w-full max-w-[720px] px-6 pt-24 pb-12"
+        />
+      </Layer>
+    );
+  }
+
+  if (SCREEN.includes(mode)) {
+    if (!open) return null;
+    return (
+      <Layer
+        form={form}
+        label="New session"
+        // Clear of the web column on the right, which stays usable
+        className="inset-y-0 left-0 flex flex-col pt-[env(safe-area-inset-top)]"
+        style={{ right: railWidth }}
+      >
+        <NewScreen
+          form={form}
+          projects={projects}
+          canCreateProject={!!onCreateProject}
+          onClose={form.handleClose}
+          columnNav={!!railWidth}
+        />
+      </Layer>
+    );
+  }
 
   return (
     <Dialog
@@ -82,7 +175,7 @@ export function NewSurface({
         showCloseButton={false}
         aria-describedby={undefined}
         className={cn(
-          "flex max-h-[85vh] flex-col gap-0 overflow-hidden sm:max-w-[640px]",
+          "flex max-h-[85vh] flex-col gap-0 overflow-hidden sm:max-w-[560px]",
           // The sheet keeps its own side padding
           !isTouch && cn(GLASS_DIALOG, "p-0")
         )}
@@ -113,8 +206,8 @@ export function NewSurface({
             !isTouch && "px-6 pt-5"
           )}
         >
-          <DialogTitle className={isTouch ? "text-xl" : "text-lg"}>
-            New
+          <DialogTitle className="t-title">
+            {form.runAs === "background" ? "Background agent" : "New session"}
           </DialogTitle>
           {!isTouch && (
             <kbd className="border-border text-muted-foreground rounded border px-1 font-mono text-[11px]">
@@ -132,22 +225,25 @@ export function NewSurface({
             form={form}
             projects={projects}
             canCreateProject={!!onCreateProject}
+            title={false}
+            start={false}
           />
         </div>
-        {isTouch ? (
-          <div className="shrink-0 pt-3">{start}</div>
-        ) : (
-          <div className="border-border flex shrink-0 items-center justify-between gap-2 border-t px-6 py-4">
-            <Button
-              variant="outline"
+        <div
+          className={cn("flex shrink-0 gap-2 pt-3", !isTouch && "px-6 pb-5")}
+        >
+          {!isTouch && (
+            <button
+              type="button"
               onClick={form.handleClose}
               disabled={form.busy}
+              className="pill pill-secondary h-[52px] rounded-[26px]"
             >
               Cancel
-            </Button>
-            {start}
-          </div>
-        )}
+            </button>
+          )}
+          <StartPill form={form} className="flex-1" />
+        </div>
       </DialogContent>
     </Dialog>
   );
