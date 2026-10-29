@@ -2,6 +2,7 @@
 
 import {
   useEffect,
+  useId,
   useLayoutEffect,
   useRef,
   useState,
@@ -161,6 +162,22 @@ export function SendMenu({
     };
   }, [shown]);
 
+  // Focus stays in the box: the lit row is its active descendant, so a
+  // screen reader names it as the arrows move
+  const menuId = useId();
+  const rowId = (i: number) => `${menuId}-row-${i}`;
+  useEffect(() => {
+    if (!shown) return;
+    const el = document.activeElement;
+    if (!(el instanceof HTMLElement) || el === document.body) return;
+    el.setAttribute("aria-activedescendant", `${menuId}-row-${active}`);
+    el.setAttribute("aria-controls", menuId);
+    return () => {
+      el.removeAttribute("aria-activedescendant");
+      el.removeAttribute("aria-controls");
+    };
+  }, [shown, active, menuId]);
+
   if (!shown) return null;
   const tight = maxHeight !== undefined && maxHeight < 200;
 
@@ -175,6 +192,7 @@ export function SendMenu({
       style={box ? { left: box.left, width: box.width } : undefined}
     >
       <div
+        id={menuId}
         role="menu"
         aria-label="Send options"
         className={cn(
@@ -186,6 +204,7 @@ export function SendMenu({
         {items.map((item, i) => (
           <button
             key={item.choice}
+            id={rowId(i)}
             type="button"
             role="menuitem"
             tabIndex={-1}

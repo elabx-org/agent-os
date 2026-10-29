@@ -2,10 +2,6 @@ import { proxy } from "valtio";
 
 /** A session opened empty by "Send and start a new session" */
 export interface FreshSession {
-  /** The session the message went to */
-  fromSessionId: string;
-  fromName: string;
-  createdAt: number;
   /** A message was sent from it: it is a real session now, never removed */
   sent: boolean;
 }
@@ -25,18 +21,15 @@ export interface SentToast {
 export const bgSendStore = proxy<{
   fresh: Record<string, FreshSession>;
   toast: SentToast | null;
-}>({ fresh: {}, toast: null });
+  /** The session whose send menu is open: its pane dims behind the menu */
+  menuFor: string | null;
+}>({ fresh: {}, toast: null, menuFor: null });
 
 export function markFresh(
   sessionId: string,
   from: { id: string; name: string }
 ) {
-  bgSendStore.fresh[sessionId] = {
-    fromSessionId: from.id,
-    fromName: from.name,
-    createdAt: Date.now(),
-    sent: false,
-  };
+  bgSendStore.fresh[sessionId] = { sent: false };
   bgSendStore.toast = { sessionId, sentToId: from.id, sentToName: from.name };
 }
 
@@ -47,10 +40,6 @@ export function markFreshUsed(sessionId: string) {
   if (bgSendStore.toast?.sessionId === sessionId) bgSendStore.toast = null;
 }
 
-export function isFresh(sessionId: string): boolean {
-  return sessionId in bgSendStore.fresh;
-}
-
 export function forgetFresh(sessionId: string) {
   delete bgSendStore.fresh[sessionId];
   if (bgSendStore.toast?.sessionId === sessionId) bgSendStore.toast = null;
@@ -58,4 +47,10 @@ export function forgetFresh(sessionId: string) {
 
 export function dismissSentToast() {
   bgSendStore.toast = null;
+}
+
+/** The send menu of `sessionId` opened (true) or closed */
+export function setSendMenuOpen(sessionId: string, open: boolean) {
+  if (open) bgSendStore.menuFor = sessionId;
+  else if (bgSendStore.menuFor === sessionId) bgSendStore.menuFor = null;
 }

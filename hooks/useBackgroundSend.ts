@@ -13,9 +13,13 @@ export interface BackgroundSend {
    * send to this session, through the server queue); only when it went
    * (true) creates the fresh session (lib/bg-send.ts freshSessionInput),
    * marks it fresh with the sent-to toast (stores/bgSend.ts) and opens it
-   * (requestOpenSession). Resolves false when nothing was created
+   * (requestOpenSession). Resolves false when nothing was created.
+   * `fromKey` (⌘Return): Full access starts the new one in Auto
    */
-  sendAndStartNew: (deliver: () => Promise<boolean>) => Promise<boolean>;
+  sendAndStartNew: (
+    deliver: () => Promise<boolean>,
+    fromKey?: boolean
+  ) => Promise<boolean>;
   /** Creating the fresh session */
   starting: boolean;
   /** The session is known (in the sessions list) and can start another */
@@ -37,7 +41,7 @@ export function useBackgroundSend(sessionId: string): BackgroundSend {
     : undefined;
 
   const sendAndStartNew = useCallback(
-    async (deliver: () => Promise<boolean>) => {
+    async (deliver: () => Promise<boolean>, fromKey = false) => {
       if (!session || busy.current) return false;
       busy.current = true;
       setStarting(true);
@@ -45,7 +49,7 @@ export function useBackgroundSend(sessionId: string): BackgroundSend {
         if (!(await deliver())) return false;
         try {
           const { session: created } = await createSession.mutateAsync(
-            freshSessionInput(session, projectDir)
+            freshSessionInput(session, projectDir, fromKey)
           );
           markFresh(created.id, { id: session.id, name: session.name });
           requestOpenSession(created);

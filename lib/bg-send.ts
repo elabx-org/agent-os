@@ -82,13 +82,21 @@ export function sendChoiceForKey(e: SendKey, mac: boolean): SendChoice | null {
  * agent, model and permission mode as `from`; no prompt, no new branch or
  * worktree. `projectDir`: the project's own folder, used when `from` runs
  * in an Agent-OS worktree (the fresh one starts in the project, not in
- * another session's worktree)
+ * another session's worktree). `capFullAccess` (the ⌘Return key, not the
+ * menu): Full access becomes Auto, so a habitual keystroke never starts
+ * another Full-access session
  */
 export function freshSessionInput(
   from: Session,
-  projectDir?: string | null
+  projectDir?: string | null,
+  capFullAccess = false
 ): CreateSessionInput {
-  const mode = normalizeMode(from.permission_mode);
+  let mode = normalizeMode(from.permission_mode);
+  let autoApprove = mode ? false : !!from.auto_approve;
+  if (capFullAccess && (mode === "bypassPermissions" || autoApprove)) {
+    mode = "auto";
+    autoApprove = false;
+  }
   return {
     // No name: the server numbers it ("Session N")
     workingDirectory:
@@ -97,7 +105,7 @@ export function freshSessionInput(
     agentType: from.agent_type || "claude",
     model: from.model || undefined,
     permissionMode: mode,
-    autoApprove: mode ? false : !!from.auto_approve,
+    autoApprove,
     useWorktree: false,
     createBranch: false,
     featureName: null,
@@ -140,9 +148,45 @@ export interface FreshUse {
   hasTranscript: boolean;
   /** Its server queue holds pending or sent items */
   queued: boolean;
+  /** Its composer holds unsent text, an image, a video or an attached session */
+  draft: boolean;
+  /** The user named it (no longer "Session N") */
+  named: boolean;
+  /** The agent is working or holds messages (its screen's spinner) */
+  working: boolean;
 }
 
 /** Removed on leaving only when nothing at all happened in it */
 export function isUntouched(use: FreshUse): boolean {
-  return !use.sent && !use.hasTranscript && !use.queued;
+  return (
+    !use.sent &&
+    !use.hasTranscript &&
+    !use.queued &&
+    !use.draft &&
+    !use.named &&
+    !use.working
+  );
+}
+
+/** GET /api/sessions/[id]/transcript's answer, as far as cleanup reads it */
+export interface TranscriptAnswer {
+  sessionId?: string;
+  items?: unknown[];
+  notFound?: boolean;
+  unsupported?: boolean;
+}
+
+/**
+ * Whether the transcript has anything in it: true or false only when it
+ * was found (an empty conversation is located with no items); "unknown"
+ * when it couldn't be read (`notFound` also covers a failed lookup, so it
+ * never counts as empty); "unsupported" for Codex and Gemini, whose
+ * terminal can't be read
+ */
+export function transcriptUse(
+  answer: TranscriptAnswer
+): boolean | "unknown" | "unsupported" {
+  if (answer.unsupported) return "unsupported";
+  if (answer.notFound || !answer.sessionId) return "unknown";
+  return (answer.items?.length ?? 0) > 0;
 }

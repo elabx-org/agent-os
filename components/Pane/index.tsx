@@ -17,6 +17,7 @@ import { useAgentCount } from "@/components/Session/agent-tree-count";
 import { canonicalViewMode } from "@/lib/agent-views";
 import { useFileEditor } from "@/hooks/useFileEditor";
 import { SessionTitleBar } from "./SessionTitleBar";
+import { SendMenuDim } from "@/components/Composer/SendMenuDim";
 import { DesktopTabBar } from "./DesktopTabBar";
 import {
   TerminalSkeleton,
@@ -505,7 +506,7 @@ export const Pane = memo(function Pane({
   return (
     <div
       className={cn(
-        "flex h-full w-full flex-col overflow-hidden",
+        "relative flex h-full w-full flex-col overflow-hidden",
         !isMobile &&
           (chrome.variant === "card"
             ? // Desk-Beside: each session on its own card
@@ -819,6 +820,7 @@ export const Pane = memo(function Pane({
           )}
         </ResizablePanelGroup>
       )}
+      <SendMenuDim sessionId={session?.id} />
     </div>
   );
 });

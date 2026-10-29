@@ -43,7 +43,7 @@ import {
   sendMenuItems,
   type SendChoice,
 } from "@/lib/bg-send";
-import { markFreshUsed } from "@/stores/bgSend";
+import { markFreshUsed, setSendMenuOpen } from "@/stores/bgSend";
 import { SendMenu } from "./SendMenu";
 import { offeredSendItems, sendMenuAvailable } from "./send-menu-model";
 import { permissionModeKeys } from "@/hooks/usePermissionMode";
@@ -267,6 +267,16 @@ export function ComposerCard({
       }),
     [sendAndStartNew, deliver]
   );
+  /** The same from ⌘Return: Full access starts the new one in Auto */
+  const viaNewKey = useCallback<Dispatch>(
+    (text, sessions, settle) =>
+      sendAndStartNew(async () => {
+        const ok = await deliver(text, sessions);
+        settle(ok);
+        return ok;
+      }, true),
+    [sendAndStartNew, deliver]
+  );
 
   const sendWith = useCallback(
     async (how: Dispatch) => {
@@ -454,13 +464,30 @@ export function ComposerCard({
   const sendElRef = useMemo(() => ({ current: sendEl }), [sendEl]);
   useLongPress(sendElRef, canMenu ? () => setMenuOpen(true) : undefined);
   const pointerType = useRef("");
+  // The pane dims behind the open menu (N-BgSend)
+  useEffect(() => {
+    setSendMenuOpen(sessionId, showMenu);
+    return () => setSendMenuOpen(sessionId, false);
+  }, [sessionId, showMenu]);
+  /** ⌘Return with a video waiting, or before the session is listed: the
+      draft stays, nothing goes */
+  const cantStartNew = useCallback(() => {
+    toast(
+      videos
+        ? "Can't start a new session with a video attached"
+        : "Can't start a new session yet"
+    );
+  }, [videos]);
   const chooseSend = useCallback(
     (choice: SendChoice) => {
       if (choice === "queue" && queue.enabled) void sendWith(viaQueue);
-      else if (choice === "sendAndNew" && startNew) void sendWith(viaNew);
-      else void send();
+      else if (choice === "sendAndNew") {
+        // Asked for a new session: never a plain send instead
+        if (startNew) void sendWith(viaNew);
+        else cantStartNew();
+      } else void send();
     },
-    [queue.enabled, startNew, sendWith, viaQueue, viaNew, send]
+    [queue.enabled, startNew, sendWith, viaQueue, viaNew, send, cantStartNew]
   );
   const menuProps = canMenu
     ? {
@@ -541,7 +568,8 @@ export function ComposerCard({
 
   return (
     <div
-      className={cn("relative", className)}
+      // Over the pane's dim while the menu is open (SendMenuDim)
+      className={cn("relative", showMenu && "z-30", className)}
       style={pages ? { ...style, width: pages.left - 10 } : style}
       onTouchEnd={(e) => e.stopPropagation()}
     >
@@ -699,9 +727,10 @@ export function ComposerCard({
                   );
                   if (!choice) return;
                   e.preventDefault();
-                  if (choice === "sendAndNew" && startNew && !empty)
-                    void sendWith(viaNew);
-                  else void send();
+                  if (choice === "sendAndNew" && !empty && !editing) {
+                    if (startNew) void sendWith(viaNewKey);
+                    else cantStartNew();
+                  } else void send();
                 }}
                 className={cn(
                   // Open: the whole first line, its text in line with the card's

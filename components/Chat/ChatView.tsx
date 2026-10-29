@@ -66,6 +66,7 @@ import { TurnDiff } from "./TurnDiff";
 import { UndoSheet } from "./UndoSheet";
 import { FreshSessionHint } from "./FreshSessionHint";
 import { SentToast } from "./SentToast";
+import { SendMenuDim } from "@/components/Composer/SendMenuDim";
 import { useSeam } from "./useSeam";
 import { useTranscript } from "./useTranscript";
 import type { DirectSendOptions } from "@/lib/session-attach-types";
@@ -100,8 +101,11 @@ export function ChatView({
   const empty =
     settledFor === transcriptBase &&
     (state === "missing" || (state === "ready" && !items.length));
-  // A fresh session (M10) stays in the chat while it's still empty
-  const fresh = session.id in useSnapshot(bgSendStore).fresh;
+  // A fresh session (M10) stays in the chat while it's still empty; once
+  // something was sent from it, the usual missing/empty handling is back
+  const freshEntry = useSnapshot(bgSendStore).fresh[session.id];
+  const fresh = !!freshEntry && !freshEntry.sent;
+  const menuHere = useSnapshot(bgSendStore).menuFor === session.id;
   useEffect(() => {
     if (!empty || !onEmpty || fresh) return;
     const timer = setTimeout(onEmpty, 800);
@@ -447,7 +451,16 @@ export function ChatView({
   );
 
   return (
-    <div ref={outerRef} className="@container/chat relative flex h-full">
+    <div
+      ref={outerRef}
+      // Its container query makes it a stacking layer: above the pane's
+      // dim while the send menu is open, with its own dim inside
+      className={cn(
+        "@container/chat relative flex h-full",
+        menuHere && "z-[11]"
+      )}
+    >
+      <SendMenuDim sessionId={session.id} />
       {/* The book's left page: earlier rows, down to where the right one
           picks up */}
       {book && pages && (

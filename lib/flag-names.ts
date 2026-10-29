@@ -14,6 +14,7 @@ export const FLAG_NAMES = [
   "chatDefault",
   "liveFullAccess",
   "modeAtIdle",
+  "bgSendCleanup",
 ] as const;
 
 export type FlagName = (typeof FLAG_NAMES)[number];
@@ -43,6 +44,9 @@ export const FLAG_DEFAULTS: Flags = {
   chatDefault: false,
   liveFullAccess: false,
   modeAtIdle: false,
+  // M10: on, so "Send and start a new session" doesn't litter Now; Labs
+  // turns it off (fresh sessions are then kept)
+  bgSendCleanup: true,
 };
 
 export const FLAGS_PREFERENCE_KEY = "flags";
@@ -118,6 +122,10 @@ export const FLAG_LABELS: Record<FlagName, { label: string; hint: string }> = {
   modeAtIdle: {
     label: "Permission changes wait for the turn",
     hint: "A mode picked mid-turn applies when the turn ends. Off applies it at once",
+  },
+  bgSendCleanup: {
+    label: "Remove unused new sessions",
+    hint: "A session opened by Send and start a new session is deleted when left without a message",
   },
 };
 

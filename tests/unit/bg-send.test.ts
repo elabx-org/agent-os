@@ -6,6 +6,7 @@ import {
   sendChoiceForKey,
   sendMenuItems,
   sentToastTitle,
+  transcriptUse,
   type SendKey,
 } from "../../lib/bg-send";
 import type { Session } from "../../lib/db";
@@ -147,9 +148,41 @@ test("sentToastTitle", () => {
 });
 
 test("isUntouched: only when nothing happened", () => {
-  const none = { sent: false, hasTranscript: false, queued: false };
+  const none = {
+    sent: false,
+    hasTranscript: false,
+    queued: false,
+    draft: false,
+    named: false,
+    working: false,
+  };
   assert.equal(isUntouched(none), true);
-  assert.equal(isUntouched({ ...none, sent: true }), false);
-  assert.equal(isUntouched({ ...none, hasTranscript: true }), false);
-  assert.equal(isUntouched({ ...none, queued: true }), false);
+  for (const key of Object.keys(none) as (keyof typeof none)[]) {
+    assert.equal(isUntouched({ ...none, [key]: true }), false, key);
+  }
+});
+
+test("freshSessionInput: the key caps Full access at Auto, the menu doesn't", () => {
+  const full = session({ permission_mode: "bypassPermissions" });
+  assert.equal(freshSessionInput(full, null, true).permissionMode, "auto");
+  assert.equal(
+    freshSessionInput(full, null).permissionMode,
+    "bypassPermissions"
+  );
+  const legacy = freshSessionInput(session({ auto_approve: true }), null, true);
+  assert.equal(legacy.permissionMode, "auto");
+  assert.equal(legacy.autoApprove, false);
+  assert.equal(
+    freshSessionInput(session({ permission_mode: "acceptEdits" }), null, true)
+      .permissionMode,
+    "acceptEdits"
+  );
+});
+
+test("transcriptUse: empty only when located, never on a failed read", () => {
+  assert.equal(transcriptUse({ sessionId: "s", items: [] }), false);
+  assert.equal(transcriptUse({ sessionId: "s", items: [{}] }), true);
+  assert.equal(transcriptUse({ notFound: true }), "unknown");
+  assert.equal(transcriptUse({ items: [] }), "unknown");
+  assert.equal(transcriptUse({ unsupported: true }), "unsupported");
 });
