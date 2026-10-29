@@ -44,11 +44,8 @@ export interface MoveToWorktreeSheetProps {
   onMoved?: (session: Session) => void;
 }
 
-/**
- * The column's sheet id while this is up: × and ✓ (✓ moves). Until the
- * column spec has a "move" sheet with its own Move session item
- */
-const SHEET_ID = "permissions";
+/** The column's sheet id while this is up: × and Move session */
+const SHEET_ID = "move";
 
 export function MoveToWorktreeSheet({
   session,

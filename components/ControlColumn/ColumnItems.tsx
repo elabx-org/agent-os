@@ -10,6 +10,7 @@ import { useLayoutMode } from "@/hooks/useLayoutMode";
 import { mobileNavStore } from "@/stores/mobileNav";
 import { focusStore } from "@/stores/focus";
 import { gitMenuStore } from "@/stores/gitMenu";
+import { moveSheetStore, openMoveSheet } from "@/stores/moveSheet";
 import { useSurface } from "@/stores/surface";
 import {
   DropdownMenu,
@@ -115,6 +116,7 @@ function MoreMenu(props: MoreProps) {
   const { needsYou, liveOpen } = useSnapshot(mobileNavStore);
   const { on: focus } = useSnapshot(focusStore);
   const { actions: git } = useSnapshot(gitMenuStore);
+  const { offer: movable } = useSnapshot(moveSheetStore);
   const inSession = surface === "session" || surface === "beside";
   const wide = mode === "duo-open" || mode === "book" || mode === "desktop";
   const go = (action: NavAction) => () => runNav(action);
@@ -168,6 +170,11 @@ function MoreMenu(props: MoreProps) {
         )}
         {inSession && (
           <DropdownMenuItem onSelect={go("scripts")}>Scripts</DropdownMenuItem>
+        )}
+        {inSession && movable && (
+          <DropdownMenuItem onSelect={() => openMoveSheet(movable)}>
+            Move to a worktree
+          </DropdownMenuItem>
         )}
         {inSession && wide && surface !== "beside" && (
           <DropdownMenuItem onSelect={go("beside")}>

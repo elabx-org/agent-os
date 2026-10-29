@@ -48,7 +48,7 @@ export interface ColumnContext {
   working?: boolean;
   /** A sheet over the session other than Live activity (N-Undo,
       N-Switch, N-PermMode, N-Scripts) */
-  sheet?: "undo" | "switch" | "permissions" | "scripts" | null;
+  sheet?: "undo" | "switch" | "permissions" | "scripts" | "move" | null;
   /** The project surface shows the project's settings (N-Config, M3) */
   projectSettings?: boolean;
   /** Agents the session started (its tree's total): the Agents item shows (O-Tree) */
@@ -155,6 +155,12 @@ const BASE = {
     symbol: "checkmark",
     icon: "Check",
     label: "Done",
+  },
+  moveSession: {
+    id: "done",
+    symbol: "arrow.triangle.branch",
+    icon: "GitBranch",
+    label: "Move session",
   },
   sort: {
     id: "sort",
@@ -307,6 +313,12 @@ function sheetColumn(ctx: ColumnContext): ColumnItem[] | null {
     return [
       item(BASE.closeSheet),
       item(BASE.done, { prominent: true, ...sep }),
+    ];
+  // N-Worktree: close | Move session
+  if (ctx.sheet === "move")
+    return [
+      item(BASE.closeSheet),
+      item(BASE.moveSession, { prominent: true, ...sep }),
     ];
   if (ctx.liveOpen)
     return [

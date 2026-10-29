@@ -5,8 +5,16 @@ import { proxy } from "valtio";
  * header ⋯ and the Project page's row actions open it; a
  * MoveToWorktreeSheetHost draws it.
  */
-export const moveSheetStore = proxy<{ sessionId: string | null }>({
+export const moveSheetStore = proxy<{
+  sessionId: string | null;
+  /**
+   * The focused pane's session when it can move: the column's ⋯ offers
+   * it there (the page and large headers have no ⋯ of their own)
+   */
+  offer: string | null;
+}>({
   sessionId: null,
+  offer: null,
 });
 
 export function openMoveSheet(sessionId: string): void {
