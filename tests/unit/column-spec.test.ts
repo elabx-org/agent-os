@@ -222,7 +222,7 @@ test("columnFor: labels, symbols and icons as the mocks", () => {
   );
   assert.deepEqual(
     columnFor("project", "duo-closed", CTX).map((i) => i.label),
-    ["Back", "New session", "Find in project", "Project settings"]
+    ["Back", "New session", "Find in project", "Project actions"]
   );
   assert.deepEqual(
     columnFor("new", "duo-closed", CTX).map((i) => [i.label, i.symbol]),

@@ -36,19 +36,24 @@ export const DESKTOP_PROJECTS_WIDTH = 352;
 function SectionLabel({
   children,
   first,
+  onClick,
 }: {
   children: ReactNode;
   first?: boolean;
+  /** Opens the section's own page (Needs you: the cards and the history) */
+  onClick?: () => void;
 }) {
-  return (
-    <div
-      className={cn(
-        "text-muted-foreground px-2.5 pb-1.5 text-[13px] font-semibold",
-        first ? "pt-1.5" : "pt-2.5"
-      )}
-    >
+  const className = cn(
+    "text-muted-foreground px-2.5 pb-1.5 text-left text-[13px] font-semibold",
+    first ? "pt-1.5" : "pt-2.5",
+    onClick && "hover:text-foreground"
+  );
+  return onClick ? (
+    <button type="button" onClick={onClick} className={className}>
       {children}
-    </div>
+    </button>
+  ) : (
+    <div className={className}>{children}</div>
   );
 }
 
@@ -156,15 +161,8 @@ export function DesktopSidebar({
           >
             <ChevronLeft className="h-5 w-5" />
           </button>
-          <h2 className="t-head flex-1">Projects</h2>
-          <button
-            type="button"
-            onClick={() => runNav("newProject")}
-            aria-label="New project"
-            className="text-muted-foreground hover:bg-accent flex h-9 w-9 items-center justify-center rounded-full"
-          >
-            <Plus className="h-5 w-5" />
-          </button>
+          {/* The list's own large title, sort and + follow (E-Projects) */}
+          <h2 className="sr-only">Projects</h2>
         </div>
         <div className="min-h-0 flex-1">{projectsView}</div>
       </aside>
@@ -217,7 +215,9 @@ export function DesktopSidebar({
       >
         {waiting.length > 0 && (
           <>
-            <SectionLabel first>Needs you</SectionLabel>
+            <SectionLabel first onClick={() => runNav("inbox")}>
+              Needs you
+            </SectionLabel>
             <SessionRows
               sessions={waiting}
               state="needs"

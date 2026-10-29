@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useSnapshot } from "valtio";
 import { cn } from "@/lib/utils";
@@ -97,8 +97,9 @@ function Layer({
 /**
  * New on the web. Desktop: D-New's centred column beside the sidebar.
  * Closed Duo, phone and tabletop: the page New is in the iOS app, with the
- * web column's Cancel | ✓ when it shows. The open Duo and the book pose:
- * the sized glass dialog (a sheet on touch), Start always in reach.
+ * web column's Cancel | ✓ when it shows; the open Duo has it on the right
+ * page. The book pose: the sized glass dialog (a sheet on touch), Start
+ * always in reach.
  */
 export function NewSurface({
   open,
@@ -123,6 +124,19 @@ export function NewSurface({
     onCreateProject,
   });
 
+  // The open Duo's web column sits in the page (SessionSpread), not fixed
+  // over it: the layer stops at its left edge, so Cancel | ✓ stay in reach
+  const [columnRight, setColumnRight] = useState(0);
+  useEffect(() => {
+    if (!open || mode !== "duo-open") return;
+    const column = document.querySelector("[data-control-column]");
+    setColumnRight(
+      column
+        ? Math.max(0, window.innerWidth - column.getBoundingClientRect().left)
+        : 0
+    );
+  }, [open, mode]);
+
   if (mode === "desktop") {
     if (!open) return null;
     return (
@@ -139,28 +153,37 @@ export function NewSurface({
           canCreateProject={!!onCreateProject}
           layout="wide"
           onCancel={form.handleClose}
-          className="mx-auto w-full max-w-[720px] px-6 pt-24 pb-12"
+          className="mx-auto w-full max-w-[768px] px-6 pt-24 pb-12"
         />
       </Layer>
     );
   }
 
-  if (SCREEN.includes(mode)) {
+  if (SCREEN.includes(mode) || mode === "duo-open") {
     if (!open) return null;
     return (
       <Layer
         form={form}
         label="New session"
-        // Clear of the web column on the right, which stays usable
-        className="inset-y-0 left-0 flex flex-col pt-[env(safe-area-inset-top)]"
-        style={{ right: railWidth }}
+        // Clear of the web column on the right, which stays usable; on the
+        // open Duo it's the right page, Now staying on the left (a dialog
+        // would cross the fold)
+        className="inset-y-0 flex flex-col pt-[env(safe-area-inset-top)]"
+        style={
+          mode === "duo-open"
+            ? {
+                left: "calc(var(--hinge-x, 50%) + var(--fold-clear, 0px))",
+                right: columnRight,
+              }
+            : { left: 0, right: railWidth }
+        }
       >
         <NewScreen
           form={form}
           projects={projects}
           canCreateProject={!!onCreateProject}
           onClose={form.handleClose}
-          columnNav={!!railWidth}
+          columnNav={mode === "duo-open" ? columnRight > 0 : !!railWidth}
         />
       </Layer>
     );

@@ -182,7 +182,12 @@ export function ProjectList({
   const [showNewProject, setShowNewProject] = useState(false);
   const [showFolderPicker, setShowFolderPicker] = useState(false);
   const [renamingId, setRenamingId] = useState<string | null>(null);
-  const [sheetFor, setSheetFor] = useState<string | null>(null);
+  // The project the touch sheet is for; it stays while the sheet closes, as
+  // the sheet runs the chosen action only once it has animated away
+  const [sheet, setSheet] = useState<{ id: string; open: boolean } | null>(
+    null
+  );
+  const setSheetFor = (id: string) => setSheet({ id, open: true });
   const [newGroupFor, setNewGroupFor] = useState<string | null>(null);
   const [sortOpen, setSortOpen] = useState(false);
   const [sort, setSort] = useState<ProjectSort>("manual");
@@ -418,7 +423,7 @@ export function ProjectList({
     ],
   ];
 
-  const sheetProject = projects.find((p) => p.id === sheetFor);
+  const sheetProject = projects.find((p) => p.id === sheet?.id);
   const newGroupProject = projects.find((p) => p.id === newGroupFor);
 
   if (showAll && allSessions)
@@ -467,7 +472,7 @@ export function ProjectList({
           )}
           <header className="flex items-end justify-between gap-3">
             <h1 className="t-large">Projects</h1>
-            <div className="flex shrink-0 items-center gap-1">
+            <div className="flex shrink-0 items-end gap-1">
               {ownButtons && (
                 <>
                   <Button
@@ -503,7 +508,7 @@ export function ProjectList({
                   </DropdownMenu>
                 </>
               )}
-              <span className="text-muted-foreground pb-1 text-[15px] tabular-nums">
+              <span className="text-muted-foreground text-[14px] tabular-nums">
                 {movable.length}
               </span>
             </div>
@@ -617,8 +622,10 @@ export function ProjectList({
 
       {sheetProject && (
         <ActionSheet
-          open={!!sheetFor}
-          onOpenChange={(o) => !o && setSheetFor(null)}
+          open={!!sheet?.open}
+          onOpenChange={(o) => {
+            if (!o) setSheet((s) => s && { ...s, open: false });
+          }}
           title={sheetProject.name}
           description={describe(activity[sheetProject.id])}
           groups={sheetGroups(sheetProject)}

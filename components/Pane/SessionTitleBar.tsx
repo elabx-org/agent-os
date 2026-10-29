@@ -39,6 +39,7 @@ import { focusStore } from "@/stores/focus";
 import { displayTitle, useListTitles } from "@/hooks/useSessionTitles";
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
 import { useIsNative } from "@/hooks/useIsNative";
+import { useSpreadPanes } from "@/components/views/SessionSpread";
 import { usePanes } from "@/contexts/PaneContext";
 import { BesideItems } from "@/components/BesideItems";
 import { useReplyPage } from "@/components/ReplyContext/store";
@@ -127,6 +128,7 @@ export function SessionTitleBar({
   const { on: duoPreview } = useSnapshot(duoPreviewStore);
   const focus = useSnapshot(focusStore);
   const { paneCount, canSplitDown } = usePanes();
+  const pilled = useSpreadPanes()?.mode === "fold";
   const pageTitle = duoPreview && railActive && isMobile;
   const titles = useListTitles(session ? [session] : []);
   const { copy } = useCopyToClipboard();
@@ -251,7 +253,13 @@ export function SessionTitleBar({
           <ChevronLeft className="h-5 w-5" />
         </button>
 
-        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+        {/* Two pages side by side: the session pill above names it */}
+        <div
+          className={cn(
+            "flex min-w-0 flex-1 flex-col gap-0.5",
+            pilled && "invisible"
+          )}
+        >
           <span
             className={cn(
               "truncate leading-tight font-semibold",

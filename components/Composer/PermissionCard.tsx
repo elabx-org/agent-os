@@ -221,10 +221,13 @@ export function PermissionCard({
       always && split.main[0]?.kind === "allow" && !split.main.includes(always)
         ? [split.main[0], always, ...split.main.slice(1)]
         : split.main;
+    // A question (E-NeedsYou's first card): the first answer leads and
+    // Open sits after the answers
+    const question = !row.some((o) => o.kind === "allow" || o.kind === "deny");
     return (
       <div className="grid gap-1.5">
         <div className="mt-1 flex gap-2">
-          {row.map((option) => (
+          {row.map((option, i) => (
             <button
               key={`${option.index}-${option.label}`}
               type="button"
@@ -234,7 +237,7 @@ export function PermissionCard({
               className={cn(
                 "pill pill-sm min-w-0 touch-manipulation disabled:opacity-60",
                 option.kind === "deny" ? "shrink-0" : "flex-1",
-                option.kind === "allow"
+                option.kind === "allow" || (question && i === 0)
                   ? "pill-primary active:opacity-80"
                   : "pill-secondary active:bg-accent"
               )}
@@ -247,6 +250,15 @@ export function PermissionCard({
               </span>
             </button>
           ))}
+          {question && onOpen && (
+            <button
+              type="button"
+              onClick={onOpen}
+              className="pill pill-sm pill-secondary active:bg-accent shrink-0 touch-manipulation"
+            >
+              Open
+            </button>
+          )}
         </div>
         {blocked && (
           <p className="text-muted-foreground/80 flex items-start gap-1.5 text-xs leading-snug">

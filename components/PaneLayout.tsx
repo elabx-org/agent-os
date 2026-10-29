@@ -115,6 +115,7 @@ export function PaneLayout({
           return (
             <div
               key={paneId}
+              data-pane-id={paneId}
               className={cn(
                 "flex h-full min-w-0 flex-col",
                 left ? "shrink-0" : "flex-1",

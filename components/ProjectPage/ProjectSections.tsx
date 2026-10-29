@@ -217,10 +217,13 @@ export function RunningSection({
   onStop: (id: string) => Promise<void>;
   onRemove: (id: string) => Promise<void>;
 }) {
-  const [sheetId, setSheetId] = useState<string | null>(null);
+  // Kept while the sheet closes: it runs the chosen action after its exit
+  const [sheet, setSheet] = useState<{ id: string; open: boolean } | null>(
+    null
+  );
   const [logsId, setLogsId] = useState<string | null>(null);
   const shown = servers.filter((s) => s.status !== "stopped");
-  const sheetServer = servers.find((s) => s.id === sheetId);
+  const sheetServer = servers.find((s) => s.id === sheet?.id);
   const logsServer = servers.find((s) => s.id === logsId);
   if (!shown.length && !logsServer) return null;
 
@@ -308,7 +311,7 @@ export function RunningSection({
                     <button
                       type="button"
                       aria-label={`${server.name} actions`}
-                      onClick={() => setSheetId(server.id)}
+                      onClick={() => setSheet({ id: server.id, open: true })}
                       className="text-muted-foreground active:bg-accent relative grid h-9 w-9 place-items-center rounded-full after:absolute after:-inset-1 after:content-['']"
                     >
                       <MoreHorizontal className="h-4 w-4" />
@@ -322,8 +325,10 @@ export function RunningSection({
       )}
       {sheetServer && (
         <ActionSheet
-          open={!!sheetId}
-          onOpenChange={(o) => !o && setSheetId(null)}
+          open={!!sheet?.open}
+          onOpenChange={(o) => {
+            if (!o) setSheet((s) => s && { ...s, open: false });
+          }}
           title={sheetServer.name}
           description={serverDetail(sheetServer, primaryPort(sheetServer))}
           groups={actions(sheetServer)}

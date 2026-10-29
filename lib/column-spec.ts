@@ -158,7 +158,7 @@ const BASE = {
     id: "projectSettings",
     symbol: "ellipsis",
     icon: "Ellipsis",
-    label: "Project settings",
+    label: "Project actions",
   },
 } satisfies Record<string, Base & { id: NavAction }>;
 

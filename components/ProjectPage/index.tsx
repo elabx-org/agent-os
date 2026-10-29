@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Folder, GitBranch, MoreHorizontal, Plus } from "lucide-react";
 import {
   PageEmpty,
@@ -26,6 +26,9 @@ import { useMergedTodayQuery } from "@/data/projects";
 import { useLayoutMode, type LayoutMode } from "@/hooks/useLayoutMode";
 import { useListTitles } from "@/hooks/useSessionTitles";
 import { useViewport } from "@/hooks/useViewport";
+import { useIsNative } from "@/hooks/useIsNative";
+import { registerNavHandlers } from "@/lib/nav-actions";
+import { nativeCaps } from "@/lib/native-bridge";
 import { mobileNavActions } from "@/stores/mobileNav";
 import { backPage } from "@/stores/workspacePage";
 import { openProjectSettings } from "@/stores/projectSettings";
@@ -138,6 +141,18 @@ function ProjectWorkspace({
   const keepName = useRef(false);
   const nameInput = useRef<HTMLInputElement>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
+  // The column (the web's, or the iOS app's own) draws ⋯ (Closed-Project);
+  // the phone's tab bar, the desktop and the iOS app before it takes the
+  // column don't, so the page keeps its own
+  const native = useIsNative();
+  const ownMore =
+    (native && !nativeCaps().column) || mode === "phone" || mode === "desktop";
+  useEffect(() => {
+    if (ownMore) return;
+    return registerNavHandlers({
+      openProjectSettings: () => setSheetOpen(true),
+    });
+  }, [ownMore]);
 
   const newSession = () => view.handleNewSessionInProject(project.id);
   const newAgent = uncategorized
@@ -267,7 +282,12 @@ function ProjectWorkspace({
         )}
       >
         <div className="flex max-w-[760px] flex-col gap-3.5">
-          <PageHeader large title={title} subtitle={subtitle} actions={more} />
+          <PageHeader
+            large
+            title={title}
+            subtitle={subtitle}
+            actions={ownMore ? more : undefined}
+          />
 
           <div className="flex gap-2.5">
             <button

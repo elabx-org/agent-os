@@ -73,7 +73,7 @@ export function DesktopView(props: ViewProps) {
   const paneSessions = paneIds.map((id) => getActiveTab(id)?.sessionId ?? null);
   const shownIds = paneSessions.filter((id): id is string => !!id);
   // Needs you: a page across the open Duo, a dialog on the web
-  useNeedsYouPage(native);
+  useNeedsYouPage(!desktop);
 
   // A page covers the pane, so the column selects no view
   useEffect(() => {
@@ -263,7 +263,7 @@ export function DesktopView(props: ViewProps) {
       </SessionSpread>
 
       {/* Dialogs */}
-      {!native && (
+      {desktop && (
         <NeedsYouDialog view={props} onOpenSession={attachToSession} />
       )}
       <NewSurfaceHost
