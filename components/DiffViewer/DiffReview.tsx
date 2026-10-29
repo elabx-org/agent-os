@@ -6,6 +6,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type ReactNode,
 } from "react";
 import { toast } from "sonner";
@@ -63,6 +64,8 @@ export interface DiffReviewProps {
   /** Undo turn N in the header: opens M2's UndoSheet */
   onUndoTurn?: (turnNo: number) => void;
   className?: string;
+  /** The parent's placement extras (on a table: the bottom stops at the fold) */
+  style?: CSSProperties;
 }
 
 const LAYOUT_KEY = "agentos.diffReview.layout";
@@ -114,6 +117,7 @@ export function DiffReview({
   onClose,
   onUndoTurn,
   className,
+  style,
 }: DiffReviewProps) {
   const mode = useLayoutMode();
   const desktop = mode === "desktop";
@@ -512,6 +516,7 @@ export function DiffReview({
     <section
       ref={root}
       aria-label="Diff"
+      style={style}
       className={cn(
         "flex min-h-0 min-w-0 flex-col gap-3 overflow-hidden",
         desktop

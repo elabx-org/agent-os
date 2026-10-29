@@ -51,6 +51,7 @@ import { agentOpenStore, consumeSubagent } from "@/stores/agentOpen";
 import type { Session } from "@/lib/db";
 import { WorkflowPanel, workflowAgentInfo } from "@/components/WorkflowPhases";
 import { DiffReview } from "@/components/DiffViewer/DiffReview";
+import { FOLD_CLEAR } from "@/hooks/useHinge";
 import {
   AnswerChips,
   DeckContext,
@@ -814,13 +815,23 @@ export function ChatView({
                   // closed Duo's column stays clear; UndoSheet is above)
                   "bg-background absolute inset-0 z-10"
           }
+          // On a table: above the fold (clear of the hinge, as the
+          // column's rule), the composer stays on the deck
+          style={
+            deck && !pages && mode !== "desktop"
+              ? {
+                  bottom: deck.deck + deck.gap,
+                  paddingBottom: Math.max(0, FOLD_CLEAR - deck.gap / 2),
+                }
+              : undefined
+          }
         />
       )}
       {/* On a table while typing: Claude's last turn over the chat above */}
       <DeckContext
         sessionId={session.id}
         view="chat"
-        on={!!deck && active}
+        on={!!deck && active && diffTurn === null}
         cover={scrollRef}
       />
       {quoteMenu.menu}
