@@ -47,6 +47,7 @@ import {
 import { agentOpenStore, consumeSubagent } from "@/stores/agentOpen";
 import type { Session } from "@/lib/db";
 import { WorkflowPanel, workflowAgentInfo } from "@/components/WorkflowPhases";
+import { DiffReview } from "@/components/DiffViewer/DiffReview";
 import {
   AnswerChips,
   DeckContext,
@@ -61,7 +62,6 @@ import { NeedsYouCard } from "./NeedsYouCard";
 import { buildRows, placeTurns } from "./rows";
 import { SubagentPanel } from "./SubagentPanel";
 import { SubagentRow } from "./ToolCard";
-import { TurnDiff } from "./TurnDiff";
 import { UndoSheet } from "./UndoSheet";
 import { useSeam } from "./useSeam";
 import { useTranscript } from "./useTranscript";
@@ -164,14 +164,24 @@ export function ChatView({
     }
   }, [agents, runs, openAgent]);
   const openedRun = openRun ? runsById.get(openRun) : undefined;
-  // What takes the right page: an agent, or a whole workflow
-  const side = !!opened || !!openedRun;
+  // One right page at a time: the latest of an agent and a turn's diff
+  useEffect(() => {
+    if (openAgent || openRun) setDiffTurn(null);
+  }, [openAgent, openRun]);
+  useEffect(() => {
+    if (diffTurn === null) return;
+    setOpenAgent(null);
+    setOpenRun(null);
+  }, [diffTurn]);
+  // What takes the right page: an agent, a whole workflow or a turn's diff
+  const side = !!opened || !!openedRun || diffTurn !== null;
 
   // Focus on the open Duo: the conversation reads across both pages like a
   // book, earlier rows on the left page and the latest with the composer on
   // the right. An open subagent takes the right page instead.
   const outerRef = useRef<HTMLDivElement>(null);
   const pages = useSpreadPages(outerRef, useSpreadFold());
+  const mode = useLayoutMode();
   const book = !!pages && !side && state === "ready";
   // Either way each column keeps to one side of the fold
   const paged = book || (!!pages && side);
@@ -349,7 +359,6 @@ export function ChatView({
     },
     [session.id, sent]
   );
-  const mode = useLayoutMode();
   // The header's inset (Closed-Chat 20px, Fold, open Duo and desktop
   // 24px); the composer row sits 16px in on the closed Duo and the phone
   const roomy = mode !== "duo-closed" && mode !== "phone";
@@ -753,6 +762,25 @@ export function ChatView({
           }
         />
       )}
+      {diffTurn !== null && (
+        <DiffReview
+          session={session}
+          agentName="Claude"
+          initialScope={`turn:${diffTurn}`}
+          // Beside the conversation on the open Duo (O-Diff) and the
+          // desktop (D-Diff); over it on the closed Duo and the phone
+          placement={pages || mode === "desktop" ? "page" : "screen"}
+          onClose={() => setDiffTurn(null)}
+          onUndoTurn={setUndoTurn}
+          className={
+            pages
+              ? "min-w-0 flex-1"
+              : mode === "desktop"
+                ? "absolute inset-0 z-10 @2xl/chat:static @2xl/chat:w-[62%] @2xl/chat:max-w-[60rem] @2xl/chat:shrink-0"
+                : undefined
+          }
+        />
+      )}
       {/* On a table while typing: Claude's last turn over the chat above */}
       <DeckContext
         sessionId={session.id}
@@ -761,13 +789,6 @@ export function ChatView({
         cover={scrollRef}
       />
       {quoteMenu.menu}
-      {diffTurn !== null && (
-        <TurnDiff
-          sessionId={session.id}
-          turnNo={diffTurn}
-          onClose={() => setDiffTurn(null)}
-        />
-      )}
       {undoTurn !== null && (
         <UndoSheet
           turnNo={undoTurn}
