@@ -115,13 +115,18 @@ export function isNative(): boolean {
 
 /** What this app build can do; all false in a browser */
 export interface NativeCaps {
-  /** Draws NativeState.column; the web then never draws its own bars */
+  /**
+   * Draws NativeState.column, and hides its bar for an empty one: the page
+   * then draws its own tab bar or tabletop bar. Without it the web draws no
+   * bar inside the app
+   */
   column: boolean;
 }
 
 export function nativeCaps(): NativeCaps {
-  // Contract stub: U1.2
-  return { column: false };
+  return {
+    column: typeof window !== "undefined" && !!window.agentosNative?.column,
+  };
 }
 
 /**

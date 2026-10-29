@@ -36,22 +36,305 @@ export interface ColumnContext {
   /** An on-screen keyboard is up: the session column shrinks (Closed-Terminal) */
   keyboardUp: boolean;
   paneCount: number;
+  /** A level to go back to within the surface (a Settings section, closed) */
   canGoBack: boolean;
+  /** Inside the iOS app: Server is the app's own screen, so only there */
+  native?: boolean;
+  /** The live activity is showing (the column's Live item is on) */
+  liveOpen?: boolean;
 }
 
+type Base = Pick<ColumnItem, "id" | "symbol" | "icon" | "label">;
+
+const BASE = {
+  new: { id: "new", symbol: "plus", icon: "Plus", label: "New session" },
+  inbox: { id: "inbox", symbol: "tray", icon: "Inbox", label: "Needs you" },
+  now: {
+    id: "now",
+    symbol: "waveform.path.ecg",
+    icon: "Activity",
+    label: "Now",
+  },
+  projects: {
+    id: "projects",
+    symbol: "folder",
+    icon: "Folder",
+    label: "Projects",
+  },
+  search: {
+    id: "search",
+    symbol: "magnifyingglass",
+    icon: "Search",
+    label: "Find",
+  },
+  settings: {
+    id: "settings",
+    symbol: "gearshape",
+    icon: "Settings",
+    label: "Settings",
+  },
+  back: {
+    id: "back",
+    symbol: "chevron.left",
+    icon: "ChevronLeft",
+    label: "Back to Now",
+  },
+  closeSettings: {
+    id: "closeSettings",
+    symbol: "xmark",
+    icon: "X",
+    label: "Close settings",
+  },
+  server: { id: "server", symbol: "globe", icon: "Globe", label: "Server" },
+  chat: {
+    id: "chat",
+    symbol: "bubble.left",
+    icon: "MessageSquare",
+    label: "Chat",
+  },
+  terminal: {
+    id: "terminal",
+    symbol: "terminal",
+    icon: "Terminal",
+    label: "Terminal",
+  },
+  git: {
+    id: "git",
+    symbol: "arrow.triangle.branch",
+    icon: "GitBranch",
+    label: "Changes",
+  },
+  files: { id: "files", symbol: "doc", icon: "Folder", label: "Files" },
+  live: {
+    id: "live",
+    symbol: "waveform.path.ecg",
+    icon: "Activity",
+    label: "Live activity",
+  },
+  beside: {
+    id: "beside",
+    symbol: "rectangle.split.2x1",
+    icon: "Columns2",
+    label: "Open beside",
+  },
+  swap: {
+    id: "swap",
+    symbol: "arrow.left.arrow.right",
+    icon: "ArrowRightLeft",
+    label: "Swap sides",
+  },
+  more: { id: "more", symbol: "ellipsis", icon: "Ellipsis", label: "More" },
+  sort: {
+    id: "sort",
+    symbol: "arrow.up.arrow.down",
+    icon: "AlignLeft",
+    label: "Edit order and groups",
+  },
+  notifSettings: {
+    id: "notifSettings",
+    symbol: "bell",
+    icon: "Bell",
+    label: "Notification settings",
+  },
+  clearHistory: {
+    id: "clearHistory",
+    symbol: "trash",
+    icon: "Trash",
+    label: "Clear history",
+  },
+  projectSettings: {
+    id: "projectSettings",
+    symbol: "ellipsis",
+    icon: "Ellipsis",
+    label: "Project settings",
+  },
+} satisfies Record<string, Base & { id: NavAction }>;
+
+function item(base: Base, extra: Partial<ColumnItem> = {}): ColumnItem {
+  const out: ColumnItem = { ...base, ...extra };
+  // Only what's set: the app reads a missing key as off
+  for (const key of Object.keys(out) as (keyof ColumnItem)[])
+    if (out[key] === undefined || out[key] === false || out[key] === 0)
+      delete out[key];
+  return out;
+}
+
+const sep = { sep: true } as const;
+
+/** Needs you, with its amber count (Focus keeps the column quiet) */
+function inbox(ctx: ColumnContext, extra: Partial<ColumnItem> = {}) {
+  const badge = ctx.focus ? 0 : ctx.needsYou;
+  return item(BASE.inbox, {
+    badge,
+    badgeTone: badge ? "amber" : undefined,
+    ...extra,
+  });
+}
+
+function changes(ctx: ColumnContext) {
+  const badge = ctx.focus ? 0 : ctx.changes;
+  return item(BASE.git, {
+    badge,
+    badgeTone: badge ? "neutral" : undefined,
+    selected: ctx.viewMode === "git",
+  });
+}
+
+/** The other conversation view: Terminal from Chat, Chat from anything else */
+function otherView(ctx: ColumnContext, extra: Partial<ColumnItem> = {}) {
+  return ctx.viewMode === "chat"
+    ? item(BASE.terminal, { label: "Show terminal", ...extra })
+    : item(BASE.chat, { label: "Show chat", ...extra });
+}
+
+/** Closed-Chat / Open-Changes: back | the other view, Changes, Files, Live | More */
+function sessionColumn(ctx: ColumnContext, compact: boolean): ColumnItem[] {
+  if (compact)
+    // Closed-Terminal, keyboard up: what fits above it
+    return [
+      item(BASE.back, { label: "Back" }),
+      otherView(ctx, sep),
+      changes(ctx),
+      item(BASE.more),
+    ];
+  return [
+    item(BASE.back),
+    otherView(ctx, sep),
+    changes(ctx),
+    item(BASE.files, { selected: ctx.viewMode === "files" }),
+    item(BASE.live, { selected: ctx.liveOpen }),
+    item(BASE.more, sep),
+  ];
+}
+
+/** Fold-Chat / Fold-Terminal: the view showing, Changes, Files, Live | Needs you, More */
+function sessionBar(ctx: ColumnContext): ColumnItem[] {
+  const conversation =
+    ctx.viewMode === "terminal"
+      ? item(BASE.terminal, { selected: true })
+      : item(BASE.chat, { selected: ctx.viewMode === "chat" });
+  const needs = !ctx.focus && ctx.needsYou > 0;
+  return [
+    conversation,
+    changes(ctx),
+    item(BASE.files, { selected: ctx.viewMode === "files" }),
+    item(BASE.live, { selected: ctx.liveOpen }),
+    ...(needs ? [inbox(ctx, sep)] : []),
+    item(BASE.more, needs ? {} : sep),
+  ];
+}
+
+/** E-iPhone: Now · Needs you · Projects · Settings, then the New circle */
+function tabs(surface: Surface, ctx: ColumnContext): ColumnItem[] {
+  return [
+    item(BASE.now, { selected: surface === "now" }),
+    inbox(ctx, { selected: surface === "needs" }),
+    item(BASE.projects, {
+      selected: surface === "projects" || surface === "project",
+    }),
+    item(BASE.settings, { selected: surface === "settings" }),
+    item(BASE.new, { prominent: true, sep: true }),
+  ];
+}
+
+/** Main: New / Needs you / Projects / Find | Settings */
+function nowColumn(ctx: ColumnContext): ColumnItem[] {
+  return [
+    item(BASE.new, { prominent: true }),
+    inbox(ctx),
+    item(BASE.projects),
+    item(BASE.search),
+    item(BASE.settings, sep),
+  ];
+}
+
+/** Open-Now: New, Needs you | the other view, Changes, Files, Open beside | Find, More */
+function nowWithSession(ctx: ColumnContext): ColumnItem[] {
+  return [
+    item(BASE.new, { prominent: true }),
+    inbox(ctx),
+    otherView(ctx, sep),
+    changes(ctx),
+    item(BASE.files, { selected: ctx.viewMode === "files" }),
+    item(BASE.beside),
+    item(BASE.search, sep),
+    item(BASE.more),
+  ];
+}
+
+const WIDE: LayoutMode[] = ["duo-open", "book", "desktop"];
+
 /**
- * The items for a surface, top to bottom (or left to right). Item sets as
- * in the plan's shell map: Now: + / Needs you / Projects / Find | Settings;
- * Session: back | Terminal-or-Chat, Changes, Files, Activity | More; ...
+ * The items for a surface, top to bottom (or left to right), as the mocks
+ * draw them: Main, Closed-Chat/Terminal/Settings/Project, E-Display,
+ * E-Projects, E-NeedsYou, E-New, N-Search, Open-Now, Open-Beside,
+ * Open-Changes, Fold-Chat/Terminal and E-iPhone.
  */
 export function columnFor(
   surface: Surface,
   mode: LayoutMode,
   ctx: ColumnContext
 ): ColumnItem[] {
-  // Contract stub: U1.2
-  void surface;
-  void mode;
-  void ctx;
-  return [];
+  const wide = WIDE.includes(mode);
+  const inSession = surface === "session" || surface === "beside";
+  // The phone's tab bar holds the home's places; in a session the phone
+  // gets the tabletop's bar of views
+  if (mode === "phone" && !inSession) return tabs(surface, ctx);
+  if ((mode === "phone" || mode === "tabletop") && inSession)
+    return sessionBar(ctx);
+
+  switch (surface) {
+    case "now":
+      return wide && ctx.viewMode ? nowWithSession(ctx) : nowColumn(ctx);
+    case "session":
+      return sessionColumn(ctx, mode === "duo-closed" && ctx.keyboardUp);
+    case "beside":
+      return wide
+        ? [
+            item(BASE.back),
+            item(BASE.beside, {
+              label: "Side by side",
+              selected: true,
+              sep: true,
+            }),
+            item(BASE.swap),
+            item(BASE.live, { selected: ctx.liveOpen }),
+            item(BASE.more, sep),
+          ]
+        : sessionColumn(ctx, mode === "duo-closed" && ctx.keyboardUp);
+    case "settings":
+      // Drilled into a section on the closed Duo (E-Display); list | detail
+      // elsewhere keeps both up, so there's nothing to go back to
+      if (ctx.canGoBack && !wide)
+        return [item(BASE.back, { label: "Back to Settings" })];
+      return [
+        item(BASE.closeSettings),
+        ...(ctx.native ? [item(BASE.server, sep)] : []),
+      ];
+    case "projects":
+      return [
+        item(BASE.back),
+        item(BASE.new, { label: "New project", prominent: true, sep: true }),
+        item(BASE.search, { label: "Find a project" }),
+        item(BASE.sort),
+      ];
+    case "project":
+      return [
+        item(BASE.back, { label: "Back" }),
+        item(BASE.new, { prominent: true, sep: true }),
+        item(BASE.search, { label: "Find in project" }),
+        item(BASE.projectSettings, sep),
+      ];
+    case "needs":
+      return [
+        item(BASE.back),
+        item(BASE.notifSettings, sep),
+        item(BASE.clearHistory),
+      ];
+    case "new":
+      // E-New's Start belongs to the form (M1b)
+      return [item(BASE.back, { symbol: "xmark", icon: "X", label: "Cancel" })];
+    case "search":
+      return [item(BASE.back)];
+  }
 }
