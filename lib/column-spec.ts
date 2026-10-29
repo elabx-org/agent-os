@@ -142,6 +142,12 @@ const BASE = {
     icon: "Trash",
     label: "Clear history",
   },
+  newProject: {
+    id: "newProject",
+    symbol: "plus",
+    icon: "Plus",
+    label: "New project",
+  },
   projectSettings: {
     id: "projectSettings",
     symbol: "ellipsis",
@@ -315,7 +321,7 @@ export function columnFor(
     case "projects":
       return [
         item(BASE.back),
-        item(BASE.new, { label: "New project", prominent: true, sep: true }),
+        item(BASE.newProject, { prominent: true, sep: true }),
         item(BASE.search, { label: "Find a project" }),
         item(BASE.sort),
       ];

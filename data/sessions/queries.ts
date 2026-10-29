@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { usePendingRemoval } from "@/stores/pendingRemoval";
 import type { Session, Group } from "@/lib/db";
 import type { AgentType } from "@/lib/providers";
+import type { Mode } from "@/lib/permission-mode";
 import { fetchAsUser, refusalText } from "@/lib/client/user-fetch";
 import { sessionKeys } from "./keys";
 
@@ -308,6 +309,11 @@ export interface CreateSessionInput {
   initialPrompt: string | null;
   /** Left out, the server keeps its default */
   model?: string;
+  /**
+   * lib/permission-mode.ts Mode (New → Permissions); null or left out keeps
+   * the agent's default. Full access is honoured only from the user
+   */
+  permissionMode?: Mode | null;
 }
 
 interface CreateSessionResponse {

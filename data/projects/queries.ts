@@ -2,6 +2,8 @@ import { useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { usePendingRemoval } from "@/stores/pendingRemoval";
 import type { ProjectWithRepositories } from "@/lib/projects";
+import type { ProjectPlacement } from "@/lib/project-groups";
+import type { MergedPr } from "@/lib/merged-today";
 import { projectKeys } from "./keys";
 import { sessionKeys } from "../sessions/keys";
 
@@ -227,5 +229,30 @@ export function useCreateProject() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: projectKeys.list() });
     },
+  });
+}
+
+/**
+ * Pin a project or move it into a group (Projects page, sort menu). M1b
+ * U1b.1 implements it (optimistic, like useToggleProject).
+ */
+export function useUpdateProjectPlacement() {
+  return useMutation({
+    mutationFn: async (input: {
+      projectId: string;
+      placement: ProjectPlacement;
+    }): Promise<void> => {
+      void input;
+      throw new Error("Not implemented");
+    },
+  });
+}
+
+/** A project's pull requests merged today (Project page). M1b U1b.1 */
+export function useMergedTodayQuery(projectId: string | undefined) {
+  return useQuery({
+    queryKey: projectKeys.mergedToday(projectId ?? ""),
+    queryFn: async (): Promise<MergedPr[]> => [],
+    enabled: !!projectId,
   });
 }

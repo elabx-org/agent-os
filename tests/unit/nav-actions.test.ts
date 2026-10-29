@@ -100,6 +100,7 @@ test("runNav: the new actions reach their handlers", () => {
     ["notifSettings", "openNotifSettings"],
     ["server", "openServer"],
     ["projectSettings", "openProjectSettings"],
+    ["newProject", "openNewProject"],
   ];
   for (const [action, handler] of cases) {
     reset();

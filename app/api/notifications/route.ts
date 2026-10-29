@@ -31,3 +31,9 @@ export async function POST(request: NextRequest) {
   markNotificationsRead(ids);
   return NextResponse.json(listNotifications());
 }
+
+// DELETE /api/notifications - clears the history (Needs you → Clear
+// history), returns the empty list. M1b U1b.2 implements it.
+export async function DELETE() {
+  return NextResponse.json({ error: "Not implemented" }, { status: 501 });
+}

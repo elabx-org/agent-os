@@ -45,6 +45,8 @@ export interface NeedsYou {
   unread: number;
   /** Marks history read: some ids, or "all" */
   markRead: (ids: string[] | "all") => void;
+  /** Empties the history (DELETE /api/notifications). M1b U1b.2 */
+  clearHistory: () => void;
 }
 
 /**
@@ -84,6 +86,8 @@ export function useNeedsYou(
     [mutate]
   );
 
+  const clearHistory = useCallback(() => {}, []);
+
   const waiting = useMemo(
     () =>
       sessions
@@ -106,6 +110,7 @@ export function useNeedsYou(
     history: data?.items ?? EMPTY_ITEMS,
     unread: data?.unread ?? 0,
     markRead,
+    clearHistory,
   };
 }
 

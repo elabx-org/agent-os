@@ -206,3 +206,37 @@ describe("scripts/migrate-only.mjs", () => {
     }
   });
 });
+
+describe("migration 24", () => {
+  const unapply24 = (db: Database.Database, drop: string[]) => {
+    for (const column of drop)
+      db.exec(`ALTER TABLE projects DROP COLUMN ${column}`);
+    db.exec(`DELETE FROM _migrations WHERE id = 24`);
+  };
+
+  test("adds pinned (default 0) and group_name to projects", () => {
+    const db = migrated();
+    assert.ok(columns(db, "projects").includes("pinned"));
+    assert.ok(columns(db, "projects").includes("group_name"));
+    assert.ok(applied(db).includes(24));
+    db.prepare(
+      `INSERT INTO projects (id, name, working_directory) VALUES ('p', 'p', '/tmp')`
+    ).run();
+    assert.deepEqual(
+      db
+        .prepare(`SELECT pinned, group_name FROM projects WHERE id = 'p'`)
+        .get(),
+      { pinned: 0, group_name: null }
+    );
+  });
+
+  test("runs twice, and over a database with one column already there", () => {
+    const db = migrated();
+    unapply24(db, ["group_name"]);
+    quietly(() => runMigrations(db));
+    assert.ok(columns(db, "projects").includes("group_name"));
+    unapply24(db, []);
+    quietly(() => runMigrations(db));
+    assert.ok(applied(db).includes(24));
+  });
+});

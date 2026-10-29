@@ -371,6 +371,15 @@ const migrations: Migration[] = [
       );
     }),
   },
+  {
+    id: 24,
+    name: "add_pinned_and_group_to_projects",
+    up: atomic((db) => {
+      // Projects page: pinned ones on top, then the user's own groups
+      addColumnIfMissing(db, "projects", "pinned", "INTEGER NOT NULL DEFAULT 0");
+      addColumnIfMissing(db, "projects", "group_name", "TEXT");
+    }),
+  },
 ];
 
 export function runMigrations(db: Database.Database): void {

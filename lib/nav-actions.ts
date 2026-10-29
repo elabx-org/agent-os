@@ -47,6 +47,7 @@ export const NAV_ACTIONS = [
   "server",
   "closeSettings",
   "projectSettings",
+  "newProject",
 ] as const;
 
 /**
@@ -99,6 +100,8 @@ interface NavHandlers {
   /** Settings → Server: the iOS app's server screen */
   openServer: () => void;
   openProjectSettings: () => void;
+  /** Projects' + (E-Projects): a new project, not a session (M1b) */
+  openNewProject: () => void;
 }
 
 /**
@@ -147,6 +150,7 @@ export const navStore: NavHandlers = {
     const page = workspacePageStore.page;
     if (page?.kind === "project") openProjectSettings(page.projectId);
   },
+  openNewProject: () => navStore.openNewSession(),
 };
 
 /**
@@ -235,6 +239,7 @@ export const NAV_ROUTES: Record<NavAction, (leftPage: boolean) => void> = {
   server: () => navStore.openServer(),
   closeSettings: () => closeSettings(),
   projectSettings: () => navStore.openProjectSettings(),
+  newProject: () => navStore.openNewProject(),
 };
 
 /** Actions on or beside Settings: it stays up for them */

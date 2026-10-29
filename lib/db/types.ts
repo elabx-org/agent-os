@@ -76,6 +76,10 @@ export interface Project {
   sort_order: number;
   is_uncategorized: boolean;
   git_sync_interval: number;
+  /** Listed under Pinned on the Projects page (migration 24) */
+  pinned: boolean;
+  /** The user's own group on the Projects page ("iOS", "Home lab") */
+  group_name: string | null;
   created_at: string;
   updated_at: string;
 }
