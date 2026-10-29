@@ -16,6 +16,7 @@ import { startModeApplier } from "./permission-apply";
 import { startPrPoller } from "./pr-poller";
 import { startDispatcher } from "./queue/dispatcher";
 import { onEdge, startSessionWatch, wantWatch } from "./session-watch";
+import { reconcileSettled } from "./settle";
 import { onIdleEdge, pruneSettled } from "./turns";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -45,12 +46,20 @@ export function startTickers(): void {
   startModeApplier();
   // PR checks and auto-settle (M8): checks flags prPoller and autoSettle
   startPrPoller();
+  // A settled session whose tmux runs (opened on an older build): running
+  setTimeout(() => {
+    reconcileSettled().catch((error) =>
+      console.error("[tickers] reconcile settled:", error)
+    );
+  }, 10 * 1000).unref();
   // Daily, and once soon after a restart: drop the turn snapshots of
-  // sessions settled two weeks ago
-  const prune = () =>
+  // sessions settled two weeks ago (flag snapshots is its kill switch)
+  const prune = () => {
+    if (!onSomewhere("snapshots")) return;
     pruneSettled(KEEP_SETTLED_TURNS_MS).catch((error) =>
       console.error("[tickers] prune settled:", error)
     );
+  };
   setTimeout(prune, 10 * 60 * 1000).unref();
   setInterval(prune, DAY_MS).unref();
 

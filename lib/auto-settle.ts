@@ -9,6 +9,7 @@
 import { execFile } from "child_process";
 import { promisify } from "util";
 import type Database from "better-sqlite3";
+import { claudeHookAt } from "./claude-state";
 import { getDb, type Session } from "./db";
 import { getFlags } from "./flags";
 import { isWatching } from "./push/config";
@@ -18,6 +19,7 @@ import { latest } from "./session-watch";
 import { SettleRefused, settleSession, type SettleOptions } from "./settle";
 import {
   AUTO_SETTLE_QUIET_MS,
+  AUTO_SETTLE_RECENT_MERGE_MS,
   UNSETTLED_REASON,
   isEnded,
   type AutoSettleBlock,
@@ -36,10 +38,10 @@ export function autoSettleBlock(
   if (!input.autoSettleOn) return "flag_off";
   if (input.status !== "idle" && input.status !== "dead") return "not_idle";
   if (input.pendingQueue > 0) return "queued";
-  if (
-    input.lastInputAt != null &&
-    input.now - input.lastInputAt < AUTO_SETTLE_QUIET_MS
-  )
+  if (input.lastInputAt == null) {
+    // Can't tell when it was last used: only a session already gone
+    if (input.status !== "dead") return "unknown_input";
+  } else if (input.now - input.lastInputAt < AUTO_SETTLE_QUIET_MS)
     return "recent_input";
   if (input.focused) return "focused";
   return null;
@@ -93,11 +95,16 @@ function maxOf(values: readonly (number | null)[]): number | null {
   return known.length ? Math.max(...known) : null;
 }
 
-/** ms of the session's last user message or terminal input; null when unknown */
+/**
+ * ms of the session's last user message, terminal input or Claude hook
+ * event (a prompt or a turn's end, whatever flags are on); null when
+ * unknown
+ */
 export async function lastInputAt(session: Session): Promise<number | null> {
   return maxOf([
     lastDbInputAt(getDb(), session.id),
     await lastClientActivity(tmuxNameOf(session)),
+    claudeHookAt(session.id),
   ]);
 }
 
@@ -135,13 +142,7 @@ export function defaultAutoSettleDeps(): AutoSettleDeps {
   };
 }
 
-// The sessions this process auto-settled: each goes once, whatever comes after
-const shared = globalThis as typeof globalThis & {
-  __agentosAutoSettled?: Set<string>;
-};
-const settledOnce = (shared.__agentosAutoSettled ??= new Set());
-
-/** Weighs every merged, unsettled session and settles the safe ones */
+/** Weighs every recently merged, unsettled session and settles the safe ones */
 export async function autoSettlePass(
   deps: AutoSettleDeps = defaultAutoSettleDeps()
 ): Promise<number> {
@@ -149,13 +150,16 @@ export async function autoSettlePass(
   const candidates = deps.db
     .prepare(
       `SELECT * FROM sessions WHERE pr_status = 'merged'
+         AND pr_merged_at >= ?
          AND settled_at IS NULL AND paused_at IS NULL
          AND (settled_reason IS NULL OR settled_reason != ?)`
     )
-    .all(UNSETTLED_REASON) as Session[];
+    .all(
+      deps.now() - AUTO_SETTLE_RECENT_MERGE_MS,
+      UNSETTLED_REASON
+    ) as Session[];
   let settled = 0;
   for (const session of candidates) {
-    if (settledOnce.has(session.id)) continue;
     const block = autoSettleBlock({
       session,
       autoSettleOn: deps.autoSettleOn(),
@@ -168,7 +172,6 @@ export async function autoSettlePass(
     if (block) continue;
     try {
       await deps.settle(session, { reason: "pr_merged", force: false });
-      settledOnce.add(session.id);
       settled++;
     } catch (error) {
       // Busy by the time it got there (or settled meanwhile): the chip stays

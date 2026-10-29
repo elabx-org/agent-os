@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { gitKeys } from "./keys";
 import { sessionKeys } from "../sessions/keys";
+import { fetchAsUser } from "@/lib/client/user-fetch";
 import { useSharedPoll } from "@/hooks/useSharedPoll";
 
 // Re-export for convenience
@@ -545,7 +546,8 @@ export function useMergePR(workingDir: string, prNumber: number) {
 
   return useMutation({
     mutationFn: async (method: "merge" | "squash" | "rebase" = "squash") => {
-      const res = await fetch(`/api/git/pr/${prNumber}/merge`, {
+      // As the user, so the merge may settle the PR's session (M8)
+      const res = await fetchAsUser(`/api/git/pr/${prNumber}/merge`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ path: workingDir, method }),

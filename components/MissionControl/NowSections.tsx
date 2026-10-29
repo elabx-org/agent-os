@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useId, useState, type ReactNode } from "react";
 import { Check, ChevronRight } from "lucide-react";
 import { Avatar, agentAvatar } from "@/components/a/Avatar";
 import { GroupCard, GroupRow } from "@/components/a/GroupCard";
@@ -420,6 +420,7 @@ function WorkingSessionRow({
   onSettle: () => void;
 }) {
   const pr = sessionPr(session);
+  const id = useId();
   return (
     // On the card's colour: the swipe's action sits under the row
     <div className="bg-card">
@@ -434,26 +435,35 @@ function WorkingSessionRow({
           type="button"
           onClick={onOpen}
           aria-current={selected || undefined}
-          aria-label={title}
+          aria-labelledby={`${id}-title`}
+          aria-describedby={`${id}-sub${pr ? ` ${id}-pr` : ""}`}
           className="absolute inset-0"
         />
         <span className="pointer-events-none relative flex min-w-0 flex-1 items-start gap-3">
           <Avatar {...agentAvatar(session.agent_type)} />
           <span className="flex min-w-0 flex-1 flex-col gap-1.5 self-center text-left">
             <span className="min-w-0">
-              <span className="block truncate text-[16px] font-medium">
+              <span
+                id={`${id}-title`}
+                className="block truncate text-[16px] font-medium"
+              >
                 {title}
               </span>
-              <span className="text-muted-foreground mt-0.5 block truncate text-[14px]">
+              <span
+                id={`${id}-sub`}
+                className="text-muted-foreground mt-0.5 block truncate text-[14px]"
+              >
                 {subtitle}
               </span>
             </span>
             {pr && (
-              <PrChip
-                pr={pr}
-                baseBranch={session.base_branch}
-                onSettle={wantsSettleChip(session) ? onSettle : undefined}
-              />
+              <span id={`${id}-pr`} className="contents">
+                <PrChip
+                  pr={pr}
+                  baseBranch={session.base_branch}
+                  onSettle={wantsSettleChip(session) ? onSettle : undefined}
+                />
+              </span>
             )}
           </span>
         </span>
@@ -473,6 +483,8 @@ function WorkingSessionRow({
             strokeWidth={2}
             className={cn(
               "pointer-events-none relative h-4 w-4 flex-none text-[#AEAEB2] dark:text-[#636366]",
+              // Swiped open: the Settle tile stands in for it (N-Settle)
+              "[[data-swiped]_&]:invisible",
               pr && "mt-3"
             )}
           />

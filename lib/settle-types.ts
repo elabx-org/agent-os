@@ -25,10 +25,6 @@ export type SettleReason = (typeof SETTLE_REASONS)[number];
  */
 export const UNSETTLED_REASON = "unsettled";
 
-export function isSettleReason(value: unknown): value is SettleReason {
-  return (SETTLE_REASONS as readonly unknown[]).includes(value);
-}
-
 /** Settled: its tmux ended, it stays listed and its chat stays readable */
 export function isSettled(
   session: { settled_at?: number | null } | null | undefined
@@ -157,6 +153,11 @@ export interface SettleError {
 
 /** No user message or terminal input for this long before auto-settle */
 export const AUTO_SETTLE_QUIET_MS = 30 * 60 * 1000;
+/**
+ * Only PRs merged this recently settle on their own: older merges (the
+ * poller's first pass backfills them) keep the chip
+ */
+export const AUTO_SETTLE_RECENT_MERGE_MS = 24 * 60 * 60 * 1000;
 /** The PR poller's period (flag prPoller) */
 export const PR_POLL_MS = 3 * 60 * 1000;
 
@@ -166,6 +167,7 @@ export type AutoSettleBlock =
   | "not_idle"
   | "queued"
   | "recent_input"
+  | "unknown_input"
   | "focused"
   | "undone"
   | "ended";
@@ -180,7 +182,10 @@ export interface AutoSettleInput {
   /** session-watch's status: only "idle" (or "dead") may settle */
   status: string | null;
   pendingQueue: number;
-  /** ms of the last user message or terminal input, null when unknown */
+  /**
+   * ms of the last user message, terminal input or Claude hook event;
+   * null when unknown (blocks unless its tmux is gone)
+   */
   lastInputAt: number | null;
   /**
    * Shown in a visible client's focused pane (isWatching in

@@ -6,17 +6,16 @@
  */
 
 import { execFile } from "child_process";
-import fs from "fs";
-import path from "path";
 import { promisify } from "util";
 import type Database from "better-sqlite3";
+import { gitCommonDir } from "./git-common-dir";
 import { getDb, queries, type Project, type Session } from "./db";
 import { isPaused } from "./handoff-types";
 import { savePausedHistory } from "./paused-history";
 import { isWatching, readPushConfig } from "./push/config";
 import { recordNotification, setDelivered } from "./push/history";
 import { sendPush } from "./push/send";
-import { cancelItem, listQueue } from "./queue/store";
+import { listQueue } from "./queue/store";
 import type { QueueItem } from "./queue/types";
 import { latest } from "./session-watch";
 import { isRunning, launchSession, tmuxNameOf } from "./session-launch";
@@ -44,7 +43,10 @@ export class SettleRefused extends Error {
 
 export interface SettleOptions {
   reason: SettleReason;
-  /** Settle although it is working or has queued messages */
+  /**
+   * Settle although it is working or has queued messages (they stay
+   * queued, held until an Undo)
+   */
   force?: boolean;
 }
 
@@ -68,8 +70,6 @@ export interface SettleDeps {
   status(sessionId: string): string | null;
   /** Pending and sending queue items */
   listQueue(sessionId: string): QueueItem[];
-  /** pending -> cancelled; false when it was not pending */
-  cancelItem(sessionId: string, itemId: number): boolean;
   isRunning(session: Session): Promise<boolean>;
   /**
    * Keeps the conversation the pane shows as claude_session_id, so the
@@ -119,29 +119,14 @@ export function createSettle(deps: SettleDeps) {
         reason: "already_settled",
       });
     }
-    if (busy(deps, session)) {
-      if (!options.force) {
-        throw new SettleRefused(409, {
-          error: "This session is working or has queued messages",
-          reason: "busy",
-        });
-      }
-      // The user agreed: what was queued won't be sent
-      for (const item of deps.listQueue(session.id)) {
-        deps.cancelItem(session.id, item.id);
-      }
-    }
-
-    const running = await deps.isRunning(session).catch(() => false);
-    if (running) {
-      const keep = isClaude(session)
-        ? deps.rememberTranscript(session)
-        : deps.keepHistory(session);
-      await keep.catch((error) => {
-        console.error("[settle] keeping the chat:", error);
+    if (!options.force && busy(deps, session)) {
+      throw new SettleRefused(409, {
+        error: "This session is working or has queued messages",
+        reason: "busy",
       });
     }
 
+    // settled_at before any await: from here readiness holds what is sent
     const { changes } = deps.db
       .prepare(
         `UPDATE sessions SET settled_at = ?, settled_reason = ?,
@@ -155,8 +140,16 @@ export function createSettle(deps: SettleDeps) {
         reason: "already_settled",
       });
     }
+    // Queued messages are kept: held while settled, sent after an Undo
 
+    const running = await deps.isRunning(session).catch(() => false);
     if (running) {
+      const keep = isClaude(session)
+        ? deps.rememberTranscript(session)
+        : deps.keepHistory(session);
+      await keep.catch((error) => {
+        console.error("[settle] keeping the chat:", error);
+      });
       await deps.kill(session).catch((error) => {
         // Gone already is as good as ended
         console.error("[settle] ending tmux:", error);
@@ -206,7 +199,8 @@ export function createSettle(deps: SettleDeps) {
 
   async function settlePrOwner(
     repoDir: string,
-    prNumber: number
+    prNumber: number,
+    options: { settle: boolean }
   ): Promise<Session | null> {
     const candidates = deps.db
       .prepare(
@@ -227,9 +221,13 @@ export function createSettle(deps: SettleDeps) {
            WHERE id = ?`
         )
         .run(deps.now(), candidate.id);
+      if (!options.settle) return null;
+      // Working or with messages queued: it keeps the "merged · Settle" chip
       return settle(getSession(deps.db, candidate.id)!, {
         reason: "pr_merged_here",
-        force: true,
+      }).catch((error) => {
+        if (error instanceof SettleRefused) return null;
+        throw error;
       });
     }
     return null;
@@ -272,26 +270,11 @@ function announceSettled(session: Session): void {
   });
 }
 
-async function gitCommonDir(dir: string): Promise<string | null> {
-  try {
-    const { stdout } = await execFileAsync(
-      "git",
-      ["-C", dir, "rev-parse", "--git-common-dir"],
-      { timeout: 5000 }
-    );
-    const common = path.resolve(dir, stdout.trim());
-    return await fs.promises.realpath(common).catch(() => common);
-  } catch {
-    return null;
-  }
-}
-
 const liveDeps = (): SettleDeps => ({
   db: getDb(),
   now: Date.now,
   status: (id) => latest(id)?.status ?? null,
   listQueue,
-  cancelItem,
   isRunning,
   rememberTranscript: async (session) => {
     const located = await locateTranscript(session);
@@ -338,12 +321,43 @@ export async function unsettleSession(
 }
 
 /**
- * After a merge from Agent-OS: settles the session whose branch the PR
- * was (pr_number in that repo), whatever it is doing. Null when none
+ * After a merge from Agent-OS: marks the PR merged on the session whose
+ * branch it was (pr_number in that repo) and, with `settle`, settles it
+ * when it is idle with nothing queued. The settled session, else null
  */
 export async function settlePrOwner(
   repoDir: string,
-  prNumber: number
+  prNumber: number,
+  options: { settle: boolean }
 ): Promise<Session | null> {
-  return live().settlePrOwner(repoDir, prNumber);
+  return live().settlePrOwner(repoDir, prNumber, options);
+}
+
+/**
+ * Clears settled_at on settled sessions whose tmux runs again (a previous
+ * build, which doesn't know settled_at, opened them): they are working
+ * sessions, not settled ones. Skips settles of the last minute (their
+ * tmux is still being ended). Returns how many it cleared
+ */
+export async function reconcileSettled(
+  now: number = Date.now()
+): Promise<number> {
+  const db = getDb();
+  const settled = db
+    .prepare(
+      `SELECT * FROM sessions WHERE settled_at IS NOT NULL AND settled_at < ?`
+    )
+    .all(now - 60 * 1000) as Session[];
+  let cleared = 0;
+  for (const session of settled) {
+    if (!(await isRunning(session).catch(() => false))) continue;
+    cleared += db
+      .prepare(
+        `UPDATE sessions SET settled_at = NULL, settled_reason = ?,
+           updated_at = datetime('now')
+         WHERE id = ? AND settled_at IS NOT NULL`
+      )
+      .run(UNSETTLED_REASON, session.id).changes;
+  }
+  return cleared;
 }

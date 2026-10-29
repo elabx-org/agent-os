@@ -62,7 +62,11 @@ describe("autoSettleBlock", () => {
   test("idle, quiet, unqueued, unfocused: settles", () => {
     assert.equal(auto.autoSettleBlock(base()), null);
     assert.equal(auto.autoSettleBlock(base({ status: "dead" })), null);
-    assert.equal(auto.autoSettleBlock(base({ lastInputAt: null })), null);
+    // Unknown last use: only a session whose tmux is gone
+    assert.equal(
+      auto.autoSettleBlock(base({ status: "dead", lastInputAt: null })),
+      null
+    );
   });
 
   test("each guard blocks, in order", () => {
@@ -80,6 +84,7 @@ describe("autoSettleBlock", () => {
       [{ pendingQueue: 1 }, "queued"],
       [{ lastInputAt: NOW - 5 * MIN }, "recent_input"],
       [{ lastInputAt: NOW - types.AUTO_SETTLE_QUIET_MS + 1 }, "recent_input"],
+      [{ lastInputAt: null }, "unknown_input"],
       [{ focused: true }, "focused"],
       [{ session: session({ settled_at: NOW }), autoSettleOn: false }, "ended"],
       [{ status: "running", focused: true }, "not_idle"],
@@ -98,15 +103,15 @@ const row = (id: string) =>
   db.queries.getSession(raw()).get(id) as Session | undefined;
 
 let seq = 0;
-/** A fresh id per test: the pass remembers what it settled */
+/** A session whose PR merged ten minutes ago */
 function addMerged(patch: Record<string, unknown> = {}): string {
   const id = `s${++seq}`;
   raw()
     .prepare(
-      `INSERT INTO sessions (id, name, tmux_name, agent_type, branch_name, pr_number, pr_status)
-       VALUES (?, ?, ?, 'claude', 'feat/x', 7, 'merged')`
+      `INSERT INTO sessions (id, name, tmux_name, agent_type, branch_name, pr_number, pr_status, pr_merged_at)
+       VALUES (?, ?, ?, 'claude', 'feat/x', 7, 'merged', ?)`
     )
-    .run(id, id, `claude-${id}`);
+    .run(id, id, `claude-${id}`, NOW - 10 * MIN);
   for (const [key, value] of Object.entries(patch))
     raw().prepare(`UPDATE sessions SET ${key} = ? WHERE id = ?`).run(value, id);
   return id;
@@ -161,7 +166,8 @@ describe("autoSettlePass", () => {
     const { d, settled } = deps({
       status: async (s) => (s.id === busy ? "running" : "idle"),
       pendingQueue: (id) => (id === queued ? 2 : 0),
-      lastInputAt: async (s) => (s.id === recent ? NOW - 2 * MIN : null),
+      lastInputAt: async (s) =>
+        s.id === recent ? NOW - 2 * MIN : NOW - 60 * MIN,
       focused: (id) => id === focused,
     });
     assert.equal(await auto.autoSettlePass(d), 0);
@@ -171,6 +177,16 @@ describe("autoSettlePass", () => {
       assert.equal(s.settled_at, null);
       assert.equal(types.wantsSettleChip(s), true);
     }
+  });
+
+  test("a merge older than a day (or of unknown time) keeps the chip", async () => {
+    const old = addMerged({ pr_merged_at: NOW - 25 * 60 * MIN });
+    const unknown = addMerged({ pr_merged_at: null });
+    const { d, settled } = deps();
+    assert.equal(await auto.autoSettlePass(d), 0);
+    assert.deepEqual(settled, []);
+    for (const id of [old, unknown])
+      assert.equal(types.wantsSettleChip(row(id)!), true);
   });
 
   test("autoSettle off: nothing is weighed", async () => {

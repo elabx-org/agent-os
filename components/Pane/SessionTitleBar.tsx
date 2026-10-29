@@ -607,7 +607,7 @@ export function SessionTitleBar({
     header = (
       <div
         className={cn(
-          "native-top-inset kb-compact-hide border-border/60 bg-background @container/bar flex items-center gap-1.5 border-b py-1.5 pr-[calc(0.5rem+var(--safe-right,env(safe-area-inset-right)))] pl-[calc(0.25rem+env(safe-area-inset-left))]",
+          "native-top-inset kb-compact-hide border-border/60 bg-background @container/bar flex flex-wrap items-center gap-1.5 border-b py-1.5 pr-[calc(0.5rem+var(--safe-right,env(safe-area-inset-right)))] pl-[calc(0.25rem+env(safe-area-inset-left))]",
           wide && !isFocused && "opacity-70",
           hidden && "hidden"
         )}
@@ -676,6 +676,21 @@ export function SessionTitleBar({
           </button>
         )}
         {moreMenu}
+        {/* N-Settle: the branch's PR on its own line, under the title */}
+        {pr && session && (
+          <div className="flex basis-full pb-0.5 pl-[42px]">
+            <PrChip
+              pr={pr}
+              baseBranch={session.base_branch}
+              onSettle={
+                wantsSettleChip(session)
+                  ? () => void settle(session, title)
+                  : undefined
+              }
+              className="min-w-0"
+            />
+          </div>
+        )}
       </div>
     );
 

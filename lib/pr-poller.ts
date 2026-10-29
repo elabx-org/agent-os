@@ -8,8 +8,8 @@
 import { execFile } from "child_process";
 import { promisify } from "util";
 import os from "os";
-import path from "path";
 import type Database from "better-sqlite3";
+import { gitCommonDir } from "./git-common-dir";
 import { getDb, queries, type Project, type Session } from "./db";
 import { getFlags } from "./flags";
 import { foldChecks, isGhReady, pickPR, type GhPR } from "./pr";
@@ -20,7 +20,6 @@ import { isEnded, PR_POLL_MS } from "./settle-types";
 const execFileAsync = promisify(execFile);
 
 const GH_TIMEOUT_MS = 20_000;
-const GIT_TIMEOUT_MS = 5000;
 const GH_LIMIT = 100;
 const GH_FIELDS =
   "number,url,state,title,statusCheckRollup,headRefName,mergedAt,createdAt,isCrossRepository";
@@ -50,20 +49,6 @@ export interface PrPollDeps {
   /** gh's PRs for the repo at `dir`; null when gh can't answer */
   listPrs(dir: string): Promise<PolledPR[] | null>;
   autoSettle(): Promise<number>;
-}
-
-async function gitCommonDir(dir: string): Promise<string | null> {
-  try {
-    const { stdout } = await execFileAsync(
-      "git",
-      ["rev-parse", "--git-common-dir"],
-      { cwd: dir, timeout: GIT_TIMEOUT_MS }
-    );
-    const out = stdout.trim();
-    return out ? path.resolve(dir, out) : null;
-  } catch {
-    return null;
-  }
 }
 
 async function ghListPrs(dir: string): Promise<PolledPR[] | null> {

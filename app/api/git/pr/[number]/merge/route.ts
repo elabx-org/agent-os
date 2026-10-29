@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isGitRepo, expandPath } from "@/lib/git-status";
 import { checkGhCli, mergePR } from "@/lib/pr";
+import { getFlags } from "@/lib/flags";
 import { settlePrOwner } from "@/lib/settle";
+import { requireUser } from "@/lib/user-proof";
 
 interface RouteParams {
   params: Promise<{ number: string }>;
@@ -53,8 +55,13 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     mergePR(expanded, prNumber, method);
-    // M8: the session whose branch it was settles now
-    const settled = await settlePrOwner(expanded, prNumber).catch((error) => {
+    // M8: the session whose branch it was shows "merged"; it settles now
+    // only when the user merged it (not an agent), autoSettle is on and it
+    // is idle with nothing queued
+    const settle = getFlags().autoSettle && requireUser(request).ok;
+    const settled = await settlePrOwner(expanded, prNumber, {
+      settle,
+    }).catch((error) => {
       console.error("Settle after merge failed:", error);
       return null;
     });

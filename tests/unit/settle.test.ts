@@ -91,7 +91,6 @@ function fake(): Fake {
     now: () => 1_700_000_000_000,
     status: (id) => status.get(id) ?? null,
     listQueue: (id) => store.listQueue(id),
-    cancelItem: (id, itemId) => store.cancelItem(id, itemId),
     isRunning: async (s) => running.has(s.id),
     rememberTranscript: async (s) => {
       calls.push(`remember:${s.id}`);
@@ -159,7 +158,7 @@ describe("settle", () => {
     assert.deepEqual(f.calls, ["history:c", "kill:c"]);
   });
 
-  test("busy is refused; force cancels the queue", async () => {
+  test("busy is refused; force keeps the queue, held", async () => {
     const f = fake();
     const settle = mod.createSettle(f.deps);
     addSession("b");
@@ -182,7 +181,11 @@ describe("settle", () => {
     assert.deepEqual(f.calls, []);
 
     await settle.settle(row("b")!, { reason: "manual", force: true });
-    assert.equal(queue.queueStore(db.getDb()).listQueue("b").length, 0);
+    const kept = queue.queueStore(db.getDb()).listQueue("b");
+    assert.deepEqual(
+      kept.map((item) => [item.text, item.status]),
+      [["next", "pending"]]
+    );
     assert.ok(row("b")!.settled_at);
   });
 
@@ -290,16 +293,16 @@ describe("unsettle", () => {
 });
 
 describe("settlePrOwner", () => {
-  test("settles the busy owner in the same repo, not another repo's #N", async () => {
+  test("settles the idle owner in the same repo, not another repo's #N", async () => {
     const f = fake();
     addSession("other", { pr_number: 7, working_directory: "/elsewhere" });
     addSession("owner", { pr_number: 7, worktree_path: worktree });
     addSession("done", { pr_number: 7, settled_at: 5 });
     f.running.add("owner");
-    f.status.set("owner", "running");
+    f.status.set("owner", "idle");
     const settled = await mod
       .createSettle(f.deps)
-      .settlePrOwner(path.join(tmp, "main"), 7);
+      .settlePrOwner(path.join(tmp, "main"), 7, { settle: true });
     assert.equal(settled?.id, "owner");
     assert.equal(settled?.settled_reason, "pr_merged_here");
     assert.equal(settled?.pr_status, "merged");
@@ -309,10 +312,38 @@ describe("settlePrOwner", () => {
     assert.deepEqual(f.calls, ["remember:owner", "kill:owner"]);
   });
 
+  test("a busy owner, or settle off: only marked merged (the chip)", async () => {
+    const f = fake();
+    addSession("busy", { pr_number: 8, worktree_path: worktree });
+    f.running.add("busy");
+    f.status.set("busy", "running");
+    const settle = mod.createSettle(f.deps);
+    const main = path.join(tmp, "main");
+    assert.equal(await settle.settlePrOwner(main, 8, { settle: true }), null);
+    assert.equal(row("busy")!.pr_status, "merged");
+    assert.equal(row("busy")!.settled_at, null);
+
+    f.status.set("busy", "idle");
+    queue
+      .queueStore(db.getDb())
+      .enqueue("busy", { text: "also bump", origin: "user" });
+    assert.equal(await settle.settlePrOwner(main, 8, { settle: true }), null);
+    assert.equal(queue.queueStore(db.getDb()).listQueue("busy").length, 1);
+
+    addSession("off", { pr_number: 9, worktree_path: worktree });
+    assert.equal(await settle.settlePrOwner(main, 9, { settle: false }), null);
+    assert.equal(row("off")!.pr_status, "merged");
+    assert.equal(row("off")!.settled_at, null);
+    assert.deepEqual(f.calls, []);
+  });
+
   test("null when no session has the PR", async () => {
     const f = fake();
     addSession("a", { pr_number: 3 });
-    assert.equal(await mod.createSettle(f.deps).settlePrOwner(tmp, 4), null);
+    assert.equal(
+      await mod.createSettle(f.deps).settlePrOwner(tmp, 4, { settle: true }),
+      null
+    );
   });
 });
 

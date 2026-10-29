@@ -24,11 +24,21 @@ import {
   WorkingSection,
 } from "./NowSections";
 import { SettledSection } from "./SettledSection";
-import { SettleToasts } from "./SettleToasts";
+import { SettleToasts, useSettleToastsRoom } from "./SettleToasts";
 import { useAutoSettleToasts } from "./useAutoSettleToasts";
 import { useNowItems } from "./useNowItems";
 
 /** The mocks' page padding per posture (Main, E-iPhone, Open-Now) */
+/** The Undo toasts' sides: the page's gutters (narrow pages) */
+const TOAST_INSET: Record<LayoutMode, string> = {
+  phone: "inset-x-4",
+  "duo-closed": "left-5 right-2",
+  tabletop: "inset-x-4",
+  "duo-open": "left-6 right-5",
+  book: "left-6 right-5",
+  desktop: "left-6 right-5",
+};
+
 const PAD: Record<LayoutMode, string> = {
   phone: "px-4 pt-[15px]",
   "duo-closed": "pt-[18px] pr-2 pl-5",
@@ -112,6 +122,9 @@ export function MissionControl({
   // first prompt, the same card as above it, or starts something when
   // nothing waits
   const ref = useRef<HTMLDivElement>(null);
+  // While an Undo toast shows, the last rows can scroll clear of it
+  const toastRoom = useSettleToastsRoom();
+  const toasts = <SettleToasts inset={TOAST_INSET[mode]} fill={!wide} />;
   const list = (cardOnBase: boolean) => (
     // --home-pad-b: on a phone the list scrolls on under the tab bar
     <div
@@ -119,6 +132,13 @@ export function MissionControl({
         "min-h-0 flex-1 overflow-y-auto pb-[calc(1.5rem+var(--home-pad-b,0px))]",
         PAD[mode]
       )}
+      style={
+        toastRoom
+          ? {
+              paddingBottom: `calc(${toastRoom}px + 1.5rem + var(--home-pad-b, 0px))`,
+            }
+          : undefined
+      }
     >
       <div className="flex flex-col gap-3.5">
         {onClose && (
@@ -211,7 +231,7 @@ export function MissionControl({
         )}
       >
         {projectsView}
-        <SettleToasts />
+        {toasts}
       </div>
     );
 
@@ -246,7 +266,7 @@ export function MissionControl({
       >
         {list(false)}
       </FoldSplit>
-      <SettleToasts />
+      {toasts}
     </div>
   );
 }

@@ -319,13 +319,15 @@ describe("pollPrsOnce", () => {
 
   test("fake gh reports merged: an idle session settles exactly once", async () => {
     addSession("m1", "feat/done", "/wt/a-1");
+    // An hour after the merge: recent enough to settle on its own
+    const mergedAt = Date.parse("2026-10-20T12:00:00Z");
     const settled: string[] = [];
     const settleDeps: AutoSettleDeps = {
       db: raw(),
       autoSettleOn: () => true,
       status: async () => "idle",
       pendingQueue: () => 0,
-      lastInputAt: async () => null,
+      lastInputAt: async () => mergedAt - 60 * 60_000,
       focused: () => false,
       settle: async (session, options) => {
         settled.push(`${session.id}:${options.reason}:${options.force}`);
@@ -336,7 +338,7 @@ describe("pollPrsOnce", () => {
           .run(Date.now(), options.reason, session.id);
         return row(session.id)!;
       },
-      now: Date.now,
+      now: () => mergedAt + 60 * 60_000,
     };
     const { deps } = fakeDeps(
       {
