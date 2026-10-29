@@ -77,8 +77,8 @@ export function createQueueStore(db: Database.Database) {
     ),
     insert: db.prepare(
       `INSERT INTO session_queue
-         (session_id, position, text, attachments, origin, kind, status, not_before, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+         (session_id, position, text, attachments, sessions, origin, kind, status, not_before, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ),
     setPosition: db.prepare(
       `UPDATE session_queue SET position = ? WHERE id = ?`
@@ -133,6 +133,7 @@ export function createQueueStore(db: Database.Database) {
       position,
       item.text,
       item.attachments?.length ? JSON.stringify(item.attachments) : null,
+      item.sessions?.length ? JSON.stringify(item.sessions) : null,
       item.origin,
       item.kind ?? "message",
       status,

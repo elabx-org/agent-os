@@ -7,6 +7,7 @@ import { releasePort } from "@/lib/ports";
 import { killWorker } from "@/lib/orchestration";
 import { runInBackground } from "@/lib/async-operations";
 import { clearQueue } from "@/lib/queue/store";
+import { forgetSessionSummary } from "@/lib/session-summaries";
 import { pruneSessionTurns } from "@/lib/turns";
 
 interface RouteParams {
@@ -119,6 +120,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 function dropSessionData(session: Session) {
   try {
     clearQueue(session.id);
+    forgetSessionSummary(session.id);
   } catch (error) {
     console.error(`Failed to clear the queue of ${session.id}:`, error);
   }
