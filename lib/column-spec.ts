@@ -698,6 +698,8 @@ function nowColumn(ctx: ColumnContext): ColumnItem[] {
 /** Open-Now: New, Needs you | the other view, Changes, Files, Open beside | Find, More */
 function nowWithSession(ctx: ColumnContext): ColumnItem[] {
   return [
+    // Now beside the session: ‹ puts it away, the session takes both pages
+    ...(ctx.behind ? [item(BASE.resume)] : []),
     item(BASE.new, { prominent: true }),
     inbox(ctx),
     otherView(ctx, sep),

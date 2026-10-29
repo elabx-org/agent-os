@@ -26,7 +26,7 @@ import { GitPanelSkeleton } from "@/components/Pane/PaneSkeletons";
 import { useIsNative } from "@/hooks/useIsNative";
 import { FOLD_CLEAR, useHinge } from "@/hooks/useHinge";
 import { useLayoutMode } from "@/hooks/useLayoutMode";
-import { registerNavHandlers } from "@/lib/nav-actions";
+import { registerNavHandlers, runNav } from "@/lib/nav-actions";
 import { setHome } from "@/stores/surface";
 import { isNative, nativeCaps } from "@/lib/native-bridge";
 import { postureStore } from "@/stores/posture";
@@ -49,6 +49,7 @@ import {
   useReplying,
 } from "@/components/ReplyContext/store";
 import { PagePanel } from "@/components/ui/page-panel";
+import { PageEdge } from "@/components/ui/page-edge";
 
 const GitPanel = dynamic(
   () => import("@/components/GitPanel").then((mod) => mod.GitPanel),
@@ -439,13 +440,22 @@ export function SessionSpread({
       {/* The home: a sidebar on the web, the left page on the open Duo */}
       <div
         className={cn(
-          "kb-compact-hide bg-sidebar-background flex-shrink-0 overflow-hidden transition-all duration-200",
+          "kb-compact-hide bg-sidebar-background relative flex-shrink-0 overflow-hidden transition-all duration-200",
           !homeWidth && "shadow-xl shadow-black/10 dark:shadow-black/30",
           homeOpen && !pages && !homeWidth && (duo ? "w-1/2" : "w-[22rem]"),
           homeOpen && duo && !book && "border-border border-r"
         )}
         style={homeStyle}
       >
+        {/* On the pages Now sits beside the session: its fold-side grip
+            puts it away and the session takes both pages */}
+        {homeOpen && pages && session && (
+          <PageEdge
+            side="right"
+            label="Back to session"
+            onClose={() => runNav("resume")}
+          />
+        )}
         {/* The page's own colour edge to edge (Open-Now); the bottom inset
             keeps the last row clear of the open Duo's round screen corner */}
         <div

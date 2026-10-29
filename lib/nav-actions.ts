@@ -268,6 +268,8 @@ function goBack() {
     mobileNavStore.homeTab = "now";
     return;
   }
+  // Now over (or beside) a session: back to it
+  if (surfaceStore.home && surfaceStore.behind) return navStore.resume();
   // The closed Duo's Changes and Files go back to the conversation (E-Git,
   // E-Files); elsewhere their column's back is Now's
   const view = mobileNavStore.viewMode;

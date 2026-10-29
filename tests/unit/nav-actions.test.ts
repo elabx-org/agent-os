@@ -306,3 +306,16 @@ test("registerNavHandlers: overlapping registrations undo only their own", () =>
   stopSwap();
   navStore.openFind = original;
 });
+
+test("back: Now with a session behind it goes back to the session", () => {
+  reset();
+  const { calls, stop } = spyHandlers();
+  surfaceStore.home = true;
+  surfaceStore.behind = true;
+  mobileNavStore.homeTab = "now";
+  runNav("back");
+  assert.deepEqual(calls, ["resume"]);
+  surfaceStore.home = false;
+  surfaceStore.behind = false;
+  stop();
+});
