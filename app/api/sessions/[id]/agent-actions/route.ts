@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
+import { listAgentActions } from "@/lib/agent-actions";
 
 // GET /api/sessions/[id]/agent-actions?since=ms - {actions: AgentAction[]}
 export async function GET(
-  _request: NextRequest,
-  _context: { params: Promise<{ id: string }> }
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  return NextResponse.json({ error: "Not implemented" }, { status: 501 });
+  const { id } = await params;
+  const since = Number(request.nextUrl.searchParams.get("since")) || 0;
+  return NextResponse.json({ actions: listAgentActions(id, since) });
 }

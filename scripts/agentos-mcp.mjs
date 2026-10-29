@@ -9,8 +9,9 @@
  * http://localhost:3011), which needs no sign-in from inside the machine.
  *
  * Permission decisions stay with the user: every request is marked as an
- * agent's (x-agentos-origin: agent), and the server refuses an agent's
- * answer to a permission request and its auto-approve.
+ * agent's (x-agentos-origin: agent, plus x-agentos-actor: its own tmux
+ * session), and the server refuses an agent's answer to a permission
+ * request, its auto-approve and any change to a permission mode.
  */
 
 import { execFileSync } from "node:child_process";
@@ -26,12 +27,18 @@ const PERMISSION_USER_ONLY =
   "Permission requests can only be answered by the user in Agent-OS. Ask the user.";
 
 async function api(path, options = {}) {
+  // Changing a session's permission mode is the user's, not a tool
+  if (/\/permission-mode(\/|\?|$)/.test(path)) {
+    throw new Error(PERMISSION_USER_ONLY);
+  }
   const res = await fetch(`${BASE}${path}`, {
     ...options,
     headers: {
       "Content-Type": "application/json",
       ...options.headers,
       "X-AgentOS-Origin": "agent",
+      // Who is asking, for the user's record of what agents tried
+      ...(ownTmux ? { "X-AgentOS-Actor": ownTmux } : {}),
     },
     body: options.body === undefined ? undefined : JSON.stringify(options.body),
   });

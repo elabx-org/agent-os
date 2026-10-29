@@ -9,6 +9,8 @@ import {
   PERMISSION_USER_ONLY,
   readScreenPrompt as readPrompt,
 } from "@/lib/agent-origin";
+import { agentActor, recordAgentAction } from "@/lib/agent-actions";
+import { requireUser } from "@/lib/user-proof";
 
 const execFileAsync = promisify(execFile);
 
@@ -41,8 +43,10 @@ export async function GET(
 
 // POST /api/sessions/[id]/prompt - Answer it: { index, label }
 // The label must still match, so a stale tap can't answer a different prompt.
-// From an agent (x-agentos-origin: agent) only a question can be answered:
-// permission requests are the user's.
+// Without proof that it's the user (lib/user-proof.ts), including every
+// request from an agent (x-agentos-origin: agent), only a question can be
+// answered: permission requests are the user's. Agents' answers and refused
+// attempts go to agent_actions, for the permission card.
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -72,12 +76,28 @@ export async function POST(
     );
   }
 
-  // Classified as the Needs you card does; can't tell means permission
-  if (isAgentOrigin(request) && !(await agentMayAnswer(session, prompt))) {
-    return NextResponse.json(
-      { error: PERMISSION_USER_ONLY, permission: true },
-      { status: 403 }
-    );
+  const fromAgent = isAgentOrigin(request);
+  const proof = requireUser(request);
+  if (!proof.ok) {
+    const audit = {
+      actorTmux: agentActor(request),
+      targetSessionId: session.id,
+      action: "prompt_answer" as const,
+      detail: label,
+    };
+    // Classified as the Needs you card does; can't tell means permission
+    if (!(await agentMayAnswer(session, prompt))) {
+      // no_proof is the user's own tab with a cookie from before a restart:
+      // the client re-proves and retries, so it isn't an agent's attempt
+      if (proof.reason !== "no_proof") {
+        recordAgentAction({ ...audit, allowed: false });
+      }
+      return NextResponse.json(
+        { error: PERMISSION_USER_ONLY, permission: true, reason: proof.reason },
+        { status: 403 }
+      );
+    }
+    if (fromAgent) recordAgentAction({ ...audit, allowed: true });
   }
 
   // Move the ❯ cursor to the option, then confirm. Works for numbered and

@@ -7,6 +7,8 @@ import { exec } from "child_process";
 import { randomBytes } from "crypto";
 import { scheduleStoreSync } from "./lib/store-sync";
 import { startPushWatcher } from "./lib/push/watcher";
+import { startTickers } from "./lib/tickers";
+import { issueUserProof } from "./lib/user-proof";
 import { registerMcp } from "./lib/register-mcp";
 import {
   authConfig,
@@ -246,6 +248,7 @@ app.prepare().then(() => {
         deny(req, res);
         return;
       }
+      issueUserProof(req, res);
       await handle(req, res, parsedUrl);
     } catch (err) {
       console.error("Error occurred handling", req.url, err);
@@ -302,6 +305,7 @@ app.prepare().then(() => {
     console.log(`> Agent-OS ready on http://${hostname}:${port}`);
     scheduleStoreSync();
     startPushWatcher();
+    startTickers();
     registerMcp(port).catch(() => {});
   });
 });

@@ -1,0 +1,197 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import type { IncomingMessage, ServerResponse } from "node:http";
+
+// No auth.json here: sign-in is off (see user-proof-auth.test.ts for on)
+process.env.AGENT_OS_HOME = mkdtempSync(path.join(tmpdir(), "agentos-proof-"));
+for (const key of [
+  "OIDC_ISSUER",
+  "OIDC_CLIENT_ID",
+  "OIDC_CLIENT_SECRET",
+  "AGENT_OS_PUBLIC_URL",
+  "AUTH_SECRET",
+]) {
+  delete process.env[key];
+}
+
+import {
+  issueUserProof,
+  requireUser,
+  userSecret,
+  USER_PROOF_COOKIE,
+} from "../../lib/user-proof";
+
+const HOST = "agent.example.com";
+
+function post(headers: Record<string, string>): Request {
+  return new Request(`http://${HOST}/api/sessions/s1/prompt`, {
+    method: "POST",
+    headers: new Headers(headers),
+  });
+}
+
+const browser = (extra: Record<string, string> = {}) =>
+  post({
+    host: HOST,
+    origin: `https://${HOST}`,
+    "sec-fetch-site": "same-origin",
+    cookie: `other=1; ${USER_PROOF_COOKIE}=${userSecret()}`,
+    ...extra,
+  });
+
+test("userSecret is stable for the process and lives on globalThis", () => {
+  assert.equal(userSecret(), userSecret());
+  assert.ok(userSecret().length >= 43);
+  assert.equal(
+    (globalThis as { __agentosUserSecret?: string }).__agentosUserSecret,
+    userSecret()
+  );
+});
+
+test("requireUser: the user's browser passes", () => {
+  assert.deepEqual(requireUser(browser()), { ok: true });
+});
+
+test("requireUser: an agent's header fails even with a valid cookie", () => {
+  assert.deepEqual(requireUser(browser({ "x-agentos-origin": "Agent" })), {
+    ok: false,
+    reason: "agent_origin",
+  });
+});
+
+test("requireUser: cross-site, missing fetch metadata or a foreign Origin", () => {
+  const cross = { ok: false, reason: "cross_site" };
+  assert.deepEqual(
+    requireUser(browser({ "sec-fetch-site": "cross-site" })),
+    cross
+  );
+  assert.deepEqual(
+    requireUser(browser({ "sec-fetch-site": "same-site" })),
+    cross
+  );
+  assert.deepEqual(
+    requireUser(browser({ origin: "https://evil.example.com" })),
+    cross
+  );
+  assert.deepEqual(requireUser(browser({ origin: "null" })), cross);
+  // curl: cookie stolen or not, no browser metadata
+  assert.deepEqual(
+    requireUser(
+      post({ host: HOST, cookie: `${USER_PROOF_COOKIE}=${userSecret()}` })
+    ),
+    cross
+  );
+});
+
+test("requireUser: behind the proxy, Origin may match X-Forwarded-Host", () => {
+  assert.deepEqual(
+    requireUser(browser({ host: "localhost:3011", "x-forwarded-host": HOST })),
+    { ok: true }
+  );
+});
+
+test("requireUser: missing or stale cookie is no_proof", () => {
+  const noProof = { ok: false, reason: "no_proof" };
+  assert.deepEqual(requireUser(browser({ cookie: "other=1" })), noProof);
+  // A cookie from before a server restart (other per-boot secret)
+  assert.deepEqual(
+    requireUser(browser({ cookie: `${USER_PROOF_COOKIE}=stale-secret` })),
+    noProof
+  );
+  assert.deepEqual(
+    requireUser(
+      browser({ cookie: `${USER_PROOF_COOKIE}=${userSecret().slice(1)}x` })
+    ),
+    noProof
+  );
+});
+
+// --- issueUserProof ---
+
+function fakeRes() {
+  const headers = new Map<string, string | string[]>();
+  return {
+    headers,
+    getHeader: (name: string) => headers.get(name.toLowerCase()),
+    setHeader: (name: string, value: string | string[]) => {
+      headers.set(name.toLowerCase(), value);
+    },
+  };
+}
+
+function navigation(headers: Record<string, string>, method = "GET") {
+  return {
+    method,
+    headers: {
+      host: HOST,
+      "sec-fetch-mode": "navigate",
+      "sec-fetch-dest": "document",
+      "sec-fetch-site": "none",
+      ...headers,
+    },
+    socket: {},
+  } as unknown as IncomingMessage;
+}
+
+function issued(req: IncomingMessage, res = fakeRes()): string[] {
+  issueUserProof(req, res as unknown as ServerResponse);
+  const value = res.headers.get("set-cookie");
+  return value === undefined ? [] : Array.isArray(value) ? value : [value];
+}
+
+test("issueUserProof: a page navigation gets the cookie", () => {
+  const [cookie, ...rest] = issued(navigation({}));
+  assert.equal(rest.length, 0);
+  assert.equal(cookie.split(";")[0], `${USER_PROOF_COOKIE}=${userSecret()}`);
+  assert.match(cookie, /; HttpOnly/);
+  assert.match(cookie, /; SameSite=Strict/);
+  assert.match(cookie, /; Path=\//);
+  assert.doesNotMatch(cookie, /Max-Age|Secure/);
+});
+
+test("issueUserProof: Secure behind an https proxy", () => {
+  const [cookie] = issued(navigation({ "x-forwarded-proto": "https" }));
+  assert.match(cookie, /; Secure/);
+});
+
+test("issueUserProof: the proof iframe re-issues a stale cookie", () => {
+  const req = navigation({
+    "sec-fetch-dest": "iframe",
+    "sec-fetch-site": "same-origin",
+    cookie: `${USER_PROOF_COOKIE}=stale-secret`,
+  });
+  const [cookie] = issued(req);
+  const value = cookie.split(";")[0];
+  // The retried request with the new cookie passes
+  assert.deepEqual(requireUser(browser({ cookie: value })), { ok: true });
+});
+
+test("issueUserProof: nothing for fetches, cross-site, agents or a valid cookie", () => {
+  assert.deepEqual(issued(navigation({ "sec-fetch-mode": "cors" })), []);
+  assert.deepEqual(issued(navigation({ "sec-fetch-dest": "empty" })), []);
+  assert.deepEqual(issued(navigation({ "sec-fetch-site": "cross-site" })), []);
+  assert.deepEqual(issued(navigation({ "sec-fetch-site": "same-site" })), []);
+  assert.deepEqual(issued(navigation({ "x-agentos-origin": "agent" })), []);
+  assert.deepEqual(issued(navigation({}, "POST")), []);
+  // curl: no fetch metadata at all
+  assert.deepEqual(
+    issued({ method: "GET", headers: { host: HOST }, socket: {} } as never),
+    []
+  );
+  assert.deepEqual(
+    issued(navigation({ cookie: `${USER_PROOF_COOKIE}=${userSecret()}` })),
+    []
+  );
+});
+
+test("issueUserProof: keeps a Set-Cookie already on the response", () => {
+  const res = fakeRes();
+  res.setHeader("Set-Cookie", "a=1");
+  const cookies = issued(navigation({}), res);
+  assert.equal(cookies.length, 2);
+  assert.equal(cookies[0], "a=1");
+  assert.ok(cookies[1].startsWith(`${USER_PROOF_COOKIE}=`));
+});

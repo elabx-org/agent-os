@@ -7,7 +7,6 @@
 
 import { execFile } from "child_process";
 import { promisify } from "util";
-import type { NextRequest } from "next/server";
 import type { Session } from "@/lib/db";
 import {
   parsePermissionPrompt,
@@ -23,7 +22,7 @@ export const AGENT_ORIGIN_HEADER = "x-agentos-origin";
 export const PERMISSION_USER_ONLY =
   "Permission requests can only be answered by the user in Agent-OS. Ask the user.";
 
-export function isAgentOrigin(request: NextRequest): boolean {
+export function isAgentOrigin(request: Request): boolean {
   return request.headers.get(AGENT_ORIGIN_HEADER)?.toLowerCase() === "agent";
 }
 
