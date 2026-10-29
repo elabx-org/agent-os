@@ -128,7 +128,7 @@ export function DesktopSidebar({
     if (!isMacLike()) setFindKey("Ctrl K");
   }, []);
 
-  // A paused (handed-off) session neither needs you nor works
+  // A paused (handed-off) or settled session neither needs you nor works
   const active = useMemo(() => withoutPaused(sessions), [sessions]);
   const { waiting } = useNeedsYou(active, sessionStatuses);
   // At a usage limit (M6): their own section, oldest limit first

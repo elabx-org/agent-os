@@ -26,6 +26,7 @@ import {
   ArrowRightLeft,
   Play,
   MessageSquare,
+  CircleCheck,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -56,7 +57,10 @@ import {
   STATE_WORD,
 } from "@/lib/agent-state";
 import { sessionState } from "@/lib/paused";
-import { isPaused } from "@/lib/handoff-types";
+import { isEnded, sessionPr, wantsSettleChip } from "@/lib/settle-types";
+import { canSettle } from "@/lib/settle-views";
+import { useSettleActions } from "@/components/Session/settle-action";
+import { PrChip } from "@/components/a/PrChip";
 import { useGitStatus } from "@/data/git/queries";
 import {
   Crumb,
@@ -162,6 +166,9 @@ export function SessionTitleBar({
     useSpreadPanes()?.mode === "fold" && !!session && besidePills();
   const titles = useListTitles(session ? [session] : []);
   const { copy } = useCopyToClipboard();
+  // N-Settle: end its tmux, keep its chat (⋯ Settle, the PR chip's Settle)
+  const { settle } = useSettleActions();
+  const pr = session ? sessionPr(session) : null;
   // N-Switch: the header's model chip (or ⋯ where it has no room) opens it
   const [switchOpen, setSwitchOpen] = useState(false);
   const switchable = canSwitch(session);
@@ -451,6 +458,12 @@ export function SessionTitleBar({
               Agent and model
             </DropdownMenuItem>
           )}
+        {session && canSettle(session) && (
+          <DropdownMenuItem onSelect={() => void settle(session, title)}>
+            <CircleCheck className="h-4 w-4" />
+            Settle
+          </DropdownMenuItem>
+        )}
         {session && (
           <DropdownMenuItem
             onSelect={async () => {
@@ -521,8 +534,21 @@ export function SessionTitleBar({
                   className="max-w-[220px] @max-[640px]/bar:hidden"
                 />
               )}
-              {/* Handed off: no running agent to set a mode on */}
-              {!isPaused(info.session) && (
+              {/* The branch's PR; merged and still running, Settle */}
+              {pr && (
+                <PrChip
+                  pr={pr}
+                  baseBranch={info.session.base_branch}
+                  onSettle={
+                    wantsSettleChip(info.session)
+                      ? () => void settle(info.session, info.title)
+                      : undefined
+                  }
+                  className="shrink-0 @max-[760px]/bar:hidden"
+                />
+              )}
+              {/* Handed off or settled: no running agent to set a mode on */}
+              {!isEnded(info.session) && (
                 <PermissionChip
                   session={info.session}
                   variant="header"
