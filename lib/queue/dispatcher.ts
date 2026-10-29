@@ -6,7 +6,7 @@
 
 import { getDb, queries, type Session } from "../db";
 import { claudeHookAt } from "../claude-state";
-import { flagOnFor, tickersDisabled } from "../flags";
+import { flagOnFor, getFlags, tickersDisabled } from "../flags";
 import { readiness, type Readiness } from "../session-ready";
 import { onEdge, type WatchEdge } from "../session-watch";
 import { sendText } from "../tmux-send";
@@ -38,6 +38,11 @@ export interface DispatcherDeps {
   send(session: Session, text: string): Promise<void>;
   /** Flag `queue` for this session */
   queueOn(sessionId: string): boolean;
+  /**
+   * Flag `autoResume`: M6's resume items go only while it is on, with or
+   * without the queue. Absent: they never go
+   */
+  resumeOn?(): boolean;
   beforeAgentSend(session: Session, text: string): Promise<void>;
   now(): number;
   sleep(ms: number): Promise<void>;
@@ -159,11 +164,13 @@ export function createDispatcher(
     if (state.locks.has(sessionId)) return;
     await withLock(sessionId, async () => {
       const session = deps.getSession(sessionId);
-      if (!session || !deps.queueOn(sessionId)) return;
+      if (!session) return;
       const head = store.head(sessionId);
-      const due =
-        !!head && (head.notBefore === null || head.notBefore <= deps.now());
-      if (!due) return;
+      if (!head) return;
+      const on =
+        head.kind === "resume" ? !!deps.resumeOn?.() : deps.queueOn(sessionId);
+      if (!on) return;
+      if (head.notBefore !== null && head.notBefore > deps.now()) return;
       if (awaiting(sessionId)) {
         await read(session);
         return;
@@ -256,6 +263,7 @@ function dispatcher(): Dispatcher {
       readiness,
       send: (session, text) => sendText(session, text, { pressEnter: true }),
       queueOn: (id) => flagOnFor("queue", id),
+      resumeOn: () => getFlags().autoResume,
       beforeAgentSend,
       now: Date.now,
       sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
@@ -290,6 +298,11 @@ export function startDispatcher(): void {
       busy = false;
     }
   }, RECHECK_MS).unref();
+}
+
+/** One look at a session now (Resume now): sends its head when ready */
+export function serviceNow(sessionId: string): Promise<void> {
+  return live().service(sessionId);
 }
 
 /**
