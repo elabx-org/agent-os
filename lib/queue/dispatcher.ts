@@ -5,6 +5,7 @@
  */
 
 import { getDb, queries, type Session } from "../db";
+import { claudeHookAt } from "../claude-state";
 import { flagOnFor, tickersDisabled } from "../flags";
 import { restartWithStoredMode } from "../apply-pending-mode";
 import { launchSession } from "../session-launch";
@@ -45,6 +46,12 @@ export interface DispatcherDeps {
   pendingModeSessions(): string[];
   now(): number;
   sleep(ms: number): Promise<void>;
+  /**
+   * When the agent's hooks last reported (ms), if it has hooks: an event
+   * after the send means it took the message, even when the turn was over
+   * before a read saw it busy
+   */
+  hookAt?(session: Session): number | null;
 }
 
 export interface DispatcherState {
@@ -52,10 +59,12 @@ export interface DispatcherState {
   locks: Map<string, Promise<unknown>>;
   /** Session -> until when the next send waits for the agent to start */
   awaitBusy: Map<string, number>;
+  /** Session -> when its last send started */
+  sentAt: Map<string, number>;
 }
 
 export function newDispatcherState(): DispatcherState {
-  return { locks: new Map(), awaitBusy: new Map() };
+  return { locks: new Map(), awaitBusy: new Map(), sentAt: new Map() };
 }
 
 /** The text that goes in: the undo notice first, attachments after */
@@ -93,7 +102,10 @@ export function createDispatcher(
   function awaiting(sessionId: string): boolean {
     const until = state.awaitBusy.get(sessionId);
     if (until === undefined) return false;
-    if (deps.now() < until) return true;
+    const session = deps.hookAt ? deps.getSession(sessionId) : null;
+    const hookAt = session ? deps.hookAt!(session) : null;
+    const sent = state.sentAt.get(sessionId) ?? Infinity;
+    if (deps.now() < until && !(hookAt !== null && hookAt >= sent)) return true;
     state.awaitBusy.delete(sessionId);
     return false;
   }
@@ -121,6 +133,7 @@ export function createDispatcher(
         restoreNotice();
         return false;
       }
+      state.sentAt.set(session.id, deps.now());
       await deps.send(session, text);
     } catch (error) {
       const why = error instanceof Error ? error.message : String(error);
@@ -163,6 +176,7 @@ export function createDispatcher(
 
       // Never while busy: it is idle at its prompt now
       if (pendingMode) {
+        state.sentAt.set(sessionId, deps.now());
         await deps.applyPendingMode(session);
         state.awaitBusy.set(sessionId, deps.now() + BUSY_WAIT_MS);
         return;
@@ -273,6 +287,8 @@ function dispatcher(): Dispatcher {
         (pendingMode.all() as { id: string }[]).map((r) => r.id),
       now: Date.now,
       sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+      hookAt: (session) =>
+        session.agent_type === "claude" ? claudeHookAt(session.id) : null,
     },
     shared.__agentosDispatch.state
   );

@@ -487,7 +487,6 @@ export function ChatView({
             )}
           </div>
         )}
-        {deck && <DeckStateLine session={session} active={active} />}
         <div
           ref={scrollRef}
           {...quoteMenu.handlers}
@@ -585,6 +584,14 @@ export function ChatView({
           {/* On the base, nearest the work above: the answer Claude is
           waiting for, or Stop / Changes / Terminal. The composer comes last,
           within the thumbs' reach. */}
+          {/* The deck's first line, just under the fold (Fold-Chat) */}
+          {deck && (
+            <DeckStateLine
+              session={session}
+              active={active}
+              className="-mx-2.5 pt-0"
+            />
+          )}
           {deckControls && (
             <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-2 pt-1.5 pb-3">
               {needsYou && hasCard ? (

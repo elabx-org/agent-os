@@ -20,9 +20,11 @@ import { STATE_WORD } from "@/lib/agent-state";
 export function DeckStateLine({
   session,
   active,
+  className,
 }: {
   session: Session;
   active: boolean;
+  className?: string;
 }) {
   const { state, now, plan } = useSessionActivity(session, {
     active,
@@ -42,7 +44,7 @@ export function DeckStateLine({
     .join(" · ");
 
   return (
-    <div className="shrink-0 px-6 pt-2 pb-1">
+    <div className={cn("shrink-0 px-6 pt-2 pb-1", className)}>
       <button
         type="button"
         onClick={openLiveSheet}

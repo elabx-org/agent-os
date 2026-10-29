@@ -326,7 +326,17 @@ export function ToolRun({
   onShowWorkflow?: (runId: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const lines = toolLines(tools, results);
+  // The plan chip shows the plan, and a question still open is the
+  // needs-you card: neither is a line here
+  const lines = toolLines(tools, results).filter(
+    (line) =>
+      line.kind !== "plan" &&
+      !(
+        line.kind === "tool" &&
+        line.running &&
+        line.tool.name === "AskUserQuestion"
+      )
+  );
   const hidden = expanded ? 0 : Math.max(0, lines.length - TOOL_RUN_VISIBLE);
 
   // Consecutive card lines share a card; a known agent stands alone

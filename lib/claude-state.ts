@@ -286,6 +286,17 @@ function readLine(file: string): string | null {
 }
 
 /** What the session's hooks and status line last recorded */
+/**
+ * When Claude's hooks last wrote this session's state (ms), or null: any
+ * hook event after a send means Claude took the message in
+ */
+export function claudeHookAt(sessionId: string): number | null {
+  if (!SESSION_ID.test(sessionId)) return null;
+  const file = readJson(path.join(stateDir(sessionId), "state.json"));
+  const at = obj(file?.data)?.updated_at;
+  return typeof at === "number" ? at : null;
+}
+
 export function readClaudeState(sessionId: string): ClaudeState {
   if (!SESSION_ID.test(sessionId)) return EMPTY_CLAUDE_STATE;
   const dir = stateDir(sessionId);

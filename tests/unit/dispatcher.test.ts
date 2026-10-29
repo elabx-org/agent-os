@@ -57,6 +57,8 @@ function harness(
     /** Sessions being pasted into now, shared to catch overlapping pastes */
     pasting?: Set<string>;
     overlaps?: string[];
+    /** The agent's last hook event (ms) */
+    hookAt?: () => number | null;
   } = {}
 ) {
   const pasting = opts.pasting ?? new Set<string>();
@@ -106,6 +108,7 @@ function harness(
           .map((s) => s.id),
       now: () => clock.now,
       sleep: () => new Promise((r) => setImmediate(r)),
+      ...(opts.hookAt && { hookAt: opts.hookAt }),
     },
     opts.state
   );
@@ -157,6 +160,20 @@ describe("dispatcher", () => {
     h.clock.now += 20_001;
     await h.d.service("s1");
     assert.equal(h.sent.length, 3);
+  });
+
+  test("a hook event after the send ends the wait (a turn too short to see)", async () => {
+    let hookAt: number | null = null;
+    const h = harness({ hookAt: () => hookAt });
+    add("s1", "one");
+    add("s1", "two");
+    hookAt = h.clock.now - 5; // before the send: not its pickup
+    await h.d.service("s1");
+    await h.d.service("s1");
+    assert.equal(h.sent.length, 1);
+    hookAt = h.clock.now + 1;
+    await h.d.service("s1");
+    assert.equal(h.sent.length, 2);
   });
 
   test("an edge to running ends the wait", async () => {
