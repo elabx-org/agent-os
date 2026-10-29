@@ -171,7 +171,8 @@ function MoreMenu(props: MoreProps) {
         {inSession && (
           <DropdownMenuItem onSelect={go("scripts")}>Scripts</DropdownMenuItem>
         )}
-        {inSession && movable && (
+        {/* Over a session, or beside Now on a wide screen */}
+        {movable && (inSession || (surface === "now" && wide)) && (
           <DropdownMenuItem onSelect={() => openMoveSheet(movable)}>
             Move to a worktree
           </DropdownMenuItem>
