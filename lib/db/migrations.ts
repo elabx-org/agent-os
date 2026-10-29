@@ -470,6 +470,18 @@ const migrations: Migration[] = [
       `);
     }),
   },
+  {
+    id: 29,
+    name: "add_usage_limit_to_sessions",
+    up: atomic((db) => {
+      // Usage-limit "Limited" state and its resume (lib/limits)
+      addColumnIfMissing(db, "sessions", "limited_at", "INTEGER");
+      addColumnIfMissing(db, "sessions", "limited_until", "INTEGER");
+      addColumnIfMissing(db, "sessions", "limit_kind", "TEXT");
+      addColumnIfMissing(db, "sessions", "resume_policy", "TEXT");
+      addColumnIfMissing(db, "sessions", "resume_text", "TEXT");
+    }),
+  },
 ];
 
 export function runMigrations(db: Database.Database): void {

@@ -11,9 +11,12 @@ import type { SessionStatus } from "@/components/views/types";
 import {
   dbTimeMs,
   fromSessionStatus,
+  sessionState,
   STATE_WORD,
   type AgentState,
 } from "@/lib/agent-state";
+import { limitStateOf } from "@/lib/limits/types";
+import { resetTime } from "@/components/Chat/limited-model";
 import { mobileNavStore } from "@/stores/mobileNav";
 import { useGitStatus, usePRStatus } from "@/data/git/queries";
 import { useDevServersQuery } from "@/data/dev-servers";
@@ -212,7 +215,10 @@ export function useSessionActivity(
   const dir = session?.working_directory ?? "";
   const { statuses } = useSnapshot(mobileNavStore);
   const status = statuses[id] as SessionStatus | undefined;
-  const state = fromSessionStatus(status?.status ?? "idle");
+  // At a usage limit it is Limited, not waiting for you (M6)
+  const state = session
+    ? sessionState(session, status?.status)
+    : fromSessionStatus(status?.status ?? "idle");
   const on = active && !!session;
 
   const { data: prompt } = useSessionPrompt(id, {
@@ -285,6 +291,10 @@ export function useSessionActivity(
           startedAt: doing.startedAt,
         }
       : { label: "Working", startedAt: since };
+  } else if (state === "limited" && session) {
+    // "Limited · resets 3:40 pm"
+    const at = resetTime(limitStateOf(session).limitedUntil);
+    now = { label: at ? `Limited · resets ${at}` : "Limited" };
   } else {
     now = { label: STATE_WORD[state] };
   }

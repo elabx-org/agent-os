@@ -20,7 +20,10 @@ export function historyTile(
       return "done";
     case "needsYou":
     case "agentNeedsYou":
+    case "limited":
       return "needs";
+    case "resumed":
+      return "done";
     default:
       return "bell";
   }

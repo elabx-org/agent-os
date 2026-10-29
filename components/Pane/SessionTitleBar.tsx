@@ -53,7 +53,7 @@ import {
   STATE_DOT_CLASS,
   STATE_TEXT_CLASS,
   STATE_WORD,
-  fromSessionStatus,
+  sessionState,
 } from "@/lib/agent-state";
 import { useGitStatus } from "@/data/git/queries";
 import {
@@ -165,7 +165,7 @@ export function SessionTitleBar({
     ? projects.find((p) => p.id === session.project_id)?.name
     : null;
   const state = session
-    ? fromSessionStatus(statuses[session.id]?.status ?? "idle")
+    ? sessionState(session, statuses[session.id]?.status)
     : null;
   const crumb = [
     projectName && projectName !== "Uncategorized" ? projectName : null,

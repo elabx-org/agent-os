@@ -66,7 +66,7 @@ import { useIsNative } from "@/hooks/useIsNative";
 import { useLayoutMode, type LayoutMode } from "@/hooks/useLayoutMode";
 import { useLongPress } from "@/hooks/useLongPress";
 import { useViewport } from "@/hooks/useViewport";
-import { fromBackgroundState, fromSessionStatus } from "@/lib/agent-state";
+import { fromBackgroundState, sessionState } from "@/lib/agent-state";
 import type { Session } from "@/lib/db";
 import { registerNavHandlers, runNav } from "@/lib/nav-actions";
 import { nativeCaps } from "@/lib/native-bridge";
@@ -239,7 +239,7 @@ export function ProjectList({
       // Workers count with their conductor's view, not here
       if (s.conductor_session_id) continue;
       const id = s.project_id || "uncategorized";
-      add(id, fromSessionStatus(sessionStatuses[s.id]?.status ?? "idle"));
+      add(id, sessionState(s, sessionStatuses[s.id]?.status));
       const a = of(id);
       const at = timeOf(s.updated_at);
       if (at && (a.lastActiveAt == null || at > a.lastActiveAt))

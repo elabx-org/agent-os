@@ -11,6 +11,8 @@ import {
   Square,
   type LucideIcon,
 } from "lucide-react";
+import { isLimitShown } from "./limits/types";
+import type { Session } from "./db/types";
 
 /**
  * One state model for every row: sessions, background agents, subagents and
@@ -44,6 +46,28 @@ export function fromSessionStatus(status: string): AgentState {
     default:
       return "idle";
   }
+}
+
+/**
+ * A session's state for its rows and dots: limited while it's listed as
+ * limited (isLimitShown), else what its status says
+ */
+export function sessionState(
+  session: Partial<
+    Pick<
+      Session,
+      | "limited_at"
+      | "limited_until"
+      | "limit_kind"
+      | "resume_policy"
+      | "resume_text"
+    >
+  >,
+  status: string | undefined,
+  now: number = Date.now()
+): AgentState {
+  if (isLimitShown(session, now)) return "limited";
+  return fromSessionStatus(status ?? "idle");
 }
 
 // Blocked means it stopped to ask: the same as a waiting session
@@ -97,6 +121,16 @@ export const STATE_WORD: Record<AgentState, string> = {
   queued: "Queued",
 };
 
+/**
+ * The limited colour (N-Limited .t-lim, .meter.full): a muted violet, not
+ * the meters' bright one, so a full meter reads as stopped, not as busy
+ */
+export const LIMIT_TEXT_CLASS = "text-[#5B5499] dark:text-[#B9B4E0]";
+export const LIMIT_FILL_CLASS = "bg-[#7B75B3] dark:bg-[#8F8AB8]";
+/** The Limited card's edge, for the status card in the limited tone */
+export const LIMIT_EDGE_CLASS =
+  "border-[rgba(91,84,153,0.28)] dark:border-[rgba(165,160,210,0.30)]";
+
 // The state colours are the dark page's (modern.css: --needs, --work,
 // --meter); on the light page text takes a deeper shade of each
 export const STATE_TEXT_CLASS: Record<AgentState, string> = {
@@ -106,7 +140,7 @@ export const STATE_TEXT_CLASS: Record<AgentState, string> = {
   error: "text-red-600 dark:text-red-400",
   idle: "text-muted-foreground",
   stopped: "text-muted-foreground",
-  limited: "text-violet-700 dark:text-violet-300",
+  limited: LIMIT_TEXT_CLASS,
   settled: "text-muted-foreground",
   paused: "text-muted-foreground",
   queued: "text-muted-foreground",
@@ -120,7 +154,7 @@ export const STATE_BADGE_CLASS: Record<AgentState, string> = {
   error: "bg-red-400/15 text-red-600 dark:text-red-400",
   idle: "bg-secondary text-muted-foreground",
   stopped: "bg-secondary text-muted-foreground",
-  limited: "bg-meter/15 text-violet-700 dark:text-violet-300",
+  limited: `bg-[#8F8AB8]/15 ${LIMIT_TEXT_CLASS}`,
   settled: "bg-secondary text-muted-foreground",
   paused: "bg-secondary text-muted-foreground",
   queued: "bg-secondary text-muted-foreground",
@@ -183,7 +217,7 @@ export const STATE_DOT_CLASS: Record<AgentState, string> = {
   error: "bg-red-400",
   idle: "bg-muted-foreground/50",
   stopped: "bg-muted-foreground/50",
-  limited: "bg-meter",
+  limited: LIMIT_FILL_CLASS,
   settled: "bg-muted-foreground/50",
   paused: "bg-muted-foreground/50",
   queued: "bg-muted-foreground/50",

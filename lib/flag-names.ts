@@ -6,6 +6,7 @@
 export const FLAG_NAMES = [
   "queue",
   "snapshots",
+  "limits",
   "autoResume",
   "autoSettle",
   "searchIndex",
@@ -23,6 +24,7 @@ export type Flags = Record<FlagName, boolean>;
 export const TICKER_FLAGS: readonly FlagName[] = [
   "queue",
   "snapshots",
+  "limits",
   "autoResume",
   "autoSettle",
   "searchIndex",
@@ -33,6 +35,7 @@ export const TICKER_FLAGS: readonly FlagName[] = [
 export const FLAG_DEFAULTS: Flags = {
   queue: false,
   snapshots: false,
+  limits: false,
   autoResume: false,
   autoSettle: false,
   searchIndex: false,
@@ -83,6 +86,10 @@ export const FLAG_LABELS: Record<FlagName, { label: string; hint: string }> = {
   snapshots: {
     label: "Turn snapshots",
     hint: "Records each turn's changes so it can be undone",
+  },
+  limits: {
+    label: "Usage limits",
+    hint: "Marks sessions that hit a usage limit and holds messages until it resets",
   },
   autoResume: {
     label: "Auto-resume",
