@@ -6,7 +6,7 @@ import {
 } from "@/lib/claude-background";
 
 // GET /api/background-agents - Claude Code's background agents, newest first;
-// a session sent to the background carries its Agent-OS session id
+// a session sent to the background carries its AgentOS session id
 export async function GET() {
   try {
     return NextResponse.json({ agents: await cachedBackgroundAgents() });

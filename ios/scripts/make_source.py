@@ -21,19 +21,19 @@ date = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ
 notes = f"Build {build} from {os.environ.get('GITHUB_SHA', '')[:7]}".strip()
 
 source = {
-    "name": "Agent-OS",
+    "name": "AgentOS",
     "identifier": "org.elabx.agentos.source",
-    "subtitle": "Agent-OS for iPhone and iPhone Duo",
+    "subtitle": "AgentOS for iPhone and iPhone Duo",
     "sourceURL": f"https://github.com/{REPO}/releases/latest/download/source.json",
     "iconURL": icon,
     "website": f"https://github.com/{REPO}",
     "apps": [
         {
-            "name": "Agent-OS",
+            "name": "AgentOS",
             "bundleIdentifier": "org.elabx.agentos",
             "developerName": "elabx",
             "subtitle": "Your AI coding sessions, native on iPhone Duo",
-            "localizedDescription": "Agent-OS in a native shell: navigation in the system bar and terminal keys on the keyboard.",
+            "localizedDescription": "AgentOS in a native shell: navigation in the system bar and terminal keys on the keyboard.",
             "iconURL": icon,
             "tintColor": "E6E7EA",
             "versions": [

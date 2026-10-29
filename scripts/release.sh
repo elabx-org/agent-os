@@ -25,7 +25,7 @@ echo "Releasing $(git rev-parse --short "$SHA") as v$VERSION"
 git tag "v$VERSION" "$SHA"
 git push -q origin "v$VERSION"
 gh release create "v$VERSION" -R elabx-org/agent-os --verify-tag \
-    --title "Agent-OS v$VERSION" --generate-notes --latest >/dev/null
+    --title "AgentOS v$VERSION" --generate-notes --latest >/dev/null
 
 # The package from the tagged tree, at that version
 DIR=$(mktemp -d)

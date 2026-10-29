@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-echo "Agent-OS Setup"
+echo "AgentOS Setup"
 echo "=============="
 echo ""
 
