@@ -18,6 +18,7 @@ for (const key of [
 }
 
 import {
+  isUserPageRequest,
   issueUserProof,
   requireUser,
   userSecret,
@@ -233,4 +234,75 @@ test("plain http: issueUserProof only on a navigation (upgrade request, wants HT
   assert.deepEqual(issued(plain({ accept: "text/html" })), []);
   assert.deepEqual(issued(plain({ ...nav, "x-agentos-origin": "agent" })), []);
   assert.deepEqual(issued(plain({ ...nav, "x-forwarded-proto": "https" })), []);
+});
+
+test("requireUser: a sandboxed proxied page (Origin: null) fails even with the cookie", () => {
+  // The port proxy's sandbox gives the app an opaque origin; the browser
+  // still attaches agentos_u on plain http (and sends cross-site on https)
+  assert.deepEqual(requireUser(browser({ origin: "null" })), {
+    ok: false,
+    reason: "cross_site",
+  });
+  assert.deepEqual(
+    requireUser(
+      post({
+        host: HOST,
+        origin: "null",
+        cookie: `${USER_PROOF_COOKIE}=${userSecret()}`,
+      })
+    ),
+    { ok: false, reason: "cross_site" }
+  );
+});
+
+test("requireUser: a tossed duplicate agentos_u can't hide the real one", () => {
+  // A sibling port host can plant agentos_u for the parent domain; the
+  // browser then sends both, the planted one first
+  assert.deepEqual(
+    requireUser(
+      browser({
+        cookie: `${USER_PROOF_COOKIE}=planted; ${USER_PROOF_COOKIE}=${userSecret()}`,
+      })
+    ),
+    { ok: true }
+  );
+  assert.deepEqual(
+    requireUser(
+      browser({
+        cookie: `${USER_PROOF_COOKIE}=planted; ${USER_PROOF_COOKIE}=also`,
+      })
+    ),
+    { ok: false, reason: "no_proof" }
+  );
+});
+
+test("isUserPageRequest: the proof cookie on a same-origin read", () => {
+  const read = (headers: Record<string, string>) =>
+    isUserPageRequest(
+      new Request(`http://${HOST}/api/browser-open`, {
+        headers: new Headers({ host: HOST, ...headers }),
+      })
+    );
+  const proof = `${USER_PROOF_COOKIE}=${userSecret()}`;
+  // A same-origin GET carries no Origin
+  assert.ok(read({ "sec-fetch-site": "same-origin", cookie: proof }));
+  // Plain http LAN page: no Sec-Fetch-*
+  assert.ok(read({ cookie: proof }));
+  // Loopback tools forging the forwarded host have no proof
+  assert.ok(
+    !read({
+      "sec-fetch-site": "same-origin",
+      "x-forwarded-host": "evil.example",
+      "x-forwarded-proto": "https",
+    })
+  );
+  assert.ok(!read({ "sec-fetch-site": "cross-site", cookie: proof }));
+  assert.ok(!read({ cookie: `${USER_PROOF_COOKIE}=wrong` }));
+  assert.ok(
+    !read({
+      "sec-fetch-site": "same-origin",
+      cookie: proof,
+      "x-agentos-origin": "agent",
+    })
+  );
 });

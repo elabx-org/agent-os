@@ -1,11 +1,19 @@
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
+import {
+  exportLines,
+  sessionBrowserEnv,
+  type SessionBrowserEnv,
+} from "./browser-helper";
 
 /**
  * Generate an init script that shows the AgentOS banner and configures tmux
  */
-function generateInitScript(agentCommand: string): string {
+function generateInitScript(
+  agentCommand: string,
+  browser: SessionBrowserEnv = { env: {}, browser: null, force: false }
+): string {
   return `#!/bin/bash
 # AgentOS Session Init Script
 # Auto-generated - do not edit manually
@@ -51,6 +59,8 @@ sleep 0.8
 # Ensure ~/.local/bin is in PATH (where claude is installed)
 export PATH="$HOME/.local/bin:$PATH"
 
+# Sign-in links CLIs open go to Agent-OS (lib/browser-helper.ts)
+${exportLines(browser)}
 # Start the agent
 exec ${agentCommand}
 `;
@@ -62,8 +72,12 @@ export function writeInitScript(agentCommand: string): string {
     os.tmpdir(),
     `agent-os-init-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.sh`
   );
-  fs.writeFileSync(scriptPath, generateInitScript(agentCommand), {
-    mode: 0o755,
-  });
+  fs.writeFileSync(
+    scriptPath,
+    generateInitScript(agentCommand, sessionBrowserEnv()),
+    {
+      mode: 0o755,
+    }
+  );
   return `bash ${scriptPath}`;
 }

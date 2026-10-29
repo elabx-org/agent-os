@@ -6,6 +6,7 @@ import { ThemeProvider as NextThemesProvider, useTheme } from "next-themes";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ConfirmHost } from "@/components/ui/confirm";
 import { BrowserUndo } from "@/components/BrowserUndo";
+import { BrowserOpenListener } from "@/components/BrowserOpenListener";
 import { VideoReview } from "@/components/Composer/VideoReview";
 import { createQueryClient } from "@/lib/query-client";
 import { THEMES } from "@/lib/theme-config";
@@ -62,6 +63,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
             {children}
             <ConfirmHost />
             <BrowserUndo />
+            <BrowserOpenListener />
             <VideoReview />
           </TooltipProvider>
         </ThemeClassHandler>

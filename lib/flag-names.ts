@@ -12,6 +12,7 @@ export const FLAG_NAMES = [
   "prPoller",
   "chatDefault",
   "liveFullAccess",
+  "portProxy",
 ] as const;
 
 export type FlagName = (typeof FLAG_NAMES)[number];
@@ -37,6 +38,8 @@ export const FLAG_DEFAULTS: Flags = {
   prPoller: false,
   chatDefault: false,
   liveFullAccess: false,
+  // The code-server replacement: on unless turned off (or AGENTOS_PROXY=0)
+  portProxy: true,
 };
 
 export const FLAGS_PREFERENCE_KEY = "flags";
@@ -104,6 +107,10 @@ export const FLAG_LABELS: Record<FlagName, { label: string; hint: string }> = {
   liveFullAccess: {
     label: "Instant full access",
     hint: "Full access joins Shift+Tab, so an agent could switch it on. New sessions only",
+  },
+  portProxy: {
+    label: "Port proxy",
+    hint: "Apps in the container at /proxy/<port>/, sign-in links from sessions. Off keeps the origin gate on",
   },
 };
 
