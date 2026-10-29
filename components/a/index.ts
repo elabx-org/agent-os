@@ -73,3 +73,4 @@ export {
 export { GroupCard, GroupRow, type GroupRowProps } from "./GroupCard";
 export { SectionTitle } from "./SectionTitle";
 export { StateDot } from "./StateDot";
+export { PrChip, type PrChipProps } from "./PrChip";
