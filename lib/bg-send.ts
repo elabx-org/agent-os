@@ -10,6 +10,7 @@
  */
 import type { CreateSessionInput } from "@/data/sessions";
 import type { Session } from "@/lib/db";
+import { normalizeMode } from "@/lib/permission-mode";
 
 /** What the send menu (and its keys) can do with the typed message */
 export type SendChoice = "send" | "sendAndNew" | "queue";
@@ -28,11 +29,28 @@ export interface SendMenuItem {
  * The menu's rows in mock order. "Send to queue" only while the server
  * queue is on for the session (`queueOn`); `mac` picks ⌘ over Ctrl
  */
-export function sendMenuItems(_opts: {
+export function sendMenuItems(opts: {
   queueOn: boolean;
   mac: boolean;
 }): SendMenuItem[] {
-  return [];
+  const items: SendMenuItem[] = [
+    { choice: "send", label: "Send", caption: null, hint: "Enter" },
+    {
+      choice: "sendAndNew",
+      label: "Send and start a new session",
+      caption: "Keeps this one running",
+      hint: opts.mac ? "⌘ Enter" : "Ctrl Enter",
+    },
+  ];
+  if (opts.queueOn) {
+    items.push({
+      choice: "queue",
+      label: "Send to queue",
+      caption: "After the current turn",
+      hint: null,
+    });
+  }
+  return items;
 }
 
 /** The parts of a key event the composer's Return handling reads */
@@ -49,11 +67,14 @@ export interface SendKey {
  * Return → "send"; ⌘Return (Ctrl+Return off a Mac) → "sendAndNew";
  * Shift+Return (a new line), Alt, IME composition or any other key → null
  */
-export function sendChoiceForKey(
-  _e: SendKey,
-  _mac: boolean
-): SendChoice | null {
-  return null;
+export function sendChoiceForKey(e: SendKey, mac: boolean): SendChoice | null {
+  if (e.key !== "Enter" || e.isComposing || e.shiftKey || e.altKey) {
+    return null;
+  }
+  if (!e.metaKey && !e.ctrlKey) return "send";
+  const primary = mac ? e.metaKey : e.ctrlKey;
+  const other = mac ? e.ctrlKey : e.metaKey;
+  return primary && !other ? "sendAndNew" : null;
 }
 
 /**
@@ -64,15 +85,32 @@ export function sendChoiceForKey(
  * another session's worktree)
  */
 export function freshSessionInput(
-  _from: Session,
-  _projectDir?: string | null
+  from: Session,
+  projectDir?: string | null
 ): CreateSessionInput {
-  throw new Error("Not implemented");
+  const mode = normalizeMode(from.permission_mode);
+  return {
+    // No name: the server numbers it ("Session N")
+    workingDirectory:
+      from.worktree_path && projectDir ? projectDir : from.working_directory,
+    projectId: from.project_id,
+    agentType: from.agent_type || "claude",
+    model: from.model || undefined,
+    permissionMode: mode,
+    autoApprove: mode ? false : !!from.auto_approve,
+    useWorktree: false,
+    createBranch: false,
+    featureName: null,
+    baseBranch: null,
+    continueSession: false,
+    useTmux: true,
+    initialPrompt: null,
+  };
 }
 
 /** The toast's title: "Sent to Deck state line fix" */
-export function sentToastTitle(_name: string): string {
-  return "";
+export function sentToastTitle(name: string): string {
+  return `Sent to ${name}`;
 }
 
 /**
@@ -105,6 +143,6 @@ export interface FreshUse {
 }
 
 /** Removed on leaving only when nothing at all happened in it */
-export function isUntouched(_use: FreshUse): boolean {
-  return false;
+export function isUntouched(use: FreshUse): boolean {
+  return !use.sent && !use.hasTranscript && !use.queued;
 }
