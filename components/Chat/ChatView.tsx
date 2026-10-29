@@ -39,6 +39,7 @@ import { useFoldDeck } from "@/hooks/useFoldDeck";
 import { useLayoutMode } from "@/hooks/useLayoutMode";
 import { useQueue } from "@/hooks/useQueue";
 import { useTurns } from "@/hooks/useTurns";
+import { useSearchAction } from "@/hooks/useSearchAction";
 import { useSessionPrompt } from "@/data/prompts/queries";
 import { DeckActions } from "@/components/DeckActions";
 import { DeckStateLine } from "@/components/DeckStateLine";
@@ -130,6 +131,10 @@ export function ChatView({
     setDiffTurn(null);
     setUndoTurn(null);
   }, [session.id]);
+  // Search's "Undo turn N" / "Open diff: This turn" (M11)
+  useSearchAction(session.id, "turn", active, (r) =>
+    r.action === "undo" ? setUndoTurn(r.turnNo) : setDiffTurn(r.turnNo)
+  );
 
   const agents = useSubagents(session.id, active);
   const agentsByTool = useMemo(
@@ -219,7 +224,13 @@ export function ChatView({
     },
     [rows, book, seam]
   );
-  useChatJump(session.id, active, findItem);
+  // A search hit far back: load earlier pages until it's there (M11)
+  useChatJump(
+    session.id,
+    active,
+    findItem,
+    truncated && !loadingEarlier ? loadEarlier : undefined
+  );
 
   // Earlier history goes in above: keep what's on screen where it was
   const shown = useRef<{ first?: string; height: number }>({ height: 0 });

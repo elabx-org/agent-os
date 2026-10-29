@@ -22,6 +22,8 @@ import {
 import { useQueries } from "@tanstack/react-query";
 import { uploadFilesToTemp, uploadedSize } from "@/lib/file-upload";
 import { takeVideos } from "@/stores/videoUploads";
+import { useSearchAction } from "@/hooks/useSearchAction";
+import { prependCommand } from "@/components/Search/open-result";
 import { clearQuotes, formatWithQuotes, useQuotes } from "@/stores/replyQuotes";
 import {
   MAGIC_WORDS,
@@ -288,6 +290,13 @@ export function useComposer({
     },
     [onChange, placeCaret]
   );
+
+  // Search's slash command (M11): first in the box, focused after it
+  useSearchAction(sessionId ?? "", "slash", claude, (r) => {
+    const next = prependCommand(displayRef.current, r.command);
+    textareaRef.current?.focus();
+    setDisplay(next.text, next.caret);
+  });
 
   // ---- "/" and "@" pickers
   const [dismissed, setDismissed] = useState<string | null>(null);

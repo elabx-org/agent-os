@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSnapshot } from "valtio";
+import { jumpVerdict } from "@/components/Search/open-result";
 import { clearJump, replyContextStore } from "./store";
 
 // A jump not taken by then (the item never loaded) is dropped
@@ -31,21 +32,58 @@ function highlight(el: HTMLElement) {
  * Takes a "Jump to it" for this session: once `find` has the item's element
  * (the view may have just switched, the item may still be loading), scrolls
  * it into view and tints it briefly. Only while the chat is showing.
+ *
+ * `loadEarlier`, given while older history exists (the chat is truncated),
+ * loads the page above while the item isn't there yet: a search hit can be
+ * far back. Up to JUMP_MAX_PAGES pages, within the TTL.
  */
 export function useChatJump(
   sessionId: string,
   active: boolean,
-  find: (itemId: string) => HTMLElement | null
+  find: (itemId: string) => HTMLElement | null,
+  loadEarlier?: () => unknown
 ) {
   const { jump } = useSnapshot(replyContextStore);
+  // Pages loaded for the jump in hand (by its time), and a load in flight
+  const paging = useRef<{ at: number; pages: number; loading: boolean }>({
+    at: 0,
+    pages: 0,
+    loading: false,
+  });
+  // A load that added nothing still looks again
+  const [loads, setLoads] = useState(0);
+
   useEffect(() => {
     if (!active || !jump || jump.sessionId !== sessionId) return;
-    if (Date.now() - jump.at > JUMP_TTL_MS) {
+    if (paging.current.at !== jump.at)
+      paging.current = { at: jump.at, pages: 0, loading: false };
+    const el = find(jump.itemId);
+    const verdict = jumpVerdict({
+      found: !!el,
+      ageMs: Date.now() - jump.at,
+      ttlMs: JUMP_TTL_MS,
+      canLoad: !!loadEarlier,
+      loading: paging.current.loading,
+      pages: paging.current.pages,
+    });
+    if (verdict === "drop") {
       clearJump();
       return;
     }
-    const el = find(jump.itemId);
-    if (!el) return;
+    if (verdict === "load" && loadEarlier) {
+      const page = paging.current;
+      page.pages += 1;
+      page.loading = true;
+      void Promise.resolve()
+        .then(loadEarlier)
+        .catch(() => {})
+        .finally(() => {
+          page.loading = false;
+          setLoads((n) => n + 1);
+        });
+      return;
+    }
+    if (verdict !== "scroll" || !el) return;
     clearJump();
     const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     // Once the view has laid out (it may have only just been shown) and the
@@ -61,5 +99,5 @@ export function useChatJump(
       });
       highlight(el);
     }, SETTLE_MS);
-  }, [jump, active, sessionId, find]);
+  }, [jump, active, sessionId, find, loadEarlier, loads]);
 }
