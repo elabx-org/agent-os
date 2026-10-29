@@ -59,6 +59,8 @@ function harness(
     overlaps?: string[];
     /** The agent's last hook event (ms) */
     hookAt?: () => number | null;
+    /** The pending permission mode hook (lib/permission-apply) */
+    applyPendingMode?: (session: Session) => Promise<unknown>;
   } = {}
 ) {
   const pasting = opts.pasting ?? new Set<string>();
@@ -102,6 +104,9 @@ function harness(
       now: () => clock.now,
       sleep: () => new Promise((r) => setImmediate(r)),
       ...(opts.hookAt && { hookAt: opts.hookAt }),
+      ...(opts.applyPendingMode && {
+        applyPendingMode: opts.applyPendingMode,
+      }),
     },
     opts.state
   );
@@ -321,6 +326,87 @@ describe("dispatcher", () => {
     add("s1", "one");
     await h.d.service("s1");
     assert.deepEqual(h.sent, [{ id: "s1", text: "one" }]);
+  });
+
+  test("a pending mode is applied before the send, in its lock", async () => {
+    const order: string[] = [];
+    const h = harness({
+      sessions: [session("s1", { permission_pending: "auto" })],
+      applyPendingMode: async (s) => {
+        order.push(`mode:${s.permission_pending}`);
+      },
+    });
+    add("s1", "one");
+    await h.d.service("s1");
+    assert.deepEqual(order, ["mode:auto"]);
+    // Applied before the paste, after the two ready reads
+    const send = h.calls.indexOf("send:s1");
+    assert.ok(send > 0);
+    assert.deepEqual(h.sent, [{ id: "s1", text: "one" }]);
+  });
+
+  test("a failing pending-mode apply never holds the send back", async () => {
+    const h = harness({
+      sessions: [session("s1", { permission_pending: "auto" })],
+      applyPendingMode: async () => {
+        throw new Error("tmux");
+      },
+    });
+    add("s1", "one");
+    const error = console.error;
+    console.error = () => {};
+    try {
+      await h.d.service("s1");
+    } finally {
+      console.error = error;
+    }
+    assert.deepEqual(h.sent, [{ id: "s1", text: "one" }]);
+  });
+
+  test("no pending mode: the hook is not called", async () => {
+    let called = 0;
+    const h = harness({
+      applyPendingMode: async () => called++,
+    });
+    add("s1", "one");
+    await h.d.service("s1");
+    assert.equal(called, 0);
+    assert.equal(h.sent.length, 1);
+  });
+
+  test("applyPending waits for a send in progress, then applies", async () => {
+    const order: string[] = [];
+    const h = harness({
+      sessions: [session("s1", { permission_pending: "auto" })],
+      applyPendingMode: async (s) => {
+        order.push(`mode:${s.permission_pending}`);
+        // Applied: the row's pending mode is cleared
+        h.sessions.set("s1", session("s1"));
+      },
+    });
+    add("s1", "one");
+    // The send's own pre-send apply runs first; the edge's apply then
+    // sees the cleared pending mode and does nothing
+    const sending = h.d.service("s1");
+    const applying = h.d.applyPending("s1").then(() => order.push("edge"));
+    await Promise.all([sending, applying]);
+    assert.deepEqual(order, ["mode:auto", "edge"]);
+    assert.equal(h.sent.length, 1);
+  });
+
+  test("applyPending applies with nothing queued, never sends", async () => {
+    const seen: string[] = [];
+    const h = harness({
+      sessions: [session("s1", { permission_pending: "acceptEdits" })],
+      applyPendingMode: async (s) => seen.push(s.id),
+    });
+    await h.d.applyPending("s1");
+    assert.deepEqual(seen, ["s1"]);
+    assert.deepEqual(h.sent, []);
+    // Nothing pending: not called
+    h.sessions.set("s1", session("s1"));
+    await h.d.applyPending("s1");
+    assert.deepEqual(seen, ["s1"]);
   });
 
   test("idle edges trigger a send", async () => {
