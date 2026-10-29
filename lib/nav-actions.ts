@@ -53,6 +53,7 @@ export const NAV_ACTIONS = [
   "start",
   "stop",
   "closeSheet",
+  "done",
   "agents",
   "showFinished",
   "collapseAll",
@@ -121,6 +122,8 @@ interface NavHandlers {
   stopSession: () => void;
   /** Close the sheet over the session (E-Live, N-Undo) */
   closeSheet: () => void;
+  /** The column's ✓ under a sheet: apply it (N-PermMode); the sheet registers it */
+  confirmSheet: () => void;
   /**
    * The column's Changes: the git view, unless the open Duo's spread shows
    * Changes as a page beside the conversation (Open-Changes registers it)
@@ -188,6 +191,7 @@ export const navStore: NavHandlers = {
     mobileNavStore.liveOpen = false;
     mobileNavStore.sheet = null;
   },
+  confirmSheet: () => {},
   openChanges: () => mobileNavActions.requestViewMode("git"),
   gitPull: () => {},
   gitPush: () => {},
@@ -291,6 +295,7 @@ export const NAV_ROUTES: Record<NavAction, (leftPage: boolean) => void> = {
   start: () => navStore.startNew(),
   stop: () => navStore.stopSession(),
   closeSheet: () => navStore.closeSheet(),
+  done: () => navStore.confirmSheet(),
   agents: () => mobileNavActions.requestViewMode("agents"),
   showFinished: () => toggleShowFinished(),
   collapseAll: () => toggleAllCollapsed(),

@@ -54,6 +54,11 @@ function session(over: Partial<Session> & { id: string }): Session {
     permission_mode: null,
     permission_pending: null,
     launch_caps: null,
+    limited_at: null,
+    limited_until: null,
+    limit_kind: null,
+    resume_policy: null,
+    resume_text: null,
     ...over,
   };
 }

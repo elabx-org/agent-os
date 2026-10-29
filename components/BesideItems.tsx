@@ -8,7 +8,7 @@ import {
 import { useSessionsQuery } from "@/data/sessions/queries";
 import { displayTitle, useListTitles } from "@/hooks/useSessionTitles";
 import { getSessionView } from "@/lib/session-views";
-import { fromSessionStatus, STATE_DOT_CLASS } from "@/lib/agent-state";
+import { sessionState, STATE_DOT_CLASS } from "@/lib/agent-state";
 import { mobileNavStore } from "@/stores/mobileNav";
 import { openBeside } from "@/stores/beside";
 import { cn } from "@/lib/utils";
@@ -38,7 +38,7 @@ export function BesideItems({ exclude }: { exclude?: string[] }) {
       )}
       {sessions.map((session) => {
         const { title } = displayTitle(session, titles);
-        const state = fromSessionStatus(statuses[session.id]?.status ?? "idle");
+        const state = sessionState(session, statuses[session.id]?.status);
         const view = getSessionView(session.id) ?? "terminal";
         return (
           <DropdownMenuItem

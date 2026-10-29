@@ -11,6 +11,8 @@ import type { GitFile } from "@/lib/git-status";
 import { cn } from "@/lib/utils";
 import {
   fromSubagentStatus,
+  LIMIT_EDGE_CLASS,
+  LIMIT_TEXT_CLASS,
   STATE_DOT_CLASS,
   STATE_WORD,
 } from "@/lib/agent-state";
@@ -268,6 +270,17 @@ export function LiveActivity({
  * What it's doing, when it isn't waiting on you: N-Queue's status card,
  * "Working · Editing ActivityStrip.tsx  4m", else its state word
  */
+/** "Limited · resets 3:40 pm" with the word in the limited violet */
+export function LimitedLabel({ label }: { label: string }) {
+  const rest = label.replace(/^Limited/, "");
+  return (
+    <>
+      <span className={cn("font-semibold", LIMIT_TEXT_CLASS)}>Limited</span>
+      {rest}
+    </>
+  );
+}
+
 export function StatusLine({
   activity,
   className,
@@ -283,6 +296,7 @@ export function StatusLine({
         "status-card min-w-0 shrink-0",
         work && "tone-work",
         state === "needs" && "tone-needs",
+        state === "limited" && LIMIT_EDGE_CLASS,
         className
       )}
     >
@@ -299,6 +313,8 @@ export function StatusLine({
           <span className="dark:text-needs font-semibold text-amber-600">
             {now.label}
           </span>
+        ) : state === "limited" ? (
+          <LimitedLabel label={now.label} />
         ) : (
           STATE_WORD[state]
         )}

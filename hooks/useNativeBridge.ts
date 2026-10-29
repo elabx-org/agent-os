@@ -122,8 +122,10 @@ export function useNativeBridge({ waitingCount }: NativeBridgeOptions) {
             subscribeKey(mobileNavStore, "inboxOpen", report),
             subscribeKey(mobileNavStore, "liveOpen", report),
             subscribeKey(mobileNavStore, "nativeKeyboard", report),
-            subscribeKey(mobileNavStore, "working", report),
+            // A sheet over the session and a turn in progress change the
+            // closed column (× | ✓, × | Changes, Stop)
             subscribeKey(mobileNavStore, "sheet", report),
+            subscribeKey(mobileNavStore, "working", report),
             subscribeKey(mobileNavStore, "agentCount", report),
             subscribeKey(agentTreeStore, "showFinished", report),
             subscribeKey(agentTreeStore, "allCollapsed", report),

@@ -24,7 +24,7 @@ import {
   STATE_WORD,
   fromBackgroundState,
   fromDevServerStatus,
-  fromSessionStatus,
+  sessionState,
   type AgentState,
 } from "@/lib/agent-state";
 import type { BackgroundAgent } from "@/lib/claude-background";
@@ -106,8 +106,7 @@ export function SessionsSection({
   onOpenSession: (session: Session) => void;
 }) {
   if (!sessions.length) return null;
-  const stateOf = (s: Session) =>
-    fromSessionStatus(statuses[s.id]?.status ?? "idle");
+  const stateOf = (s: Session) => sessionState(s, statuses[s.id]?.status);
   // Pinned first within a state, as in the project list, then the latest
   const sorted = [...sessions].sort(
     (a, b) =>

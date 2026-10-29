@@ -52,7 +52,7 @@ import {
   STATE_DOT_CLASS,
   STATE_TEXT_CLASS,
   STATE_WORD,
-  fromSessionStatus,
+  sessionState,
 } from "@/lib/agent-state";
 import { useGitStatus } from "@/data/git/queries";
 import {
@@ -65,6 +65,11 @@ import {
 } from "@/components/Session/SessionHeader";
 import { addedLines } from "@/components/Session/activity-format";
 import { headerVariant } from "@/lib/session-views";
+import {
+  PermissionChip,
+  PermissionMenuItem,
+} from "@/components/Session/PermissionChip";
+import { PermissionSheetHost } from "@/components/Session/PermissionSheet";
 
 interface SessionTitleBarProps {
   session: Session | null | undefined;
@@ -159,7 +164,7 @@ export function SessionTitleBar({
     ? projects.find((p) => p.id === session.project_id)?.name
     : null;
   const state = session
-    ? fromSessionStatus(statuses[session.id]?.status ?? "idle")
+    ? sessionState(session, statuses[session.id]?.status)
     : null;
   const crumb = [
     projectName && projectName !== "Uncategorized" ? projectName : null,
@@ -232,6 +237,10 @@ export function SessionTitleBar({
   // The new headers keep Focus, Files and Changes here; their segments
   // show Chat and Terminal (the desktop's Changes too)
   const newHeader = variant !== "classic";
+  // N-PermMode's chip sits by the title in the page and on the desktop bar
+  const chipInHeader =
+    !!info &&
+    (variant === "desktop" || variant === "page" || variant === "large");
 
   const besideMenu = (
     <DropdownMenu modal={false}>
@@ -292,6 +301,10 @@ export function SessionTitleBar({
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="min-w-[200px]">
+        {/* The headers without the shield chip reach the sheet here */}
+        {session && !chipInHeader && (
+          <PermissionMenuItem session={session} separator />
+        )}
         {newHeader && session && (
           <>
             {variant !== "desktop" && hasFolder && (
@@ -456,6 +469,12 @@ export function SessionTitleBar({
           dimmed={wide && !isFocused}
           actions={
             <>
+              <PermissionChip
+                session={info.session}
+                variant="header"
+                // A crowded bar keeps the shield alone, so the subtitle keeps the state
+                className="h-9 rounded-full @max-[900px]/bar:px-2.5 @max-[900px]/bar:[&>[data-chip-label]]:hidden"
+              />
               <DesktopLiveButton />
               {besideMenu}
               {moreMenu}
@@ -681,6 +700,7 @@ export function SessionTitleBar({
         )}
       </div>
       {header}
+      {session && <PermissionSheetHost session={session} />}
     </>
   );
 }

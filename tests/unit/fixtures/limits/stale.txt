@@ -1,0 +1,11 @@
+> Fix it
+
+⏺ You've hit your session limit · resets 3:40pm (UTC)
+
+> continue
+
+⏺ Done: the lookup now reads the team id from the profile.
+
+────────────────────────────────────────────────────────────────────────────────
+❯ 
+────────────────────────────────────────────────────────────────────────────────
