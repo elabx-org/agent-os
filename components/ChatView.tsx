@@ -80,6 +80,7 @@ import {
   useChatJump,
 } from "@/components/ReplyContext";
 import { useReplyContext } from "@/hooks/useReplyContext";
+import { fetchAsUser } from "@/lib/client/user-fetch";
 
 const POLL_MS = 1500;
 /** Runs of tool calls longer than this collapse to their last few */
@@ -808,7 +809,7 @@ export function ChatView({
     if (!text) return;
     setSending(true);
     try {
-      const res = await fetch(`/api/sessions/${session.id}/send-keys`, {
+      const res = await fetchAsUser(`/api/sessions/${session.id}/send-keys`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text, pressEnter: true }),
@@ -849,7 +850,11 @@ export function ChatView({
         <InboxItem session={session} onOpen={onOpenTerminal} questionsOnly />
       </ul>
       {pending && !prompt && !promptLoading && (
-        <PendingPermission tool={pending} onOpenTerminal={onOpenTerminal} />
+        <PendingPermission
+          tool={pending}
+          session={session}
+          onOpenTerminal={onOpenTerminal}
+        />
       )}
     </>
   );

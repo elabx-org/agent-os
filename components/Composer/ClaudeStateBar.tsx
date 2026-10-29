@@ -13,18 +13,23 @@ import {
   ArrowDownToLine,
   ShieldQuestion,
   Square,
-  SquareTerminal,
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useClaudeState } from "@/hooks/useClaudeState";
 import { useSharedPoll } from "@/hooks/useSharedPoll";
+import { fetchAsUser } from "@/lib/client/user-fetch";
 import { readClaudeScreen, type ClaudeScreen } from "@/lib/claude-screen";
 import type { ClaudeState, ClaudeTool } from "@/lib/claude-state";
+import type { Session } from "@/lib/db";
 import type { ChatItem } from "@/lib/claude-transcript";
 import type { HistoryEntry } from "@/hooks/useComposerData";
 import { GROUP_HEADING, POPOVER } from "./SuggestionPopover";
 import { usePopoverPlacement } from "./usePopoverPlacement";
+import {
+  PermissionCard,
+  type PendingPermission as PendingPermissionInfo,
+} from "./PermissionCard";
 
 /** The keys that change Claude's state, passed straight through */
 export type ClaudeKey = "shift-tab" | "esc" | "esc-esc" | "up";
@@ -108,7 +113,7 @@ export function useClaudeLive({
     (key: ClaudeKey, times = 1) => {
       if (sendKey) return sendKey(key, times);
       if (!sessionId) return;
-      fetch(`/api/sessions/${sessionId}/keys`, {
+      fetchAsUser(`/api/sessions/${sessionId}/keys`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ key, times }),
@@ -624,55 +629,33 @@ export function RewindSheet({
   );
 }
 
-/** What a tool call is about, in one line */
-function toolSummary(tool: ClaudeTool): string {
-  const input = tool.tool_input as Record<string, unknown> | null;
-  const pick = (k: string) =>
-    input && typeof input[k] === "string" ? (input[k] as string) : null;
-  return (
-    pick("command") ??
-    pick("file_path") ??
-    pick("url") ??
-    pick("pattern") ??
-    pick("description") ??
-    ""
-  );
-}
-
 /**
  * The permission Claude waits on, from its own hook: for when the screen
  * prompt can't be read (the parser's card is preferred, with its answers)
  */
 export function PendingPermission({
   tool,
+  session,
   onOpenTerminal,
 }: {
   tool: ClaudeTool;
+  /** For the card's full-access switch and blocked attempts */
+  session: Session;
   onOpenTerminal: () => void;
 }) {
-  const summary = toolSummary(tool);
+  const permission: PendingPermissionInfo = { tool, prompt: null };
   return (
     // Needs-you amber, as the inbox's card: the accent stays for Send
-    <div className="flex items-center gap-3 rounded-2xl border border-amber-400/30 bg-amber-400/[0.06] p-3">
-      <ShieldQuestion className="h-5 w-5 shrink-0 text-amber-400" />
-      <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium">
-          Claude wants to use {tool.tool_name}
-        </p>
-        {summary && (
-          <p className="text-muted-foreground truncate font-mono text-xs">
-            {summary}
-          </p>
-        )}
-      </div>
-      <button
-        type="button"
-        onClick={onOpenTerminal}
-        className="text-muted-foreground active:bg-accent hover:bg-accent flex h-11 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium"
-      >
-        <SquareTerminal className="h-4 w-4" />
-        Answer in terminal
-      </button>
+    <div className="grid gap-2.5 rounded-2xl border border-amber-400/30 bg-amber-400/[0.06] p-3">
+      <p className="flex items-center gap-2.5 text-sm font-medium">
+        <ShieldQuestion className="h-5 w-5 shrink-0 text-amber-400" />
+        Claude wants to use {tool.tool_name}
+      </p>
+      <PermissionCard
+        session={session}
+        permission={permission}
+        onOpen={onOpenTerminal}
+      />
     </div>
   );
 }

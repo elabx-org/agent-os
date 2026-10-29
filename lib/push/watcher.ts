@@ -25,6 +25,7 @@ import {
 import { isWatching, readPushConfig } from "./config";
 import { sendPush, type PushMessage } from "./send";
 import { recordNotification, setDelivered } from "./history";
+import { tickersDisabled } from "../flags";
 
 const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
@@ -326,6 +327,7 @@ function every(ms: number, fn: () => Promise<void>) {
 }
 
 export function startPushWatcher(): void {
+  if (process.env.AGENTOS_DISABLE_PUSH === "1" || tickersDisabled()) return;
   every(POLL_MS, poll);
   every(AGENT_POLL_MS, pollAgents);
 }

@@ -5,6 +5,12 @@ import { getDb, queries, type Session } from "@/lib/db";
 import { randomUUID } from "crypto";
 import { writeFileSync, unlinkSync, readFileSync, existsSync } from "fs";
 import { homedir } from "os";
+import {
+  announceFullAccess,
+  grantFullAccess,
+  requester,
+} from "@/lib/permission-guard";
+import { capForAgent, effectiveMode, flagsFor } from "@/lib/permission-mode";
 
 const execAsync = promisify(exec);
 
@@ -212,6 +218,25 @@ export async function POST(
       return NextResponse.json({ error: "Session not found" }, { status: 404 });
     }
 
+    // Full access carries over to the fresh session for the user only; an
+    // agent's gets the capped mode (lib/permission-guard.ts). Checked before
+    // the summary is made, so a refusal costs nothing
+    const newId = randomUUID();
+    let mode = effectiveMode(session);
+    if (createFork && mode === "bypassPermissions") {
+      const { grant, refuse } = grantFullAccess(request, requester(request), {
+        targetSessionId: session.id,
+        action: "summarize",
+        detail: "Full access not carried over to the fresh session",
+      });
+      if (refuse) return refuse;
+      if (!grant) mode = capForAgent(mode);
+    }
+    // NULL without auto-approve stays NULL: no flag, the agent's own default
+    const newMode =
+      session.permission_mode || session.auto_approve ? mode : null;
+    const autoApprove = mode === "bypassPermissions";
+
     // Get tmux session name (pattern: {agent_type}-{id})
     const tmuxSessionName = `${session.agent_type}-${id}`;
 
@@ -257,7 +282,6 @@ export async function POST(
     // Create a new session with the summary as context
     let newSession: Session | null = null;
     if (createFork) {
-      const newId = randomUUID();
       const newName = `${session.name} (fresh)`;
       const agentType = session.agent_type || "claude";
       const tmuxName = `${agentType}-${newId}`;
@@ -273,18 +297,23 @@ export async function POST(
         `Continue from previous session. Here's a summary of the work so far:\n\n${summary}`,
         session.group_path,
         agentType,
-        session.auto_approve ? 1 : 0,
+        autoApprove ? 1 : 0,
         0,
         session.project_id || "uncategorized"
       );
 
+      if (newMode) {
+        queries
+          .updateSessionPermissionMode(db)
+          .run(newMode, null, autoApprove ? 1 : 0, newId);
+      }
+
       newSession = queries.getSession(db).get(newId) as Session;
+      if (autoApprove) announceFullAccess(newSession);
       const newTmuxSession = tmuxName;
 
       // Start new tmux session with Claude directly
-      const claudeCmd = session.auto_approve
-        ? "claude --dangerously-skip-permissions"
-        : "claude";
+      const claudeCmd = ["claude", ...flagsFor("claude", newMode)].join(" ");
 
       const tmuxCmd = `tmux new-session -d -s "${newTmuxSession}" -c "${cwdExpanded}" "${claudeCmd}"`;
       console.log(`[summarize] Creating tmux session: ${tmuxCmd}`);

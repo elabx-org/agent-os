@@ -7,39 +7,31 @@
 
 import { execFile } from "child_process";
 import { promisify } from "util";
-import type { NextRequest } from "next/server";
 import type { Session } from "@/lib/db";
 import {
   parsePermissionPrompt,
   type PermissionPrompt,
 } from "@/lib/permission-prompt";
+import { isAnswerableQuestion } from "@/lib/permission-card";
 import { mergePrompt, type ReplyContext } from "@/lib/reply-context";
 import { sessionReplyContext } from "@/lib/session-reply-context";
 
 const execFileAsync = promisify(execFile);
+
+// One rule for the card and the guard
+export { isAnswerableQuestion };
 
 export const AGENT_ORIGIN_HEADER = "x-agentos-origin";
 
 export const PERMISSION_USER_ONLY =
   "Permission requests can only be answered by the user in Agent-OS. Ask the user.";
 
-export function isAgentOrigin(request: NextRequest): boolean {
-  return request.headers.get(AGENT_ORIGIN_HEADER)?.toLowerCase() === "agent";
-}
+/** The refusal a tab from before a deploy shows (no cookie from this boot) */
+export const PERMISSION_RELOAD =
+  "Agent-OS was updated. Reload it to answer this; permission requests are the user's.";
 
-/**
- * Whether the prompt on screen is a question an agent may answer: only a
- * pending AskUserQuestion, as the Needs you card classifies it (mergePrompt).
- * Anything else, or anything unclear, is treated as a permission request.
- */
-export function isAnswerableQuestion(
-  merged: ReplyContext | null,
-  prompt: PermissionPrompt
-): boolean {
-  if (merged?.kind !== "ask" || merged.toolName !== "AskUserQuestion")
-    return false;
-  // Permission dialogs offer "Yes, and don't ask again"; a question doesn't
-  return !prompt.options.some((o) => o.kind === "always");
+export function isAgentOrigin(request: Request): boolean {
+  return request.headers.get(AGENT_ORIGIN_HEADER)?.toLowerCase() === "agent";
 }
 
 /** The selection prompt on a tmux pane, if any; throws if it isn't running */

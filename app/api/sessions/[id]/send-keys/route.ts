@@ -5,10 +5,18 @@ import { getDb, queries, type Session } from "@/lib/db";
 import { appendFileSync } from "fs";
 import {
   agentMayAnswer,
-  isAgentOrigin,
   PERMISSION_USER_ONLY,
   readScreenPrompt,
 } from "@/lib/agent-origin";
+import {
+  agentActor,
+  agentActorSessionId,
+  forgetRetried,
+  recordAgentAction,
+  recordRefusal,
+} from "@/lib/agent-actions";
+import { requester } from "@/lib/permission-guard";
+import { effectiveMode } from "@/lib/permission-mode";
 
 const execAsync = promisify(exec);
 
@@ -64,17 +72,54 @@ export async function POST(
       );
     }
 
-    // Typing into a permission dialog would pick an option: from an agent,
-    // only a question's prompt (or none) may be typed into
-    if (isAgentOrigin(request)) {
+    // Typing into a permission dialog would pick an option: without proof
+    // that it's the user, only a question's prompt (or none) may be typed
+    // into. Nor may an agent hand a task to a session with full access
+    // unless its own session has it too (full access by proxy)
+    const who = requester(request);
+    if (who.by !== "user") {
+      const audit = {
+        targetSessionId: session.id,
+        action: "send_keys" as const,
+        detail: text.slice(0, 200),
+      };
       const prompt = await readScreenPrompt(tmuxSessionName).catch(() => null);
       if (prompt && !(await agentMayAnswer(session, prompt))) {
-        log("REFUSED: agent message at a permission prompt");
+        log("REFUSED: message at a permission prompt without user proof");
+        recordRefusal(request, audit);
         return NextResponse.json(
-          { error: PERMISSION_USER_ONLY, permission: true },
+          { error: PERMISSION_USER_ONLY, permission: true, reason: who.reason },
           { status: 403 }
         );
       }
+      if (!prompt && effectiveMode(session) === "bypassPermissions") {
+        const actorId = agentActorSessionId(request, db);
+        const actor = actorId
+          ? (queries.getSession(db).get(actorId) as Session | undefined)
+          : undefined;
+        if (!actor || effectiveMode(actor) !== "bypassPermissions") {
+          log("REFUSED: task for a full-access session from outside it");
+          recordRefusal(request, audit);
+          return NextResponse.json(
+            {
+              error:
+                "This session has full access: only the user, or a session with full access, can give it work.",
+              reason: who.reason,
+            },
+            { status: 403 }
+          );
+        }
+      }
+      // Typing at a question answers it: shown as "Answered by" on the card
+      if (prompt && who.by === "agent") {
+        recordAgentAction({
+          ...audit,
+          actorTmux: agentActor(request),
+          allowed: true,
+        });
+      }
+    } else {
+      forgetRetried(session.id, "send_keys");
     }
 
     // Write text to a temp file

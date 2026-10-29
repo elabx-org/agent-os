@@ -1,50 +1,35 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { Loader2, SquareTerminal } from "lucide-react";
+import { Loader2, SquareTerminal, Users } from "lucide-react";
+import { PermissionCard } from "@/components/Composer/PermissionCard";
 import { KindBadge } from "@/components/rows/AgentRow";
 import { useAnswerPrompt, useSessionPrompt } from "@/data/prompts/queries";
+import { useReplyContextState } from "@/hooks/useReplyContext";
+import {
+  isAnswerableQuestion,
+  KIND_STYLE,
+  shortLabel,
+  splitOptions,
+} from "@/lib/permission-card";
 import { cn } from "@/lib/utils";
 import type { Session } from "@/lib/db";
-import type { PromptOption, PromptOptionKind } from "@/lib/permission-prompt";
 
-// Amber is "needs you" throughout: the answer that lets Claude go on is the
-// filled one, the rest are outlined
-export const KIND_STYLE: Record<PromptOptionKind, string> = {
-  allow: "bg-amber-400 font-semibold text-amber-950 active:opacity-80",
-  always: "border-border border text-foreground active:bg-accent",
-  deny: "border-border border text-foreground active:bg-accent",
-  other: "border-border border text-foreground active:bg-accent",
-};
-
-/**
- * The card's one row of answers: allow plus deny (or the last option), or
- * for a question with neither, its first two. The rest go behind More…
- */
-export function splitOptions(options: PromptOption[]) {
-  const allow = options.find((o) => o.kind === "allow");
-  let main: PromptOption[];
-  if (allow) {
-    const deny =
-      options.find((o) => o.kind === "deny") ?? options[options.length - 1];
-    main = deny === allow ? [allow] : [allow, deny];
-  } else {
-    main = options.slice(0, 2);
-  }
-  return { main, more: options.length > main.length };
+/** On a question: the guard lets agents answer it, so say so */
+function AgentsCanAnswer() {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="bg-primary/10 text-primary inline-flex h-6 items-center gap-1.5 rounded-full px-2.5 text-xs font-semibold whitespace-nowrap">
+        <Users className="h-3.5 w-3.5" />
+        Agents can answer this
+      </span>
+      <span className="text-muted-foreground truncate text-xs">or you</span>
+    </div>
+  );
 }
 
-// The card's buttons are short: a bare "Yes" reads as Allow and "No" or
-// "No, and tell Claude..." as Deny; a question's answers keep their label
-export function shortLabel(option: PromptOption): string {
-  if (option.kind === "allow" && /^yes\W*$/i.test(option.label)) return "Allow";
-  if (
-    option.kind === "deny" &&
-    /^no(\W*$|, and tell claude)/i.test(option.label)
-  )
-    return "Deny";
-  return option.label;
-}
+// The answer helpers live with the permission card; kept importable here
+export { KIND_STYLE, shortLabel, splitOptions };
 
 // "Bash command" reads as what Claude wants: "wants to run Bash"
 export function askLabel(title: string): string {
@@ -76,8 +61,22 @@ export function InboxItem({
   /** "div" when it isn't inside a list */
   as?: "li" | "div";
 }) {
-  const { data: prompt, isLoading } = useSessionPrompt(session.id);
+  const { data: prompt, isLoading: promptLoading } = useSessionPrompt(
+    session.id
+  );
   const { answer, answering, error } = useAnswerPrompt(session.id);
+  // Classified as the server's guard does: unclear means permission. Until
+  // the context is in, it's neither card (not a permission card that turns
+  // into a question)
+  const { context, loading: contextLoading } = useReplyContextState(
+    session.id,
+    !!prompt
+  );
+  const isLoading = promptLoading || (!!prompt && contextLoading);
+  const question =
+    !!prompt && !contextLoading && isAnswerableQuestion(context, prompt);
+  const permission =
+    prompt && !contextLoading && !question ? { tool: null, prompt } : null;
 
   if (questionsOnly && !prompt) return null;
 
@@ -116,7 +115,16 @@ export function InboxItem({
           </p>
         )}
 
-        {prompt && split && (
+        {permission && (
+          <PermissionCard
+            session={session}
+            permission={permission}
+            variant="card"
+            onOpen={onOpen}
+          />
+        )}
+
+        {question && split && (
           <>
             {prompt.detail ? (
               <pre className="bg-background border-border line-clamp-3 rounded-[9px] border px-2.5 py-2 font-mono text-xs break-all whitespace-pre-wrap">
@@ -127,6 +135,7 @@ export function InboxItem({
                 <p className="line-clamp-2 text-sm">{prompt.question}</p>
               )
             )}
+            <AgentsCanAnswer />
             <div className="flex gap-2">
               {split.main.map((option) => (
                 <button
@@ -213,7 +222,16 @@ export function InboxItem({
         </p>
       )}
 
-      {prompt && (
+      {permission && (
+        <PermissionCard
+          session={session}
+          permission={permission}
+          variant={page ? "page" : "full"}
+          onOpen={onOpen}
+        />
+      )}
+
+      {question && (
         <>
           {prompt.description && (
             <p className="text-muted-foreground line-clamp-4 text-sm whitespace-pre-line">
@@ -228,6 +246,7 @@ export function InboxItem({
           {prompt.question && (
             <p className="text-sm font-medium">{prompt.question}</p>
           )}
+          <AgentsCanAnswer />
           <div className="flex flex-col gap-2">
             {prompt.options.map((option) => (
               <button

@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { usePendingRemoval } from "@/stores/pendingRemoval";
 import type { Session, Group } from "@/lib/db";
 import type { AgentType } from "@/lib/providers";
+import { fetchAsUser, refusalText } from "@/lib/client/user-fetch";
 import { sessionKeys } from "./keys";
 
 interface SessionsResponse {
@@ -105,7 +106,7 @@ export function useForkSession() {
 
   return useMutation({
     mutationFn: async (sessionId: string): Promise<Session | null> => {
-      const res = await fetch(`/api/sessions/${sessionId}/fork`, {
+      const res = await fetchAsUser(`/api/sessions/${sessionId}/fork`, {
         method: "POST",
       });
       const data = await res.json();
@@ -122,13 +123,13 @@ export function useSummarizeSession() {
 
   return useMutation({
     mutationFn: async (sessionId: string): Promise<Session | null> => {
-      const res = await fetch(`/api/sessions/${sessionId}/summarize`, {
+      const res = await fetchAsUser(`/api/sessions/${sessionId}/summarize`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ createFork: true }),
       });
       const data = await res.json();
-      if (data.error) throw new Error(data.error);
+      if (data.error) throw new Error(refusalText(data));
       return data.newSession || null;
     },
     onSuccess: () => {
@@ -322,14 +323,14 @@ export function useCreateSession() {
     mutationFn: async (
       input: CreateSessionInput
     ): Promise<CreateSessionResponse> => {
-      const res = await fetch("/api/sessions", {
+      const res = await fetchAsUser("/api/sessions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(input),
       });
       const data = await res.json();
       if (data.error) {
-        throw new Error(data.error);
+        throw new Error(refusalText(data));
       }
       return data;
     },

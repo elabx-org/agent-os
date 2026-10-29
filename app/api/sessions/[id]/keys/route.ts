@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import { queries, getDb, type Session } from "@/lib/db";
+import { forgetRetried, recordRefusal } from "@/lib/agent-actions";
+import { requireUser } from "@/lib/user-proof";
 
 const execFileAsync = promisify(execFile);
 
@@ -17,6 +19,7 @@ const KEYS: Record<string, string[]> = {
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 // POST /api/sessions/[id]/keys {key, times?} - Shift+Tab, Esc, Esc Esc or Up
+// Shift+Tab changes the permission mode: the user's alone (requireUser)
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -31,6 +34,24 @@ export async function POST(
   const session = queries.getSession(getDb()).get(id) as Session | undefined;
   if (!session) {
     return NextResponse.json({ error: "Session not found" }, { status: 404 });
+  }
+  if (key === "shift-tab") {
+    const proof = requireUser(request);
+    if (!proof.ok) {
+      recordRefusal(request, {
+        targetSessionId: session.id,
+        action: "keys",
+        detail: "Shift+Tab",
+      });
+      return NextResponse.json(
+        {
+          error: "Only the user can change a session's permission mode",
+          reason: proof.reason,
+        },
+        { status: 403 }
+      );
+    }
+    forgetRetried(session.id, "keys");
   }
   const target = session.tmux_name || `${session.agent_type || "claude"}-${id}`;
   try {

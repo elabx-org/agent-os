@@ -17,6 +17,7 @@ import { statusDetector } from "./status-detector";
 import { wrapWithBanner } from "./banner";
 import { runInBackground } from "./async-operations";
 import { writeClaudeStateSettings } from "./claude-state";
+import { effectiveMode, type Mode } from "./permission-mode";
 
 const execAsync = promisify(exec);
 
@@ -28,6 +29,12 @@ export interface SpawnWorkerOptions {
   useWorktree?: boolean;
   model?: string;
   agentType?: "claude" | "codex" | "opencode";
+  /**
+   * The user asked for this worker (lib/user-proof.ts): it auto-approves as
+   * workers always did. Otherwise it inherits the conductor's permission
+   * mode, capped at auto.
+   */
+  fromUser?: boolean;
 }
 
 export interface WorkerInfo {
@@ -76,6 +83,19 @@ function taskToSessionName(task: string): string {
 }
 
 /**
+ * The conductor's mode for a worker an agent started, never full access.
+ * None (the agent's default) when the conductor never had one set.
+ */
+function inheritedMode(conductorSessionId: string): Mode | null {
+  const conductor = queries.getSession(db).get(conductorSessionId) as
+    | Session
+    | undefined;
+  if (!conductor?.permission_mode && !conductor?.auto_approve) return null;
+  const mode = effectiveMode(conductor);
+  return mode === "bypassPermissions" ? "auto" : mode;
+}
+
+/**
  * Spawn a new worker session
  */
 export async function spawnWorker(
@@ -89,6 +109,7 @@ export async function spawnWorker(
     useWorktree = true,
     model = "sonnet",
     agentType = "claude",
+    fromUser = false,
   } = options;
 
   // Expand ~ to home directory
@@ -168,10 +189,15 @@ export async function spawnWorker(
   const tmuxSessionName = `${provider.id}-${sessionId}`;
   const cwd = actualWorkingDir.replace("~", "$HOME");
 
-  // Build the initial prompt command (workers use auto-approve by default for automation)
+  // Workers the user starts auto-approve, for automation; an agent's don't
+  const mode = fromUser ? null : inheritedMode(conductorSessionId);
+  if (mode) {
+    queries.updateSessionPermissionMode(db).run(mode, null, 0, sessionId);
+  }
   const flags = provider.buildFlags({
     model,
-    autoApprove: true,
+    autoApprove: fromUser,
+    permissionMode: mode,
     // Pass branch name as the native worktree name for providers that support it
     worktreeName: useWorktree && hasNativeWorktree ? branchName : undefined,
     settingsFile:

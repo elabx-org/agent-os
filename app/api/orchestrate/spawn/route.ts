@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
 import { spawnWorker } from "@/lib/orchestration";
+import { isAgentOrigin } from "@/lib/agent-origin";
+import { agentActor, recordAgentAction } from "@/lib/agent-actions";
+import { requireUser } from "@/lib/user-proof";
 
 export async function POST(request: Request) {
   try {
@@ -24,6 +27,8 @@ export async function POST(request: Request) {
       );
     }
 
+    // Only the user's workers skip permission prompts (see spawnWorker)
+    const fromUser = requireUser(request).ok;
     const session = await spawnWorker({
       conductorSessionId,
       task,
@@ -32,7 +37,18 @@ export async function POST(request: Request) {
       useWorktree,
       model,
       agentType,
+      fromUser,
     });
+    if (isAgentOrigin(request)) {
+      recordAgentAction({
+        actorTmux: agentActor(request),
+        actorSessionId: conductorSessionId,
+        targetSessionId: session.id,
+        action: "spawn",
+        allowed: true,
+        detail: session.permission_mode,
+      });
+    }
 
     return NextResponse.json({ session });
   } catch (error) {

@@ -25,9 +25,17 @@ export function useReplyContext(
   sessionId: string | null | undefined,
   active: boolean
 ): ReplyContext | null {
+  return useReplyContextState(sessionId, active).context;
+}
+
+/** useReplyContext, and whether its first read is still on the way */
+export function useReplyContextState(
+  sessionId: string | null | undefined,
+  active: boolean
+): { context: ReplyContext | null; loading: boolean } {
   const enabled = !!sessionId && active;
   const queryKey = replyContextKeys.session(sessionId ?? "");
-  const { data } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey,
     queryFn: () => fetchContext(sessionId!),
     enabled,
@@ -35,8 +43,9 @@ export function useReplyContext(
   });
   useSharedPoll(queryKey, CONTEXT_POLL_MS, enabled);
   const { data: prompt } = useSessionPrompt(sessionId ?? "", { enabled });
-  return useMemo(
+  const context = useMemo(
     () => (sessionId ? mergePrompt(data ?? null, prompt) : null),
     [sessionId, data, prompt]
   );
+  return { context, loading: enabled && isLoading };
 }

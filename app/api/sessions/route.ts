@@ -10,7 +10,12 @@ import { findAvailablePort } from "@/lib/ports";
 import { runInBackground } from "@/lib/async-operations";
 import { getProject } from "@/lib/projects";
 import { launchSession } from "@/lib/session-launch";
-import { isAgentOrigin } from "@/lib/agent-origin";
+import {
+  announceFullAccess,
+  grantFullAccess,
+  requester,
+} from "@/lib/permission-guard";
+import { capForAgent, normalizeMode } from "@/lib/permission-mode";
 
 // GET /api/sessions - List all sessions and groups
 export async function GET() {
@@ -66,6 +71,8 @@ export async function POST(request: NextRequest) {
       claudeSessionId = null,
       agentType: rawAgentType = "claude",
       autoApprove: requestedAutoApprove = false,
+      // lib/permission-mode.ts Mode; NULL keeps the agent's default
+      permissionMode: requestedMode = null,
       projectId = "uncategorized",
       // Worktree options
       useWorktree = false,
@@ -82,8 +89,29 @@ export async function POST(request: NextRequest) {
       launch = false,
     } = body;
 
-    // Skipping permission prompts is the user's call, never an agent's
-    const autoApprove = !!requestedAutoApprove && !isAgentOrigin(request);
+    const id = randomUUID();
+
+    // Skipping permission prompts is the user's call, never an agent's: an
+    // agent's request is capped, one with neither proof nor agent markers
+    // refused (lib/permission-guard.ts)
+    const mode = normalizeMode(requestedMode);
+    const wantsFullAccess = mode
+      ? mode === "bypassPermissions"
+      : !!requestedAutoApprove;
+    let granted = false;
+    if (wantsFullAccess) {
+      const { grant, refuse } = grantFullAccess(request, requester(request), {
+        targetSessionId: id,
+        action: "spawn",
+        detail: "Full access",
+      });
+      if (refuse) return refuse;
+      granted = grant;
+    }
+    const permissionMode = mode && !granted ? capForAgent(mode) : mode;
+    const autoApprove = permissionMode
+      ? permissionMode === "bypassPermissions"
+      : !!requestedAutoApprove && granted;
 
     // Validate agent type
     const agentType: AgentType = isValidAgentType(rawAgentType)
@@ -94,8 +122,6 @@ export async function POST(request: NextRequest) {
     const name =
       providedName?.trim() ||
       (featureName ? featureName : generateSessionName(db));
-
-    const id = randomUUID();
 
     // Handle worktree creation if requested
     let worktreePath: string | null = null;
@@ -188,6 +214,12 @@ export async function POST(request: NextRequest) {
       projectId
     );
 
+    if (permissionMode) {
+      queries
+        .updateSessionPermissionMode(db)
+        .run(permissionMode, null, autoApprove ? 1 : 0, id);
+    }
+
     // Set worktree info if created
     if (worktreePath) {
       queries
@@ -224,6 +256,7 @@ export async function POST(request: NextRequest) {
     }
 
     const session = queries.getSession(db).get(id) as Session;
+    if (autoApprove) announceFullAccess(session);
 
     // Get project's initial prompt if available
     const project = projectId ? getProject(projectId) : null;
