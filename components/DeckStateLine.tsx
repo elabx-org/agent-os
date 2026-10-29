@@ -35,7 +35,7 @@ export function DeckStateLine({
         {needs ? (
           <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-amber-400 shadow-[0_0_0_3px_rgba(242,176,30,.18)]" />
         ) : state === "work" ? (
-          <Loader2 className="h-4 w-4 shrink-0 animate-spin text-blue-500" />
+          <Loader2 className="text-work h-4 w-4 shrink-0 animate-spin" />
         ) : (
           <span
             className={cn(

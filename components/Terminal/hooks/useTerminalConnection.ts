@@ -18,6 +18,7 @@ import {
 import { setupTouchScroll } from "./touch-scroll";
 import { createWebSocketConnection } from "./websocket-connection";
 import { setupResizeHandlers } from "./resize-handlers";
+import { remeasureWhenFontsReady, terminalFontReady } from "../font-ready";
 import { DENSITY_EVENT } from "@/lib/display-density";
 import { BACKGROUND_EVENT } from "@/lib/background";
 
@@ -179,8 +180,10 @@ export function useTerminalConnection({
     let cleanupResizeHandlers: (() => void) | null = null;
     let cleanupWebSocket: (() => void) | null = null;
     let cleanupTerminal: (() => void) | null = null;
+    let cleanupFontWait: (() => void) | null = null;
+    let connectTimeout: ReturnType<typeof setTimeout> | undefined;
 
-    const connectTimeout = setTimeout(() => {
+    const connect = (fontReady: boolean) => {
       if (cancelled || !terminalRef.current) return;
 
       // Initialize terminal with copy/paste callbacks
@@ -283,11 +286,28 @@ export function useTerminalConnection({
         isMobile,
         sendResize: wsManager.sendResize,
       });
-    }, 150);
+
+      // Opened on the fallback font: measure again once it's in (a hidden
+      // terminal refits when shown)
+      if (!fontReady) {
+        cleanupFontWait = remeasureWhenFontsReady(term, () => {
+          if (!term.element?.offsetParent) return;
+          fitAddon.fit();
+          wsManager.sendResize(term.cols, term.rows);
+        });
+      }
+    };
+
+    // The first fit measures the cells: wait for the terminal font first
+    void terminalFontReady().then((fontReady) => {
+      if (!cancelled)
+        connectTimeout = setTimeout(() => connect(fontReady), 150);
+    });
 
     return () => {
       cancelled = true;
       clearTimeout(connectTimeout);
+      cleanupFontWait?.();
       intentionalCloseRef.current = true;
 
       // Save scroll state before unmount
