@@ -86,6 +86,11 @@ function stateDir(sessionId: string): string {
   return path.join(stateRoot(), sessionId);
 }
 
+/** Where a session's hooks write (turn journal: lib/turns.ts) */
+export function claudeStateDir(sessionId: string): string | null {
+  return SESSION_ID.test(sessionId) ? stateDir(sessionId) : null;
+}
+
 function quote(s: string): string {
   return `'${s.replace(/'/g, "'\\''")}'`;
 }
@@ -114,6 +119,9 @@ function installScripts(): { hook: string; statusLine: string } {
     }
     return to;
   };
+  // The hook runs it for turn snapshots; installed first so a new hook
+  // never looks for it in vain
+  copy("agentos-snapshot.mjs");
   return {
     hook: copy("agentos-hook.mjs"),
     statusLine: copy("agentos-statusline.mjs"),
