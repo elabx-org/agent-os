@@ -33,6 +33,8 @@ import { resetSwap, toggleSwap } from "@/stores/paneOrder";
 import { focusStore } from "@/stores/focus";
 import { mobileNavStore } from "@/stores/mobileNav";
 import { ContextPanel } from "@/components/ReplyContext/ContextPanel";
+import { ChangesPage } from "@/components/Changes/ChangesPage";
+import { spreadLayout } from "./spread-layout";
 import { useReplyContext } from "@/hooks/useReplyContext";
 import {
   setContextShownElsewhere,
@@ -198,7 +200,9 @@ interface SessionSpreadProps {
  * views other than terminal and chat) drop the home and rail; the pane then
  * spans the fold flat (only controls avoid it, see .fold-controls). Half open
  * the chat reads as a book, the terminal takes the right page with Changes on
- * the left, and anything else takes the right page.
+ * the left, and anything else takes the right page. The column's Changes
+ * puts Changes on the right page beside the conversation, in the rail's
+ * place (Open-Changes). spread-layout.ts decides what goes where.
  *
  * Typing a reply in the one session open, Claude's last turn takes the left
  * page and holds still while the pane, with its composer, takes the right.
@@ -229,7 +233,7 @@ export function SessionSpread({
   const book = fold?.axis === "vertical" ? fold : null;
   const hingeX = useHinge(duo && !fold);
   const { on: focus } = useSnapshot(focusStore);
-  const { viewMode, liveOpen } = useSnapshot(mobileNavStore);
+  const { viewMode, liveOpen, changesOpen } = useSnapshot(mobileNavStore);
   const roomForRail = useMinWidth(RAIL_MIN_VIEWPORT);
 
   // Two pages either side of the fold: the left one's width, then the gap
@@ -241,61 +245,48 @@ export function SessionSpread({
 
   const folder = session?.working_directory;
   const pageOpen = !!page;
-  const pageWide = !!pages && pageOpen && !!pageSpread;
-  // Two sessions open: one on each page, in place of the rail
   const { paneCount, swap } = usePanes();
-  const twoPages = !!pages && paneCount > 1 && !pageOpen;
   // Replying to the one session open: its context on the left page, the
   // pane on the right (two open keep their own cards above each composer)
   // (only with something to show: a shell session has no Claude turn)
   const typing = useReplying(session?.id);
   const replyContext = useReplyContext(session?.id, !!pages && typing);
-  const replyLeft =
-    !!pages && !!session && !pageOpen && !twoPages && typing && !!replyContext;
-  const homeOpen = homeWanted && !pageWide && !replyLeft;
-  const splitFold = twoPages && !homeOpen;
-  const changesLeft =
-    !!book &&
-    focus &&
-    !homeOpen &&
-    !pageOpen &&
-    !twoPages &&
-    !replyLeft &&
-    viewMode === "terminal" &&
-    !!folder;
-  // On the pages the rail sits beside a conversation, once the column's
-  // Live asks for it; Changes, Files and Workers take both pages for their
-  // own list | detail split. An iOS app without the column has no Live
-  // to ask with, so there it stays as before
+  // An iOS app without the column has no Live to ask with, so there the
+  // rail stays as before
   const railByDefault = native && !nativeCaps().column;
-  const showRail =
-    !!session &&
-    !pageOpen &&
-    !focus &&
-    !splitFold &&
-    !replyLeft &&
-    (pages
-      ? !homeOpen &&
-        (liveOpen || railByDefault) &&
-        (viewMode === "terminal" || viewMode === "chat")
-      : roomForRail && !duo && !(desktop && paneCount > 1));
-  // Pane on the left page, the rail on the right (the home and Changes left
-  // pages only come with no rail)
-  const paneLeft = pages && showRail;
-  // Half open nothing may sit in the bend: only the chat lays itself out as
-  // a book, anything else takes the right page. A workspace page takes it
-  // flat too: its centred form would sit across the hinge.
-  const paneRight =
-    pages &&
-    !homeOpen &&
-    !changesLeft &&
-    !showRail &&
-    !splitFold &&
-    (replyLeft || (pageOpen ? !pageWide : !!book && viewMode !== "chat"));
-  // Across the fold: content may cross it, controls move right of it
-  const paneWide =
-    pages && !homeOpen && !changesLeft && !showRail && !paneRight && !splitFold;
-  const pageGap = pages && (homeOpen || changesLeft || paneRight);
+  const {
+    pageWide,
+    twoPages,
+    replyLeft,
+    homeOpen,
+    splitFold,
+    changesLeft,
+    changesRoom,
+    changesBeside,
+    showRail,
+    paneLeft,
+    paneRight,
+    paneWide,
+    pageGap,
+  } = spreadLayout({
+    duo,
+    desktop,
+    pages: !!pages,
+    book: !!book,
+    focus,
+    homeWanted,
+    pageOpen,
+    pageSpread: !!pageSpread,
+    paneCount,
+    hasSession: !!session,
+    hasFolder: !!folder,
+    replying: typing && !!replyContext,
+    viewMode,
+    liveOpen,
+    railByDefault,
+    changesOpen,
+    roomForRail,
+  });
   // Flat there's no gutter: the pages meet at the hinge
   const spreadStart = book ? book.start : hingeX;
   const spreadEnd = book ? book.end : hingeX;
@@ -345,6 +336,39 @@ export function SessionSpread({
     () => registerNavHandlers({ swapPanes: twoPages ? toggleSwap : swap }),
     [twoPages, swap]
   );
+  // Open-Changes: the column's Changes opens Changes on the right page,
+  // beside the conversation, where Live would go (they share the page)
+  const changesHere = changesRoom && !replyLeft;
+  useEffect(() => {
+    if (!changesHere) return;
+    return registerNavHandlers({
+      openChanges: () => {
+        mobileNavStore.changesOpen = !mobileNavStore.changesOpen;
+        mobileNavStore.liveOpen = false;
+      },
+      openLive: () => {
+        mobileNavStore.changesOpen = false;
+        mobileNavStore.liveOpen = !mobileNavStore.liveOpen;
+      },
+    });
+  }, [changesHere]);
+  // It closes once the pages go away or something else takes them
+  useEffect(() => {
+    if (!changesRoom) mobileNavStore.changesOpen = false;
+  }, [changesRoom]);
+  // Live opened another way (the session's status card) takes the page too
+  useEffect(() => {
+    if (liveOpen) mobileNavStore.changesOpen = false;
+  }, [liveOpen]);
+  // A different session starts without it
+  const sessionId = session?.id;
+  useEffect(
+    () => () => {
+      mobileNavStore.changesOpen = false;
+    },
+    [sessionId]
+  );
+
   // A new pair starts in order. Only on the way down from two: the saved
   // layout loads after the first render, and its pair keeps its sides
   const lastPaneCount = useRef(paneCount);
@@ -479,6 +503,15 @@ export function SessionSpread({
           aria-hidden="true"
           className="bg-background flex-shrink-0"
           style={{ width: gutter }}
+        />
+      )}
+
+      {/* Changes: beside the conversation, in the rail's place */}
+      {changesBeside && session && folder && (
+        <ChangesPage
+          sessionId={session.id}
+          workingDirectory={folder}
+          className="bg-page min-w-0 flex-1"
         />
       )}
 
