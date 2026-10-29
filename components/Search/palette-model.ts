@@ -5,6 +5,7 @@
  */
 
 import type { Session } from "@/lib/db";
+import { dbTimeMs } from "@/lib/agent-state";
 import { termRanges } from "@/lib/search/highlight";
 import type {
   HitRanges,
@@ -49,13 +50,22 @@ export function nextFilter(
   return filters[(at + step + filters.length) % filters.length];
 }
 
-/** SQLite's "YYYY-MM-DD HH:MM:SS" (UTC) or ISO, in ms; 0 when unreadable */
-function timeMs(value: string | null | undefined): number {
-  if (!value) return 0;
-  const ms = new Date(
-    /(Z|[+-]\d\d:?\d\d)$/.test(value) ? value : value.replace(" ", "T") + "Z"
-  ).getTime();
+/** A session's last activity in ms (updated_at, else created_at); 0 unknown */
+function activityMs(s: Session): number {
+  const ms = dbTimeMs(s.updated_at || s.created_at || "");
   return Number.isNaN(ms) ? 0 : ms;
+}
+
+/**
+ * Whether `res` is the answer to what's typed now (not the previous
+ * query's, kept on screen while the next one loads): Enter only acts then
+ */
+export function resultsCurrent(
+  res: SearchResponse | undefined,
+  typed: string,
+  placeholder: boolean
+): boolean {
+  return !!res && !placeholder && res.query.trim() === typed.trim();
 }
 
 /**
@@ -72,7 +82,7 @@ export function recentSessionHits(
   return sessions
     .map((s) => ({ s, ranges: q ? termRanges(s.name || "", q) : [] }))
     .filter(({ ranges }) => !q || ranges.length > 0)
-    .sort((a, b) => timeMs(b.s.updated_at) - timeMs(a.s.updated_at))
+    .sort((a, b) => activityMs(b.s) - activityMs(a.s))
     .slice(0, limit)
     .map(({ s, ranges }) => ({
       id: s.id,

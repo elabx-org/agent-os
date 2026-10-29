@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSearch } from "@/data/search";
+import { useProjectsQuery } from "@/data/projects";
 import { MIN_QUERY, SEARCH_LIMITS } from "@/lib/search/types";
 import type {
   SearchCommand,
@@ -37,11 +38,12 @@ import { StateDot } from "@/components/a/StateDot";
 import { agentName } from "@/components/a/Avatar";
 import { Highlight } from "./Highlight";
 import { useOpenSearchResult } from "./useOpenSearchResult";
+import { recentSessionHits, resultsCurrent } from "./palette-model";
+import { trapTab } from "./focus-trap";
 import {
   effectiveFilter,
   messageMeta,
   pageChips,
-  recentSessionHits,
   resultCount,
   resultCountText,
   visibleSections,
@@ -88,14 +90,23 @@ function SearchLayer(props: SearchSurfaceProps) {
     true
   );
   const res = searching ? search.data : undefined;
+  const current = resultsCurrent(res, q, search.isPlaceholderData);
   const shownFilter = effectiveFilter(filter, res);
   const sections = visibleSections(res, shownFilter);
   const count = resultCount(res);
 
+  const { data: projects } = useProjectsQuery();
   const recent = useMemo(
     () =>
-      searching ? [] : recentSessionHits(sessions, SEARCH_LIMITS.sessions),
-    [searching, sessions]
+      searching
+        ? []
+        : recentSessionHits(
+            sessions,
+            Object.fromEntries((projects ?? []).map((p) => [p.id, p.name])),
+            "",
+            SEARCH_LIMITS.sessions
+          ),
+    [searching, sessions, projects]
   );
 
   // The column draws back (the closed Duo's, the app's own once it takes
@@ -187,11 +198,7 @@ function SearchLayer(props: SearchSurfaceProps) {
     body = sections.map((section) => (
       <Section
         key={section}
-        title={
-          section === "commands" && res.sessionName
-            ? `Commands · ${res.sessionName}`
-            : SECTION_TITLE[section]
-        }
+        title={SECTION_TITLE[section]}
         n={res[section].length}
       >
         {section === "sessions" && (
@@ -241,6 +248,7 @@ function SearchLayer(props: SearchSurfaceProps) {
       aria-modal="true"
       aria-label="Search"
       data-search-page
+      onKeyDown={(e) => trapTab(e, layerRef.current)}
       className="bg-background fixed inset-y-0 z-[45] flex flex-col overflow-hidden pt-[env(safe-area-inset-top)] pl-[env(safe-area-inset-left)]"
       style={layerStyle}
     >
@@ -264,10 +272,11 @@ function SearchLayer(props: SearchSurfaceProps) {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter" && first) {
-                  e.preventDefault();
-                  open(first);
-                }
+                if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
+                e.preventDefault();
+                // Only rows for what's typed now: Enter mid-search would
+                // open (or run) a row of the previous query
+                if (first && current) open(first, { fromKeyboard: true });
               }}
               className="placeholder:text-muted-foreground min-w-0 flex-1 bg-transparent text-[16px] outline-none [&::-webkit-search-cancel-button]:hidden"
             />
@@ -314,7 +323,7 @@ function SearchLayer(props: SearchSurfaceProps) {
             aria-label="Filter results"
             className="-mt-1 flex gap-1.5 overflow-x-auto [scrollbar-width:none]"
           >
-            {pageChips(res).map((chip) => {
+            {pageChips(res, shownFilter).map((chip) => {
               const on = chip.filter === shownFilter;
               return (
                 <button
@@ -522,7 +531,12 @@ function CommandRow({
       <span className="flex min-w-0 flex-1 flex-col">
         <span className="truncate text-[14px]">{hit.label}</span>
         {hit.detail && (
-          <span className="text-muted-foreground truncate font-mono text-[12px]">
+          <span
+            className={cn(
+              "text-muted-foreground truncate text-[12px]",
+              hit.kind === "script" && "font-mono"
+            )}
+          >
             {hit.detail}
           </span>
         )}

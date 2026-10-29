@@ -102,6 +102,7 @@ export function Composer({
     sessionId,
     cwd: session?.working_directory,
     claude: session?.agent_type === "claude",
+    active,
   });
   // Claude's state: the queue, rewind and the box's keys follow it
   const live = useClaudeLive({

@@ -74,6 +74,11 @@ interface UseComposerOptions {
   cwd?: string | null;
   /** Claude Code runs in the session: pickers, modes and history */
   claude?: boolean;
+  /**
+   * This box is on screen. The chat and the (hidden) terminal keep a
+   * composer each; only the shown one takes search's slash command
+   */
+  active?: boolean;
 }
 
 const pastesKey = (id: string) => `agentos:pastes:${id}`;
@@ -170,6 +175,7 @@ export function useComposer({
   sessionId,
   cwd,
   claude = true,
+  active = true,
 }: UseComposerOptions) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -292,7 +298,7 @@ export function useComposer({
   );
 
   // Search's slash command (M11): first in the box, focused after it
-  useSearchAction(sessionId ?? "", "slash", claude, (r) => {
+  useSearchAction(sessionId ?? "", "slash", claude && active, (r) => {
     const next = prependCommand(displayRef.current, r.command);
     textareaRef.current?.focus();
     setDisplay(next.text, next.caret);

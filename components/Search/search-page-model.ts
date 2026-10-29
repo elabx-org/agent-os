@@ -1,12 +1,9 @@
 /**
  * M11 (N-Search): what the phone and Duo search page shows for a response,
- * without React: the chips, which sections a chip shows, the count, and the
- * recent sessions an empty query lists.
+ * without React: the chips, which sections a chip shows and the count.
  */
 
-import { dbTimeMs } from "@/lib/agent-state";
-import type { Session } from "@/lib/db";
-import type { SearchResponse, SearchSessionHit } from "@/lib/search/types";
+import type { SearchResponse } from "@/lib/search/types";
 
 /** The page's chips; commands show under All only */
 export type PageFilter = "all" | "sessions" | "messages" | "files";
@@ -27,14 +24,18 @@ const SECTIONS: readonly PageSection[] = [
   "commands",
 ];
 
-/** All, Sessions N, Messages N (only with the index on), Files N */
-export function pageChips(res: SearchResponse | undefined): PageChip[] {
-  const chips: PageChip[] = [{ filter: "all", label: "All" }];
-  chips.push({
-    filter: "sessions",
-    label: "Sessions",
-    n: res?.sessions.length,
-  });
+/**
+ * All, Sessions N, Messages N (only with the index on), Files N; a chip
+ * with nothing to show is left out unless it's the selected one
+ */
+export function pageChips(
+  res: SearchResponse | undefined,
+  selected: PageFilter = "all"
+): PageChip[] {
+  const chips: PageChip[] = [
+    { filter: "all", label: "All" },
+    { filter: "sessions", label: "Sessions", n: res?.sessions.length },
+  ];
   if (!res || res.messagesEnabled)
     chips.push({
       filter: "messages",
@@ -42,7 +43,9 @@ export function pageChips(res: SearchResponse | undefined): PageChip[] {
       n: res?.messages.length,
     });
   chips.push({ filter: "files", label: "Files", n: res?.files.length });
-  return chips;
+  return chips.filter(
+    (c) => c.filter === "all" || c.filter === selected || c.n !== 0
+  );
 }
 
 /** The sections a chip shows, in order, each only when it has rows */
@@ -75,30 +78,6 @@ export function effectiveFilter(
   res: SearchResponse | undefined
 ): PageFilter {
   return filter === "messages" && res && !res.messagesEnabled ? "all" : filter;
-}
-
-/** An empty query lists the latest sessions, as session cards */
-export function recentSessionHits(
-  sessions: readonly Session[],
-  limit: number
-): SearchSessionHit[] {
-  const at = (s: Session) => {
-    const ms = dbTimeMs(s.updated_at || s.created_at || "");
-    return Number.isNaN(ms) ? 0 : ms;
-  };
-  return [...sessions]
-    .sort((a, b) => at(b) - at(a))
-    .slice(0, limit)
-    .map((s) => ({
-      id: s.id,
-      name: s.name,
-      agentType: s.agent_type || "claude",
-      projectId: s.project_id,
-      projectName: null,
-      branch: s.branch_name,
-      updatedAt: s.updated_at,
-      nameRanges: [],
-    }));
 }
 
 /** A message row's second line: "You · KeyboardBar haptics · 6m" */

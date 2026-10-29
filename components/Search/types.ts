@@ -34,4 +34,9 @@ export type SearchResult =
 export interface OpenResultOptions {
   /** ⌘↵: a session (or a message's session) opens beside the focused one */
   beside?: boolean;
+  /**
+   * Chosen with Enter, not a click: a script opens the Scripts sheet
+   * instead of running, so a keystroke never starts one by itself
+   */
+  fromKeyboard?: boolean;
 }

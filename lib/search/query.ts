@@ -62,14 +62,69 @@ function graphemes(text: string): { segment: string; index: number }[] {
   return out;
 }
 
+/** Raw characters kept around the first match before markdown is dropped */
+const WINDOW_BEFORE = 240;
+const WINDOW_AFTER = 480;
+
 /**
- * One line of `text` around the query's first match, about SNIPPET_CHARS
- * long, "…" where it was cut. Never splits a character.
+ * Markdown marks dropped for a snippet: fences, headings, quotes, list
+ * markers, emphasis, inline code ticks, links/images to their text.
+ * `atLineStart` false: the text starts mid-line (a cut window).
+ */
+export function stripMarkdown(text: string, atLineStart = true): string {
+  return text
+    .split("\n")
+    .map((line, n) => {
+      let out = line;
+      if (n > 0 || atLineStart) {
+        out = out
+          .replace(/^\s*(```|~~~)\S*\s*$/, "")
+          .replace(/^\s{0,3}#{1,6}\s+/, "")
+          .replace(/^\s*(>\s?)+/, "")
+          .replace(/^\s*([-*+]|\d{1,3}[.)])\s+(\[[ xX]\]\s+)?/, "");
+      }
+      return out
+        .replace(/!?\[([^\]\n]*)\]\([^)\s]*\)/g, "$1")
+        .replace(/`+/g, "")
+        .replace(/\*+/g, "")
+        .replace(/~~/g, "")
+        .replace(/(^|[^\p{L}\p{N}])_+(?=\S)/gu, "$1")
+        .replace(/(\S)_+(?=[^\p{L}\p{N}]|$)/gu, "$1");
+    })
+    .join("\n");
+}
+
+/**
+ * One line of `text` around the query's first match (case- and
+ * accent-insensitive, like the index), about SNIPPET_CHARS long, markdown
+ * dropped, "…" where it was cut. Never splits a character. Only a window
+ * around the match is processed, so a huge message costs no more than a
+ * short one.
  */
 export function messageSnippet(text: string, query: string): string {
-  const line = text.replace(/\s+/g, " ").trim();
+  // Find the match on the raw text first, then work on a window around it
+  let rawFirst = 0;
+  const lower = text.toLowerCase();
+  const plain = queryTerms(query)
+    .map((t) => lower.indexOf(t))
+    .filter((at) => at >= 0);
+  if (plain.length) rawFirst = Math.min(...plain);
+  else if (text.length <= 50_000)
+    rawFirst = termRanges(text, query)[0]?.[0] ?? 0;
+
+  let from = Math.max(0, rawFirst - WINDOW_BEFORE);
+  let to = Math.min(text.length, rawFirst + WINDOW_AFTER);
+  // Not inside a surrogate pair
+  if (from > 0 && /[\uDC00-\uDFFF]/.test(text[from])) from--;
+  if (to < text.length && /[\uDC00-\uDFFF]/.test(text[to])) to++;
+  const cutBefore = from > 0;
+  const cutAfter = to < text.length;
+  const window = text.slice(from, to);
+  const atLineStart = !cutBefore || text[from - 1] === "\n";
+
+  const line = stripMarkdown(window, atLineStart).replace(/\s+/g, " ").trim();
   const parts = graphemes(line);
-  if (parts.length <= SNIPPET_CHARS) return line;
+  if (!cutBefore && !cutAfter && parts.length <= SNIPPET_CHARS) return line;
 
   const first = termRanges(line, query)[0]?.[0] ?? 0;
   let at = parts.findIndex((p) => p.index + p.segment.length > first);
@@ -93,7 +148,9 @@ export function messageSnippet(text: string, query: string): string {
     .map((p) => p.segment)
     .join("")
     .trim();
-  return `${start > 0 ? "…" : ""}${body}${end < parts.length ? "…" : ""}`;
+  const before = start > 0 || cutBefore ? "…" : "";
+  const after = end < parts.length || cutAfter ? "…" : "";
+  return `${before}${body}${after}`;
 }
 
 interface MessageRow {

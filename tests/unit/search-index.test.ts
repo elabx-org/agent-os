@@ -378,3 +378,85 @@ test("snippet: a match near the end of a long message stays near the start", () 
   const at = snip.toLowerCase().indexOf("undo");
   assert.ok(at > 0 && at <= 30, `match at ${at}: ${snip}`);
 });
+
+test("snippet: markdown marks dropped, the match still highlighted", () => {
+  const text = [
+    "## The test",
+    "Open **`-72`**, then:",
+    "- **B, consolidate (my lean):** close all, with _Undo_.",
+    "1. **Undo after ✕:** keeps [the toast](https://x.y/z) up",
+    "```ts",
+    "const snake_case = 1;",
+    "```",
+  ].join("\n");
+  const snip = messageSnippet(text, "undo");
+  assert.ok(!/[*`#]|\]\(/.test(snip), snip);
+  assert.ok(!/(^| )- /.test(snip), snip);
+  assert.ok(snip.includes("snake_case"), snip);
+  assert.ok(
+    snip.includes("close all, with Undo. Undo after ✕: keeps the toast up"),
+    snip
+  );
+  const ranges = termRanges(snip, "undo");
+  assert.ok(ranges.length >= 1);
+  for (const [a, b] of ranges)
+    assert.equal(snip.slice(a, b).toLowerCase(), "undo");
+});
+
+test("snippet: an accent-insensitive match is in the window and highlighted", () => {
+  const text = `${"lorem ipsum ".repeat(30)}we met at the café near the fold`;
+  const snip = messageSnippet(text, "cafe");
+  const ranges = termRanges(snip, "cafe");
+  assert.equal(ranges.length, 1, snip);
+  assert.equal(snip.slice(ranges[0][0], ranges[0][1]), "café");
+  assert.deepEqual(termRanges("Crème BRÛLÉE", "brulee"), [[6, 12]]);
+});
+
+test("snippet: a huge message costs about what a short one does", () => {
+  const huge = `${"x".repeat(150_000)} needle ${"y ".repeat(150_000)}`;
+  const started = performance.now();
+  for (let i = 0; i < 20; i++) messageSnippet(huge, "needle");
+  const ms = performance.now() - started;
+  assert.ok(ms < 500, `20 snippets took ${ms.toFixed(0)}ms`);
+  const snip = messageSnippet(huge, "needle");
+  assert.ok(snip.startsWith("…") && snip.endsWith("…"));
+  assert.ok(snip.includes("needle"));
+});
+
+test("indexer: lines over the cap are skipped unparsed, the rest indexed", async () => {
+  const d = db();
+  const big = user("z".repeat(600 * 1024));
+  const file = transcript(
+    "big.jsonl",
+    lines(user("before the blob"), big, assistant("after the blob"))
+  );
+  let res = await indexFile(d, "s1", file, CWD);
+  while (res.more) res = await indexFile(d, "s1", file, CWD);
+  assert.deepEqual(
+    rows(d).map((r) => r.text),
+    ["before the blob", "after the blob"]
+  );
+  assert.equal(res.offset, fs.statSync(file).size);
+});
+
+test("indexer: a passed deadline stops after the current line", async () => {
+  const d = db();
+  const file = transcript(
+    "deadline.jsonl",
+    lines(user("one"), user("two"), user("three"))
+  );
+  const first = await indexFile(d, "s1", file, CWD, 256 * 1024, 0);
+  assert.equal(first.added, 1);
+  assert.equal(first.more, true);
+  const rest = await indexFile(d, "s1", file, CWD);
+  assert.equal(rest.added, 2);
+  assert.deepEqual(
+    rows(d).map((r) => r.text),
+    ["one", "two", "three"]
+  );
+});
+
+test("search.db is owner-only", () => {
+  db();
+  assert.equal(fs.statSync(dbFile).mode & 0o777, 0o600);
+});

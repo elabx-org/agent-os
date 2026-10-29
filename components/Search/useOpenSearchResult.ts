@@ -93,18 +93,3 @@ export function useOpenSearchResult(
     props.onOpenChange(false);
   }, []);
 }
-
-/** The rows in display order (sessions, messages, files, commands) */
-export function flattenResults(sections: {
-  sessions: SearchResult[];
-  messages: SearchResult[];
-  files: SearchResult[];
-  commands: SearchResult[];
-}): SearchResult[] {
-  return [
-    ...sections.sessions,
-    ...sections.messages,
-    ...sections.files,
-    ...sections.commands,
-  ];
-}

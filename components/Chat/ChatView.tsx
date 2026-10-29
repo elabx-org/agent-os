@@ -291,6 +291,7 @@ export function ChatView({
     sessionId: session.id,
     cwd: session.working_directory,
     claude: session.agent_type === "claude",
+    active,
   });
   const inputRef = composer.textareaRef;
   // Claude's mode, spinner and status line, mirrored under the box

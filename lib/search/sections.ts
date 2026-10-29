@@ -138,9 +138,14 @@ function run(
   args: string[],
   cwd: string,
   timeoutMs: number,
+  signal?: AbortSignal,
   maxBytes = MAX_LIST_BYTES
 ): Promise<string> {
   return new Promise((resolve) => {
+    if (signal?.aborted) {
+      resolve("");
+      return;
+    }
     let child;
     try {
       child = spawn(cmd, args, { cwd, stdio: ["ignore", "pipe", "ignore"] });
@@ -155,10 +160,13 @@ function run(
       if (done) return;
       done = true;
       clearTimeout(timer);
+      signal?.removeEventListener("abort", finish);
       if (child.exitCode === null) child.kill("SIGKILL");
       resolve(Buffer.concat(chunks).toString("utf-8"));
     };
     const timer = setTimeout(finish, timeoutMs);
+    // The browser gave up on this search (a newer keystroke): stop now
+    signal?.addEventListener("abort", finish, { once: true });
     child.stdout!.on("data", (chunk: Buffer) => {
       chunks.push(chunk);
       size += chunk.length;
@@ -290,7 +298,8 @@ async function searchRoot(
 export async function searchFiles(
   query: string,
   root: string,
-  limit: number
+  limit: number,
+  signal?: AbortSignal
 ): Promise<SearchFileHit[]> {
   const q = query.trim();
   const terms = queryTerms(q);
@@ -308,7 +317,8 @@ export async function searchFiles(
       "git",
       ["ls-files", "-z", "--cached", "--others", "--exclude-standard"],
       dir,
-      left()
+      left(),
+      signal
     );
     const files = out.split("\0").filter((f) => f && pathMatches(f, terms));
     return mergeFileHits(q, dir, files, new Map(), limit);
@@ -317,12 +327,13 @@ export async function searchFiles(
   const phrase = q.replace(/\s+/g, " ");
   const common = ["--max-filesize=1M", "-g", "!.git", ...depth];
   const [listOut, countOut] = await Promise.all([
-    run("rg", ["--files", ...common, "."], dir, left()),
+    run("rg", ["--files", ...common, "."], dir, left(), signal),
     run(
       "rg",
       ["--count-matches", "-i", "-F", "--null", ...common, "--", phrase, "."],
       dir,
-      left()
+      left(),
+      signal
     ),
   ]);
   const pathHits = listOut
@@ -348,7 +359,8 @@ export async function searchFiles(
         phrase,
       ].concat(withContent.map((p) => `./${p}`)),
       dir,
-      left()
+      left(),
+      signal
     );
     const first = parseFirstLines(linesOut);
     for (const hit of hits) {

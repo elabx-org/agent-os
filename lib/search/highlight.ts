@@ -14,17 +14,56 @@ export function queryTerms(query: string): string[] {
   return [...seen].sort((a, b) => b.length - a.length);
 }
 
-/** Sorted, non-overlapping ranges of every term's occurrences in `text` */
+/**
+ * `text` lowercased with accents dropped ("Café" → "cafe", as the FTS
+ * index's remove_diacritics), and for each of its UTF-16 units the offset
+ * in `text` it came from (plus one past the end)
+ */
+export function foldText(text: string): { folded: string; from: number[] } {
+  let folded = "";
+  const from: number[] = [];
+  for (let i = 0; i < text.length; ) {
+    const code = text.charCodeAt(i);
+    if (code < 0x80) {
+      folded +=
+        code >= 65 && code <= 90 ? String.fromCharCode(code + 32) : text[i];
+      from.push(i);
+      i++;
+      continue;
+    }
+    const cp = text.codePointAt(i)!;
+    const char = String.fromCodePoint(cp);
+    const out = char.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
+    for (let n = 0; n < out.length; n++) from.push(i);
+    folded += out;
+    i += char.length;
+  }
+  from.push(text.length);
+  return { folded, from };
+}
+
+/** A query word folded like foldText */
+function foldTerm(term: string): string {
+  return term.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
+}
+
+/**
+ * Sorted, non-overlapping ranges of every term's occurrences in `text`,
+ * case- and accent-insensitive (offsets into `text` as given)
+ */
 export function termRanges(text: string, query: string): HitRanges {
-  const lower = text.toLowerCase();
+  const { folded, from } = foldText(text);
   const found: [number, number][] = [];
-  for (const term of queryTerms(query)) {
-    let from = 0;
-    while (from <= lower.length - term.length) {
-      const at = lower.indexOf(term, from);
-      if (at < 0) break;
-      found.push([at, at + term.length]);
-      from = at + term.length;
+  for (const term of new Set(queryTerms(query).map(foldTerm))) {
+    if (!term) continue;
+    let at = folded.indexOf(term);
+    while (at >= 0) {
+      const end = at + term.length;
+      // The end maps to just past the source character of the last unit
+      const last = from[end - 1];
+      const stop = Math.max(from[end], last + 1);
+      found.push([from[at], stop]);
+      at = folded.indexOf(term, end);
     }
   }
   found.sort((a, b) => a[0] - b[0] || b[1] - a[1]);

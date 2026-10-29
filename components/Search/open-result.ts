@@ -63,7 +63,7 @@ function openSession(
 export function openSteps(
   result: SearchResult,
   ctx: OpenContext,
-  { beside }: OpenResultOptions = {}
+  { beside, fromKeyboard }: OpenResultOptions = {}
 ): OpenStep[] {
   switch (result.kind) {
     case "session": {
@@ -88,6 +88,7 @@ export function openSteps(
       const cmd = result.hit;
       if (cmd.kind === "script") {
         const runnable =
+          !fromKeyboard &&
           !!ctx.runnerProjectId &&
           cmd.projectId === ctx.runnerProjectId &&
           !!ctx.runnerScriptIds?.includes(cmd.scriptId);
@@ -104,6 +105,8 @@ export function openSteps(
       if (cmd.kind === "slash") {
         return [
           ...openSession(cmd.sessionId, ctx, false),
+          // The chat's composer takes it: on Files or Git nothing would
+          { kind: "chat", sessionId: cmd.sessionId },
           {
             kind: "request",
             request: {

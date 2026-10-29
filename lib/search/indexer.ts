@@ -24,6 +24,11 @@ export const INDEX_INTERVAL_MS = 15_000;
 const INDEX_AGAIN_MS = 1000;
 /** How long a located transcript path is trusted (locating asks tmux) */
 const LOCATE_TTL_MS = 60_000;
+/**
+ * Lines longer than this are skipped unparsed: they are tool output or
+ * attachments (megabytes of JSON), never worth a stall of the server
+ */
+export const MAX_LINE_BYTES = 512 * 1024;
 
 export interface IndexFileResult {
   /** Messages added */
@@ -103,7 +108,9 @@ export async function indexFile(
   sessionId: string,
   file: string,
   cwd: string,
-  maxBytes: number = INDEX_CHUNK_BYTES
+  maxBytes: number = INDEX_CHUNK_BYTES,
+  /** performance.now() past which it stops after the current line */
+  deadline: number = Infinity
 ): Promise<IndexFileResult> {
   const size = fs.statSync(file).size;
   let offset = savedProgress(db, file)?.offset ?? 0;
@@ -159,12 +166,22 @@ export async function indexFile(
     return { added: 0, offset, reset, more: false };
   }
 
-  // A newline byte never sits inside a UTF-8 sequence, so this cut is safe
+  // A newline byte never sits inside a UTF-8 sequence, so these cuts are
+  // safe. The deadline is checked after every line: one chunk of big lines
+  // must not hold the server for long
   const messages: IndexedMessage[] = [];
-  for (const line of consumed.toString("utf8").split("\n")) {
-    messages.push(...lineMessages(line, cwd));
+  let pos = 0;
+  while (pos < consumed.length) {
+    let nl = consumed.indexOf(0x0a, pos);
+    if (nl < 0) nl = consumed.length - 1;
+    if (nl + 1 - pos <= MAX_LINE_BYTES) {
+      const line = consumed.toString("utf8", pos, nl);
+      messages.push(...lineMessages(line, cwd));
+    }
+    pos = nl + 1;
+    if (performance.now() >= deadline) break;
   }
-  const next = offset + consumed.length;
+  const next = offset + pos;
 
   const insert = db.prepare(
     "INSERT INTO search_messages (session_id, role, ts, item_id, text) VALUES (?, ?, ?, ?, ?)"
@@ -222,10 +239,11 @@ async function located(
 ): Promise<{ file: string | null; cwd: string } | null> {
   const cache = indexerState().located;
   const hit = cache.get(session.id);
-  if (hit && Date.now() - hit.at < LOCATE_TTL_MS) return hit;
+  if (hit && Date.now() - hit.at < LOCATE_TTL_MS) return hit.file ? hit : null;
   const found = await locateTranscript(session);
   if (!found) {
-    cache.delete(session.id);
+    // Misses are cached too: locating asks tmux, every tick otherwise
+    cache.set(session.id, { file: null, cwd: "", at: Date.now() });
     return null;
   }
   const entry = { file: found.file, cwd: found.cwd, at: Date.now() };
@@ -259,6 +277,8 @@ export async function indexTick(
     }
   }
 
+  // Indexing counts against the budget; locating waits on tmux (async,
+  // misses cached) and doesn't hold the event loop
   let spent = 0;
   const seen = new Set<string>();
   for (const session of sessions) {
@@ -280,7 +300,14 @@ export async function indexTick(
       const started = performance.now();
       let result: IndexFileResult;
       try {
-        result = await indexFile(db, session.id, file, where.cwd);
+        result = await indexFile(
+          db,
+          session.id,
+          file,
+          where.cwd,
+          INDEX_CHUNK_BYTES,
+          started + (budgetMs - spent)
+        );
       } catch (error) {
         console.error("[search] indexing", file, error);
         break;

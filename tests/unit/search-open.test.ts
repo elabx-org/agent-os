@@ -12,7 +12,6 @@ import {
   effectiveFilter,
   messageMeta,
   pageChips,
-  recentSessionHits,
   resultCount,
   resultCountText,
   visibleSections,
@@ -116,6 +115,15 @@ test("openSteps: a script runs with the focused project's runner, else its sheet
   assert.deepEqual(openSteps(script, { runnerProjectId: "p1" }), [
     { kind: "openScripts", projectId: "p1" },
   ]);
+  // Enter never runs one: the sheet opens, a click there runs it
+  assert.deepEqual(
+    openSteps(
+      script,
+      { runnerProjectId: "p1", runnerScriptIds: ["test"] },
+      { fromKeyboard: true }
+    ),
+    [{ kind: "openScripts", projectId: "p1" }]
+  );
 });
 
 test("openSteps: slash commands and turn actions go to the session's views", () => {
@@ -131,6 +139,7 @@ test("openSteps: slash commands and turn actions go to the session's views", () 
     },
   };
   assert.deepEqual(openSteps(slash, { currentSessionId: "s1" }), [
+    { kind: "chat", sessionId: "s1" },
     {
       kind: "request",
       request: { kind: "slash", sessionId: "s1", command: "/review " },
@@ -265,6 +274,11 @@ test("page model: chips, sections per chip, count", () => {
   const res = response();
   assert.deepEqual(
     pageChips(res).map((c) => `${c.label}${c.n ?? ""}`),
+    ["All", "Sessions1", "Messages1"]
+  );
+  // An empty chip shows only while it's the selected one
+  assert.deepEqual(
+    pageChips(res, "files").map((c) => `${c.label}${c.n ?? ""}`),
     ["All", "Sessions1", "Messages1", "Files0"]
   );
   assert.deepEqual(visibleSections(res, "all"), [
@@ -283,38 +297,11 @@ test("page model: index off hides Messages and its chip falls back to All", () =
   const res = response({ messagesEnabled: false, messages: [] });
   assert.deepEqual(
     pageChips(res).map((c) => c.label),
-    ["All", "Sessions", "Files"]
+    ["All", "Sessions"]
   );
   assert.equal(effectiveFilter("messages", res), "all");
   assert.equal(effectiveFilter("files", res), "files");
   assert.deepEqual(visibleSections(res, "all"), ["sessions", "commands"]);
-});
-
-test("page model: recent sessions newest first, capped", () => {
-  const s = (id: string, updated_at: string) =>
-    ({
-      id,
-      name: id,
-      agent_type: "codex",
-      project_id: null,
-      branch_name: null,
-      updated_at,
-      created_at: updated_at,
-    }) as unknown as Session;
-  const hits = recentSessionHits(
-    [
-      s("old", "2026-10-01 10:00:00"),
-      s("new", "2026-10-29 10:00:00"),
-      s("mid", "2026-10-15 10:00:00"),
-    ],
-    2
-  );
-  assert.deepEqual(
-    hits.map((h) => h.id),
-    ["new", "mid"]
-  );
-  assert.equal(hits[0].agentType, "codex");
-  assert.deepEqual(hits[0].nameRanges, []);
 });
 
 test("page model: message meta line", () => {

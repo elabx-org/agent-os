@@ -9,6 +9,7 @@ import {
   paletteRows,
   paletteSections,
   recentSessionHits,
+  resultsCurrent,
   resultKey,
 } from "../../components/Search/palette-model";
 import { searchQueryString } from "../../data/search/queries";
@@ -211,4 +212,28 @@ test("searchQueryString: trimmed q, defaults left out", () => {
     "q=x&kind=files&projectId=p1&sessionId=s1"
   );
   assert.equal(searchQueryString({ q: "x", kind: "all" }), "q=x");
+});
+
+test("recentSessionHits: created_at when never updated, unnamed fallback", () => {
+  const hits = recentSessionHits(
+    [
+      session("a", "", "", { created_at: "2026-10-29 09:00:00" }),
+      session("b", "Older", "2026-10-01 09:00:00"),
+    ],
+    {}
+  );
+  assert.deepEqual(
+    hits.map((h) => h.id),
+    ["a", "b"]
+  );
+  assert.equal(hits[0].name, "Unnamed session");
+});
+
+test("resultsCurrent: only the typed query's own, settled results", () => {
+  const res = { ...response, query: "dep" };
+  assert.equal(resultsCurrent(res, "dep", false), true);
+  assert.equal(resultsCurrent(res, " dep ", false), true);
+  assert.equal(resultsCurrent(res, "deploy", false), false);
+  assert.equal(resultsCurrent(res, "dep", true), false);
+  assert.equal(resultsCurrent(undefined, "dep", false), false);
 });

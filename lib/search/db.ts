@@ -58,6 +58,20 @@ function removeFiles(file: string): void {
   }
 }
 
+/**
+ * Owner-only, like the transcripts it copies text from (0600): the index
+ * holds every prompt and reply, pasted secrets included
+ */
+function restrictFiles(file: string): void {
+  for (const suffix of ["", "-wal", "-shm"]) {
+    try {
+      fs.chmodSync(file + suffix, 0o600);
+    } catch {
+      // Not there (yet)
+    }
+  }
+}
+
 /** Opens `file` and checks it is ours at this version; throws otherwise */
 function openChecked(file: string): Database.Database {
   const db = new Database(file);
@@ -106,6 +120,7 @@ export function openSearchDb(file?: string): Database.Database | null {
       removeFiles(target);
       db = openChecked(target);
     }
+    restrictFiles(target);
     shared.__agentosSearchDb = { db, file: target };
     return db;
   } catch (error) {

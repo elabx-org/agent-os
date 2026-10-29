@@ -75,7 +75,7 @@ export async function GET(request: NextRequest) {
         ? searchMessages(q, { limit: SEARCH_LIMITS.messages, sessions })
         : undefined,
       wants("files") && filesRoot
-        ? searchFiles(q, filesRoot, SEARCH_LIMITS.files)
+        ? searchFiles(q, filesRoot, SEARCH_LIMITS.files, request.signal)
         : [],
       wants("commands")
         ? searchCommands(q, {

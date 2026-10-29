@@ -43,6 +43,7 @@ import {
   paletteSections,
   recentSessionHits,
   resultKey,
+  resultsCurrent,
   type PaletteFilter,
   type PaletteSections,
 } from "./palette-model";
@@ -211,8 +212,12 @@ function PaletteBody(props: SearchSurfaceProps) {
     rowRefs.current[selected]?.scrollIntoView({ block: "nearest" });
   }, [selected, rows]);
 
-  const pick = (result: SearchResult | undefined, beside: boolean) => {
-    if (result) openResult(result, beside ? { beside: true } : undefined);
+  const pick = (
+    result: SearchResult | undefined,
+    beside: boolean,
+    fromKeyboard = false
+  ) => {
+    if (result) openResult(result, { beside, fromKeyboard });
   };
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -227,7 +232,11 @@ function PaletteBody(props: SearchSurfaceProps) {
         break;
       case "Enter":
         e.preventDefault();
-        pick(rows[selected], e.metaKey || e.ctrlKey);
+        // Rows of the previous query stay up while the next one loads:
+        // Enter waits for the current ones
+        if (searching && !resultsCurrent(data, q, search.isPlaceholderData))
+          break;
+        pick(rows[selected], e.metaKey || e.ctrlKey, true);
         break;
       case "Tab":
         e.preventDefault();
