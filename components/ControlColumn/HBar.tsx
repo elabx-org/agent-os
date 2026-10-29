@@ -33,6 +33,7 @@ export function HBar({ className }: { className?: string }) {
     >
       <nav
         aria-label="Main"
+        data-control-column
         className="glass flex items-center gap-0.5 rounded-[30px] p-[5px]"
       >
         <ColumnItems items={items} orientation="horizontal" />

@@ -32,6 +32,7 @@ export function TabBar({ className }: { className?: string }) {
   const FabIcon = fab && columnIcon(fab.icon);
   return (
     <div
+      data-control-column
       className={cn(
         "fixed right-[calc(16px+env(safe-area-inset-right))] left-[calc(16px+env(safe-area-inset-left))] z-50 flex items-center gap-2.5",
         className
@@ -40,7 +41,7 @@ export function TabBar({ className }: { className?: string }) {
     >
       <nav
         aria-label="Sections"
-        className="glass flex h-16 min-w-0 flex-1 items-center rounded-[32px] px-[5px]"
+        className="glass flex h-[64px] min-w-0 flex-1 items-center rounded-[32px] px-[5px]"
       >
         {tabs.map((tab) => {
           const Icon = columnIcon(tab.icon);
@@ -79,7 +80,7 @@ export function TabBar({ className }: { className?: string }) {
           type="button"
           onClick={() => runNav(fab.id)}
           aria-label={fab.label}
-          className="bg-primary text-primary-foreground focus-visible:ring-ring flex h-16 w-16 shrink-0 touch-manipulation items-center justify-center rounded-full outline-none focus-visible:ring-2 active:opacity-80"
+          className="bg-primary text-primary-foreground focus-visible:ring-ring flex h-[64px] w-[64px] shrink-0 touch-manipulation items-center justify-center rounded-full outline-none focus-visible:ring-2 active:opacity-80"
         >
           <FabIcon aria-hidden className="h-6 w-6" strokeWidth={1.9} />
         </button>

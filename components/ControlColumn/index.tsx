@@ -90,6 +90,7 @@ function Column({
   return (
     <nav
       aria-label="Main"
+      data-control-column
       className={cn(
         "glass flex shrink-0 flex-col items-center gap-0.5 rounded-[30px] p-[5px]",
         // Scrolling would clip the hover hints, so only the Duo's needs it

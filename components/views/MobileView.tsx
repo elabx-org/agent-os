@@ -158,11 +158,15 @@ export function MobileView(props: ViewProps) {
     !railWidth && "pr-[env(safe-area-inset-right)]",
     !showBar && "pb-[env(safe-area-inset-bottom)]"
   );
+  // The tab bar floats: the layer goes under it, so the pane doesn't show
+  // around the glass, and its content stops above it
   const layerStyle = railWidth
     ? { right: railWidth }
-    : showBar
-      ? { bottom: "var(--control-bar-h, 0px)" }
-      : undefined;
+    : bar === "tabs"
+      ? { paddingBottom: "var(--control-bar-h, 0px)" }
+      : showBar
+        ? { bottom: "var(--control-bar-h, 0px)" }
+        : undefined;
 
   return (
     <main

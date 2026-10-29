@@ -173,10 +173,15 @@ function SettingsLayer(props: NotificationsSectionProps) {
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null;
     const layer = layerRef.current;
-    const behind = [...(layer?.parentElement?.children ?? [])].filter(
-      (el): el is HTMLElement =>
-        el !== layer && el instanceof HTMLElement && !el.inert
-    );
+    // The web column or bar stays usable: it closes Settings and goes back
+    const keep = [...document.querySelectorAll("[data-control-column]")];
+    const behind: HTMLElement[] = [];
+    const shut = (el: Element) => {
+      if (el === layer || !(el instanceof HTMLElement) || el.inert) return;
+      if (!keep.some((k) => el.contains(k))) behind.push(el);
+      else if (!keep.includes(el)) [...el.children].forEach(shut);
+    };
+    [...(layer?.parentElement?.children ?? [])].forEach(shut);
     behind.forEach((el) => (el.inert = true));
     (navRef.current ?? layer)?.focus();
     return () => {
