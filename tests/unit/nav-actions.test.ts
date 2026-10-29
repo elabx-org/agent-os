@@ -34,6 +34,8 @@ function reset() {
   mobileNavStore.inboxOpen = false;
   mobileNavStore.request = null;
   mobileNavStore.viewMode = "terminal";
+  mobileNavStore.liveOpen = false;
+  mobileNavStore.changesOpen = false;
 }
 
 test("every NavAction has a route, and only those", () => {
@@ -214,7 +216,7 @@ test("runNav: closeSettings, and Settings leaves for the rest", () => {
   stop();
 });
 
-test("defaults: Projects is Now's other half, Live toggles", () => {
+test("defaults: Projects is Now's other half, Live only opens", () => {
   reset();
   const opened: string[] = [];
   const stop = registerNavHandlers({
@@ -235,9 +237,27 @@ test("defaults: Projects is Now's other half, Live toggles", () => {
   mobileNavStore.liveOpen = false;
   runNav("live");
   assert.equal(mobileNavStore.liveOpen, true);
+  // Pressed again it stays: ‹ closes it
   runNav("live");
-  assert.equal(mobileNavStore.liveOpen, false);
+  assert.equal(mobileNavStore.liveOpen, true);
+  mobileNavStore.liveOpen = false;
   surfaceStore.home = false;
+});
+
+test("back: a Live or Changes panel closes before anything under it", () => {
+  reset();
+  const { calls, stop } = spyHandlers();
+  const mode = layoutStore.mode;
+  layoutStore.mode = "duo-open";
+  mobileNavStore.liveOpen = true;
+  runNav("back");
+  assert.equal(mobileNavStore.liveOpen, false);
+  mobileNavStore.changesOpen = true;
+  runNav("back");
+  assert.equal(mobileNavStore.changesOpen, false);
+  assert.deepEqual(calls, []);
+  layoutStore.mode = mode;
+  stop();
 });
 
 test("back: Projects goes back to Now", () => {

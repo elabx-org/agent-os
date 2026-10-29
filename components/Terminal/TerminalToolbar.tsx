@@ -50,6 +50,7 @@ import { KeyLongPressMenu, type MenuKey } from "./KeyLongPressMenu";
 import { AdaptiveKey } from "./AdaptiveKey";
 import { useNarrowScreen } from "@/hooks/useNarrowScreen";
 import { adaptiveRow, type AdaptiveState } from "@/lib/adaptive-keys";
+import { SheetGrab } from "@/components/ui/sheet-grab";
 
 interface TerminalToolbarProps {
   onKeyPress: (key: string) => void;
@@ -230,8 +231,9 @@ export function SnippetsModal({
         className="bg-background flex max-h-[70vh] w-full flex-col rounded-t-xl"
         onClick={(e) => e.stopPropagation()}
       >
+        <SheetGrab onClose={onClose} className="mx-0 mb-0 h-6" />
         {/* Header */}
-        <div className="border-border flex items-center justify-between border-b px-4 py-3">
+        <div className="border-border flex items-center justify-between border-b px-4 pb-3">
           <span className="text-sm font-medium">Snippets</span>
           <div className="flex items-center gap-2">
             <button

@@ -29,6 +29,7 @@ import {
   totals,
   type ChangedFile,
 } from "./changes-list";
+import { PanelClose } from "@/components/ui/page-panel";
 
 export interface ChangesPageProps {
   /** The session beside it: Commit and Discard act on its folder */
@@ -36,6 +37,8 @@ export interface ChangesPageProps {
   workingDirectory: string;
   className?: string;
   style?: CSSProperties;
+  /** The right page's × */
+  onClose?: () => void;
 }
 
 async function fetchDiffText(
@@ -106,6 +109,7 @@ export function ChangesPage({
   workingDirectory,
   className,
   style,
+  onClose,
 }: ChangesPageProps) {
   const queryClient = useQueryClient();
   const status = useGitStatus(workingDirectory);
@@ -215,7 +219,7 @@ export function ChangesPage({
       style={style}
     >
       <div className="flex items-center justify-between gap-3">
-        <h2 className="t-title">Changes</h2>
+        <h2 className="t-title mr-auto">Changes</h2>
         {files.length > 0 && (
           <span className="chip">
             <span className="n-add">+{total.additions}</span>
@@ -224,6 +228,7 @@ export function ChangesPage({
             )}
           </span>
         )}
+        {onClose && <PanelClose label="Changes" onClose={onClose} />}
       </div>
 
       {status.isError ? (

@@ -3,6 +3,7 @@
 import { Fragment, useEffect, useState } from "react";
 import { useSnapshot } from "valtio";
 import { cn } from "@/lib/utils";
+import { haptic } from "@/lib/haptics";
 import {
   columnKindFor,
   moreItems,
@@ -42,7 +43,10 @@ function useModKey(): string {
 }
 
 /** Items that switch something on and off rather than go somewhere */
-const TOGGLES: NavAction[] = ["live", "beside", "showFinished"];
+const TOGGLES: NavAction[] = ["beside", "showFinished"];
+
+/** Items that open a layer: pressed again while it shows, they only nod */
+const OPENS: NavAction[] = ["live", "git"];
 
 interface ColumnItemsProps {
   items: Item[];
@@ -94,7 +98,14 @@ export function ColumnItems({ items, orientation }: ColumnItemsProps) {
         {item.id === "more" ? (
           <MoreMenu {...props} />
         ) : (
-          <ColumnItem {...props} onClick={() => runNav(other ?? item.id)} />
+          <ColumnItem
+            {...props}
+            onClick={() =>
+              item.selected && OPENS.includes(item.id)
+                ? haptic("light")
+                : runNav(other ?? item.id)
+            }
+          />
         )}
       </Fragment>
     );
@@ -122,7 +133,7 @@ function MoreMenu(props: MoreProps) {
   }, []);
   const surface = useSurface();
   const mode = useLayoutMode();
-  const { needsYou, liveOpen, viewMode } = useSnapshot(mobileNavStore);
+  const { needsYou, viewMode } = useSnapshot(mobileNavStore);
   const { on: focus } = useSnapshot(focusStore);
   const { actions: git } = useSnapshot(gitMenuStore);
   const { offer: movable } = useSnapshot(moveSheetStore);
@@ -182,7 +193,7 @@ function MoreMenu(props: MoreProps) {
         )}
         {surface === "now" && (
           <DropdownMenuItem onSelect={go("live")}>
-            {liveOpen ? "Hide live activity" : "Live activity"}
+            Live activity
           </DropdownMenuItem>
         )}
         {inSession && (

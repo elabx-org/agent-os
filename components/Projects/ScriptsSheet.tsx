@@ -44,6 +44,7 @@ import {
   type ScriptEntry,
 } from "./script-view";
 import { stopErrorText, useScriptRunner } from "./useScriptRunner";
+import { PanelClose } from "@/components/ui/page-panel";
 
 /** Postures where Scripts is a centred dialog rather than a bottom sheet */
 const CENTRED: LayoutMode[] = ["desktop", "duo-open"];
@@ -58,10 +59,12 @@ function OutputPage({
   entry,
   title,
   onBack,
+  dismiss,
 }: {
   entry: ScriptEntry;
   title: TitleSlot;
   onBack: () => void;
+  dismiss?: ReactNode;
 }) {
   const run = entry.run!;
   const { data, isLoading } = useScriptRunLog(run.id, {
@@ -88,6 +91,7 @@ function OutputPage({
         <span className="text-muted-foreground truncate font-mono text-[12px]">
           {entry.script.command}
         </span>
+        {dismiss}
       </div>
       <pre
         ref={scroller}
@@ -209,11 +213,14 @@ function ScriptsPanel({
   sessionId,
   title,
   onClose,
+  dismiss,
 }: {
   projectId: string;
   sessionId: string | null;
   title: TitleSlot;
   onClose: () => void;
+  /** A × where the sheet has no grabber (the open Duo's dialog) */
+  dismiss?: ReactNode;
 }) {
   const config = useProjectConfig(projectId);
   const runs = useScriptRuns(projectId);
@@ -265,6 +272,7 @@ function ScriptsPanel({
           entry={output}
           title={title}
           onBack={() => setOutputId(null)}
+          dismiss={dismiss}
         />
         {runner.prompt}
       </>
@@ -287,6 +295,7 @@ function ScriptsPanel({
             {subtitle}
           </span>
         )}
+        {dismiss}
       </div>
 
       {running.map((entry) => (
@@ -433,6 +442,13 @@ export function ScriptsSheet({
               projectId={projectId}
               sessionId={sessionId}
               onClose={close}
+              dismiss={
+                <PanelClose
+                  label="Scripts"
+                  onClose={close}
+                  className="ml-auto self-center"
+                />
+              }
               title={(text) => (
                 <DialogPrimitive.Title className="min-w-0 truncate text-[20px] leading-tight font-bold">
                   {text}

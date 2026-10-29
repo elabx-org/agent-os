@@ -176,8 +176,9 @@ export const navStore: NavHandlers = {
   resume: () => {},
   // Projects is Now's other half until it has a page of its own (M1b)
   openProjects: () => navStore.openNow(),
+  // Opens, never toggles: ‹, the panel's × or a swipe closes it
   openLive: () => {
-    mobileNavStore.liveOpen = !mobileNavStore.liveOpen;
+    mobileNavStore.liveOpen = true;
   },
   // Pick the session to put beside it
   openBeside: () => navStore.openFind(),
@@ -240,6 +241,15 @@ export function registerNavHandlers(
  * section, Settings, Find, New, a page, Needs you, Projects, else Now
  */
 function goBack() {
+  // A panel on the right page or the Live sheet is the top layer
+  if (
+    layoutStore.mode !== "desktop" &&
+    (mobileNavStore.liveOpen || mobileNavStore.changesOpen)
+  ) {
+    mobileNavStore.liveOpen = false;
+    mobileNavStore.changesOpen = false;
+    return;
+  }
   if (settingsPageStore.open) {
     if (!settingsBack()) closeSettings();
     return;

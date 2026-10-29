@@ -31,6 +31,7 @@ import {
   phaseRows,
   workingLine,
 } from "./activity-format";
+import { PanelClose } from "@/components/ui/page-panel";
 
 const MAX_FILES = 5;
 const MAX_AGENTS = 5;
@@ -64,6 +65,7 @@ export function LiveActivity({
   title = (text) => text,
   menu,
   onNavigate,
+  onClose,
   className,
 }: {
   session: Session;
@@ -73,6 +75,8 @@ export function LiveActivity({
   menu?: ReactNode;
   /** After anything that leaves the Live activity, so a sheet can close */
   onNavigate?: () => void;
+  /** The right page's ×: the rail as a panel on the open Duo */
+  onClose?: () => void;
   className?: string;
 }) {
   const activity = useSessionActivity(session, { active, rail: true });
@@ -134,6 +138,13 @@ export function LiveActivity({
           <span className="text-muted-foreground ml-auto shrink-0 text-[13px] tabular-nums">
             {summary}
           </span>
+        )}
+        {onClose && (
+          <PanelClose
+            label="Live activity"
+            onClose={onClose}
+            className={summary ? undefined : "ml-auto"}
+          />
         )}
       </div>
 
