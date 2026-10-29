@@ -77,7 +77,6 @@ import {
   PermissionMenuItem,
 } from "@/components/Session/PermissionChip";
 import { PermissionSheetHost } from "@/components/Session/PermissionSheet";
-import { MoveToWorktreeSheetHost } from "@/components/Session/MoveToWorktreeSheet";
 import { useCanOfferMove } from "@/hooks/useWorktreeMove";
 import { openMoveSheet } from "@/stores/moveSheet";
 
@@ -786,7 +785,6 @@ export function SessionTitleBar({
         />
       )}
       {session && <PermissionSheetHost session={session} />}
-      {session && <MoveToWorktreeSheetHost session={session} />}
     </>
   );
 }
