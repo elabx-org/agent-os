@@ -2,6 +2,8 @@ import { useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { usePendingRemoval } from "@/stores/pendingRemoval";
 import type { ProjectWithRepositories } from "@/lib/projects";
+import type { ProjectPlacement } from "@/lib/project-groups";
+import type { MergedPr, MergedTodayResponse } from "@/lib/merged-today";
 import { projectKeys } from "./keys";
 import { sessionKeys } from "../sessions/keys";
 
@@ -227,5 +229,78 @@ export function useCreateProject() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: projectKeys.list() });
     },
+  });
+}
+
+/**
+ * Pin a project or move it into a group (Projects page, sort menu):
+ * optimistic, like useToggleProject
+ */
+export function useUpdateProjectPlacement() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      projectId,
+      placement,
+    }: {
+      projectId: string;
+      placement: ProjectPlacement;
+    }): Promise<void> => {
+      const res = await fetch(`/api/projects/${projectId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(placement),
+      });
+      if (!res.ok) throw new Error("Failed to move project");
+    },
+    onMutate: async ({ projectId, placement }) => {
+      await queryClient.cancelQueries({ queryKey: projectKeys.list() });
+      const previous = queryClient.getQueryData<ProjectWithRepositories[]>(
+        projectKeys.list()
+      );
+      queryClient.setQueryData<ProjectWithRepositories[]>(
+        projectKeys.list(),
+        (old) =>
+          old?.map((p) =>
+            p.id !== projectId || p.is_uncategorized
+              ? p
+              : {
+                  ...p,
+                  ...(placement.pinned !== undefined && {
+                    pinned: placement.pinned,
+                  }),
+                  ...(placement.groupName !== undefined && {
+                    group_name: placement.groupName?.trim() || null,
+                  }),
+                }
+          )
+      );
+      return { previous };
+    },
+    onError: (_, __, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(projectKeys.list(), context.previous);
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: projectKeys.list() });
+    },
+  });
+}
+
+/** A project's pull requests merged today (Project page); [] on failure */
+export function useMergedTodayQuery(projectId: string | undefined) {
+  return useQuery({
+    queryKey: projectKeys.mergedToday(projectId ?? ""),
+    queryFn: async (): Promise<MergedPr[]> => {
+      const res = await fetch(`/api/projects/${projectId}/merged-today`);
+      if (!res.ok) return [];
+      const data: MergedTodayResponse = await res.json();
+      return data.prs ?? [];
+    },
+    enabled: !!projectId,
+    // The server caches gh's answer as long
+    staleTime: 5 * 60 * 1000,
   });
 }

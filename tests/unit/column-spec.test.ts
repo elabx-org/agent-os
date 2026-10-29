@@ -74,11 +74,11 @@ const TABLE: [Surface, LayoutMode, string][] = [
   ["project", "book", "back | new* search | projectSettings"],
   ["project", "desktop", "back | new* search | projectSettings"],
   ["projects", "phone", "now inbox[2a] projects(on) settings | new*"],
-  ["projects", "duo-closed", "back | new* search sort"],
-  ["projects", "duo-open", "back | new* search sort"],
-  ["projects", "tabletop", "back | new* search sort"],
-  ["projects", "book", "back | new* search sort"],
-  ["projects", "desktop", "back | new* search sort"],
+  ["projects", "duo-closed", "back | newProject* search sort"],
+  ["projects", "duo-open", "back | newProject* search sort"],
+  ["projects", "tabletop", "back | newProject* search sort"],
+  ["projects", "book", "back | newProject* search sort"],
+  ["projects", "desktop", "back | newProject* search sort"],
   ["needs", "phone", "now inbox(on)[2a] projects settings | new*"],
   ["needs", "duo-closed", "back | notifSettings clearHistory"],
   ["needs", "duo-open", "back | notifSettings clearHistory"],
@@ -92,11 +92,11 @@ const TABLE: [Surface, LayoutMode, string][] = [
   ["settings", "book", "closeSettings | server"],
   ["settings", "desktop", "closeSettings | server"],
   ["new", "phone", "now inbox[2a] projects settings | new*"],
-  ["new", "duo-closed", "back"],
-  ["new", "duo-open", "back"],
-  ["new", "tabletop", "back"],
-  ["new", "book", "back"],
-  ["new", "desktop", "back"],
+  ["new", "duo-closed", "back | start*"],
+  ["new", "duo-open", "back | start*"],
+  ["new", "tabletop", "back | start*"],
+  ["new", "book", "back | start*"],
+  ["new", "desktop", "back | start*"],
   ["search", "phone", "now inbox[2a] projects settings | new*"],
   ["search", "duo-closed", "back"],
   ["search", "duo-open", "back"],
@@ -222,11 +222,14 @@ test("columnFor: labels, symbols and icons as the mocks", () => {
   );
   assert.deepEqual(
     columnFor("project", "duo-closed", CTX).map((i) => i.label),
-    ["Back", "New session", "Find in project", "Project settings"]
+    ["Back", "New session", "Find in project", "Project actions"]
   );
   assert.deepEqual(
     columnFor("new", "duo-closed", CTX).map((i) => [i.label, i.symbol]),
-    [["Cancel", "xmark"]]
+    [
+      ["Cancel", "xmark"],
+      ["Start", "checkmark"],
+    ]
   );
   assert.equal(columnFor("beside", "duo-open", CTX)[1].label, "Side by side");
 });

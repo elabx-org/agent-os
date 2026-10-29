@@ -36,6 +36,8 @@ export interface GroupRowProps {
   chevron?: boolean;
   /** .row.sel: the row showing beside the list (open Duo, desktop) */
   selected?: boolean;
+  /** The mocks' plain line + .cap (15/13, no gap): history rows */
+  compact?: boolean;
   onClick?: () => void;
   className?: string;
 }
@@ -48,6 +50,7 @@ export function GroupRow({
   trailing,
   chevron,
   selected,
+  compact,
   onClick,
   className,
 }: GroupRowProps) {
@@ -57,9 +60,21 @@ export function GroupRow({
       <span className="min-w-0 flex-1 text-left">
         {/* Fixed px, as the mocks' .body/.sub: the density root size moves
             rem, and the large title doesn't */}
-        <span className="block truncate text-[16px] font-medium">{title}</span>
+        <span
+          className={cn(
+            "block truncate",
+            compact ? "text-[15px]" : "text-[16px] font-medium"
+          )}
+        >
+          {title}
+        </span>
         {subtitle && (
-          <span className="text-muted-foreground mt-0.5 block truncate text-[14px]">
+          <span
+            className={cn(
+              "text-muted-foreground block truncate",
+              compact ? "text-[13px]" : "mt-0.5 text-[14px]"
+            )}
+          >
             {subtitle}
           </span>
         )}

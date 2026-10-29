@@ -1,5 +1,3 @@
-import { timeAgo } from "@/lib/agent-state";
-
 /** The counts the Now subline is made of */
 export interface NowCounts {
   needs: number;
@@ -23,8 +21,4 @@ export function nowSubline(counts: NowCounts): string {
   return parts.length ? parts.join(" · ") : "All quiet";
 }
 
-/** A row's age without "ago": "2m", "3h", "now" */
-export function shortAge(value: number | string): string {
-  const age = timeAgo(value, { dateAfterDays: Infinity });
-  return age === "just now" ? "now" : age.replace(/ ago$/, "");
-}
+export { shortAge } from "@/lib/agent-state";

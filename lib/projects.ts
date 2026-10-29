@@ -20,6 +20,7 @@ import {
   type DevServerType,
 } from "./db";
 import type { AgentType } from "./providers";
+import type { ProjectPlacement } from "./project-groups";
 
 const execAsync = promisify(exec);
 
@@ -137,6 +138,7 @@ export function createProject(
     ...project,
     expanded: Boolean(project.expanded),
     is_uncategorized: Boolean(project.is_uncategorized),
+    pinned: Boolean(project.pinned),
     devServers,
     repositories: [],
   };
@@ -152,6 +154,7 @@ export function getProject(id: string): Project | undefined {
     ...project,
     expanded: Boolean(project.expanded),
     is_uncategorized: Boolean(project.is_uncategorized),
+    pinned: Boolean(project.pinned),
   };
 }
 
@@ -191,6 +194,7 @@ export function getAllProjects(): Project[] {
     ...p,
     expanded: Boolean(p.expanded),
     is_uncategorized: Boolean(p.is_uncategorized),
+    pinned: Boolean(p.pinned),
   }));
 }
 
@@ -253,6 +257,31 @@ export function updateProject(
       id
     );
 
+  return getProject(id);
+}
+
+/**
+ * Pin a project or move it into a group (null: no group). Uncategorized
+ * stays where it is.
+ */
+export function setProjectPlacement(
+  id: string,
+  placement: ProjectPlacement
+): Project | undefined {
+  const project = getProject(id);
+  if (!project || project.is_uncategorized) return project;
+  db.transaction(() => {
+    if (typeof placement.pinned === "boolean")
+      db.prepare("UPDATE projects SET pinned = ? WHERE id = ?").run(
+        placement.pinned ? 1 : 0,
+        id
+      );
+    if (placement.groupName !== undefined)
+      db.prepare("UPDATE projects SET group_name = ? WHERE id = ?").run(
+        placement.groupName?.trim() || null,
+        id
+      );
+  })();
   return getProject(id);
 }
 

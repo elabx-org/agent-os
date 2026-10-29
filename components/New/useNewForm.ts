@@ -1,13 +1,19 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { AgentType } from "@/lib/providers";
 import type { ProjectWithDevServers } from "@/lib/projects";
+import { branchForFeature, branchFromTask } from "@/lib/branch-name";
+import { registerNavHandlers } from "@/lib/nav-actions";
+import { agentName } from "@/components/a/Avatar";
 import { useNewSessionForm } from "@/components/NewSessionDialog/hooks/useNewSessionForm";
 import { poll as refreshBackgroundAgents } from "@/components/BackgroundAgents";
 
 export type RunAs = "session" | "background";
 
 const RUN_AS_KEY = "agentOS:newRunAs";
+
+/** The agents New → Permissions offers lib/permission-mode.ts's modes for */
+const MODE_AGENTS: AgentType[] = ["claude", "codex", "gemini"];
 
 function savedRunAs(): RunAs {
   try {
@@ -83,12 +89,21 @@ export function useNewForm({
   const worktree = session.branchMode === "worktree";
   const isGit = !!session.gitInfo?.isGitRepo;
   const busy = session.isLoading || starting;
+
+  // Own worktree's branch: what was typed, else the task's, else the
+  // folder's generated feature name
+  const [branchEdit, setBranchEdit] = useState<string | null>(null);
+  useEffect(() => {
+    if (open) setBranchEdit(null);
+  }, [open]);
+  const featureName =
+    branchEdit?.trim() || branchFromTask(task) || session.featureName.trim();
+  const branch = featureName ? branchForFeature(featureName) : "";
+
   const canSubmit =
     !busy &&
     !!session.workingDirectory.trim() &&
-    (background
-      ? !!task.trim()
-      : !worktree || (isGit && !!session.featureName.trim()));
+    (background ? !!task.trim() : !worktree || (isGit && !!featureName));
 
   const setWorktree = (on: boolean) =>
     session.setBranchMode(on && isGit ? "worktree" : "none");
@@ -127,8 +142,16 @@ export function useNewForm({
   const submit = () => {
     if (!canSubmit) return;
     if (background) startBackground();
-    else session.handleSubmit();
+    else session.handleSubmit({ featureName });
   };
+
+  // The column's ✓ (E-New) starts what the form holds while it shows
+  const submitRef = useRef(submit);
+  submitRef.current = submit;
+  useEffect(() => {
+    if (!open) return;
+    return registerNavHandlers({ startNew: () => submitRef.current() });
+  }, [open]);
 
   // Background agents are Claude Code, so the model applies to them always;
   // other agents name their models differently
@@ -137,6 +160,21 @@ export function useNewForm({
     if (!showModel) session.setModel("");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showModel]);
+
+  // Modes only for agents that take them; the rest keep auto-approve
+  const showPermissions =
+    !background && MODE_AGENTS.includes(session.agentType);
+  useEffect(() => {
+    if (!showPermissions) session.setPermissionMode(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showPermissions]);
+
+  const project = projects.find((p) => p.id === session.projectId);
+  const projectName =
+    project && !project.is_uncategorized
+      ? project.name
+      : session.workingDirectory.replace(/\/+$/, "").split("/").pop() ||
+        session.workingDirectory;
 
   return {
     ...session,
@@ -148,6 +186,16 @@ export function useNewForm({
     setWorktree,
     isGit,
     showModel,
+    showPermissions,
+    /** The branch Own worktree makes, as the server will name it */
+    branch,
+    /** The branch field: what was typed, else the suggestion */
+    branchInput: branchEdit ?? branch,
+    branchEdited: branchEdit !== null,
+    setBranch: setBranchEdit,
+    /** Claude, Codex…: the agent as Start names it */
+    agentLabel: agentName(session.agentType),
+    projectName,
     submit,
     canSubmit,
     busy,

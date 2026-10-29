@@ -142,11 +142,23 @@ const BASE = {
     icon: "Trash",
     label: "Clear history",
   },
+  start: {
+    id: "start",
+    symbol: "checkmark",
+    icon: "Check",
+    label: "Start",
+  },
+  newProject: {
+    id: "newProject",
+    symbol: "plus",
+    icon: "Plus",
+    label: "New project",
+  },
   projectSettings: {
     id: "projectSettings",
     symbol: "ellipsis",
     icon: "Ellipsis",
-    label: "Project settings",
+    label: "Project actions",
   },
 } satisfies Record<string, Base & { id: NavAction }>;
 
@@ -315,7 +327,7 @@ export function columnFor(
     case "projects":
       return [
         item(BASE.back),
-        item(BASE.new, { label: "New project", prominent: true, sep: true }),
+        item(BASE.newProject, { prominent: true, sep: true }),
         item(BASE.search, { label: "Find a project" }),
         item(BASE.sort),
       ];
@@ -333,8 +345,11 @@ export function columnFor(
         item(BASE.clearHistory),
       ];
     case "new":
-      // E-New's Start belongs to the form (M1b)
-      return [item(BASE.back, { symbol: "xmark", icon: "X", label: "Cancel" })];
+      // E-New: Cancel | Start (the form registers startNew)
+      return [
+        item(BASE.back, { symbol: "xmark", icon: "X", label: "Cancel" }),
+        item(BASE.start, { prominent: true, sep: true }),
+      ];
     case "search":
       return [item(BASE.back)];
   }

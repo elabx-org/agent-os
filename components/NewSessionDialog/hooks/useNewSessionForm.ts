@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import type { AgentType } from "@/lib/providers";
 import type { ProjectWithDevServers } from "@/lib/projects";
+import type { Mode } from "@/lib/permission-mode";
 import { setPendingPrompt } from "@/stores/initialPrompt";
 import { useCreateSession } from "@/data/sessions";
 import {
@@ -54,6 +55,8 @@ export function useNewSessionForm({
   const [initialPrompt, setInitialPrompt] = useState("");
   // "" keeps the server's default
   const [model, setModel] = useState("");
+  // New → Permissions; null keeps the agent's (or project's) default
+  const [permissionMode, setPermissionMode] = useState<Mode | null>(null);
 
   // Branch/worktree state
   const [branchMode, setBranchMode] = useState<BranchMode>("none");
@@ -225,12 +228,13 @@ export function useNewSessionForm({
     localStorage.setItem(CONTINUE_SESSION_KEY, String(checked));
   };
 
-  const handleSubmit = async (e?: React.FormEvent) => {
-    e?.preventDefault();
+  /** featureName: the branch New shows (from the task), over the stored one */
+  const handleSubmit = async (overrides: { featureName?: string } = {}) => {
     createSession.reset(); // Clear any previous errors
+    const feature = (overrides.featureName ?? featureName).trim();
 
     if (branchMode !== "none") {
-      if (!featureName.trim()) {
+      if (!feature) {
         return; // Validation handled by button disabled state
       }
       if (!gitInfo?.isGitRepo) {
@@ -258,9 +262,11 @@ export function useNewSessionForm({
         agentType,
         useWorktree: branchMode === "worktree",
         createBranch: branchMode === "branch",
-        featureName: branchMode !== "none" ? featureName.trim() : null,
+        featureName: branchMode !== "none" ? feature : null,
         baseBranch: branchMode !== "none" ? baseBranch : null,
-        autoApprove: skipPermissions,
+        // A chosen mode says it all (full access is bypassPermissions)
+        autoApprove: permissionMode ? false : skipPermissions,
+        permissionMode,
         continueSession,
         useTmux,
         initialPrompt: initialPrompt.trim() || null,
@@ -321,6 +327,7 @@ export function useNewSessionForm({
     setFeatureName("");
     setInitialPrompt("");
     setModel("");
+    setPermissionMode(null);
     setShowNewProject(false);
     setNewProjectName("");
     setCreationStep("creating");
@@ -347,6 +354,8 @@ export function useNewSessionForm({
     setInitialPrompt,
     model,
     setModel,
+    permissionMode,
+    setPermissionMode,
     // Branch/Worktree
     branchMode,
     setBranchMode,

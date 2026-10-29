@@ -6,6 +6,7 @@ import {
   useEffect,
   useLayoutEffect,
   useMemo,
+  useRef,
   useState,
   type CSSProperties,
   type ReactNode,
@@ -26,8 +27,9 @@ import { FOLD_CLEAR, useHinge } from "@/hooks/useHinge";
 import { useLayoutMode } from "@/hooks/useLayoutMode";
 import { registerNavHandlers } from "@/lib/nav-actions";
 import { setHome } from "@/stores/surface";
-import { nativeCaps } from "@/lib/native-bridge";
+import { isNative, nativeCaps } from "@/lib/native-bridge";
 import { postureStore } from "@/stores/posture";
+import { resetSwap, toggleSwap } from "@/stores/paneOrder";
 import { focusStore } from "@/stores/focus";
 import { mobileNavStore } from "@/stores/mobileNav";
 import { ContextPanel } from "@/components/ReplyContext/ContextPanel";
@@ -83,6 +85,15 @@ const SpreadPanesContext = createContext<SpreadPanes>(null);
 
 export function useSpreadPanes(): SpreadPanes {
   return useContext(SpreadPanesContext);
+}
+
+/**
+ * Open-Beside's session pills name the two pages, and the column holds
+ * their actions, so the panes drop their title bars. The iOS app before
+ * the column (0.1.62) keeps the bars: swap lives there
+ */
+export function besidePills(): boolean {
+  return !isNative() || nativeCaps().column;
 }
 
 /**
@@ -163,6 +174,11 @@ interface SessionSpreadProps {
   /** The home (Now); shown while homeOpen */
   home: ReactNode;
   homeOpen: boolean;
+  /**
+   * The desktop's home width (its sidebar or avatar rail): flat against the
+   * panes, no shadow; the web's default sidebar width otherwise
+   */
+  homeWidth?: number;
   /** A workspace page standing in for the panes and the rail, or null */
   page?: ReactNode;
   /**
@@ -176,7 +192,8 @@ interface SessionSpreadProps {
 
 /**
  * The session and what sits around it. Web: home | pane | live activity |
- * control column. The open iPhone Duo lays it out as two pages: pane left and
+ * control column; the desktop has its sidebar (or avatar rail) for the home
+ * and no column. The open iPhone Duo lays it out as two pages: pane left and
  * rail right, or the home left (back) and the pane right. Focus (and the
  * views other than terminal and chat) drop the home and rail; the pane then
  * spans the fold flat (only controls avoid it, see .fold-controls). Half open
@@ -197,6 +214,7 @@ export function SessionSpread({
   projects,
   home,
   homeOpen: homeWanted,
+  homeWidth,
   page,
   pageSpread,
   children,
@@ -205,6 +223,8 @@ export function SessionSpread({
   const mode = useLayoutMode();
   // The Duo lays out as two pages in the app and in Safari alike
   const duo = native || mode === "duo-open" || mode === "book";
+  // The desktop shell (sidebar, no column) never reaches the open Duo
+  const desktop = mode === "desktop" && !native;
   const { fold } = useSnapshot(postureStore);
   const book = fold?.axis === "vertical" ? fold : null;
   const hingeX = useHinge(duo && !fold);
@@ -258,7 +278,7 @@ export function SessionSpread({
       ? !homeOpen &&
         (liveOpen || railByDefault) &&
         (viewMode === "terminal" || viewMode === "chat")
-      : roomForRail && !duo);
+      : roomForRail && !duo && !(desktop && paneCount > 1));
   // Pane on the left page, the rail on the right (the home and Changes left
   // pages only come with no rail)
   const paneLeft = pages && showRail;
@@ -319,7 +339,19 @@ export function SessionSpread({
     };
   }, [homeWanted]);
 
-  useEffect(() => registerNavHandlers({ swapPanes: swap }), [swap]);
+  // Two on the pages trade sides in place (CSS order, nothing remounts);
+  // elsewhere the split itself swaps
+  useEffect(
+    () => registerNavHandlers({ swapPanes: twoPages ? toggleSwap : swap }),
+    [twoPages, swap]
+  );
+  // A new pair starts in order. Only on the way down from two: the saved
+  // layout loads after the first render, and its pair keeps its sides
+  const lastPaneCount = useRef(paneCount);
+  useEffect(() => {
+    if (paneCount < 2 && lastPaneCount.current >= 2) resetSwap();
+    lastPaneCount.current = paneCount;
+  }, [paneCount]);
 
   const spreadPanes = useMemo<SpreadPanes>(
     () =>
@@ -342,22 +374,30 @@ export function SessionSpread({
     ? { width: 0 }
     : pages
       ? { width: leftPage }
-      : undefined;
+      : homeWidth
+        ? { width: homeWidth }
+        : undefined;
 
   return (
     <div className="relative flex min-h-0 min-w-0 flex-1">
       {/* The home: a sidebar on the web, the left page on the open Duo */}
       <div
         className={cn(
-          "kb-compact-hide bg-sidebar-background flex-shrink-0 overflow-hidden shadow-xl shadow-black/10 transition-all duration-200 dark:shadow-black/30",
-          homeOpen && !pages && (duo ? "w-1/2" : "w-[22rem]"),
+          "kb-compact-hide bg-sidebar-background flex-shrink-0 overflow-hidden transition-all duration-200",
+          !homeWidth && "shadow-xl shadow-black/10 dark:shadow-black/30",
+          homeOpen && !pages && !homeWidth && (duo ? "w-1/2" : "w-[22rem]"),
           homeOpen && duo && !book && "border-border border-r"
         )}
         style={homeStyle}
       >
         {/* The page's own colour edge to edge (Open-Now); the bottom inset
             keeps the last row clear of the open Duo's round screen corner */}
-        <div className="bg-page h-full pb-[max(1rem,env(safe-area-inset-bottom))]">
+        <div
+          className={cn(
+            "bg-page h-full",
+            !homeWidth && "pb-[max(1rem,env(safe-area-inset-bottom))]"
+          )}
+        >
           {home}
         </div>
       </div>
@@ -459,7 +499,7 @@ export function SessionSpread({
       {/* The one view switcher; the iOS app has its own. On the open Duo
           it sits in the system column's 86px, below the camera (Open-Now:
           20 + 16 + 24 + 40) */}
-      {!native && (
+      {!native && !desktop && (
         <div
           className={cn(
             "flex flex-shrink-0 justify-center",

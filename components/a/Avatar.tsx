@@ -2,10 +2,17 @@
 
 import type { CSSProperties } from "react";
 import { SquareTerminal, type LucideIcon } from "lucide-react";
+import type { ProjectTone } from "@/lib/project-groups";
 import { cn } from "@/lib/utils";
 
-/** The tile colours: one per agent, plus project colours (M1b) */
-export type AvatarTone = "claude" | "codex" | "gemini" | "shell" | "other";
+/** The tile colours: one per agent, plus project colours (projectTone) */
+export type AvatarTone =
+  | "claude"
+  | "codex"
+  | "gemini"
+  | "shell"
+  | "other"
+  | ProjectTone;
 
 export interface AvatarProps {
   /** Its first letter is shown ("Claude" → C); two letters stay ("Cu") */
@@ -27,6 +34,13 @@ const TONE_CLASS: Record<AvatarTone, string> = {
   gemini: "bg-[#E2E9FB] text-[#2F5BB7] dark:bg-[#1A1F2E] dark:text-[#93B4F5]",
   shell: "bg-[#E5E5EA] text-[#3A3A3F] dark:bg-[#1C1C20] dark:text-[#C7C7CC]",
   other: "bg-secondary text-muted-foreground",
+  // E-Projects' .pj tiles
+  purple: "bg-[#EDE5FB] text-[#6D28D9] dark:bg-[#2E1F4D] dark:text-[#C4B5FD]",
+  teal: "bg-[#DDF3EE] text-[#0F766E] dark:bg-[#14262A] dark:text-[#7DD3C0]",
+  blue: "bg-[#E2E9FB] text-[#2F5BB7] dark:bg-[#1A1F2E] dark:text-[#93B4F5]",
+  orange: "bg-[#FBE7DF] text-[#B4532F] dark:bg-[#2A1F1A] dark:text-[#E9967A]",
+  pink: "bg-[#FBE3EE] text-[#A3245E] dark:bg-[#2A1A24] dark:text-[#F0A3C8]",
+  green: "bg-[#E6F4DC] text-[#3F7A1D] dark:bg-[#1F2A1A] dark:text-[#A3D977]",
 };
 
 /** Each agent's name and tile letter(s); unknown ones use their own name */
