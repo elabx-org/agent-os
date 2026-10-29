@@ -296,8 +296,10 @@ function agents(ctx: ColumnContext, extra: Partial<ColumnItem> = {}) {
 }
 
 /**
- * N-Tree: back to the Live activity | Show finished, Collapse all | Stop
- * all agents while it works; back to the tree over an agent's detail
+ * N-Tree: back to the Live activity | Show finished, Collapse all |
+ * Interrupt while it works (the session only: workers and
+ * background agents are stopped from their own detail); back to the tree
+ * over an agent's detail
  */
 function agentsColumn(ctx: ColumnContext): ColumnItem[] {
   if (ctx.agentDetail) return [item(BASE.back, { label: "Back to agents" })];
@@ -311,9 +313,7 @@ function agentsColumn(ctx: ColumnContext): ColumnItem[] {
           label: "Expand all",
         })
       : item(BASE.collapseAll),
-    ...(ctx.working
-      ? [item(BASE.stop, { label: "Stop all agents", danger: true, ...sep })]
-      : []),
+    ...(ctx.working ? [item(BASE.stop, { danger: true, ...sep })] : []),
   ];
 }
 

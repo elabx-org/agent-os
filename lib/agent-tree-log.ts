@@ -13,6 +13,8 @@ import { modelName } from "./claude-workflows";
 
 /** Prompts longer than this are cut (the pane shows a few lines) */
 const PROMPT_CAP = 2000;
+/** Kept of a prompt, so the part after an opening shared with others is there */
+const TASK_CAP = 32_000;
 /** Tool calls kept, so a late result still finds its call */
 const KEEP_TOOLS = 16;
 /** Read this much at a time, so a big file never needs one big buffer */
@@ -56,6 +58,8 @@ export interface AgentLog {
   forkHead: boolean;
   /** A user line seen yet (a fork's head comes before the first) */
   seenUser: boolean;
+  /** The folder it ran in (each line carries it) */
+  cwd: string | null;
 }
 
 const cache = new Map<string, AgentLog>();
@@ -75,6 +79,7 @@ function emptyLog(): AgentLog {
     pendingWrites: new Map(),
     forkHead: false,
     seenUser: false,
+    cwd: null,
   };
 }
 
@@ -298,7 +303,74 @@ export function harnessTask(text: string): string | null {
 function capPrompt(text: string): string | null {
   const t = harnessTask(text.trim())?.trim();
   if (!t) return null;
-  return t.length > PROMPT_CAP ? t.slice(0, PROMPT_CAP - 1) + "…" : t;
+  return t.length > TASK_CAP ? t.slice(0, TASK_CAP) : t;
+}
+
+/** A prompt as the pane shows it: cut after PROMPT_CAP characters */
+export function shortPrompt(text: string | null): string | null {
+  if (!text) return null;
+  return text.length > PROMPT_CAP ? text.slice(0, PROMPT_CAP - 1) + "…" : text;
+}
+
+/** At least this much has to be left for the agent's own part to show */
+const OWN_MIN = 20;
+
+/**
+ * What only this agent was asked: the agents of one workflow are often
+ * asked the same long opening and then their own task, so the opening it
+ * shares with another (to the end of its last whole line) is dropped. The whole
+ * prompt when nothing is shared or too little would be left.
+ */
+export function ownTask(prompt: string, siblings: string[]): string {
+  const others = siblings.filter((s) => s && s !== prompt);
+  if (!others.length) return prompt;
+  // The opening shared with the agent most like it (a run often mixes
+  // kinds: designers and critics)
+  let n = 0;
+  for (const s of others) {
+    let i = 0;
+    while (i < prompt.length && i < s.length && s[i] === prompt[i]) i++;
+    n = Math.max(n, i);
+  }
+  const cut = prompt.lastIndexOf("\n", n - 1);
+  if (cut <= 0) return prompt;
+  const own = prompt.slice(cut + 1).trim();
+  return own.length >= OWN_MIN ? own : prompt;
+}
+
+/** Read of a conversation's head to find its prompt */
+const HEAD_BYTES = 256 * 1024;
+const taskCache = new Map<string, string | null>();
+
+/**
+ * The prompt of a conversation from its first lines, without reading the
+ * rest (for comparing it with the agents beside it)
+ */
+export async function firstTask(file: string): Promise<string | null> {
+  const known = cache.get(file)?.prompt;
+  if (known) return known;
+  if (taskCache.has(file)) return taskCache.get(file) ?? null;
+  const log = emptyLog();
+  try {
+    const handle = await fs.promises.open(file, "r");
+    try {
+      const buf = Buffer.alloc(HEAD_BYTES);
+      const { bytesRead } = await handle.read(buf, 0, HEAD_BYTES, 0);
+      const text = buf.subarray(0, bytesRead).toString("utf8");
+      const lines = text.split("\n");
+      if (bytesRead === HEAD_BYTES) lines.pop();
+      for (const line of lines) {
+        if (line) applyLine(log, line);
+        if (log.prompt !== null) break;
+      }
+    } finally {
+      await handle.close();
+    }
+  } catch {
+    return null;
+  }
+  taskCache.set(file, log.prompt);
+  return log.prompt;
 }
 
 function applyLine(log: AgentLog, line: string) {
@@ -319,6 +391,7 @@ function applyLine(log: AgentLog, line: string) {
     if (!log.seenUser) log.forkHead = true;
     return;
   }
+  if (!log.cwd) log.cwd = str(entry.cwd) || null;
   const at = str(entry.timestamp);
   if (at) {
     log.startedAt ??= at;
@@ -391,15 +464,35 @@ function applyLine(log: AgentLog, line: string) {
   }
 }
 
+/** Let other requests and sockets run between chunks */
+const yieldToLoop = () => new Promise<void>((r) => setImmediate(r));
+
+const reading = new Map<string, Promise<AgentLog | null>>();
+
+/** What was read of the file so far, without reading more */
+export function cachedAgentLog(file: string): AgentLog | null {
+  return cache.get(file) ?? null;
+}
+
 /**
  * The conversation read so far, with what was appended since the last call
  * added; null if the file can't be read. Only whole lines are read: a
- * half-written one is read next time.
+ * half-written one is read next time. The read yields between chunks, so a
+ * big file never stalls the server, and callers asking for the same file
+ * at once share one read.
  */
-export function readAgentLog(file: string): AgentLog | null {
+export function readAgentLog(file: string): Promise<AgentLog | null> {
+  const running = reading.get(file);
+  if (running) return running;
+  const promise = readMore(file).finally(() => reading.delete(file));
+  reading.set(file, promise);
+  return promise;
+}
+
+async function readMore(file: string): Promise<AgentLog | null> {
   let size: number;
   try {
-    size = fs.statSync(file).size;
+    size = (await fs.promises.stat(file)).size;
   } catch {
     return null;
   }
@@ -410,9 +503,9 @@ export function readAgentLog(file: string): AgentLog | null {
     cache.set(file, log);
     return log;
   }
-  let fd: number;
+  let handle: fs.promises.FileHandle;
   try {
-    fd = fs.openSync(file, "r");
+    handle = await fs.promises.open(file, "r");
   } catch {
     return log.offset ? log : null;
   }
@@ -421,7 +514,7 @@ export function readAgentLog(file: string): AgentLog | null {
     let carry = Buffer.alloc(0);
     while (pos < size) {
       const buf = Buffer.alloc(Math.min(CHUNK, size - pos));
-      const n = fs.readSync(fd, buf, 0, buf.length, pos);
+      const { bytesRead: n } = await handle.read(buf, 0, buf.length, pos);
       if (n <= 0) break;
       pos += n;
       const data = carry.length
@@ -436,9 +529,12 @@ export function readAgentLog(file: string): AgentLog | null {
         if (line) applyLine(log, line);
       carry = Buffer.from(data.subarray(end + 1));
       log.offset = pos - carry.length;
+      // Kept as it goes, so a later call goes on from here
+      cache.set(file, log);
+      if (pos < size) await yieldToLoop();
     }
   } finally {
-    fs.closeSync(fd);
+    await handle.close();
   }
   cache.set(file, log);
   return log;

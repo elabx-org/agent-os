@@ -23,15 +23,20 @@ import { cn } from "@/lib/utils";
 import { Avatar, agentAvatar } from "@/components/a/Avatar";
 import { StateDot } from "@/components/a/StateDot";
 import { confirmAction } from "@/components/ui/confirm";
-import { stopTreeNode, useAgentDetail } from "@/hooks/useAgentTree";
+import { useQueryClient } from "@tanstack/react-query";
+import {
+  agentTreeKeys,
+  stopTreeNode,
+  useAgentDetail,
+} from "@/hooks/useAgentTree";
 import { formatTokens } from "./activity-format";
+import { splitPath } from "@/components/DiffViewer/diff-format";
 import {
   detailTitle,
   hasDetail,
   nodeAge,
   opensSession,
   shortTokens,
-  splitPath,
   toolAge,
 } from "./agent-tree-format";
 
@@ -197,7 +202,11 @@ export function AgentDetailPane({
     hasDetail(node) ? node.agentId : null,
     true
   );
+  const queryClient = useQueryClient();
   const [stopping, setStopping] = useState(false);
+  // Stopped: the button stays off until the tree no longer offers a stop
+  const [stoppedId, setStoppedId] = useState<string | null>(null);
+  const stopSent = !!node.stop && stoppedId === node.stop.id;
   const now = Date.now();
   const panel = variant === "panel";
 
@@ -210,13 +219,19 @@ export function AgentDetailPane({
     age,
     !panel && tokens ? formatTokens(tokens) : null,
   ].filter(Boolean);
-  const asked = d?.prompt ?? (hasDetail(node) ? null : node.subtitle);
+  // A fork's or worker's line says what it was given; a session, workflow
+  // or phase line ("waiting on the workflow") was never asked of anyone
+  const asked =
+    d?.prompt ??
+    (node.kind === "fork" || node.kind === "handoff" || node.kind === "worker"
+      ? node.subtitle
+      : null);
   const files = d?.filesWritten ?? [];
   const sessionBacked = opensSession(node) && !!node.sessionId;
   const canTranscript = hasDetail(node) || sessionBacked;
 
   const stop = async () => {
-    if (!node.stop || stopping) return;
+    if (!node.stop || stopping || stopSent) return;
     const ok = await confirmAction({
       title: `Stop ${node.title}?`,
       message:
@@ -230,7 +245,11 @@ export function AgentDetailPane({
     setStopping(true);
     try {
       await stopTreeNode(node.stop);
+      setStoppedId(node.stop.id);
       toast(`Stopped ${node.title}`);
+      void queryClient.invalidateQueries({
+        queryKey: agentTreeKeys.tree(session.id),
+      });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Couldn't stop it");
     } finally {
@@ -242,10 +261,10 @@ export function AgentDetailPane({
     <button
       type="button"
       onClick={stop}
-      disabled={stopping}
+      disabled={stopping || stopSent}
       className="pill pill-secondary flex-1 text-red-600 disabled:opacity-60 dark:text-[#FCA5A5]"
     >
-      {stopping ? "Stopping…" : "Stop agent"}
+      {stopping || stopSent ? "Stopping…" : "Stop agent"}
     </button>
   );
   const transcriptButton = canTranscript && (
@@ -333,7 +352,7 @@ export function AgentDetailPane({
         <div className="flex flex-col gap-1.5">
           <SectionLabel>Files it wrote</SectionLabel>
           {files.slice(0, MAX_FILES).map((file) => {
-            const { name, dir } = splitPath(file.path);
+            const { name, folder: dir } = splitPath(file.path);
             return (
               <div
                 key={file.path}

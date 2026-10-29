@@ -5,11 +5,6 @@
 
 import type { AgentTreeResponse, TreeNode } from "./agent-tree-types";
 
-/** The root with its top level under it, as one tree */
-export function rootWithChildren(tree: AgentTreeResponse): TreeNode {
-  return { ...tree.root, children: tree.children };
-}
-
 /** Finished: done, failed or stopped (Show finished hides these) */
 export function isFinished(node: TreeNode): boolean {
   return (
@@ -59,15 +54,4 @@ export function crumbsFor(tree: AgentTreeResponse, id: string): string[] {
   const found = findNode(tree, id);
   if (!found) return [tree.root.title];
   return [tree.root.title, ...found.path.map((n) => n.title)];
-}
-
-/** Every node depth first, with its depth under the root (top level is 0) */
-export function flattenTree(
-  nodes: TreeNode[],
-  depth = 0
-): { node: TreeNode; depth: number }[] {
-  return nodes.flatMap((node) => [
-    { node, depth },
-    ...flattenTree(node.children, depth + 1),
-  ]);
 }

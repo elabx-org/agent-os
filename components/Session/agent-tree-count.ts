@@ -34,15 +34,14 @@ export function useAgentCount({
     : agentsShown
       ? (tree?.total ?? mobileNavStore.agentCount)
       : cheapAgentCount(id, subagents, workflows, sessions);
-  useEffect(() => {
-    if (isFocused) mobileNavStore.agentCount = count;
-  }, [isFocused, count]);
-  // Focus leaves or the pane closes: no stale count for the next pane
+  // One effect, so a new session's count is written even when it equals
+  // the old one's; focus leaving or the pane closing clears it
   useEffect(() => {
     if (!isFocused) return;
+    mobileNavStore.agentCount = count;
     return () => {
       mobileNavStore.agentCount = 0;
     };
-  }, [isFocused, id]);
+  }, [isFocused, id, count]);
   return count;
 }

@@ -5,9 +5,10 @@
  * workflows, linked sessions, background agents).
  */
 
+import fs from "fs";
 import path from "path";
 import { getDb, queries, type Session } from "./db";
-import { listSubagents, subagentFile } from "./claude-subagents";
+import { COUNT_LIMIT, listSubagents, subagentFile } from "./claude-subagents";
 import type { SubagentInfo } from "./claude-subagents";
 import { listWorkflows } from "./claude-workflows";
 import type { WorkflowInfo } from "./claude-workflows";
@@ -26,10 +27,12 @@ import {
 import { getProvider } from "./providers";
 import {
   canAsk,
+  cachedAgentLog,
   lastTool,
   logModel,
   logTokens,
   readAgentLog,
+  type AgentLog,
 } from "./agent-tree-log";
 import { linkBackground, mentionedIds, sessionUsage } from "./agent-tree-links";
 import type {
@@ -70,8 +73,6 @@ export interface AgentTreeInput {
   related: Session[];
   /** Background agents started from it */
   background: BackgroundAgent[];
-  /** Date.now(), passed in for tests */
-  now: number;
   /** What each agent is doing, by agentId, where it was read */
   activity?: Record<string, AgentActivity>;
   /** The session's own model and context, from its transcript */
@@ -135,7 +136,6 @@ function agentSubtitle(
       : `Wrote ${activity.files.length} files`;
   const n = activity?.steps ?? steps;
   if (n) return plural(n, "tool use");
-  if (state === "work" && last) return `${last.verb} ${last.target}`.trim();
   return null;
 }
 
@@ -260,7 +260,6 @@ function workflowNode(
   };
 }
 
-/** How a linked Agent-OS session relates: worker, handoff or fork */
 /**
  * A workflow agent's label without its phase ("design:undo-diff" in Design
  * is "undo-diff"): the tree already shows it under that phase
@@ -274,6 +273,7 @@ export function withoutPhase(label: string, phase: string | null): string {
   return rest || label;
 }
 
+/** How a linked Agent-OS session relates: worker, handoff or fork */
 function relatedKind(
   session: Session,
   other: Session
@@ -394,7 +394,8 @@ function startMs(node: TreeNode): number {
 /**
  * The merged tree: workflows (their declared phases in order, a phase with
  * no agents yet queued after the one before), plain subagents, linked
- * sessions and background agents, oldest first. An agent shows once, under
+ * sessions and background agents: workflows first, then the agents at
+ * work, then the rest, oldest first within each. An agent shows once, under
  * its workflow when it has one.
  *
  * Asking: when the session waits on a permission and exactly one running
@@ -496,10 +497,22 @@ export function buildAgentTree(input: AgentTreeInput): AgentTreeResponse {
     seenBg.add(agent.id);
     top.push(backgroundNode(agent));
   }
-  // Oldest first; stable for equal or unknown starts
+  // Workflows first, then agents at work, then the rest (N-Tree, O-Tree);
+  // oldest first within each, stable for equal or unknown starts
+  const rank = (node: TreeNode) =>
+    node.kind === "workflow"
+      ? 0
+      : node.state === "work" || node.state === "needs"
+        ? 1
+        : 2;
   const children = top
     .map((node, i) => ({ node, i }))
-    .sort((a, b) => startMs(a.node) - startMs(b.node) || a.i - b.i)
+    .sort(
+      (a, b) =>
+        rank(a.node) - rank(b.node) ||
+        startMs(a.node) - startMs(b.node) ||
+        a.i - b.i
+    )
     .map((x) => x.node);
 
   const counts = { ...NO_COUNTS };
@@ -533,10 +546,7 @@ export function buildAgentTree(input: AgentTreeInput): AgentTreeResponse {
   return { root, children, counts, total };
 }
 
-/** What a conversation says, for the tree (null if it can't be read) */
-export function activityOf(file: string): AgentActivity | null {
-  const log = readAgentLog(file);
-  if (!log) return null;
+function activityFrom(log: AgentLog): AgentActivity {
   const last = lastTool(log);
   const latest = log.tools.at(-1);
   return {
@@ -550,6 +560,63 @@ export function activityOf(file: string): AgentActivity | null {
     startedAt: log.startedAt,
     updatedAt: log.updatedAt,
   };
+}
+
+/** What a conversation says, for the tree (null if it can't be read) */
+export async function activityOf(file: string): Promise<AgentActivity | null> {
+  const log = await readAgentLog(file);
+  return log ? activityFrom(log) : null;
+}
+
+/** Time one tree read spends on finished agents it hasn't read yet */
+const FINISHED_BUDGET_MS = 250;
+
+/**
+ * Each agent's own conversation, by agentId. Running agents are read in
+ * full (the read yields, and goes on from where it stopped next time).
+ * Finished ones are read only when small (COUNT_LIMIT, like the step
+ * counts) and while this read's budget lasts; the next poll goes on with
+ * the rest. Any agent not read keeps what was read of it before.
+ */
+export async function readActivities(
+  transcript: string,
+  agents: { agentId: string; running: boolean }[]
+): Promise<Record<string, AgentActivity>> {
+  const out: Record<string, AgentActivity> = {};
+  const deadline = Date.now() + FINISHED_BUDGET_MS;
+  for (const { agentId, running } of agents) {
+    const conv = subagentFile(transcript, agentId);
+    if (!conv) continue;
+    let log = cachedAgentLog(conv);
+    if (running) log = await readAgentLog(conv);
+    else if (Date.now() < deadline) {
+      let size = 0;
+      try {
+        size = (await fs.promises.stat(conv)).size;
+      } catch {}
+      if (size <= COUNT_LIMIT && size !== log?.offset)
+        log = await readAgentLog(conv);
+    }
+    if (log) out[agentId] = activityFrom(log);
+    else if (!running) {
+      // Too big to read yet: its file's times at least
+      try {
+        const stat = await fs.promises.stat(conv);
+        out[agentId] = {
+          last: null,
+          wants: null,
+          canAsk: false,
+          steps: 0,
+          files: [],
+          model: null,
+          tokens: null,
+          startedAt: stat.birthtime.toISOString(),
+          updatedAt: stat.mtime.toISOString(),
+        };
+      } catch {}
+    }
+  }
+  return out;
 }
 
 /** Background agents: the CLI is never waited on longer than this */
@@ -624,7 +691,6 @@ async function readTree(sessionId: string): Promise<AgentTreeResponse | null> {
   const [session, ...related] = await Promise.all(
     [stored, ...relatedSessions(stored.id)].map(withLiveStatus)
   );
-  const now = Date.now();
   if (session.agent_type !== "claude")
     return buildAgentTree({
       session,
@@ -632,7 +698,6 @@ async function readTree(sessionId: string): Promise<AgentTreeResponse | null> {
       workflows: [],
       related,
       background: [],
-      now,
     });
 
   const found = await findTranscript(
@@ -642,31 +707,29 @@ async function readTree(sessionId: string): Promise<AgentTreeResponse | null> {
   const subagents = file ? listSubagents(file) : [];
   const workflows = file ? listWorkflows(file) : [];
 
-  // Each agent's own conversation, where the tree shows what it does: the
-  // running ones, plain subagents, and the agents of a running workflow (a
-  // finished workflow's agents were read for their usage already)
-  const activity: Record<string, AgentActivity> = {};
-  if (file) {
-    const ids = [
-      ...subagents.map((s) => s.agentId),
-      ...workflows
-        .filter((w) => w.status === "running")
-        .flatMap((w) => w.agents.map((a) => a.agentId)),
-    ];
-    for (const id of ids) {
-      const conv = subagentFile(file, id);
-      const a = conv ? activityOf(conv) : null;
-      if (a) activity[id] = a;
-    }
-  }
+  // Each agent's own conversation, where the tree shows what it does
+  const activity = file
+    ? await readActivities(file, [
+        ...subagents.map((s) => ({
+          agentId: s.agentId,
+          running: s.status === "running",
+        })),
+        ...workflows.flatMap((w) =>
+          w.agents.map((a) => ({
+            agentId: a.agentId,
+            running: w.status === "running" && a.status === "running",
+          }))
+        ),
+      ])
+    : {};
 
   let background: BackgroundAgent[] = [];
   if (file) {
     const candidates = linkBackground(session, await backgroundSoon(), null);
     if (candidates.length) {
-      const mentioned = mentionedIds(
+      const mentioned = await mentionedIds(
         file,
-        candidates.map((a) => a.id)
+        candidates.map((a) => ({ id: a.id, startedAt: a.startedAt }))
       );
       background = linkBackground(session, candidates, mentioned);
     }
@@ -678,7 +741,6 @@ async function readTree(sessionId: string): Promise<AgentTreeResponse | null> {
     workflows,
     related,
     background,
-    now,
     activity,
     usage: file ? sessionUsage(file) : undefined,
   });

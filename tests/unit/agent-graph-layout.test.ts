@@ -5,8 +5,6 @@ import {
   columnFor,
   edgePath,
   fitScale,
-  formatSpan,
-  formatTokens,
   GRAPH,
   layoutAgentGraph,
   nodeMeta,
@@ -76,11 +74,11 @@ test("columns follow D-Tree: session, workflow and subagents, phases, agents", (
   assert.equal(at(l, "agent:undo").column, 3);
   assert.deepEqual(
     l.columns.map((c) => c.x),
-    [24, 288, 552, 776]
+    [16, 236, 464, 656]
   );
   assert.equal(at(l, "phase:r:1").h, GRAPH.phaseH);
-  assert.equal(at(l, "wf:r").w, 236);
-  assert.equal(l.width, 776 + 216 + 24);
+  assert.equal(at(l, "wf:r").w, 200);
+  assert.equal(l.width, 656 + 196 + 16);
 });
 
 test("columnFor puts agents under a bare workflow in Agents and nests deeper ones past it", () => {
@@ -90,15 +88,15 @@ test("columnFor puts agents under a bare workflow in Agents and nests deeper one
   assert.equal(columnFor("phase", 1), 2);
 });
 
-test("parents centre on their children's span; leaf agents stack 24 apart", () => {
+test("parents centre on their children's span; leaf agents stack 16 apart", () => {
   const l = layoutAgentGraph(dTree());
   const [undo, tree, composer] = [
     "agent:undo",
     "agent:tree",
     "agent:composer",
   ].map((id) => at(l, id));
-  assert.equal(tree.y - (undo.y + undo.h), 24);
-  assert.equal(composer.y - (tree.y + tree.h), 24);
+  assert.equal(tree.y - (undo.y + undo.h), GRAPH.leafGap);
+  assert.equal(composer.y - (tree.y + tree.h), GRAPH.leafGap);
   assert.equal(cy(at(l, "phase:r:1")), (cy(undo) + cy(composer)) / 2);
   assert.equal(cy(at(l, "phase:r:2")), cy(at(l, "agent:critic")));
   assert.equal(
@@ -178,23 +176,34 @@ test("a session with no agents is one card", () => {
   assert.equal(l.columns.length, 1);
 });
 
-test("fitScale: never above 1, floored, fits the tighter side", () => {
+test("fitScale: fits the width, never above 1, floored at 0.9", () => {
   assert.equal(
     fitScale({ width: 500, height: 400 }, { width: 1000, height: 800 }),
     1
   );
   assert.equal(
-    fitScale({ width: 1000, height: 800 }, { width: 800, height: 800 }),
-    0.8
+    fitScale({ width: 1000, height: 800 }, { width: 950, height: 800 }),
+    0.95
+  );
+  // A tall graph scrolls rather than shrinks
+  assert.equal(
+    fitScale({ width: 800, height: 4000 }, { width: 800, height: 600 }),
+    1
   );
   assert.equal(
     fitScale({ width: 4000, height: 800 }, { width: 800, height: 800 }),
-    0.5
+    0.9
   );
   assert.equal(
     fitScale({ width: 1000, height: 800 }, { width: 0, height: 0 }),
     1
   );
+  // The four columns fit the desktop's ~810px canvas nearly at full size
+  const four =
+    GRAPH.padX * 2 +
+    GRAPH.widths.reduce((a, b) => a + b, 0) +
+    GRAPH.gaps.reduce((a, b) => a + b, 0);
+  assert.ok(four <= 810 / 0.9, `${four} too wide`);
 });
 
 test("meta line: model · span · tokens", () => {
@@ -213,9 +222,16 @@ test("meta line: model · span · tokens", () => {
     "Codex · 6m · 48k"
   );
   assert.equal(nodeMeta(n("phase:x", "phase", "queued"), now), null);
-  assert.equal(formatTokens(212_400), "212k");
-  assert.equal(formatTokens(1_250_000), "1.3M");
-  assert.equal(formatTokens(900), "900");
-  assert.equal(formatSpan(40_000), "40s");
-  assert.equal(formatSpan(3 * 3_600_000), "3h");
+  // The tree's own formats: 12.5M is "13M" and a 30h run "30h" in both
+  assert.equal(
+    nodeMeta({ ...node, model: null, tokens: 12_500_000 }, now),
+    "6m · 13M"
+  );
+  assert.equal(
+    nodeMeta(
+      { ...node, model: null, tokens: null },
+      Date.parse("2026-10-30T16:00:00Z")
+    ),
+    "30h"
+  );
 });

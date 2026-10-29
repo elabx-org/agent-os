@@ -61,6 +61,7 @@ interface Mentions {
 }
 
 const mentionCache = new Map<string, Mentions>();
+const searching = new Map<string, Promise<unknown>>();
 
 export function resetMentionCache() {
   mentionCache.clear();
@@ -70,8 +71,13 @@ function escape(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-/** Search bytes [from, to) of the file for the ids, adding hits to `found` */
-function scan(
+const yieldToLoop = () => new Promise<void>((r) => setImmediate(r));
+
+/**
+ * Search bytes [from, to) of the file for the ids, adding hits to `found`;
+ * yields between chunks so a big transcript never stalls the server
+ */
+async function scan(
   file: string,
   from: number,
   to: number,
@@ -84,31 +90,120 @@ function scan(
     `(?<![\\w-])(${left.map(escape).join("|")})(?![\\w-])`,
     "g"
   );
-  const fd = fs.openSync(file, "r");
+  const handle = await fs.promises.open(file, "r");
   try {
     let pos = Math.max(0, from - OVERLAP);
     while (pos < to) {
       const buf = Buffer.alloc(Math.min(CHUNK, to - pos));
-      const n = fs.readSync(fd, buf, 0, buf.length, pos);
+      const { bytesRead: n } = await handle.read(buf, 0, buf.length, pos);
       if (n <= 0) break;
       for (const m of buf.subarray(0, n).toString("utf8").matchAll(re))
         found.add(m[1]);
       if (pos + n >= to) break;
       pos += Math.max(1, n - OVERLAP);
+      await yieldToLoop();
     }
   } finally {
-    fs.closeSync(fd);
+    await handle.close();
+  }
+}
+
+/** Bytes read around a probe to find a line's time */
+const PROBE = 64 * 1024;
+const TIMESTAMP = /"timestamp":"([^"]+)"/;
+
+/** How far past a probe a line's time is looked for (lines can be huge) */
+const PROBE_REACH = 8 * 1024 * 1024;
+
+/**
+ * The time of the first line starting after `pos` that has one (NaN if
+ * none within PROBE_REACH)
+ */
+async function timeAfter(
+  handle: fs.promises.FileHandle,
+  pos: number
+): Promise<number> {
+  const buf = Buffer.alloc(PROBE);
+  let skipFirst = pos !== 0;
+  for (let at = pos; at < pos + PROBE_REACH; at += PROBE) {
+    const { bytesRead } = await handle.read(buf, 0, PROBE, at);
+    if (bytesRead <= 0) break;
+    const text = buf.subarray(0, bytesRead).toString("utf8");
+    // Only the starts of lines: a line's own time comes early in it
+    let from = 0;
+    if (skipFirst) {
+      const nl = text.indexOf("\n");
+      if (nl < 0) continue;
+      from = nl + 1;
+      skipFirst = false;
+    }
+    for (const line of text.slice(from).split("\n")) {
+      const m = TIMESTAMP.exec(line);
+      if (m) return Date.parse(m[1]);
+    }
+  }
+  return NaN;
+}
+
+/** Lines this much older than the agent are searched too */
+const START_SLACK_MS = 5 * 60_000;
+
+/**
+ * About where the conversation reaches `ms`: a byte offset before every
+ * line written after it (lines are in time order, so a binary search over
+ * their timestamps); 0 when it can't be told
+ */
+export async function offsetBefore(
+  file: string,
+  size: number,
+  ms: number
+): Promise<number> {
+  if (!Number.isFinite(ms) || size <= PROBE) return 0;
+  const handle = await fs.promises.open(file, "r");
+  try {
+    let lo = 0;
+    let hi = size;
+    while (hi - lo > PROBE) {
+      const mid = Math.floor((lo + hi) / 2);
+      const t = await timeAfter(handle, mid);
+      if (Number.isNaN(t)) break;
+      if (t < ms) lo = mid;
+      else hi = mid;
+    }
+    return lo;
+  } finally {
+    await handle.close();
   }
 }
 
 /**
- * Which of `ids` the conversation names. A new id costs one pass over the
- * file; after that only what was appended is searched.
+ * Which agents the conversation names. The output naming an agent comes
+ * after it started, so a new id is searched for only from about its start
+ * on; after that only what was appended is searched. Calls for one file
+ * take turns.
  */
-export function mentionedIds(file: string, ids: string[]): Set<string> {
+export async function mentionedIds(
+  file: string,
+  agents: { id: string; startedAt: number }[]
+): Promise<Set<string>> {
+  const prev = searching.get(file) ?? Promise.resolve();
+  const next = prev.catch(() => {}).then(() => findMentions(file, agents));
+  searching.set(file, next);
+  try {
+    return await next;
+  } finally {
+    if (searching.get(file) === next) searching.delete(file);
+  }
+}
+
+async function findMentions(
+  file: string,
+  agents: { id: string; startedAt: number }[]
+): Promise<Set<string>> {
+  const ids = agents.map((a) => a.id);
   let size: number;
   try {
-    size = fs.statSync(file).size;
+    size = (await fs.promises.stat(file)).size;
   } catch {
     return new Set();
   }
@@ -117,11 +212,27 @@ export function mentionedIds(file: string, ids: string[]): Set<string> {
     cached && size >= cached.offset
       ? cached
       : { offset: 0, checked: new Set(), found: new Set() };
-  const fresh = ids.filter((id) => !m.checked.has(id));
+  const fresh = agents.filter((a) => !m.checked.has(a.id));
   try {
-    if (fresh.length) scan(file, 0, m.offset, fresh, m.found);
-    for (const id of fresh) m.checked.add(id);
-    scan(file, m.offset, size, [...m.checked], m.found);
+    if (fresh.length && m.offset > 0) {
+      const since = Math.min(...fresh.map((a) => a.startedAt));
+      const from = await offsetBefore(file, m.offset, since - START_SLACK_MS);
+      await scan(
+        file,
+        from,
+        m.offset,
+        fresh.map((a) => a.id),
+        m.found
+      );
+    }
+    for (const a of fresh) m.checked.add(a.id);
+    let from = m.offset;
+    // The first look: only from the earliest agent's start
+    if (from === 0 && fresh.length) {
+      const since = Math.min(...fresh.map((a) => a.startedAt));
+      from = await offsetBefore(file, size, since - START_SLACK_MS);
+    }
+    await scan(file, from, size, [...m.checked], m.found);
     m.offset = size;
   } catch {
     return new Set();

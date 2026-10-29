@@ -50,8 +50,8 @@ const DASH = { solid: undefined, dashed: "5 5", dotted: "2 5" } as const;
  * coloured by state (dashed for forks, dotted for queued), the legend,
  * Show finished, and zoom − Fit +. Selecting a card selects the node; the
  * detail panel beside it is AgentDetailPane. Zoom 1 is Fit: the graph
- * scales down to the box (never below half, then scroll to pan) and − +
- * zoom from there.
+ * scales down to the box's width (never below 0.9, then scroll to pan; a
+ * tall graph scrolls down) and − + zoom from there.
  */
 export function AgentGraph({
   tree,

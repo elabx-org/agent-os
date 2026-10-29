@@ -22,7 +22,11 @@ export async function GET(
   const found = await findTranscript(session.tmux_name || `claude-${id}`);
   try {
     const detail = found?.file
-      ? subagentDetail(found.file, agentId, found.cwd)
+      ? await subagentDetail(found.file, agentId, [
+          found.cwd,
+          session.worktree_path ?? "",
+          session.working_directory,
+        ])
       : null;
     if (!detail)
       return NextResponse.json({ error: "Not found" }, { status: 404 });

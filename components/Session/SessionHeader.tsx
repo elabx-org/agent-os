@@ -210,6 +210,7 @@ export function FoldHeader({
   /** ⋯, for the rarer views and actions */
   menu?: ReactNode;
 }) {
+  const agentsView = canonicalViewMode(viewMode) === "agents";
   return (
     <header className="native-top-inset kb-compact-hide bg-background flex shrink-0 items-center gap-2.5 px-5 pt-4 pb-2">
       <button
@@ -227,10 +228,15 @@ export function FoldHeader({
         <Crumb info={info} className="text-xs leading-tight" />
       </div>
       <div className="ml-auto flex shrink-0 items-center gap-1.5">
+        {/* The agents view shows as the third, selected segment */}
         <ViewSeg
-          viewMode={viewMode}
+          viewMode={agentsView ? "agents" : viewMode}
           onViewModeChange={onViewModeChange}
-          views={CHAT_TERMINAL}
+          views={
+            agentsView
+              ? [...CHAT_TERMINAL, { mode: "agents", label: "Agents" }]
+              : CHAT_TERMINAL
+          }
           className="glass"
         />
         {menu}

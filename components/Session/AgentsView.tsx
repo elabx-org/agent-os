@@ -29,7 +29,12 @@ import { agentTreeStore, selectNode, setDetailOpen } from "@/stores/agentTree";
 import { AgentTree } from "./AgentTree";
 import { AgentDetailPane } from "./AgentDetailPane";
 import { AgentGraph } from "./AgentGraph";
-import { defaultSelection, hasDetail, opensSession } from "./agent-tree-format";
+import {
+  defaultSelection,
+  hasDetail,
+  isAgentNode,
+  opensSession,
+} from "./agent-tree-format";
 
 /** The picked node while it's still in the tree, else the default one */
 function selectedNode(
@@ -170,7 +175,12 @@ export function AgentsView({
           tree={tree}
           isLoading={isLoading}
           selectedId={node?.id ?? null}
-          onSelect={(n) => selectNode(session.id, n.id)}
+          onSelect={(n) => {
+            // As in the tree: the session card goes back to it; a
+            // workflow or phase card has no detail of its own
+            if (n.kind === "session") onClose();
+            else if (isAgentNode(n)) selectNode(session.id, n.id);
+          }}
           className="min-w-0 flex-1"
         />
         <aside className="bg-page border-hair flex w-[clamp(340px,25vw,500px)] flex-none flex-col border-l px-[18px] py-5">
@@ -194,7 +204,8 @@ export function AgentsView({
             variant="closed"
             selectedId={node?.id ?? null}
             onSelect={onTreeSelect}
-            className="w-full pt-[18px] pr-2 pb-3 pl-5"
+            // A row cut by the hinge fades out rather than ending mid-card
+            className="w-full [mask-image:linear-gradient(to_bottom,#000_calc(100%-32px),transparent)] pt-[18px] pr-2 pb-3 pl-5"
           />
         </div>
         <div aria-hidden className="flex-none" style={{ height: hinge.gap }} />

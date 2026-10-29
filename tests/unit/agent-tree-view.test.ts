@@ -4,9 +4,7 @@ import type { AgentTreeResponse, TreeNode } from "../../lib/agent-tree-types";
 import {
   crumbsFor,
   findNode,
-  flattenTree,
   isFinished,
-  rootWithChildren,
   withoutFinished,
 } from "../../lib/agent-tree-view";
 import {
@@ -22,7 +20,6 @@ import {
   shortLine,
   shortTokens,
   shownChildren,
-  splitPath,
   toolAge,
   workflowLine,
 } from "../../components/Session/agent-tree-format";
@@ -114,8 +111,7 @@ const TREE: AgentTreeResponse = {
   total: 7,
 };
 
-test("rootWithChildren, findNode and crumbsFor walk the tree", () => {
-  assert.equal(rootWithChildren(TREE).children.length, 3);
+test("findNode and crumbsFor walk the tree", () => {
   const found = findNode(TREE, "agent:undo");
   assert.deepEqual(
     found?.path.map((n) => n.id),
@@ -129,24 +125,6 @@ test("rootWithChildren, findNode and crumbsFor walk the tree", () => {
     "Design",
   ]);
   assert.deepEqual(crumbsFor(TREE, "gone"), ["Agent-OS redesign"]);
-});
-
-test("flattenTree: depth first with depths", () => {
-  assert.deepEqual(
-    flattenTree(TREE.children).map(
-      ({ node: n, depth }) => `${n.title}:${depth}`
-    ),
-    [
-      "agentos-feature-mocks:0",
-      "Design:1",
-      "undo-diff:2",
-      "composer:2",
-      "tree:2",
-      "Critique:1",
-      "Explore:0",
-      "Try sheet without blur:0",
-    ]
-  );
 });
 
 test("withoutFinished drops finished agents but keeps live branches", () => {
@@ -253,6 +231,8 @@ test("what a tap does: forks open their session, agents their detail", () => {
   assert.equal(hasDetail(undo), true);
   assert.equal(hasDetail(fork), false);
   assert.equal(hasDetail(workflow), false);
+  // A background agent's id is the CLI's: no subagent detail to read
+  assert.equal(hasDetail({ ...undo, kind: "background" }), false);
 });
 
 test("detail helpers: title, paths, tool ages", () => {
@@ -261,11 +241,6 @@ test("detail helpers: title, paths, tool ages", () => {
     "Design · undo-diff"
   );
   assert.equal(detailTitle(explore, ["Agent-OS redesign"]), "Explore");
-  assert.deepEqual(splitPath(".mock/modern/N-Undo.dc.html"), {
-    name: "N-Undo.dc.html",
-    dir: ".mock/modern",
-  });
-  assert.deepEqual(splitPath("README.md"), { name: "README.md", dir: "" });
   assert.equal(toolAge(at(2), false, T0), "2m");
   assert.equal(toolAge(new Date(T0 - 40_000).toISOString(), false, T0), "40s");
   assert.equal(toolAge(at(0), true, T0), "now");

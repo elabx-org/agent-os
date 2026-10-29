@@ -9,13 +9,14 @@
  * Agents column gets a column of its own past it.
  */
 
-import { dbTimeMs, type AgentState } from "@/lib/agent-state";
+import type { AgentState } from "@/lib/agent-state";
 import type {
   AgentTreeResponse,
   TreeNode,
   TreeNodeKind,
 } from "@/lib/agent-tree-types";
 import { withoutFinished } from "@/lib/agent-tree-view";
+import { nodeAge, shortTokens } from "./agent-tree-format";
 
 export type EdgeStyle = "solid" | "dashed" | "dotted";
 export type EdgeTone = "work" | "needs" | "neutral" | "error" | "selected";
@@ -56,22 +57,25 @@ export interface GraphLayout {
   height: number;
 }
 
-/** D-Tree's measures */
+/**
+ * D-Tree's measures, narrowed so the four columns fit the ~810px between
+ * the desktop's sidebar and detail panel at full size or nearly
+ */
 export const GRAPH = {
-  padX: 24,
+  padX: 16,
   padTop: 16,
   padBottom: 24,
   cardH: 72,
   phaseH: 56,
   /** Column widths: Session, Workflow and subagents, Phases, Agents (and deeper) */
-  widths: [216, 236, 176, 216] as const,
+  widths: [184, 200, 156, 196] as const,
   /** Room after each column for the edges */
-  gaps: [48, 28, 48] as const,
-  gap: 48,
+  gaps: [36, 28, 36] as const,
+  gap: 36,
   /** Between leaf agents of one parent */
-  leafGap: 24,
+  leafGap: 16,
   /** Between sibling branches */
-  branchGap: 48,
+  branchGap: 28,
 } as const;
 
 export const COLUMN_TITLES = [
@@ -246,36 +250,18 @@ export function layoutAgentGraph(
 }
 
 /**
- * The scale at which the whole graph fits the box, never above 1 (a small
- * tree stays at its size) nor below `min` (past that, scroll to pan)
+ * The scale at which the graph's width fits the box, never above 1 (a small
+ * tree stays at its size) nor below `min` (text stays readable; past that,
+ * scroll to pan). Its height never shrinks it: the canvas scrolls down.
  */
 export function fitScale(
   layout: { width: number; height: number },
   box: { width: number; height: number },
-  min = 0.5
+  min = 0.9
 ): number {
-  if (box.width <= 0 || box.height <= 0) return 1;
-  const s = Math.min(box.width / layout.width, box.height / layout.height, 1);
+  if (box.width <= 0) return 1;
+  const s = Math.min(box.width / layout.width, 1);
   return Math.max(min, Math.round(s * 1000) / 1000);
-}
-
-/** 48000 → "48k", 1_250_000 → "1.3M" */
-export function formatTokens(n: number): string {
-  if (n >= 1_000_000)
-    return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
-  if (n >= 1000) return `${Math.round(n / 1000)}k`;
-  return String(n);
-}
-
-/** 40s, 6m, 2h, 3d */
-export function formatSpan(ms: number): string {
-  const s = Math.max(0, Math.floor(ms / 1000));
-  if (s < 60) return `${s}s`;
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h`;
-  return `${Math.floor(h / 24)}d`;
 }
 
 /**
@@ -290,13 +276,10 @@ export function nodeMeta(
   const parts: string[] = [];
   const model = node.model ?? fallbackModel;
   if (model) parts.push(model);
-  if (node.startedAt && node.state !== "queued") {
-    const start = dbTimeMs(node.startedAt);
-    const end = node.finishedAt ? dbTimeMs(node.finishedAt) : now;
-    if (!Number.isNaN(start) && !Number.isNaN(end))
-      parts.push(formatSpan(end - start));
-  }
-  if (node.tokens != null && node.tokens > 0)
-    parts.push(formatTokens(node.tokens));
+  // The same age and tokens as the tree's rows
+  const age = node.state === "queued" ? "" : nodeAge(node, now);
+  if (age) parts.push(age);
+  const tokens = shortTokens(node.tokens);
+  if (tokens) parts.push(tokens);
   return parts.length ? parts.join(" · ") : null;
 }

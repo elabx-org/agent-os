@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { useSnapshot } from "valtio";
 import { Check, ChevronRight, Clock, List, Workflow } from "lucide-react";
 import type { Session } from "@/lib/db";
@@ -117,7 +117,14 @@ interface RowProps {
 }
 
 /** N-Tree's card: avatar, name and state, what it does, age and tokens */
-function ClosedRow({ node, parent, collapsed, onSelect, now }: RowProps) {
+function ClosedRow({
+  node,
+  parent,
+  selected,
+  collapsed,
+  onSelect,
+  now,
+}: RowProps) {
   const branchy = node.kind === "workflow" || node.kind === "phase";
   const asking = node.state === "needs";
   const age = nodeAge(node, now);
@@ -162,10 +169,13 @@ function ClosedRow({ node, parent, collapsed, onSelect, now }: RowProps) {
     <button
       type="button"
       onClick={onClick}
-      aria-label={label}
+      aria-label={selected ? `${label}, selected` : label}
+      aria-current={selected ? "true" : undefined}
       aria-expanded={branchy && node.children.length ? !collapsed : undefined}
       className={cn(
         "bg-card text-foreground flex w-full items-center gap-2.5 rounded-[14px] text-left",
+        // Half folded the detail below the hinge is this row's
+        selected && "shadow-[inset_0_0_0_1.5px_rgba(167,139,250,.6)]",
         node.kind === "session" ? "min-h-[54px]" : "min-h-12",
         asking
           ? "border border-[var(--needs-edge)] py-[5px] pr-[9px] pl-[7px]"
@@ -196,7 +206,11 @@ function ClosedRow({ node, parent, collapsed, onSelect, now }: RowProps) {
             asking ? "dark:text-needs text-amber-600" : "text-muted-foreground"
           )}
         >
-          {node.kind === "workflow" ? workflowLine(node) : node.subtitle}
+          {node.kind === "workflow"
+            ? workflowLine(node)
+            : node.kind === "session"
+              ? [node.model, node.subtitle].filter(Boolean).join(" · ")
+              : node.subtitle}
         </span>
       </span>
       {(age || tokens) && (
@@ -254,7 +268,8 @@ function OpenRow({
       ) : (
         <Avatar {...agentAvatar(node.agentType)} size="sm" />
       )}
-      <span className="flex min-w-0 flex-1 items-center gap-1.5">
+      {/* The name keeps its room: the short line beside it is cut first */}
+      <span className="flex max-w-[60%] min-w-0 flex-none items-center gap-1.5">
         <span
           className={cn(
             "truncate",
@@ -268,22 +283,24 @@ function OpenRow({
         {!branchy && <StateMark node={node} />}
       </span>
       {node.badge ? (
-        <Pill>{node.badge}</Pill>
+        <span className="flex min-w-0 flex-1 justify-end">
+          <Pill>{node.badge}</Pill>
+        </span>
+      ) : line ? (
+        <span
+          className={cn(
+            "min-w-0 flex-1 truncate text-right text-xs",
+            asking
+              ? "dark:text-needs text-amber-600"
+              : selected
+                ? "text-[#3A3A3F] dark:text-[#C7C7CC]"
+                : "text-[#6B6B70] dark:text-[#8E8E93]"
+          )}
+        >
+          {line}
+        </span>
       ) : (
-        line && (
-          <span
-            className={cn(
-              "max-w-[170px] truncate text-xs",
-              asking
-                ? "dark:text-needs text-amber-600"
-                : selected
-                  ? "text-[#3A3A3F] dark:text-[#C7C7CC]"
-                  : "text-[#6B6B70] dark:text-[#8E8E93]"
-            )}
-          >
-            {line}
-          </span>
-        )
+        <span className="flex-1" />
       )}
       <span className="w-[30px] flex-none text-right text-xs text-[#6B6B70] tabular-nums dark:text-[#8E8E93]">
         {branchy && node.kind === "phase" ? (
@@ -461,8 +478,19 @@ export function AgentTree({
       </ul>
     );
 
+  // The selected row stays in sight (the half folded tree is short)
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const loaded = !!tree;
+  useEffect(() => {
+    if (!selectedId || !loaded) return;
+    scrollRef.current
+      ?.querySelector('[aria-current="true"]')
+      ?.scrollIntoView({ block: "nearest" });
+  }, [selectedId, loaded]);
+
   return (
     <div
+      ref={scrollRef}
       className={cn(
         "flex min-h-0 flex-col overflow-y-auto",
         open ? "gap-3.5" : "gap-3",

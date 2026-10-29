@@ -236,7 +236,7 @@ function fixtureTranscript(runId: string): string {
   return transcript;
 }
 
-function readFixture(runId: string) {
+async function readFixture(runId: string) {
   const transcript = fixtureTranscript(runId);
   const subagents = listSubagents(transcript);
   const workflows = listWorkflows(transcript);
@@ -246,7 +246,7 @@ function readFixture(runId: string) {
     ...workflows.flatMap((w) => w.agents.map((a) => a.agentId)),
   ]) {
     const file = subagentFile(transcript, id);
-    const a = file ? activityOf(file) : null;
+    const a = file ? await activityOf(file) : null;
     if (a) activity[id] = a;
   }
   return { transcript, subagents, workflows, activity };
@@ -291,16 +291,15 @@ const bg: BackgroundAgent = {
   startedAt: Date.parse("2026-10-30T13:00:00Z"),
 };
 
-test("merges workflow, phases, subagents, linked sessions and background", () => {
+test("merges workflow, phases, subagents, linked sessions and background", async () => {
   const { transcript, subagents, workflows, activity } =
-    readFixture("wf_fixture1");
+    await readFixture("wf_fixture1");
   const tree = buildAgentTree({
     session: ME,
     subagents,
     workflows,
     related,
     background: [bg],
-    now: Date.now(),
     activity,
     usage: sessionUsage(transcript),
   });
@@ -322,9 +321,18 @@ test("merges workflow, phases, subagents, linked sessions and background", () =>
     "worker",
     "workflow",
   ]);
+  // The workflow first, then the ones at work, then the rest; oldest
+  // first within each
   assert.deepEqual(
-    tree.children.slice(-4).map((n) => n.id),
-    ["session:fork1", "session:worker1", "session:hand1", "bg:1a2b3c4d"]
+    tree.children.map((n) => n.id),
+    [
+      "wf:wf_fixture1",
+      "session:fork1",
+      "session:worker1",
+      "bg:1a2b3c4d",
+      "agent:aexp",
+      "session:hand1",
+    ]
   );
 
   const wf = tree.children.find((n) => n.kind === "workflow")!;
@@ -408,8 +416,8 @@ test("merges workflow, phases, subagents, linked sessions and background", () =>
   assert.equal(live.find((n) => n.kind === "workflow")!.children.length, 2);
 });
 
-test("no one is asking while two agents could be", () => {
-  const { subagents, workflows, activity } = readFixture("wf_fixture2");
+test("no one is asking while two agents could be", async () => {
+  const { subagents, workflows, activity } = await readFixture("wf_fixture2");
   activity.acomp = { ...activity.acomp, canAsk: true };
   const tree = buildAgentTree({
     session: ME,
@@ -417,7 +425,6 @@ test("no one is asking while two agents could be", () => {
     workflows,
     related: [],
     background: [],
-    now: Date.now(),
     activity,
   });
   assert.equal(tree.counts.asking, 0);
@@ -429,8 +436,7 @@ test("no one is asking while two agents could be", () => {
     workflows,
     related: [],
     background: [],
-    now: Date.now(),
-    activity: readFixture("wf_fixture3").activity,
+    activity: (await readFixture("wf_fixture3")).activity,
   });
   assert.equal(idle.counts.asking, 0);
 });
@@ -442,7 +448,6 @@ test("a session with nothing under it", () => {
     workflows: [],
     related: [],
     background: [],
-    now: Date.now(),
   });
   assert.equal(tree.root.state, "work");
   assert.equal(tree.root.subtitle, null);
@@ -485,7 +490,6 @@ test("finished workflow: phases done, no queued phase", () => {
     ],
     related: [],
     background: [],
-    now: Date.now(),
   });
   const wf = tree.children[0];
   assert.equal(wf.state, "done");
@@ -504,7 +508,7 @@ test("finished workflow: phases done, no queued phase", () => {
   assert.equal(tree.counts.done, 2);
 });
 
-test("background agents link only when named in the conversation", () => {
+test("background agents link only when named in the conversation", async () => {
   const me = session({
     id: "me",
     working_directory: "/repo",
@@ -537,16 +541,18 @@ test("background agents link only when named in the conversation", () => {
       message: { content: "Started background agent aaaa1111 (Nightly)" },
     })
   );
-  const ids = candidates.map((a) => a.id);
-  assert.deepEqual([...mentionedIds(file, ids)], ["aaaa1111"]);
+  const ids = candidates.map((a) => ({ id: a.id, startedAt: a.startedAt }));
+  assert.deepEqual([...(await mentionedIds(file, ids))], ["aaaa1111"]);
   // Appended later; a longer id containing one doesn't count
   fs.appendFileSync(file, lines({ note: "eeee5555 and xffff6666" }));
-  assert.deepEqual([...mentionedIds(file, ids)].sort(), [
+  assert.deepEqual([...(await mentionedIds(file, ids))].sort(), [
     "aaaa1111",
     "eeee5555",
   ]);
   assert.deepEqual(
-    linkBackground(me, candidates, mentionedIds(file, ids)).map((a) => a.id),
+    linkBackground(me, candidates, await mentionedIds(file, ids)).map(
+      (a) => a.id
+    ),
     ["aaaa1111", "eeee5555"]
   );
 });

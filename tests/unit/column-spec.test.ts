@@ -373,10 +373,10 @@ test("columnFor: the closed agents view (N-Tree)", () => {
       ["Collapse all", "ChevronsDownUp"],
     ]
   );
-  // While it works, Stop all agents ends it, red
+  // While it works, Interrupt stops the session (not its workers), red
   const working = columnFor("session", "duo-closed", { ...ctx, working: true });
   assert.equal(fmt(working), "back | showFinished(on) collapseAll | stop");
-  assert.equal(working.at(-1)?.label, "Stop all agents");
+  assert.equal(working.at(-1)?.label, "Interrupt");
   assert.equal(working.at(-1)?.danger, true);
   // Finished hidden; everything folded: Expand all
   const folded = columnFor("session", "duo-closed", {

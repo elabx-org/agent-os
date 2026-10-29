@@ -56,7 +56,7 @@ function setup() {
   return { dir, transcript, subs };
 }
 
-test("prompt, last four calls oldest first, files written, usage", () => {
+test("prompt, last four calls oldest first, files written, usage", async () => {
   const { transcript, subs } = setup();
   const file = path.join(subs, "workflows", "wf_x", "agent-aundo.jsonl");
   fs.writeFileSync(
@@ -131,7 +131,7 @@ test("prompt, last four calls oldest first, files written, usage", () => {
     )
   );
 
-  const d = subagentDetail(transcript, "aundo", "/repo")!;
+  const d = (await subagentDetail(transcript, "aundo", "/repo"))!;
   assert.equal(d.agentId, "aundo");
   assert.equal(d.prompt, "Mock undo for a single diff hunk.");
   assert.deepEqual(
@@ -167,7 +167,7 @@ test("prompt, last four calls oldest first, files written, usage", () => {
         call("g1", "Grep", { pattern: "undo" }, "2026-10-29T09:07:00.000Z")
       ).slice(0, 30)
   );
-  const d2 = subagentDetail(transcript, "aundo", "/repo")!;
+  const d2 = (await subagentDetail(transcript, "aundo", "/repo"))!;
   assert.deepEqual(
     d2.lastTools.map((t) => [t.verb, t.running]),
     [
@@ -193,7 +193,7 @@ test("prompt, last four calls oldest first, files written, usage", () => {
     file,
     text.slice(0, text.lastIndexOf("\n") + 1) + full + "\n"
   );
-  const d3 = subagentDetail(transcript, "aundo", "/repo")!;
+  const d3 = (await subagentDetail(transcript, "aundo", "/repo"))!;
   assert.deepEqual(d3.lastTools.at(-1), {
     tool: "Grep",
     verb: "Searching",
@@ -204,7 +204,7 @@ test("prompt, last four calls oldest first, files written, usage", () => {
   assert.equal(d3.contextWindow, 1_000_000);
 });
 
-test("a fork's prompt is its parent's Agent call; no file is null", () => {
+test("a fork's prompt is its parent's Agent call; no file is null", async () => {
   const { transcript, subs } = setup();
   fs.writeFileSync(
     path.join(subs, "agent-afork.jsonl"),
@@ -233,14 +233,14 @@ test("a fork's prompt is its parent's Agent call; no file is null", () => {
       call("b1", "Bash", { command: "ls" }, "2026-10-29T09:01:00.000Z")
     )
   );
-  const d = subagentDetail(transcript, "afork")!;
+  const d = (await subagentDetail(transcript, "afork"))!;
   assert.equal(d.prompt, "Design the mockup");
   assert.deepEqual(
     d.lastTools.map((t) => [t.tool, t.verb, t.target, t.running]),
     [["Bash", "Running", "ls", true]]
   );
-  assert.equal(subagentDetail(transcript, "nope"), null);
-  assert.equal(subagentDetail(transcript, "../etc"), null);
+  assert.equal(await subagentDetail(transcript, "nope"), null);
+  assert.equal(await subagentDetail(transcript, "../etc"), null);
 });
 
 test("commandTarget keeps the program and its first words, never values", () => {

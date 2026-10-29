@@ -12,7 +12,7 @@ import type {
 } from "@/lib/agent-tree-types";
 import type { Session } from "@/lib/db";
 import type { WorkflowInfo } from "@/lib/claude-workflows";
-import { STATE_WORD } from "@/lib/agent-state";
+import { STATE_WORD, dbTimeMs } from "@/lib/agent-state";
 import { withoutFinished } from "@/lib/agent-tree-view";
 import { formatAge } from "./activity-format";
 
@@ -38,14 +38,12 @@ export function opensSession(node: TreeNode): boolean {
   );
 }
 
-/** Has a conversation the detail can read (GET /subagents/[agentId]) */
+/**
+ * Has a conversation the detail can read (GET /subagents/[agentId]); a
+ * background agent's id is the CLI's, not a subagent's
+ */
 export function hasDetail(node: TreeNode): boolean {
-  return (
-    !!node.agentId &&
-    (node.kind === "agent" ||
-      node.kind === "subagent" ||
-      node.kind === "background")
-  );
+  return !!node.agentId && (node.kind === "agent" || node.kind === "subagent");
 }
 
 export type CountKey = keyof TreeCounts;
@@ -78,10 +76,7 @@ export function shortTokens(n: number | null | undefined): string {
 }
 
 function ms(value: string | null): number {
-  if (!value) return NaN;
-  return new Date(
-    /(Z|[+-]\d\d:?\d\d)$/.test(value) ? value : value.replace(" ", "T") + "Z"
-  ).getTime();
+  return value ? dbTimeMs(value) : NaN;
 }
 
 /**
@@ -215,14 +210,6 @@ export function detailTitle(node: TreeNode, crumbs: string[]): string {
   return crumbs.length > 1
     ? `${crumbs[crumbs.length - 1]} · ${node.title}`
     : node.title;
-}
-
-/** "N-Undo.dc.html" and ".mock/modern" from a written file's path */
-export function splitPath(path: string): { name: string; dir: string } {
-  const i = path.lastIndexOf("/");
-  return i < 0
-    ? { name: path, dir: "" }
-    : { name: path.slice(i + 1), dir: path.slice(0, i) };
 }
 
 /** A tool call's age: "40s", "2m"; "now" while it runs */
