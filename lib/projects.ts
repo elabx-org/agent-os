@@ -262,13 +262,26 @@ export function updateProject(
 
 /**
  * Pin a project or move it into a group (null: no group). Uncategorized
- * stays where it is. M1b U1b.1 implements it.
+ * stays where it is.
  */
 export function setProjectPlacement(
   id: string,
   placement: ProjectPlacement
 ): Project | undefined {
-  void placement;
+  const project = getProject(id);
+  if (!project || project.is_uncategorized) return project;
+  db.transaction(() => {
+    if (typeof placement.pinned === "boolean")
+      db.prepare("UPDATE projects SET pinned = ? WHERE id = ?").run(
+        placement.pinned ? 1 : 0,
+        id
+      );
+    if (placement.groupName !== undefined)
+      db.prepare("UPDATE projects SET group_name = ? WHERE id = ?").run(
+        placement.groupName?.trim() || null,
+        id
+      );
+  })();
   return getProject(id);
 }
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import { Bot, MoreHorizontal, Plus } from "lucide-react";
+import { Folder, GitBranch, MoreHorizontal, Plus } from "lucide-react";
 import {
   PageEmpty,
   PageHeader,
@@ -22,6 +22,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useDevServersQuery } from "@/data/dev-servers";
 import { useGitStatus } from "@/data/git/queries";
+import { useMergedTodayQuery } from "@/data/projects";
+import { useLayoutMode, type LayoutMode } from "@/hooks/useLayoutMode";
 import { useListTitles } from "@/hooks/useSessionTitles";
 import { useViewport } from "@/hooks/useViewport";
 import { mobileNavActions } from "@/stores/mobileNav";
@@ -29,24 +31,36 @@ import { backPage } from "@/stores/workspacePage";
 import { openProjectSettings } from "@/stores/projectSettings";
 import { openNew } from "@/stores/newSurface";
 import type { ProjectWithDevServers } from "@/lib/projects";
+import { cn } from "@/lib/utils";
 import {
   AgentsSection,
-  ChangesSection,
-  DevServerSection,
   InstructionsSection,
-  NeedsYouSection,
+  MergedTodaySection,
+  ProjectScripts,
+  RunningSection,
   SessionsSection,
   changedFiles,
 } from "./ProjectSections";
 
-/** Waiting agents listed one by one where there's room, as on the open Duo */
-const LOOSE_WAITING_WIDE = 8;
+/** The page padding per posture, as Now's and Projects' */
+const PAD: Record<LayoutMode, string> = {
+  phone: "px-4 pt-[15px]",
+  "duo-closed": "pt-[18px] pr-2 pl-5",
+  tabletop: "px-4 pt-4",
+  "duo-open": "pt-5 pr-5 pl-6",
+  book: "pt-5 pr-5 pl-6",
+  desktop: "pt-5 pr-5 pl-6",
+};
 
 function home(dir: string): string {
   return dir.replace(/^\/config(?=\/|$)/, "~");
 }
 
-/** A project as a workspace: its sessions, agents, dev server and changes */
+/**
+ * A project as a workspace (Closed-Project): its path and branch, New
+ * session / Files / Changes, then its sessions, agents, what's running and
+ * what merged today
+ */
 export function ProjectPage({
   page,
   view,
@@ -74,7 +88,8 @@ function ProjectWorkspace({
   view,
   onOpenSession,
 }: Omit<PageProps<"project">, "page"> & { project: ProjectWithDevServers }) {
-  const { isMobile, isTouch } = useViewport();
+  const { isTouch } = useViewport();
+  const mode = useLayoutMode();
   const { sessions: all, sessionStatuses: statuses } = view;
   const uncategorized = project.is_uncategorized;
 
@@ -88,16 +103,7 @@ function ProjectWorkspace({
       ),
     [all, project.id]
   );
-  const waiting = sessions.filter((s) => statuses[s.id]?.status === "waiting");
-  // Pinned first, as in the project list; waiting ones are in Needs you
-  const listed = sessions
-    .filter((s) => statuses[s.id]?.status !== "waiting")
-    .sort(
-      (a, b) =>
-        (a.pinned_order ?? Number.MAX_SAFE_INTEGER) -
-        (b.pinned_order ?? Number.MAX_SAFE_INTEGER)
-    );
-  // Review and Commit open the session last worked in on its Changes,
+  // Files and Changes open the session last worked in on that view,
   // preferring one in the project's own folder (a worktree has its own)
   const recent = [...sessions].sort((a, b) =>
     b.updated_at.localeCompare(a.updated_at)
@@ -108,8 +114,6 @@ function ProjectWorkspace({
   const titles = useListTitles(sessions);
 
   const agents = useBackgroundAgentsByProject(view.projects)[project.id] ?? [];
-  const blocked = agents.filter((a) => a.state === "blocked");
-  const otherAgents = agents.filter((a) => a.state !== "blocked");
 
   const { data: allServers = [] } = useDevServersQuery();
   const servers = allServers.filter((s) => s.project_id === project.id);
@@ -118,6 +122,9 @@ function ProjectWorkspace({
     enabled: !uncategorized,
   });
   const files = changedFiles(git);
+  const { data: merged = [] } = useMergedTodayQuery(
+    uncategorized ? undefined : project.id
+  );
 
   const mutations = useSessionListMutations({
     onSelectSession: (id) => {
@@ -139,12 +146,15 @@ function ProjectWorkspace({
   const settings = uncategorized
     ? undefined
     : () => openProjectSettings(project.id);
-  const review = latest
-    ? () => {
-        onOpenSession(latest);
-        mobileNavActions.requestViewMode("git", latest.id);
-      }
-    : undefined;
+  const openView = (mode: "files" | "git") =>
+    latest
+      ? () => {
+          onOpenSession(latest);
+          mobileNavActions.requestViewMode(mode, latest.id);
+        }
+      : undefined;
+  const openFiles = openView("files");
+  const openChanges = openView("git");
 
   const handlers = {
     onNewSession: newSession,
@@ -166,17 +176,9 @@ function ProjectWorkspace({
       mutations.handleRenameProject(project.id, name);
   };
 
-  const empty =
-    !sessions.length && !agents.length && !servers.length && !files.length;
+  const running = servers.filter((s) => s.status !== "stopped");
+  const empty = !sessions.length && !agents.length && !running.length;
   const instructions = project.instructions?.trim();
-
-  const subtitle = [
-    home(project.working_directory),
-    git?.branch,
-    files.length > 0 && `${files.length} changed`,
-  ]
-    .filter(Boolean)
-    .join(" · ");
 
   const title = renaming ? (
     <input
@@ -202,27 +204,40 @@ function ProjectWorkspace({
       className="border-primary w-full border-b bg-transparent outline-none"
     />
   ) : (
-    <span className="@3xl/page:text-2xl">{project.name}</span>
+    project.name
   );
 
-  const more = isTouch ? (
+  // The mono path, then the branch as a chip
+  const subtitle = (
+    <>
+      <span className="min-w-0 truncate font-mono text-[13px]">
+        {home(project.working_directory)}
+      </span>
+      {git?.branch && (
+        <span className="chip h-6 min-w-0 shrink px-[9px] text-[12px]">
+          <GitBranch className="h-[13px] w-[13px] flex-none" />
+          <span className="truncate">{git.branch}</span>
+        </span>
+      )}
+    </>
+  );
+
+  const moreButton = (
     <Button
       variant="ghost"
-      size="icon-sm"
+      size="icon"
       aria-label="Project actions"
-      // 44pt to a finger, as the back button
-      className="relative after:absolute after:-inset-[6px] after:content-['']"
-      onClick={() => setSheetOpen(true)}
+      className="text-muted-foreground mb-0.5"
+      onClick={isTouch ? () => setSheetOpen(true) : undefined}
     >
-      <MoreHorizontal className="h-4 w-4" />
+      <MoreHorizontal className="h-5 w-5" />
     </Button>
+  );
+  const more = isTouch ? (
+    moreButton
   ) : (
     <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon-sm" aria-label="Project actions">
-          <MoreHorizontal className="h-4 w-4" />
-        </Button>
-      </DropdownMenuTrigger>
+      <DropdownMenuTrigger asChild>{moreButton}</DropdownMenuTrigger>
       <DropdownMenuContent
         align="end"
         // Into the name being renamed, not back to ⋯ (the open menu kept
@@ -243,122 +258,84 @@ function ProjectWorkspace({
     </DropdownMenu>
   );
 
-  // Narrow (a phone, the closed Duo): ⋯ here and the buttons at the bottom.
-  // Medium (a page of the open Duo): + New. Wide (the web): both buttons
-  const actions = (
-    <>
-      {newAgent && (
-        <Button
-          variant="outline"
-          size="sm"
-          className="hidden md:@3xl/page:inline-flex"
-          onClick={newAgent}
-        >
-          <Bot />
-          Background agent
-        </Button>
-      )}
-      <Button
-        size="sm"
-        className="hidden md:inline-flex md:@3xl/page:hidden"
-        onClick={newSession}
-      >
-        <Plus />
-        New
-      </Button>
-      <Button
-        size="sm"
-        className="hidden md:@3xl/page:inline-flex"
-        onClick={newSession}
-      >
-        <Plus />
-        New session
-      </Button>
-      {more}
-    </>
-  );
-
   return (
     <div className="@container/page flex min-h-0 flex-1 flex-col">
-      <PageHeader title={title} subtitle={subtitle} actions={actions} />
-
-      {empty ? (
-        <PageEmpty>
-          Nothing in {project.name} yet. Start a session
-          {newAgent && " or a background agent"} here.
-        </PageEmpty>
-      ) : (
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-          <div className="grid items-start gap-x-4 px-2 pb-[max(1rem,var(--pane-inset-bottom,env(safe-area-inset-bottom)))] @3xl/page:grid-cols-[1.25fr_1fr] @3xl/page:px-6 @3xl/page:pt-4">
-            <div className="min-w-0 @3xl/page:space-y-3">
-              <NeedsYouSection
-                waiting={waiting}
-                blocked={blocked}
-                titles={titles}
-                looseWaiting={isMobile ? undefined : LOOSE_WAITING_WIDE}
-                onOpenSession={onOpenSession}
-              />
-              <SessionsSection
-                sessions={listed}
-                projects={view.projects}
-                statuses={statuses}
-                titles={titles}
-                activeSessionId={view.activeSession?.id}
-                summarizingSessionId={mutations.summarizingSessionId}
-                onOpenSession={onOpenSession}
-                onOpenInTab={view.openSessionInNewTab}
-                actions={mutations}
-              />
-              <AgentsSection agents={otherAgents} />
-            </div>
-            {/* Dev server then Changes in one column, as the closed Duo
-                reads; Changes leads the right column when wide */}
-            <div className="flex min-w-0 flex-col @3xl/page:gap-3">
-              {!uncategorized && (
-                <DevServerSection
-                  project={project}
-                  servers={servers}
-                  onSetUp={() => view.handleStartDevServer(project.id)}
-                  onRestart={mutations.handleRestartDevServer}
-                  onStop={mutations.handleStopDevServer}
-                  onRemove={mutations.handleRemoveDevServer}
-                  className="@3xl/page:order-2"
-                />
-              )}
-              <ChangesSection
-                branch={git?.branch}
-                files={files}
-                onReview={review}
-                className="@3xl/page:order-1"
-              />
-              {instructions && (
-                <InstructionsSection
-                  text={instructions}
-                  onEdit={settings}
-                  className="@3xl/page:order-3"
-                />
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Narrow: the two ways to start, in reach of a thumb */}
-      <div className="border-border flex shrink-0 gap-2 border-t px-3 pt-2.5 pb-3 md:hidden">
-        <Button className="h-11 flex-1 rounded-xl" onClick={newSession}>
-          <Plus />
-          New session
-        </Button>
-        {newAgent && (
-          <Button
-            variant="secondary"
-            className="h-11 flex-1 rounded-xl"
-            onClick={newAgent}
-          >
-            <Bot />
-            Background agent
-          </Button>
+      <div
+        className={cn(
+          "min-h-0 flex-1 overflow-y-auto overscroll-contain pb-[max(1.5rem,var(--pane-inset-bottom,env(safe-area-inset-bottom)))]",
+          PAD[mode]
         )}
+      >
+        <div className="flex max-w-[760px] flex-col gap-3.5">
+          <PageHeader large title={title} subtitle={subtitle} actions={more} />
+
+          <div className="flex gap-2.5">
+            <button
+              type="button"
+              onClick={newSession}
+              className="pill pill-primary min-w-0 flex-1 active:opacity-80 @3xl/page:flex-none"
+            >
+              <Plus className="h-4 w-4 flex-none" strokeWidth={2.4} />
+              New session
+            </button>
+            {!uncategorized && (
+              <>
+                <button
+                  type="button"
+                  onClick={openFiles}
+                  disabled={!openFiles}
+                  className="pill pill-secondary active:opacity-80 disabled:opacity-40"
+                >
+                  <Folder className="h-4 w-4 flex-none" />
+                  Files
+                </button>
+                <button
+                  type="button"
+                  onClick={openChanges}
+                  disabled={!openChanges}
+                  aria-label={
+                    files.length
+                      ? `${files.length} changed file${files.length === 1 ? "" : "s"}`
+                      : "Changes"
+                  }
+                  className="pill pill-secondary tabular-nums active:opacity-80 disabled:opacity-40"
+                >
+                  <GitBranch className="h-4 w-4 flex-none" />
+                  {files.length > 0 && files.length}
+                </button>
+              </>
+            )}
+          </div>
+
+          {empty && (
+            <p className="text-muted-foreground px-1 text-[15px]">
+              Nothing in {project.name} yet. Start a session
+              {newAgent && " or a background agent"} here.
+            </p>
+          )}
+
+          <SessionsSection
+            sessions={sessions}
+            statuses={statuses}
+            titles={titles}
+            activeSessionId={view.activeSession?.id}
+            onOpenSession={onOpenSession}
+          />
+          <AgentsSection agents={agents} />
+          <RunningSection
+            servers={servers}
+            onRestart={mutations.handleRestartDevServer}
+            onStop={mutations.handleStopDevServer}
+            onRemove={mutations.handleRemoveDevServer}
+          />
+          <ProjectScripts project={project} />
+          <MergedTodaySection prs={merged} />
+          <InstructionsSection
+            text={instructions}
+            suggestions={project.suggestions ?? 0}
+            onEdit={settings}
+          />
+        </div>
       </div>
 
       <ActionSheet
