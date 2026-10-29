@@ -16,6 +16,8 @@ import { isPaused } from "@/lib/handoff-types";
 import { sortQuietSessions } from "./now-summary";
 import { limitedSessions } from "@/components/Chat/limited-model";
 import { useLimitClock } from "@/hooks/useSessionLimit";
+import { useWorktreeMoves } from "@/hooks/useWorktreeMove";
+import { nowMoveLine } from "@/components/Session/move-sheet-model";
 
 export interface AgentGroup {
   key: string;
@@ -63,6 +65,8 @@ export interface NowItems {
   titles: Record<string, string>;
   /** Paused sessions' sublines by id: "Handed off to Codex" */
   handoffs: Record<string, string>;
+  /** Sessions with a move into a worktree (M5): "Moving…", "Move failed" */
+  moves: Record<string, string>;
 }
 
 const EMPTY_SESSIONS: Session[] = [];
@@ -86,6 +90,7 @@ export function useNowItems(
   // What needs you is defined once, so the hero matches the column badge
   const needs = useNeedsYou(active, statuses);
   const { agents, waiting } = needs;
+  const moveStates = useWorktreeMoves();
   const agentsByProject = useBackgroundAgentsByProject(projects);
 
   // Limited until the reset passes: the clock moves on then
@@ -112,10 +117,12 @@ export function useNowItems(
           (s) =>
             !s.conductor_session_id &&
             !limitedIds.has(s.id) &&
-            statuses[s.id]?.status === "running"
+            // Mid-move its agent restarts: it keeps its place in Working
+            (statuses[s.id]?.status === "running" ||
+              moveStates[s.id]?.phase === "moving")
         )
         .sort((a, b) => b.updated_at.localeCompare(a.updated_at)),
-    [active, statuses, limitedIds]
+    [active, statuses, limitedIds, moveStates]
   );
 
   // Only sessions that are doing something can have subagents running
@@ -209,6 +216,11 @@ export function useNowItems(
   const handoffs: Record<string, string> = {};
   for (const s of sessions)
     if (isPaused(s)) handoffs[s.id] = handedOffLine(s, sessions, agentName);
+  const moves: Record<string, string> = {};
+  for (const [id, state] of Object.entries(moveStates)) {
+    const line = nowMoveLine(state);
+    if (line) moves[id] = line;
+  }
 
   return {
     needsCount: needs.count,
@@ -233,5 +245,6 @@ export function useNowItems(
     doneToday: EMPTY_DONE,
     titles,
     handoffs,
+    moves,
   };
 }
