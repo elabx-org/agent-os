@@ -51,10 +51,9 @@ import {
   showsQueued,
 } from "./queued-messages";
 import type { ClaudeKey } from "@/components/Composer/ClaudeStateBar";
-import { DeckActions } from "@/components/DeckActions";
+import { DeckActions, DeckAnswers } from "@/components/DeckActions";
 import { DeckStateLine } from "@/components/DeckStateLine";
 import { DeckContext } from "@/components/ReplyContext/ContextPanel";
-import { InboxItem } from "@/components/Inbox";
 import { useSessionPrompt } from "@/data/prompts/queries";
 import { useQueue } from "@/hooks/useQueue";
 import { useNarrowScreen } from "@/hooks/useNarrowScreen";
@@ -1381,26 +1380,23 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
                   }
             }
           >
-            {deckAnswer ? (
-              <ul className="min-h-0 flex-1 overflow-y-auto px-3 pt-2 pb-3">
-                <InboxItem
-                  session={session}
-                  onOpen={scrollToBottom}
-                  questionsOnly
-                />
-              </ul>
+            {/* Fold-Terminal: the answers (else Stop, Changes, Chat), the
+                key grid under them, the room left above the composer */}
+            {deckAnswer && draftId ? (
+              <DeckAnswers sessionId={draftId} className="px-5 pt-2" />
             ) : (
-              <>
-                {tabletopBase && draftId && (
-                  <DeckActions
-                    sessionId={draftId}
-                    status={deckStatus}
-                    view="terminal"
-                    className="px-3 pt-2"
-                  />
-                )}
-                {tabletopBase && <div className="min-h-0 flex-1" />}
-              </>
+              tabletopBase &&
+              draftId && (
+                <DeckActions
+                  sessionId={draftId}
+                  status={deckStatus}
+                  view="terminal"
+                  className="px-5 pt-2"
+                />
+              )
+            )}
+            {tabletopBase && (
+              <div className="min-h-0 flex-1" style={{ order: 3 }} />
             )}
             {/* Ordered rather than moved, so the composer never remounts */}
             <div

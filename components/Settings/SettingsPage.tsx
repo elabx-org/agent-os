@@ -264,7 +264,7 @@ function SettingsLayer(props: NotificationsSectionProps) {
       notificationsOn === null ? undefined : notificationsOn ? "On" : "Off",
     display: lookSummary(look),
     keys: keysSummary(keys),
-    duo: duoTrial ? "Title in page" : "Standard",
+    duo: duoTrial ? "Title in page" : "Classic header",
     uploads: PRESETS[preset].label,
     sessions: running === null ? undefined : `${running} running`,
     server: typeof window !== "undefined" ? window.location.host : undefined,

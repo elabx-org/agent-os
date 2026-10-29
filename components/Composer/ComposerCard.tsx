@@ -149,8 +149,14 @@ export function ComposerCard({
           }
         }
       }
-      await onSendDirect(text);
-      return true;
+      try {
+        await onSendDirect(text);
+        return true;
+      } catch (e) {
+        // Not sent: the draft stays
+        toast.error(e instanceof Error ? e.message : "Couldn't send");
+        return false;
+      }
     },
     [queue, onSendDirect, onSent]
   );

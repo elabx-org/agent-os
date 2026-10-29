@@ -320,11 +320,10 @@ export function ChatView({
   // The server queue decides whether a message goes in now or waits
   // (ComposerCard sends through it); with the flag off, the old direct send
   const queue = useQueue(session.id, { enabled: active });
+  // The card clears the draft once a send went; this only follows it down
   const sent = useCallback(() => {
-    setDraft("");
-    composerRef.current.sent();
     atBottom.current = true;
-  }, [setDraft]);
+  }, []);
   const sendDirect = useCallback(
     async (text: string) => {
       if (!text.trim()) return;
@@ -333,7 +332,8 @@ export function ChatView({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text: text.trim(), pressEnter: true }),
       });
-      if (res.ok) sent();
+      if (!res.ok) throw new Error("Couldn't send to Claude");
+      sent();
     },
     [session.id, sent]
   );
