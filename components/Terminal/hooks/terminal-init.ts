@@ -8,6 +8,8 @@ import { SearchAddon } from "@xterm/addon-search";
 import { CanvasAddon } from "@xterm/addon-canvas";
 import { getTerminalThemeForApp } from "../constants";
 import { getDensity } from "@/lib/display-density";
+import { terminalFontFamily, terminalFontStore } from "@/lib/terminal-font";
+import { terminalFontReady } from "../font-ready";
 import { applyTypingAssist, getTypingAssist } from "../typing-assist";
 
 export interface TerminalCallbacks {
@@ -36,8 +38,7 @@ export function createTerminal(
   const term = new XTerm({
     cursorBlink: true,
     fontSize,
-    fontFamily:
-      '"JetBrains Mono", "Fira Code", Menlo, Monaco, "Courier New", monospace',
+    fontFamily: terminalFontFamily(terminalFontStore.font),
     fontWeight: "400",
     fontWeightBold: "600",
     letterSpacing: 0,
@@ -205,6 +206,24 @@ export function updateTerminalDensity(
     fitAddon.fit();
     sendResize(term.cols, term.rows);
   }
+}
+
+/** Switch to the chosen font (Settings → Display) once it has loaded */
+export function updateTerminalFont(
+  term: XTerm,
+  fitAddon: FitAddon,
+  sendResize: (cols: number, rows: number) => void
+): void {
+  const family = terminalFontFamily(terminalFontStore.font);
+  if (term.options.fontFamily === family) return;
+  void terminalFontReady().then(() => {
+    term.options.fontFamily = family;
+    term.refresh(0, term.rows - 1);
+    // Hidden terminals refit when shown; fitting now would shrink tmux
+    if (!term.element?.offsetParent) return;
+    fitAddon.fit();
+    sendResize(term.cols, term.rows);
+  });
 }
 
 export function updateTerminalTheme(term: XTerm, theme: string): void {
