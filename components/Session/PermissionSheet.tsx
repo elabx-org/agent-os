@@ -40,6 +40,7 @@ import {
   permissionSheetStore,
 } from "@/stores/permissionSheet";
 import { mobileNavStore } from "@/stores/mobileNav";
+import { SheetGrab } from "@/components/ui/sheet-grab";
 
 export interface PermissionSheetProps {
   session: Session;
@@ -304,7 +305,7 @@ export function PermissionSheet({ session, onClose }: PermissionSheetProps) {
           "[html[data-fold=horizontal]_&]:max-h-[calc(100%-var(--fold-end))]"
         )}
       >
-        <div className="sheet-grab shrink-0" aria-hidden="true" />
+        <SheetGrab onClose={() => !busy && close()} />
         <div className="flex min-w-0 items-baseline justify-between gap-3">
           <h2 className="t-title shrink-0 text-[20px]">Permissions</h2>
           <span

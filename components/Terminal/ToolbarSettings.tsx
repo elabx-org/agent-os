@@ -64,6 +64,7 @@ import {
   splitOverflow,
   useToolbarPreferences,
 } from "./toolbar-config";
+import { SheetGrab } from "@/components/ui/sheet-grab";
 
 interface ToolbarSettingsProps {
   open: boolean;
@@ -133,8 +134,9 @@ export function ToolbarSettings({
         className="bg-background flex max-h-[75vh] w-full flex-col rounded-t-xl [html[data-fold=vertical]_&]:max-h-[92vh] [html[data-hinge]_&]:max-h-[92vh]"
         onClick={(e) => e.stopPropagation()}
       >
+        <SheetGrab onClose={onClose} className="mx-0 mb-0 h-6" />
         {/* Header */}
-        <div className="border-border flex items-center justify-between border-b px-4 py-3">
+        <div className="border-border flex items-center justify-between border-b px-4 pb-3">
           <span className="text-sm font-medium">Keys</span>
           <button
             onClick={onClose}

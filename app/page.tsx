@@ -70,6 +70,7 @@ import { ScriptsSheetHost } from "@/components/Projects/ScriptsSheet";
 import { useScriptShortcuts } from "@/hooks/useScriptShortcuts";
 import { useFreshSessionCleanup } from "@/hooks/useFreshSessionCleanup";
 import { OPEN_SESSION_EVENT, type OpenSessionDetail } from "@/lib/bg-send";
+import { EdgeBack } from "@/components/EdgeBack";
 
 function HomeContent() {
   // UI State
@@ -829,6 +830,7 @@ function HomeContent() {
         onRequestPermission={requestPermission}
       />
       <ScriptsSheetHost />
+      <EdgeBack />
     </>
   );
 }

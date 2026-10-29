@@ -13,6 +13,7 @@ import type { UseTurns } from "@/hooks/useTurns";
 import type { TurnDetail, TurnFile, UndoResult } from "@/lib/turn-types";
 import { shortNames } from "./rows";
 import { Counts } from "./ToolCard";
+import { SheetGrab } from "@/components/ui/sheet-grab";
 
 /** A file to undo, ticked or not (N-Undo's rows) */
 function FileRow({
@@ -192,7 +193,7 @@ export function UndoSheet({
         aria-label={`Undo turn ${turnNo}`}
         className="sheet-surface absolute inset-x-0 bottom-0 mx-auto flex max-h-[85%] max-w-lg flex-col gap-3 overflow-y-auto px-4 pb-[calc(1rem+env(safe-area-inset-bottom))]"
       >
-        <div className="sheet-grab shrink-0" aria-hidden="true" />
+        <SheetGrab onClose={close} />
         <div className="flex flex-col gap-1">
           <h2 className="t-title text-[20px]">Undo turn {turnNo}?</h2>
           <p className="text-muted-foreground text-sm">

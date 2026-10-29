@@ -2,6 +2,7 @@
 
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useLayoutEffect,
@@ -47,6 +48,7 @@ import {
   setReplyPage,
   useReplying,
 } from "@/components/ReplyContext/store";
+import { PagePanel } from "@/components/ui/page-panel";
 
 const GitPanel = dynamic(
   () => import("@/components/GitPanel").then((mod) => mod.GitPanel),
@@ -367,16 +369,21 @@ export function SessionSpread({
     return registerNavHandlers({
       ...(changesFromColumn && {
         openChanges: () => {
-          mobileNavStore.changesOpen = !mobileNavStore.changesOpen;
+          mobileNavStore.changesOpen = true;
           mobileNavStore.liveOpen = false;
         },
       }),
       openLive: () => {
         mobileNavStore.changesOpen = false;
-        mobileNavStore.liveOpen = !mobileNavStore.liveOpen;
+        mobileNavStore.liveOpen = true;
       },
     });
   }, [changesHere, changesFromColumn]);
+  // The right page's ×, handle and ‹: whichever panel is there closes
+  const closePanel = useCallback(() => {
+    mobileNavStore.changesOpen = false;
+    mobileNavStore.liveOpen = false;
+  }, []);
   // It closes once the pages go away or something else takes them
   useEffect(() => {
     if (!changesRoom) mobileNavStore.changesOpen = false;
@@ -533,11 +540,18 @@ export function SessionSpread({
 
       {/* Changes: beside the conversation, in the rail's place */}
       {changesBeside && session && folder && (
-        <ChangesPage
-          sessionId={session.id}
-          workingDirectory={folder}
+        <PagePanel
+          label="Changes"
+          onClose={closePanel}
           className="bg-page min-w-0 flex-1"
-        />
+        >
+          <ChangesPage
+            sessionId={session.id}
+            workingDirectory={folder}
+            onClose={closePanel}
+            className="bg-page min-w-0 flex-1 pl-6"
+          />
+        </PagePanel>
       )}
 
       {/* A turn's diff review: the right page (O-Diff), or beside the chat
@@ -570,7 +584,21 @@ export function SessionSpread({
               : "border-border w-[300px] flex-shrink-0 border-l min-[1280px]:w-[320px]"
           )}
         >
-          <ActivityRail session={session} className="flex-1" />
+          {pages ? (
+            <PagePanel
+              label="Live activity"
+              onClose={closePanel}
+              className="flex-1"
+            >
+              <ActivityRail
+                session={session}
+                onClose={closePanel}
+                className="flex-1 pl-6"
+              />
+            </PagePanel>
+          ) : (
+            <ActivityRail session={session} className="flex-1" />
+          )}
         </aside>
       )}
 

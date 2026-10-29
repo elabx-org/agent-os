@@ -25,12 +25,15 @@ export function ActivityRail({
   active = true,
   compact,
   onNavigate,
+  onClose,
   className,
 }: {
   session: Session;
   active?: boolean;
   compact?: boolean;
   onNavigate?: () => void;
+  /** The open Duo's right page: a × and Close instead of Hide */
+  onClose?: () => void;
   className?: string;
 }) {
   if (compact)
@@ -49,6 +52,7 @@ export function ActivityRail({
       active={active}
       variant="rail"
       onNavigate={onNavigate}
+      onClose={onClose}
       className={className}
       menu={
         <DropdownMenu modal={false}>
@@ -70,9 +74,9 @@ export function ActivityRail({
             <BesideItems exclude={[session.id]} />
             <DropdownMenuSeparator />
             {/* The pane takes both pages (or the width): Focus */}
-            <DropdownMenuItem onSelect={() => setFocus(true)}>
+            <DropdownMenuItem onSelect={onClose ?? (() => setFocus(true))}>
               <EyeOff className="h-4 w-4" />
-              Hide
+              {onClose ? "Close" : "Hide"}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
