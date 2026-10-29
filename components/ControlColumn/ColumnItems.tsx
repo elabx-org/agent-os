@@ -16,6 +16,7 @@ import { useLayoutMode } from "@/hooks/useLayoutMode";
 import { mobileNavStore } from "@/stores/mobileNav";
 import { focusStore } from "@/stores/focus";
 import { gitMenuStore } from "@/stores/gitMenu";
+import { moveSheetStore, openMoveSheet } from "@/stores/moveSheet";
 import { useSurface } from "@/stores/surface";
 import {
   DropdownMenu,
@@ -41,7 +42,7 @@ function useModKey(): string {
 }
 
 /** Items that switch something on and off rather than go somewhere */
-const TOGGLES: NavAction[] = ["live", "beside"];
+const TOGGLES: NavAction[] = ["live", "beside", "showFinished"];
 
 interface ColumnItemsProps {
   items: Item[];
@@ -124,6 +125,7 @@ function MoreMenu(props: MoreProps) {
   const { needsYou, liveOpen, viewMode } = useSnapshot(mobileNavStore);
   const { on: focus } = useSnapshot(focusStore);
   const { actions: git } = useSnapshot(gitMenuStore);
+  const { offer: movable } = useSnapshot(moveSheetStore);
   const inSession = surface === "session" || surface === "beside";
   const wide = mode === "duo-open" || mode === "book" || mode === "desktop";
   const go = (action: NavAction) => () => runNav(action);
@@ -182,6 +184,19 @@ function MoreMenu(props: MoreProps) {
           <DropdownMenuItem onSelect={go("live")}>
             {liveOpen ? "Hide live activity" : "Live activity"}
           </DropdownMenuItem>
+        )}
+        {inSession && (
+          <DropdownMenuItem onSelect={go("scripts")}>Scripts</DropdownMenuItem>
+        )}
+        {/* Over a session, or beside Now on a wide screen */}
+        {movable && (inSession || (surface === "now" && wide)) && (
+          <DropdownMenuItem onSelect={() => openMoveSheet(movable)}>
+            Move to a worktree
+          </DropdownMenuItem>
+        )}
+        {/* A session's column has no Find of its own (M11) */}
+        {inSession && (
+          <DropdownMenuItem onSelect={go("search")}>Find</DropdownMenuItem>
         )}
         {inSession && wide && surface !== "beside" && (
           <DropdownMenuItem onSelect={go("beside")}>

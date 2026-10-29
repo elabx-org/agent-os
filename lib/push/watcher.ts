@@ -27,6 +27,7 @@ import { isWatching, readPushConfig } from "./config";
 import { sendPush, type PushMessage } from "./send";
 import { recordNotification, setDelivered } from "./history";
 import { tickersDisabled } from "../flags";
+import { isEnded } from "../settle-types";
 
 const execFileAsync = promisify(execFile);
 
@@ -84,7 +85,8 @@ async function message(
 ): Promise<Event | null> {
   const db = getDb();
   const session = queries.getSession(db).get(id) as Session | undefined;
-  if (!session || session.conductor_session_id) return null;
+  // Settled or paused: its tmux was ended on purpose, nothing to announce
+  if (!session || session.conductor_session_id || isEnded(session)) return null;
   const project = session.project_id
     ? (queries.getProject(db).get(session.project_id) as Project | undefined)
     : undefined;

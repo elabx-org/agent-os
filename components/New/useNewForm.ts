@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { AgentType } from "@/lib/providers";
+import { isValidProviderId } from "@/lib/providers/registry";
 import type { ProjectWithDevServers } from "@/lib/projects";
 import { branchForFeature, branchFromTask } from "@/lib/branch-name";
 import { registerNavHandlers } from "@/lib/nav-actions";
 import { agentName } from "@/components/a/Avatar";
 import { useNewSessionForm } from "@/components/NewSessionDialog/hooks/useNewSessionForm";
 import { poll as refreshBackgroundAgents } from "@/components/BackgroundAgents";
+import { useEnsureTrusted } from "@/components/Projects/TrustConfigPrompt";
+import { useProjectConfig } from "@/hooks/useProjectConfig";
 
 export type RunAs = "session" | "background";
 
@@ -139,10 +142,21 @@ export function useNewForm({
     }
   };
 
-  const submit = () => {
-    if (!canSubmit) return;
-    if (background) startBackground();
-    else session.handleSubmit({ featureName });
+  // A new worktree runs the project's setup steps: an unapproved
+  // .agent-os.json asks first (M3)
+  const trust = useEnsureTrusted(session.projectId);
+  // Held across the trust check's fetch, so a second ✓ or Enter waits
+  const submitting = useRef(false);
+  const submit = async () => {
+    if (!canSubmit || submitting.current) return;
+    if (background) return startBackground();
+    submitting.current = true;
+    try {
+      if (worktree && !(await trust.ensure())) return;
+      await session.handleSubmit({ featureName });
+    } finally {
+      submitting.current = false;
+    }
   };
 
   // The column's ✓ (E-New) starts what the form holds while it shows
@@ -150,7 +164,7 @@ export function useNewForm({
   submitRef.current = submit;
   useEffect(() => {
     if (!open) return;
-    return registerNavHandlers({ startNew: () => submitRef.current() });
+    return registerNavHandlers({ startNew: () => void submitRef.current() });
   }, [open]);
 
   // Background agents are Claude Code, so the model applies to them always;
@@ -168,6 +182,23 @@ export function useNewForm({
     if (!showPermissions) session.setPermissionMode(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showPermissions]);
+
+  // The project's .agent-os.json defaults (approved ones only, as the
+  // server resolves them) preset the form once per project; what the user
+  // then picks is sent as usual
+  const { data: projectConfig } = useProjectConfig(session.projectId);
+  const presetFor = useRef<string | null>(null);
+  useEffect(() => {
+    const id = session.projectId;
+    if (!id || !projectConfig || presetFor.current === id) return;
+    presetFor.current = id;
+    const d = projectConfig.defaults;
+    if (d.agent && isValidProviderId(d.agent)) session.setAgentType(d.agent);
+    if (d.permissionMode) session.setPermissionMode(d.permissionMode);
+    // Other agents' models come from the file on the server (showModel)
+    if (d.model && d.agent === "claude") session.setModel(d.model);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session.projectId, projectConfig]);
 
   const project = projects.find((p) => p.id === session.projectId);
   const projectName =
@@ -198,6 +229,7 @@ export function useNewForm({
     projectName,
     submit,
     canSubmit,
+    trustPrompt: trust.prompt,
     busy,
     error: background ? startError : session.error,
     handleClose: () => {

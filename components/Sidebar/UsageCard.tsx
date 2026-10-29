@@ -2,12 +2,18 @@
 
 import { Sun } from "lucide-react";
 import { useClaudeUsage } from "@/components/UsageMonitor";
+import { isFull } from "@/components/UsagePill";
+import { LIMIT_FILL_CLASS, LIMIT_TEXT_CLASS } from "@/lib/agent-state";
 import { formatReset } from "@/lib/usage-reset";
 import { runNav } from "@/lib/nav-actions";
 import { cn } from "@/lib/utils";
 
-/** Only past 80% does the number warn (as the Now pill) */
+/**
+ * Only past 80% does the number warn; full, it is the limited violet (as
+ * the Now pill, N-Limited .t-lim)
+ */
 function level(pct: number): string {
+  if (isFull(pct)) return LIMIT_TEXT_CLASS;
   return pct >= 80 ? "text-red-600 dark:text-red-400" : "text-foreground/90";
 }
 
@@ -36,7 +42,10 @@ function Window({
       </div>
       <div className="bg-foreground/10 h-1.5 overflow-hidden rounded-[3px]">
         <div
-          className="bg-primary dark:bg-meter h-full min-w-1.5 rounded-[3px]"
+          className={cn(
+            "h-full min-w-1.5 rounded-[3px]",
+            isFull(pct) ? LIMIT_FILL_CLASS : "bg-primary dark:bg-meter"
+          )}
           style={{ width: `${Math.min(100, Math.max(0, pct))}%` }}
         />
       </div>

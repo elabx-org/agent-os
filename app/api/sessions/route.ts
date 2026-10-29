@@ -5,11 +5,15 @@ import { isValidAgentType, type AgentType } from "@/lib/providers";
 import { getProviderDefinition } from "@/lib/providers/registry";
 import { createWorktree } from "@/lib/worktrees";
 import { generateBranchName } from "@/lib/git";
-import { setupWorktree, type SetupResult } from "@/lib/env-setup";
+import { setupNativeWorktreeWhenReady, setupWorktree, type SetupResult } from "@/lib/env-setup";
+import { resolveProjectDefaults, type ResolvedProjectDefaults } from "@/lib/project-config";
+import { isSafeModelName } from "@/lib/model-name";
 import { findAvailablePort } from "@/lib/ports";
 import { runInBackground } from "@/lib/async-operations";
 import { getProject } from "@/lib/projects";
 import { launchSession } from "@/lib/session-launch";
+import { filterSettled } from "@/lib/settle";
+import { parseSettledFilter } from "@/lib/settle-types";
 import {
   announceFullAccess,
   grantFullAccess,
@@ -18,10 +22,14 @@ import {
 import { capForAgent, normalizeMode } from "@/lib/permission-mode";
 
 // GET /api/sessions - List all sessions and groups
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const db = getDb();
-    const sessions = queries.getAllSessions(db).all() as Session[];
+    // ?settled=0|1|today (M8); no parameter lists them all
+    const sessions = filterSettled(
+      queries.getAllSessions(db).all() as Session[],
+      parseSettledFilter(request.nextUrl.searchParams.get("settled"))
+    );
     const groups = queries.getAllGroups(db).all() as Group[];
 
     // Convert expanded from 0/1 to boolean
@@ -65,11 +73,11 @@ export async function POST(request: NextRequest) {
       name: providedName,
       workingDirectory = "~",
       parentSessionId = null,
-      model = "sonnet",
+      model: requestedModel,
       systemPrompt = null,
       groupPath = "sessions",
       claudeSessionId = null,
-      agentType: rawAgentType = "claude",
+      agentType: requestedAgentType,
       autoApprove: requestedAutoApprove = false,
       // lib/permission-mode.ts Mode; NULL keeps the agent's default
       permissionMode: requestedMode = null,
@@ -91,10 +99,36 @@ export async function POST(request: NextRequest) {
 
     const id = randomUUID();
 
+    // What the request leaves out comes from the project's .agent-os.json
+    const projectDefaults = await resolveProjectDefaults(projectId).catch(
+      () => ({}) as ResolvedProjectDefaults
+    );
+    const rawAgentType = requestedAgentType ?? projectDefaults.agent ?? "claude";
+    // The file's model goes with the agent it names only
+    const model =
+      (requestedModel || undefined) ??
+      (rawAgentType === projectDefaults.agent
+        ? projectDefaults.model
+        : undefined) ??
+      "sonnet";
+    if (!isSafeModelName(model)) {
+      return NextResponse.json({ error: "Invalid model name" }, { status: 400 });
+    }
+    // The file's Full access (the user chose it in the UI) is the user's
+    // own only: anyone else's request gets the capped mode, unrefused
+    const defaultMode =
+      requestedMode == null && body.autoApprove === undefined
+        ? (projectDefaults.permissionMode ?? null)
+        : null;
+
     // Skipping permission prompts is the user's call, never an agent's: an
     // agent's request is capped, one with neither proof nor agent markers
     // refused (lib/permission-guard.ts)
-    const mode = normalizeMode(requestedMode);
+    const mode =
+      normalizeMode(requestedMode) ??
+      (defaultMode === "bypassPermissions" && requester(request).by !== "user"
+        ? capForAgent(defaultMode)
+        : defaultMode);
     const wantsFullAccess = mode
       ? mode === "bypassPermissions"
       : !!requestedAutoApprove;
@@ -160,6 +194,7 @@ export async function POST(request: NextRequest) {
               worktreePath: capturedWorktreePath,
               sourcePath: capturedSourcePath,
               port: capturedPort,
+              projectId,
             });
             console.log("Worktree setup completed:", {
               port: capturedPort,
@@ -295,6 +330,15 @@ export async function POST(request: NextRequest) {
     } else if (combinedPrompt) {
       // The page sends it when it starts the session
       response.initialPrompt = combinedPrompt;
+    }
+
+    // Native --worktree: the CLI makes the folder once it starts; set it up then
+    if (useWorktree && branchName && !worktreePath && getProviderDefinition(agentType).worktreeFlag) {
+      const repoPath = workingDirectory;
+      const name = branchName;
+      runInBackground(async () => {
+        await setupNativeWorktreeWhenReady({ repoPath, name, projectId });
+      }, `setup-native-worktree-${id}`);
     }
 
     return NextResponse.json(response, { status: 201 });

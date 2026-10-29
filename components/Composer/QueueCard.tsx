@@ -14,6 +14,7 @@ import {
 import { cn } from "@/lib/utils";
 import type { UseQueue } from "@/hooks/useQueue";
 import type { QueueItem } from "@/lib/queue/types";
+import { QueuedSessionPills } from "@/components/Chat/AttachedSessionsLine";
 import { dropIndex, holdCaption } from "./queue-model";
 
 export interface QueueCardProps {
@@ -139,6 +140,9 @@ export function QueueCard({
           )}
         </span>
         <span className="block w-full truncate text-sm">{item.text}</span>
+        {item.sessions?.length > 0 && (
+          <QueuedSessionPills refs={item.sessions} />
+        )}
       </>
     );
     return (
@@ -304,6 +308,9 @@ export function FailedSends({
               )}
             </span>
             <span className="block w-full truncate text-sm">{item.text}</span>
+            {item.sessions?.length > 0 && (
+              <QueuedSessionPills refs={item.sessions} />
+            )}
           </button>
           <button
             type="button"

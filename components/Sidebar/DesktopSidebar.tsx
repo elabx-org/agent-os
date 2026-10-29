@@ -8,9 +8,11 @@ import type { Session } from "@/lib/db";
 import type { SessionStatus, ViewProps } from "@/components/views/types";
 import { StateDot } from "@/components/a/StateDot";
 import { useNeedsYou } from "@/hooks/useNeedsYou";
+import { isLimitShown } from "@/lib/limits/types";
 import { displayTitle, useListTitles } from "@/hooks/useSessionTitles";
 import { isMacLike } from "@/hooks/useViewShortcuts";
 import { runNav } from "@/lib/nav-actions";
+import { withoutPaused } from "@/lib/paused";
 import { openPage, workspacePageStore } from "@/stores/workspacePage";
 import { newSurfaceStore } from "@/stores/newSurface";
 import { mobileNavStore } from "@/stores/mobileNav";
@@ -58,6 +60,12 @@ function SectionLabel({
   );
 }
 
+const STATE_LABEL = {
+  needs: "needs you",
+  limited: "limited",
+  work: "working",
+} as const;
+
 function SessionRows({
   sessions,
   state,
@@ -66,7 +74,7 @@ function SessionRows({
   onOpenSession,
 }: {
   sessions: Session[];
-  state: "needs" | "work";
+  state: "needs" | "limited" | "work";
   statuses: Record<string, SessionStatus>;
   selectedId?: string;
   onOpenSession: (session: Session) => void;
@@ -80,7 +88,7 @@ function SessionRows({
         type="button"
         onClick={() => onOpenSession(s)}
         aria-current={s.id === selectedId ? "true" : undefined}
-        aria-label={`${title}, ${state === "needs" ? "needs you" : "working"}`}
+        aria-label={`${title}, ${STATE_LABEL[state]}`}
         title={statuses[s.id]?.lastLine || undefined}
         className={cn(
           "srow hover:bg-foreground/5 w-full flex-none text-left",
@@ -120,22 +128,33 @@ export function DesktopSidebar({
     if (!isMacLike()) setFindKey("Ctrl K");
   }, []);
 
-  const { waiting } = useNeedsYou(sessions, sessionStatuses);
+  // A paused (handed-off) or settled session neither needs you nor works
+  const active = useMemo(() => withoutPaused(sessions), [sessions]);
+  const { waiting } = useNeedsYou(active, sessionStatuses);
+  // At a usage limit (M6): their own section, oldest limit first
+  const limited = useMemo(
+    () =>
+      active
+        .filter((s) => !s.conductor_session_id && isLimitShown(s))
+        .sort((a, b) => (a.limited_at ?? 0) - (b.limited_at ?? 0)),
+    [active]
+  );
   // Workers show inside their conductor's session, as on Now
   const working = useMemo(
     () =>
-      sessions
+      active
         .filter(
           (s) =>
             !s.conductor_session_id &&
-            sessionStatuses[s.id]?.status === "running"
+            sessionStatuses[s.id]?.status === "running" &&
+            !isLimitShown(s)
         )
         .sort((a, b) => b.updated_at.localeCompare(a.updated_at)),
-    [sessions, sessionStatuses]
+    [active, sessionStatuses]
   );
   const listed = useMemo(
-    () => sidebarProjects(projects, sessions, sessionStatuses),
-    [projects, sessions, sessionStatuses]
+    () => sidebarProjects(projects, active, sessionStatuses),
+    [projects, active, sessionStatuses]
   );
   const shown = listed.slice(0, SIDEBAR_PROJECTS);
   const more = listed.length - shown.length;
@@ -228,9 +247,23 @@ export function DesktopSidebar({
             />
           </>
         )}
+        {limited.length > 0 && (
+          <>
+            <SectionLabel first={waiting.length === 0}>Limited</SectionLabel>
+            <SessionRows
+              sessions={limited}
+              state="limited"
+              statuses={sessionStatuses}
+              selectedId={selectedId}
+              onOpenSession={onOpenSession}
+            />
+          </>
+        )}
         {working.length > 0 && (
           <>
-            <SectionLabel first={waiting.length === 0}>Working</SectionLabel>
+            <SectionLabel first={waiting.length + limited.length === 0}>
+              Working
+            </SectionLabel>
             <SessionRows
               sessions={working}
               state="work"
@@ -242,7 +275,9 @@ export function DesktopSidebar({
         )}
         {!newOpen && shown.length > 0 && (
           <>
-            <SectionLabel first={waiting.length + working.length === 0}>
+            <SectionLabel
+              first={waiting.length + limited.length + working.length === 0}
+            >
               Projects
             </SectionLabel>
             {shown.map(({ project, live }) => (

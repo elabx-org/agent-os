@@ -14,11 +14,14 @@ const PILL = "pill h-11 px-4 text-sm";
  */
 export function TurnCard({
   turn,
+  diffOpen = false,
   onDiff,
   onUndo,
   className,
 }: {
   turn: Turn;
+  /** Its diff review is open: accent edge, the Diff pill pressed */
+  diffOpen?: boolean;
   onDiff: () => void;
   onUndo: () => void;
   className?: string;
@@ -28,7 +31,11 @@ export function TurnCard({
   return (
     <div
       aria-label={`Turn ${turn.turnNo} summary`}
-      className={cn("turn-card", className)}
+      className={cn(
+        "turn-card",
+        diffOpen && "border-primary dark:border-meter border-[1.5px]",
+        className
+      )}
     >
       <div className="text-foreground/80 flex items-center gap-2 text-sm">
         <Pencil className="h-4 w-4 shrink-0" />
@@ -41,7 +48,12 @@ export function TurnCard({
         <button
           type="button"
           onClick={onDiff}
-          className={cn(PILL, "pill-secondary active:opacity-80")}
+          aria-pressed={diffOpen}
+          className={cn(
+            PILL,
+            "pill-secondary active:opacity-80",
+            diffOpen && "border-primary dark:border-meter bg-primary/25 border"
+          )}
         >
           Diff
         </button>

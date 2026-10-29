@@ -12,8 +12,9 @@ import { mobileNavStore } from "@/stores/mobileNav";
  * here whenever the rail is off (two panes, a narrow window)
  */
 export function DesktopLiveButton() {
-  const { railShown, liveOpen } = useSnapshot(mobileNavStore);
-  if (railShown) return null;
+  const { railShown, liveOpen, viewMode } = useSnapshot(mobileNavStore);
+  // The agents view's detail panel takes the rail's place (D-Tree)
+  if (railShown || viewMode === "agents") return null;
   return (
     <button
       type="button"

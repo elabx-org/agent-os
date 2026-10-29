@@ -64,7 +64,12 @@ import { mobileNavActions, mobileNavStore } from "@/stores/mobileNav";
 import { focusStore, loadFocus } from "@/stores/focus";
 import { registerNavHandlers, runNav } from "@/lib/nav-actions";
 import { isNative } from "@/lib/native-bridge";
+import { isEnded } from "@/lib/settle-types";
 import { SettingsPage } from "@/components/Settings/SettingsPage";
+import { ScriptsSheetHost } from "@/components/Projects/ScriptsSheet";
+import { useScriptShortcuts } from "@/hooks/useScriptShortcuts";
+import { useFreshSessionCleanup } from "@/hooks/useFreshSessionCleanup";
+import { OPEN_SESSION_EVENT, type OpenSessionDetail } from "@/lib/bg-send";
 
 function HomeContent() {
   // UI State
@@ -195,8 +200,9 @@ function HomeContent() {
       const sessionName = session.tmux_name || `${provider.id}-${session.id}`;
       const cwd = session.working_directory?.replace("~", "$HOME") || "$HOME";
 
-      // Shell sessions just open a terminal - no agent command
-      if (provider.id === "shell") {
+      // Shell sessions just open a terminal - no agent command; a paused
+      // (handed-off) or settled one is never relaunched (runSessionInTerminal)
+      if (provider.id === "shell" || isEnded(session)) {
         return { sessionName, cwd, command: "" };
       }
 
@@ -249,6 +255,8 @@ function HomeContent() {
         permissionMode: session.permission_mode,
         continueSession: session.continue_session,
         model: session.model,
+        modelPinned: !!session.model_pinned,
+        effort: session.effort,
         initialPrompt: initialPrompt || undefined,
         worktreeName: nativeWorktreeName,
       });
@@ -270,6 +278,12 @@ function HomeContent() {
       session: Session,
       sessionInfo: { sessionName: string; cwd: string; command: string }
     ) => {
+      // Paused (handed off, M4) or settled (M8): its chat shows, its agent
+      // isn't relaunched
+      if (isEnded(session)) {
+        attachSession(paneId, session.id, "");
+        return;
+      }
       const { sessionName, cwd, command } = sessionInfo;
       // For shell sessions (empty command), just start tmux without a command so it opens the default shell
       const tmuxNew = command
@@ -614,6 +628,18 @@ function HomeContent() {
       window.removeEventListener("agentos-session-restarted", onRestarted);
   }, [attachToSession, isMobile]);
 
+  // A session opened from inside one (background send, M10: the fresh one,
+  // or the toast's Open)
+  useEffect(() => {
+    const onOpen = (e: Event) => {
+      const { session } = (e as CustomEvent<OpenSessionDetail>).detail;
+      attachToSession(session);
+      if (isMobile) setSidebarOpen(false);
+    };
+    window.addEventListener(OPEN_SESSION_EVENT, onOpen);
+    return () => window.removeEventListener(OPEN_SESSION_EVENT, onOpen);
+  }, [attachToSession, isMobile]);
+
   // A background agent (components/BackgroundAgents) opens in the terminal
   useEffect(() => {
     const onAttach = (e: Event) => {
@@ -748,6 +774,8 @@ function HomeContent() {
   const activeSession = sessions.find(
     (s) => s.id === focusedActiveTab?.sessionId
   );
+  useScriptShortcuts(activeSession?.project_id, activeSession?.id);
+  useFreshSessionCleanup(focusedActiveTab?.sessionId ?? undefined);
   const startDevServerProject = startDevServerProjectId
     ? (projects.find((p) => p.id === startDevServerProjectId) ?? null)
     : null;
@@ -800,6 +828,7 @@ function HomeContent() {
         onUpdateSettings={updateSettings}
         onRequestPermission={requestPermission}
       />
+      <ScriptsSheetHost />
     </>
   );
 }

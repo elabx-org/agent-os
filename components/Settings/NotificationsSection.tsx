@@ -47,6 +47,21 @@ const WHEN: { event: PushEvent; label: string; short: string }[] = [
     label: "A background agent finishes",
     short: "a background agent finishes",
   },
+  {
+    event: "limited",
+    label: "Usage limit hit",
+    short: "a usage limit is hit",
+  },
+  {
+    event: "resumed",
+    label: "Resumed after a limit",
+    short: "a session resumes after a limit",
+  },
+  {
+    event: "settled",
+    label: "A session settles on its own",
+    short: "a session settles",
+  },
 ];
 
 /**

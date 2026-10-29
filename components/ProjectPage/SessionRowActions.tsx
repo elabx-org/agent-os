@@ -4,6 +4,7 @@ import { useState, type ReactNode } from "react";
 import {
   Copy,
   FolderInput,
+  GitBranchPlus,
   Pencil,
   Pin,
   PinOff,
@@ -15,6 +16,8 @@ import type { ProjectWithDevServers } from "@/lib/projects";
 import { HoldMenu } from "@/components/a/HoldMenu";
 import { ActionSheet, type SheetAction } from "@/components/ui/action-sheet";
 import type { useSessionListMutations } from "@/components/SessionList/hooks/useSessionListMutations";
+import { useCanOfferMove } from "@/hooks/useWorktreeMove";
+import { openMoveSheet } from "@/stores/moveSheet";
 
 type Mutations = ReturnType<typeof useSessionListMutations>;
 
@@ -37,6 +40,8 @@ export function SessionRowActions({
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
+  // N-Worktree: the page's MoveToWorktreeSheetPageHost draws it
+  const movable = useCanOfferMove(session);
 
   const pinned = session.pinned_order != null;
   const claude = session.agent_type === "claude";
@@ -74,6 +79,15 @@ export function SessionRowActions({
             icon: Sparkles,
             disabled: actions.summarizingSessionId === session.id,
             onSelect: () => actions.handleSummarize(session.id),
+          },
+        ]
+      : [],
+    movable
+      ? [
+          {
+            label: "Move to a worktree",
+            icon: GitBranchPlus,
+            onSelect: () => openMoveSheet(session.id),
           },
         ]
       : [],

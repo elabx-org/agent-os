@@ -38,6 +38,31 @@ export interface Session {
   permission_pending: string | null;
   // JSON LaunchCaps recorded at launch
   launch_caps: string | null;
+  // M4 handoff (migration 28): ms when handed off and its tmux ended; the
+  // session it came from / went to; Claude effort for the next launch
+  paused_at: number | null;
+  handoff_from_session_id: string | null;
+  handoff_to_session_id: string | null;
+  effort: string | null;
+  // 1 when the model was picked (sheet, handoff): --model even for "sonnet"
+  model_pinned: number | null;
+  // Usage limit (migration 29, lib/limits): when it hit one (ms), when it
+  // resets (ms, null when unknown), which one (LimitKind)
+  limited_at: number | null;
+  limited_until: number | null;
+  limit_kind: string | null;
+  // What happens at the reset (ResumePolicy) and the text typed then
+  resume_policy: string | null;
+  resume_text: string | null;
+  // Settle (migration 30, lib/settle.ts): when it settled (ms), why
+  // (SettleReason; "unsettled" after an Undo, so auto-settle leaves it be)
+  settled_at: number | null;
+  settled_reason: string | null;
+  // The branch's PR as the poller last saw it (lib/pr-poller.ts): checks
+  // (PRChecks), title, when it merged (ms)
+  pr_checks: string | null;
+  pr_title: string | null;
+  pr_merged_at: number | null;
 }
 
 /** What an agent tried on a session's permissions (lib/agent-actions.ts) */
@@ -60,6 +85,8 @@ export interface SessionQueueRow {
   text: string;
   /** JSON string[] of file paths, or null */
   attachments: string | null;
+  /** JSON SessionAttachmentRef[] (M9, migration 31), or null */
+  sessions: string | null;
   origin: string; // lib/queue/types.ts QueueOrigin
   kind: string; // QueueKind
   status: string; // QueueStatus
@@ -67,6 +94,19 @@ export interface SessionQueueRow {
   created_at: number; // ms
   sent_at: number | null; // ms
   error: string | null;
+}
+
+/** A session's cached summary for @ attach (migration 31, lib/session-summaries.ts) */
+export interface SessionSummaryRow {
+  session_id: string;
+  /** What it was built from (transcript size + mtime, or scrollback time) */
+  basis: string;
+  text: string;
+  tokens: number;
+  /** lib/summarize.ts SessionSummary source */
+  source: string;
+  empty: number; // 0 or 1
+  created_at: number; // ms
 }
 
 /** One agent turn and its snapshot refs (migration 26, lib/turns.ts) */
@@ -89,6 +129,23 @@ export interface SessionTurnRow {
   added: number | null;
   removed: number | null;
   undone_at: number | null; // ms
+}
+
+/** A line comment on a session's diff (migration 33, lib/review-comments.ts) */
+export interface ReviewCommentRow {
+  id: number;
+  session_id: string;
+  scope: string; // lib/turn-types.ts DiffScope
+  path: string;
+  side: string; // lib/review-types.ts ReviewSide
+  start_line: number;
+  end_line: number;
+  quote: string;
+  body: string;
+  created_at: number; // ms
+  sent_at: number | null; // ms
+  /** The queued message carrying it (session_queue.id), while it waits */
+  queue_item_id: number | null;
 }
 
 export interface Group {

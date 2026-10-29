@@ -7,13 +7,14 @@ import { cn } from "@/lib/utils";
 import { useSessionActivity } from "@/hooks/useSessionActivity";
 import { mobileNavStore } from "@/stores/mobileNav";
 import { StateDot } from "@/components/a/StateDot";
+import { LIMIT_EDGE_CLASS } from "@/lib/agent-state";
 import {
   Sheet,
   SheetContent,
   SheetDescription,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { LiveActivity } from "./LiveActivity";
+import { LimitedLabel, LiveActivity } from "./LiveActivity";
 import { formatAge, workingLine } from "./activity-format";
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
@@ -71,6 +72,8 @@ export function ActivityStrip({
               </span>
               {now.label !== "Working" && ` · ${workingLine(now)}`}
             </>
+          ) : state === "limited" ? (
+            <LimitedLabel label={now.label} />
           ) : (
             now.label
           )
@@ -119,6 +122,7 @@ export function StatusCardButton({
         "status-card active:bg-accent hover:bg-accent/60 w-full min-w-0 touch-manipulation text-left whitespace-nowrap",
         state === "work" && "tone-work",
         state === "needs" && "tone-needs",
+        state === "limited" && LIMIT_EDGE_CLASS,
         className
       )}
     >

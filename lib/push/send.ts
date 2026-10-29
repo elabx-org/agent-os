@@ -3,7 +3,15 @@ import { sendNtfy } from "./ntfy";
 import { sendApns } from "./apns";
 
 export interface PushMessage {
-  kind: "needsYou" | "finished" | "agentNeedsYou" | "agentFinished" | "test";
+  kind:
+    | "needsYou"
+    | "finished"
+    | "agentNeedsYou"
+    | "agentFinished"
+    | "limited"
+    | "resumed"
+    | "settled"
+    | "test";
   title: string;
   body: string;
   sessionId?: string;

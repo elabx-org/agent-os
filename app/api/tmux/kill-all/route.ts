@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { exec } from "child_process";
 import { promisify } from "util";
 import { getDb, queries, type Session } from "@/lib/db";
+import { forgetSessionSummary } from "@/lib/session-summaries";
 
 const execAsync = promisify(exec);
 
@@ -40,6 +41,7 @@ export async function POST() {
       try {
         queries.detachForks(db).run(session.id);
         queries.deleteSession(db).run(session.id);
+        forgetSessionSummary(session.id);
       } catch {
         // Continue on error
       }

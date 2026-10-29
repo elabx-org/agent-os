@@ -3,6 +3,7 @@ import { getDb, queries, type Session } from "@/lib/db";
 import { recordRefusal } from "@/lib/agent-actions";
 import { requester, userOnly } from "@/lib/permission-guard";
 import { cancelItem, editItem, queueStore } from "@/lib/queue/store";
+import { limitStore } from "@/lib/limits/store";
 import type {
   EditQueueItemRequest,
   EditQueueItemResult,
@@ -125,6 +126,15 @@ export async function DELETE(request: NextRequest, { params }: Params) {
       { error: "Already sent or cancelled" },
       { status: 409 }
     );
+  }
+  // The scheduled resume taken back here is the choice taken back (M6), so
+  // the resume ticker doesn't queue it again
+  if (item.kind === "resume" && item.origin === "system") {
+    const session = queries.getSession(getDb()).get(item.sessionId) as
+      | Session
+      | undefined;
+    if (session?.resume_policy === "at_reset")
+      limitStore().setPolicy(item.sessionId, null, null);
   }
   return NextResponse.json({ ok: true });
 }

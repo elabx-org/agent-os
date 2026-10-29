@@ -53,11 +53,11 @@ import {
   ContextMenuTrigger,
 } from "./ui/context-menu";
 import { AgentRow } from "./rows/AgentRow";
-import {
-  fromSessionStatus,
-  STATE_WORD,
-  timeAgo as formatTimeAgo,
-} from "@/lib/agent-state";
+import { STATE_WORD, timeAgo as formatTimeAgo } from "@/lib/agent-state";
+import { handedOffLine, sessionState } from "@/lib/paused";
+import { isEnded, settledLine } from "@/lib/settle-types";
+import { agentName } from "@/components/a/Avatar";
+import { useSessionsQuery } from "@/data/sessions/queries";
 import type { Session, Group } from "@/lib/db";
 import type { ProjectWithDevServers } from "@/lib/projects";
 
@@ -166,7 +166,15 @@ export function SessionCard({
 }: SessionCardProps) {
   const timeAgo = formatTimeAgo(session.updated_at);
   const status = tmuxStatus || "dead";
-  const state = fromSessionStatus(status);
+  const state = sessionState(session, status);
+  // Paused (handed off): where it went instead of when, under its name
+  const { data: listed } = useSessionsQuery();
+  const detail =
+    state === "paused"
+      ? handedOffLine(session, listed?.sessions ?? [], agentName)
+      : state === "settled"
+        ? settledLine(session)
+        : timeAgo;
   const name = title ?? session.name;
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState(session.name);
@@ -363,7 +371,7 @@ export function SessionCard({
       ...(onFork && session.agent_type === "claude"
         ? [{ label: "Fork session", icon: Copy, onSelect: onFork }]
         : []),
-      ...(session.agent_type === "claude"
+      ...(session.agent_type === "claude" && !isEnded(session)
         ? [
             {
               label: "Restart",
@@ -519,7 +527,7 @@ export function SessionCard({
             Fork session
           </MenuItem>
         )}
-        {session.agent_type === "claude" && (
+        {session.agent_type === "claude" && !isEnded(session) && (
           <MenuItem
             onSelect={() => afterMenuCloses(() => restartSession(session))}
           >
@@ -656,7 +664,7 @@ export function SessionCard({
       }
       idLabel={isEditing ? undefined : idLabel}
       project={projectName}
-      detail={timeAgo}
+      detail={detail}
       selected={isActive || isSelected}
       dense
       onClick={handleCardClick}

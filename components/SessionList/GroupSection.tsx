@@ -25,6 +25,7 @@ import {
   Trash2,
 } from "lucide-react";
 import type { Session, Group } from "@/lib/db";
+import { pausedLast } from "@/lib/paused";
 import type { SessionStatus, SessionHoverHandlers } from "./SessionList.types";
 
 interface GroupSectionProps {
@@ -70,7 +71,7 @@ export function GroupSection({
   );
 
   // Group non-worker sessions by group_path
-  const sessionsByGroup = sessions
+  const sessionsByGroup = pausedLast(sessions)
     .filter((s) => !s.conductor_session_id)
     .reduce(
       (acc, session) => {

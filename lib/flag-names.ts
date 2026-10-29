@@ -6,13 +6,16 @@
 export const FLAG_NAMES = [
   "queue",
   "snapshots",
+  "limits",
   "autoResume",
   "autoSettle",
   "searchIndex",
   "prPoller",
   "chatDefault",
   "liveFullAccess",
+  "modeAtIdle",
   "portProxy",
+  "bgSendCleanup",
 ] as const;
 
 export type FlagName = (typeof FLAG_NAMES)[number];
@@ -23,23 +26,30 @@ export type Flags = Record<FlagName, boolean>;
 export const TICKER_FLAGS: readonly FlagName[] = [
   "queue",
   "snapshots",
+  "limits",
   "autoResume",
   "autoSettle",
   "searchIndex",
   "prPoller",
+  "modeAtIdle",
 ];
 
 export const FLAG_DEFAULTS: Flags = {
   queue: false,
   snapshots: false,
+  limits: false,
   autoResume: false,
   autoSettle: false,
   searchIndex: false,
   prPoller: false,
   chatDefault: false,
   liveFullAccess: false,
+  modeAtIdle: false,
   // The code-server replacement: on unless turned off (or AGENTOS_PROXY=0)
   portProxy: true,
+  // M10: on, so "Send and start a new session" doesn't litter Now; Labs
+  // turns it off (fresh sessions are then kept)
+  bgSendCleanup: true,
 };
 
 export const FLAGS_PREFERENCE_KEY = "flags";
@@ -84,6 +94,10 @@ export const FLAG_LABELS: Record<FlagName, { label: string; hint: string }> = {
     label: "Turn snapshots",
     hint: "Records each turn's changes so it can be undone",
   },
+  limits: {
+    label: "Usage limits",
+    hint: "Marks sessions that hit a usage limit and holds messages until it resets",
+  },
   autoResume: {
     label: "Auto-resume",
     hint: "Resumes sessions when a usage limit resets",
@@ -108,9 +122,17 @@ export const FLAG_LABELS: Record<FlagName, { label: string; hint: string }> = {
     label: "Instant full access",
     hint: "Full access joins Shift+Tab, so an agent could switch it on. New sessions only",
   },
+  modeAtIdle: {
+    label: "Permission changes wait for the turn",
+    hint: "A mode picked mid-turn applies when the turn ends. Off applies it at once",
+  },
   portProxy: {
     label: "Port proxy",
     hint: "Apps in the container at /proxy/<port>/, sign-in links from sessions. Off keeps the origin gate on",
+  },
+  bgSendCleanup: {
+    label: "Remove unused new sessions",
+    hint: "A session opened by Send and start a new session is deleted when left without a message",
   },
 };
 

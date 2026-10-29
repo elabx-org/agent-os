@@ -15,16 +15,30 @@ import { mobileNavStore } from "@/stores/mobileNav";
 import type { SessionStatus } from "@/components/views/types";
 import type { Session } from "@/lib/db";
 import { cn } from "@/lib/utils";
-import { nowSubline } from "./now-summary";
+import { nowSubline, nowSublineParts } from "./now-summary";
 import {
   DoneTodaySection,
+  LimitedSection,
   NeedsSection,
   QuietSection,
   WorkingSection,
 } from "./NowSections";
+import { SettledSection } from "./SettledSection";
+import { SettleToasts, useSettleToastsRoom } from "./SettleToasts";
+import { useAutoSettleToasts } from "./useAutoSettleToasts";
 import { useNowItems } from "./useNowItems";
 
 /** The mocks' page padding per posture (Main, E-iPhone, Open-Now) */
+/** The Undo toasts' sides: the page's gutters (narrow pages) */
+const TOAST_INSET: Record<LayoutMode, string> = {
+  phone: "inset-x-4",
+  "duo-closed": "left-5 right-2",
+  tabletop: "inset-x-4",
+  "duo-open": "left-6 right-5",
+  book: "left-6 right-5",
+  desktop: "left-6 right-5",
+};
+
 const PAD: Record<LayoutMode, string> = {
   phone: "px-4 pt-[15px]",
   "duo-closed": "pt-[18px] pr-2 pl-5",
@@ -80,14 +94,20 @@ export function MissionControl({
   const { homeTab } = useSnapshot(mobileNavStore);
   const wide = isWide(mode);
   const now = useNowItems(sessions, sessionStatuses);
+  useAutoSettleToasts(
+    sessions,
+    (session) => displayTitle(session, now.titles).title
+  );
   const first = now.waiting[0];
   // The needs count is useNeedsYou's, as on the column badge
-  const subline = nowSubline({
+  const counts = {
     needs: now.needsCount,
     working: now.workingCount,
     limited: now.limited.length,
     settledToday: now.settled.length,
-  });
+  };
+  const subline = nowSubline(counts);
+  const sublineParts = nowSublineParts(counts);
 
   const sectionProps = {
     now,
@@ -102,6 +122,9 @@ export function MissionControl({
   // first prompt, the same card as above it, or starts something when
   // nothing waits
   const ref = useRef<HTMLDivElement>(null);
+  // While an Undo toast shows, the last rows can scroll clear of it
+  const toastRoom = useSettleToastsRoom();
+  const toasts = <SettleToasts inset={TOAST_INSET[mode]} fill={!wide} />;
   const list = (cardOnBase: boolean) => (
     // --home-pad-b: on a phone the list scrolls on under the tab bar
     <div
@@ -109,6 +132,13 @@ export function MissionControl({
         "min-h-0 flex-1 overflow-y-auto pb-[calc(1.5rem+var(--home-pad-b,0px))]",
         PAD[mode]
       )}
+      style={
+        toastRoom
+          ? {
+              paddingBottom: `calc(${toastRoom}px + 1.5rem + var(--home-pad-b, 0px))`,
+            }
+          : undefined
+      }
     >
       <div className="flex flex-col gap-3.5">
         {onClose && (
@@ -128,26 +158,57 @@ export function MissionControl({
               AgentOS
             </p>
             <h1 className="t-large">Now</h1>
-            <p className="text-muted-foreground mt-1 truncate text-[15px]">
-              {subline}
+            {/* One line: a count that doesn't fit wraps out of sight, so
+                the line drops whole counts from the end, never cuts a word;
+                beside the taller limited pill it is 14px (N-Limited) */}
+            <p
+              className={cn(
+                "text-muted-foreground mt-1 flex flex-wrap overflow-hidden",
+                counts.limited > 0
+                  ? "h-5 text-[14px] leading-5"
+                  : "h-[22px] text-[15px] leading-[22px]"
+              )}
+            >
+              {sublineParts.length === 0 ? (
+                <span className="truncate">{subline}</span>
+              ) : (
+                <span className="sr-only">{subline}</span>
+              )}
+              {sublineParts.length > 0 &&
+                sublineParts.map((part, i) => (
+                  <span
+                    key={part}
+                    aria-hidden
+                    className={cn(
+                      "whitespace-nowrap",
+                      i === 0 && "max-w-full min-w-0 truncate"
+                    )}
+                  >
+                    {i ? `\u00a0· ${part}` : part}
+                  </span>
+                ))}
             </p>
           </div>
           <UsagePill variant={PILL[mode]} />
         </header>
 
         <NeedsSection {...sectionProps} skipFirst={cardOnBase} />
+        <LimitedSection {...sectionProps} />
         <WorkingSection {...sectionProps} />
-        {now.needsCount === 0 && now.workingCount === 0 && (
-          <div className="px-1 py-2">
-            <p className="font-medium">Nothing running</p>
-            <p className="text-muted-foreground text-sm">
-              {now.quiet.length + now.loose.length
-                ? "Start a session, or pick up one below."
-                : "Start a session."}
-            </p>
-          </div>
-        )}
-        <DoneTodaySection {...sectionProps} sessions={sessions} />
+        {now.needsCount === 0 &&
+          now.workingCount === 0 &&
+          now.limited.length === 0 && (
+            <div className="px-1 py-2">
+              <p className="font-medium">Nothing running</p>
+              <p className="text-muted-foreground text-sm">
+                {now.quiet.length + now.loose.length
+                  ? "Start a session, or pick up one below."
+                  : "Start a session."}
+              </p>
+            </div>
+          )}
+        <SettledSection {...sectionProps} />
+        <DoneTodaySection {...sectionProps} />
         <QuietSection {...sectionProps} />
 
         {/* Agents outside every project, once they've stopped working:
@@ -165,11 +226,12 @@ export function MissionControl({
     return (
       <div
         className={cn(
-          "flex h-full min-h-0 flex-col",
+          "relative flex h-full min-h-0 flex-col",
           wide ? "bg-page" : "bg-background"
         )}
       >
         {projectsView}
+        {toasts}
       </div>
     );
 
@@ -177,7 +239,7 @@ export function MissionControl({
     <div
       ref={ref}
       className={cn(
-        "flex h-full min-h-0 flex-col",
+        "relative flex h-full min-h-0 flex-col",
         wide ? "bg-page" : "bg-background"
       )}
     >
@@ -204,6 +266,7 @@ export function MissionControl({
       >
         {list(false)}
       </FoldSplit>
+      {toasts}
     </div>
   );
 }

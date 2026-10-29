@@ -15,6 +15,7 @@ import {
 import { useSessionListMutations } from "@/components/SessionList/hooks/useSessionListMutations";
 import { Button } from "@/components/ui/button";
 import { ActionSheet } from "@/components/ui/action-sheet";
+import { MoveToWorktreeSheetPageHost } from "@/components/Session/MoveToWorktreeSheet";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -370,6 +371,7 @@ function ProjectWorkspace({
         description={home(project.working_directory)}
         groups={projectActionGroups(project, { ...handlers, onRename: rename })}
       />
+      <MoveToWorktreeSheetPageHost sessions={sessions} />
     </div>
   );
 }

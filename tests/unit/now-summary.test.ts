@@ -1,6 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { nowSubline } from "../../components/MissionControl/now-summary";
+import {
+  nowSubline,
+  sortQuietSessions,
+} from "../../components/MissionControl/now-summary";
 
 const zero = { needs: 0, working: 0, limited: 0, settledToday: 0 };
 
@@ -37,28 +40,86 @@ test("nowSubline: zero parts are left out", () => {
 test("nowSubline: every part, in order", () => {
   assert.equal(
     nowSubline({ needs: 3, working: 1, limited: 1, settledToday: 2 }),
-    "3 need you · 1 working · 1 limited · 2 settled today"
+    "3 need you · 1 limited · 1 working · 2 settled today"
   );
 });
 
 test("nowSubline: every combination joins the non-zero parts", () => {
   const words = [
     (n: number) => `${n} ${n === 1 ? "needs" : "need"} you`,
-    (n: number) => `${n} working`,
     (n: number) => `${n} limited`,
+    (n: number) => `${n} working`,
     (n: number) => `${n} settled today`,
   ];
   for (let mask = 0; mask < 16; mask++) {
-    const n = [1, 2, 3, 4].map((v, i) => (mask & (1 << i) ? v : 0));
+    // In line order: needs, limited, working, settled
+    const n = [1, 3, 2, 4].map((v, i) => (mask & (1 << i) ? v : 0));
     const expected = n.flatMap((v, i) => (v ? [words[i](v)] : [])).join(" · ");
     assert.equal(
       nowSubline({
         needs: n[0],
-        working: n[1],
-        limited: n[2],
+        limited: n[1],
+        working: n[2],
         settledToday: n[3],
       }),
       expected || "All quiet"
     );
   }
+});
+
+test("sortQuietSessions: live first, paused (handed off) last, each latest first", () => {
+  const s = (
+    id: string,
+    updated_at: string,
+    paused_at: number | null = null
+  ) => ({ id, updated_at, paused_at });
+  const sorted = sortQuietSessions([
+    s("old", "2026-10-01 10:00:00"),
+    s("paused-new", "2026-10-29 10:00:00", 1),
+    s("new", "2026-10-28 10:00:00"),
+    s("paused-old", "2026-10-02 10:00:00", 2),
+  ]);
+  assert.deepEqual(
+    sorted.map((x) => x.id),
+    ["new", "old", "paused-new", "paused-old"]
+  );
+});
+
+test("sortQuietSessions: leaves its input alone", () => {
+  const input = [
+    { id: "a", updated_at: "2026-10-01 10:00:00", paused_at: 5 },
+    { id: "b", updated_at: "2026-10-01 09:00:00", paused_at: null },
+  ];
+  sortQuietSessions(input);
+  assert.deepEqual(
+    input.map((x) => x.id),
+    ["a", "b"]
+  );
+});
+
+test("nowSubline: the settle mock's line (N-Settle)", () => {
+  assert.equal(
+    nowSubline({ ...zero, working: 3, settledToday: 4 }),
+    "3 working · 4 settled today"
+  );
+});
+
+test("sortQuietSessions: live, then paused, then settled", () => {
+  const s = (id: string, updated_at: string, over = {}) => ({
+    id,
+    updated_at,
+    paused_at: null as number | null,
+    settled_at: null as number | null,
+    ...over,
+  });
+  const sorted = sortQuietSessions([
+    s("settled", "2026-10-29T12:00", { settled_at: 1 }),
+    s("paused", "2026-10-29T11:00", { paused_at: 1 }),
+    s("old", "2026-10-28T10:00"),
+    s("new", "2026-10-29T10:00"),
+  ]);
+  assert.deepEqual(
+    sorted.map((x) => x.id),
+    ["new", "old", "paused", "settled"]
+  );
 });

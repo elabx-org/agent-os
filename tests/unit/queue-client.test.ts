@@ -29,6 +29,7 @@ function item(id: number, position: number, extra: Partial<QueueItem> = {}) {
     position,
     text: `message ${id}`,
     attachments: [],
+    sessions: [],
     origin: "user",
     kind: "message",
     status: "pending",
@@ -104,7 +105,13 @@ test("hold reasons read as captions", () => {
     holdCaption("unknown", "Claude"),
     "Held until Claude's screen is clear"
   );
-  for (const reason of ["asking", "permission", "limited", "paused"] as const)
+  for (const reason of [
+    "asking",
+    "permission",
+    "limited",
+    "paused",
+    "settled",
+  ] as const)
     assert.match(holdCaption(reason, "Claude"), /^Held/);
 });
 

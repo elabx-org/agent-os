@@ -20,14 +20,19 @@ export function historyTile(
       return "done";
     case "needsYou":
     case "agentNeedsYou":
+    case "limited":
       return "needs";
+    case "resumed":
+    case "settled":
+      return "done";
     default:
       return "bell";
   }
 }
 
 // The watcher's titles: "Needs you · <project> · <session>",
-// "Finished · <session>", an agent's "<State> · <project>"
+// "Finished · <session>", "Settled · <project> · <session>" (M8), an
+// agent's "<State> · <project>"
 const PREFIX = /^([^·]+?) · (.+)$/;
 const AGENT_WAITING = / is waiting for you$/;
 
@@ -39,7 +44,9 @@ export function historyTitle(entry: NotificationEntry): string {
   const verb =
     entry.kind === "needsYou" || entry.kind === "agentNeedsYou"
       ? "asked"
-      : head.toLowerCase();
+      : entry.kind === "settled"
+        ? "settled"
+        : head.toLowerCase();
   if (entry.agentId) {
     // The agent's name leads the body: "<name> is waiting for you",
     // "<name>: <reply>" or just "<name>"

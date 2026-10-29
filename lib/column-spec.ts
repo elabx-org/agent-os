@@ -46,8 +46,24 @@ export interface ColumnContext {
   liveOpen?: boolean;
   /** The session in view is working: closed, Stop ends its column (N-Queue) */
   working?: boolean;
-  /** A sheet over the session other than Live activity (N-Undo's undo) */
-  sheet?: "undo" | null;
+  /** A sheet over the session other than Live activity (N-Undo,
+      N-Switch, N-PermMode, N-Scripts) */
+  sheet?: "undo" | "switch" | "permissions" | "scripts" | "move" | null;
+  /**
+   * What the move sheet (N-Worktree) can do now: move, cancel the
+   * scheduled move, or nothing (loading, refused, running). Absent: move
+   */
+  sheetAction?: "move" | "cancel" | "none";
+  /** The project surface shows the project's settings (N-Config, M3) */
+  projectSettings?: boolean;
+  /** Agents the session started (its tree's total): the Agents item shows (O-Tree) */
+  agents?: number;
+  /** Finished agents show in the agents view (N-Tree's eye) */
+  showFinished?: boolean;
+  /** Every branch of the agents view is folded (N-Tree's Collapse all) */
+  allCollapsed?: boolean;
+  /** The closed agents view shows an agent's detail over its tree */
+  agentDetail?: boolean;
   /** The open Duo's Changes page shows beside the conversation (Open-Changes) */
   changesOpen?: boolean;
   /** A session waits behind Now (closed Duo, tabletop): Now leads with back to it */
@@ -213,6 +229,24 @@ const BASE = {
     icon: "X",
     label: "Close",
   },
+  done: {
+    id: "done",
+    symbol: "checkmark",
+    icon: "Check",
+    label: "Done",
+  },
+  moveSession: {
+    id: "done",
+    symbol: "arrow.triangle.branch",
+    icon: "GitBranch",
+    label: "Move session",
+  },
+  cancelMove: {
+    id: "done",
+    symbol: "arrow.uturn.backward",
+    icon: "Undo2",
+    label: "Cancel move",
+  },
   sort: {
     id: "sort",
     symbol: "arrow.up.arrow.down",
@@ -248,6 +282,36 @@ const BASE = {
     symbol: "ellipsis",
     icon: "Ellipsis",
     label: "Project actions",
+  },
+  agents: {
+    id: "agents",
+    symbol: "point.3.connected.trianglepath.dotted",
+    icon: "Workflow",
+    label: "Agents",
+  },
+  showFinished: {
+    id: "showFinished",
+    symbol: "eye",
+    icon: "Eye",
+    label: "Show finished agents",
+  },
+  collapseAll: {
+    id: "collapseAll",
+    symbol: "arrow.down.and.line.horizontal.and.arrow.up",
+    icon: "ChevronsDownUp",
+    label: "Collapse all",
+  },
+  scripts: {
+    id: "scripts",
+    symbol: "play",
+    icon: "Play",
+    label: "Run a script",
+  },
+  viewConfig: {
+    id: "viewConfig",
+    symbol: "chevron.left.forwardslash.chevron.right",
+    icon: "Code",
+    label: "View .agent-os.json",
   },
   pull: {
     id: "pull",
@@ -321,18 +385,81 @@ function otherView(ctx: ColumnContext, extra: Partial<ColumnItem> = {}) {
 
 /**
  * The closed Duo's column under a sheet: close | Stop while it works
- * (E-Live), close | Changes over the undo sheet (N-Undo); null when no
- * sheet is up
+ * (E-Live), close | Changes over the undo sheet (N-Undo), close | Done
+ * over the permissions sheet (N-PermMode); null when no sheet is up
  */
 function sheetColumn(ctx: ColumnContext): ColumnItem[] | null {
+  if (ctx.sheet === "scripts") return scriptsColumn();
   if (ctx.sheet === "undo")
     return [item(BASE.closeSheet), changes(ctx, { selected: false, ...sep })];
+  // N-Switch: the close alone
+  if (ctx.sheet === "switch") return [item(BASE.closeSheet)];
+  if (ctx.sheet === "permissions")
+    return [
+      item(BASE.closeSheet),
+      item(BASE.done, { prominent: true, ...sep }),
+    ];
+  // N-Worktree: close | Move session; close | Cancel move once it waits
+  // for the turn; the close alone while there is nothing to do
+  if (ctx.sheet === "move") {
+    const action = ctx.sheetAction ?? "move";
+    if (action === "none") return [item(BASE.closeSheet)];
+    return [
+      item(BASE.closeSheet),
+      action === "cancel"
+        ? item(BASE.cancelMove, sep)
+        : item(BASE.moveSession, { prominent: true, ...sep }),
+    ];
+  }
   if (ctx.liveOpen)
     return [
       item(BASE.closeSheet),
       ...(ctx.working ? [item(BASE.stop, { danger: true, ...sep })] : []),
     ];
   return null;
+}
+
+/** The column's Agents item, while the session has any or shows them */
+function agents(ctx: ColumnContext, extra: Partial<ColumnItem> = {}) {
+  const shown = ctx.viewMode === "agents";
+  return shown || (ctx.agents ?? 0) > 0
+    ? [item(BASE.agents, { selected: shown, ...extra })]
+    : [];
+}
+
+/**
+ * N-Tree: back to the Live activity | Show finished, Collapse all |
+ * Interrupt while it works (the session only: workers and
+ * background agents are stopped from their own detail); back to the tree
+ * over an agent's detail
+ */
+function agentsColumn(ctx: ColumnContext): ColumnItem[] {
+  if (ctx.agentDetail) return [item(BASE.back, { label: "Back to agents" })];
+  return [
+    item(BASE.back, { label: "Back to live activity" }),
+    item(BASE.showFinished, { selected: ctx.showFinished, ...sep }),
+    ctx.allCollapsed
+      ? item(BASE.collapseAll, {
+          symbol: "arrow.up.and.line.horizontal.and.arrow.down",
+          icon: "ChevronsUpDown",
+          label: "Expand all",
+        })
+      : item(BASE.collapseAll),
+    ...(ctx.working ? [item(BASE.stop, { danger: true, ...sep })] : []),
+  ];
+}
+
+/** N-Scripts: close | the project's settings, where the scripts are edited */
+function scriptsColumn(): ColumnItem[] {
+  return [
+    item(BASE.closeSheet),
+    item(BASE.projectSettings, {
+      symbol: "gearshape",
+      icon: "Settings",
+      label: "Edit scripts",
+      sep: true,
+    }),
+  ];
 }
 
 /**
@@ -446,6 +573,7 @@ function sessionColumn(
   if (closed) {
     const own = sheetColumn(ctx) ?? viewColumn(ctx);
     if (own) return own;
+    if (ctx.viewMode === "agents") return agentsColumn(ctx);
   }
   const own = savedOrder("session", ctx.order);
   if (own) {
@@ -478,17 +606,21 @@ function sessionColumn(
       item(BASE.live, { selected: ctx.liveOpen }),
       item(BASE.stop, { danger: true, ...sep }),
     ];
+  // O-Tree: Agents beside Files on the open Duo, back to the session
   return [
-    item(BASE.back),
+    ctx.viewMode === "agents"
+      ? item(BASE.back, { label: "Back to session" })
+      : item(BASE.back),
     otherView(ctx, sep),
     changes(ctx),
     item(BASE.files, { selected: ctx.viewMode === "files" }),
+    ...(closed ? [] : agents(ctx)),
     item(BASE.live, { selected: ctx.liveOpen }),
     item(BASE.more, sep),
   ];
 }
 
-/** Fold-Chat / Fold-Terminal: the view showing, Changes, Files, Live | Needs you, More */
+/** Fold-Chat / Fold-Terminal: the view showing, Changes, Files, Agents, Live | Needs you, More */
 function sessionBar(ctx: ColumnContext): ColumnItem[] {
   const own = savedOrder("session", ctx.order);
   if (own) {
@@ -516,6 +648,7 @@ function sessionBar(ctx: ColumnContext): ColumnItem[] {
     conversation,
     changes(ctx),
     item(BASE.files, { selected: ctx.viewMode === "files" }),
+    ...agents(ctx),
     item(BASE.live, { selected: ctx.liveOpen }),
     ...(needs ? [inbox(ctx, sep)] : []),
     item(BASE.more, needs ? {} : sep),
@@ -605,6 +738,18 @@ export function columnFor(
   const inSession = surface === "session" || surface === "beside";
   // The phone's tab bar holds the home's places; in a session the phone
   // gets the tabletop's bar of views
+  // N-Scripts over a project page too (over a session, sessionColumn has it)
+  if (mode === "duo-closed" && !inSession && ctx.sheet === "scripts")
+    return scriptsColumn();
+  // N-Worktree from a project page's row: × | Move session there too; on
+  // the open Duo the sheet stops at the column, which offers the same
+  if (
+    ctx.sheet === "move" &&
+    ((mode === "duo-closed" && !inSession) ||
+      mode === "duo-open" ||
+      mode === "book")
+  )
+    return sheetColumn(ctx) ?? [];
   if (mode === "phone" && !inSession) return tabs(surface, ctx);
   if ((mode === "phone" || mode === "tabletop") && inSession)
     return sessionBar(ctx);
@@ -661,6 +806,13 @@ export function columnFor(
         item(BASE.sort),
       ];
     case "project":
+      // N-Config: back | run a script, the file
+      if (ctx.projectSettings)
+        return [
+          item(BASE.back, { label: "Back" }),
+          item(BASE.scripts, sep),
+          item(BASE.viewConfig),
+        ];
       return [
         item(BASE.back, { label: "Back" }),
         item(BASE.new, { prominent: true, sep: true }),

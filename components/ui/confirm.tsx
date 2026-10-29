@@ -11,6 +11,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { haptic } from "@/lib/haptics";
+import { mobileNavStore } from "@/stores/mobileNav";
 
 interface ConfirmRequest {
   title: string;
@@ -41,10 +42,20 @@ function finish(ok: boolean) {
 /** Mounted once, in Providers */
 export function ConfirmHost() {
   const { request } = useSnapshot(store);
+  // The closed Duo's web column stays beside the sheet, as other sheets do
+  const { railWidth } = useSnapshot(mobileNavStore);
 
   return (
     <Dialog open={!!request} onOpenChange={(open) => !open && finish(false)}>
-      <DialogContent showCloseButton={false} className="sm:max-w-sm">
+      <DialogContent
+        showCloseButton={false}
+        className="sm:max-w-sm"
+        style={
+          railWidth > 0
+            ? { right: railWidth, width: "auto", maxWidth: "none" }
+            : undefined
+        }
+      >
         <DialogHeader>
           <DialogTitle>{request?.title}</DialogTitle>
           <DialogDescription className={request?.message ? "" : "sr-only"}>

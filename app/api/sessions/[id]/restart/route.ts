@@ -10,6 +10,8 @@ import { effectiveMode, isEscalation } from "@/lib/permission-mode";
 import { readLiveMode } from "@/lib/permission-mode-live";
 import { userOnly } from "@/lib/permission-guard";
 import { requireUser } from "@/lib/user-proof";
+import { isPaused } from "@/lib/handoff-types";
+import { isSettled } from "@/lib/settle-types";
 import { restartWithStoredMode } from "@/lib/apply-pending-mode";
 
 const execFileAsync = promisify(execFile);
@@ -52,6 +54,20 @@ export async function POST(
     return NextResponse.json(
       { error: "Only Claude sessions can be restarted" },
       { status: 400 }
+    );
+  }
+  // Handed off (M4): only resume-paused starts it again
+  if (isPaused(session)) {
+    return NextResponse.json(
+      { error: "This session is paused", reason: "paused" },
+      { status: 409 }
+    );
+  }
+  // Settled (M8): only Undo (DELETE settle) starts it again
+  if (isSettled(session)) {
+    return NextResponse.json(
+      { error: "This session is settled", reason: "settled" },
+      { status: 409 }
     );
   }
   const target = session.tmux_name || `claude-${id}`;

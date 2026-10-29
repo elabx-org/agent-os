@@ -14,9 +14,11 @@ import { columnOrderStore } from "@/stores/columnOrder";
 import type { NativeColumnItem } from "@/lib/native-bridge";
 import { layoutStore, type LayoutMode } from "@/hooks/useLayoutMode";
 import { mobileNavStore } from "@/stores/mobileNav";
+import { agentTreeStore } from "@/stores/agentTree";
 import { newSurfaceStore } from "@/stores/newSurface";
 import { focusStore } from "@/stores/focus";
 import { settingsPageStore } from "@/stores/settingsPage";
+import { workspacePageStore } from "@/stores/workspacePage";
 import {
   currentSurface,
   surfaceStore,
@@ -37,10 +39,16 @@ interface ColumnSources {
   liveOpen: boolean;
   working: boolean;
   sheet: ColumnContext["sheet"];
+  sheetAction: ColumnContext["sheetAction"];
   changesOpen: boolean;
   behind: boolean;
   native: boolean;
   order: ColumnOrder;
+  agents: number;
+  showFinished: boolean;
+  allCollapsed: boolean;
+  agentDetail: boolean;
+  projectSettings: boolean;
 }
 
 function contextFrom(s: ColumnSources): ColumnContext {
@@ -57,6 +65,12 @@ function contextFrom(s: ColumnSources): ColumnContext {
     liveOpen: s.liveOpen,
     working: s.working,
     sheet: s.sheet,
+    sheetAction: s.sheetAction,
+    agents: s.agents,
+    showFinished: s.showFinished,
+    allCollapsed: s.allCollapsed,
+    agentDetail: s.agentDetail,
+    projectSettings: s.projectSettings,
     changesOpen: s.changesOpen,
     behind: s.behind,
     order: s.order,
@@ -74,6 +88,8 @@ export function useColumn(
   const { paneCount, behind } = useSnapshot(surfaceStore);
   const { detail: settingsDetail } = useSnapshot(settingsPageStore);
   const { mode } = useSnapshot(layoutStore);
+  const tree = useSnapshot(agentTreeStore);
+  const { page } = useSnapshot(workspacePageStore);
   const surface = useSurface();
   const { order } = useSnapshot(columnOrderStore);
   const ctx = contextFrom({
@@ -89,10 +105,16 @@ export function useColumn(
     liveOpen: nav.liveOpen,
     working: nav.working,
     sheet: nav.sheet,
+    sheetAction: nav.sheetAction,
     changesOpen: nav.changesOpen,
     behind,
     native,
     order: order as ColumnOrder,
+    agents: nav.agentCount,
+    showFinished: tree.showFinished,
+    allCollapsed: tree.allCollapsed,
+    agentDetail: tree.detailOpen,
+    projectSettings: page?.kind === "projectSettings",
   });
   return { surface, mode, items: columnFor(surface, mode, ctx) };
 }
@@ -132,10 +154,16 @@ export function nativeColumn(): {
       liveOpen: mobileNavStore.liveOpen,
       working: mobileNavStore.working,
       sheet: mobileNavStore.sheet,
+      sheetAction: mobileNavStore.sheetAction,
       changesOpen: mobileNavStore.changesOpen,
       behind: surfaceStore.behind,
       native: true,
       order: columnOrderStore.order,
+      agents: mobileNavStore.agentCount,
+      showFinished: agentTreeStore.showFinished,
+      allCollapsed: agentTreeStore.allCollapsed,
+      agentDetail: agentTreeStore.detailOpen,
+      projectSettings: workspacePageStore.page?.kind === "projectSettings",
     })
   );
   const kind = columnKindFor(surface, mode);
