@@ -2,7 +2,7 @@
  * Git Worktree management for isolated feature development
  */
 
-import { exec } from "child_process";
+import { exec, execFile } from "child_process";
 import { promisify } from "util";
 import * as path from "path";
 import * as fs from "fs";
@@ -16,6 +16,7 @@ import {
 } from "./git";
 
 const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 // Base directory for all worktrees
 const WORKTREES_DIR = path.join(os.homedir(), ".agent-os", "worktrees");
@@ -83,30 +84,62 @@ export async function createWorktree(
     throw new Error(`Not a git repository: ${projectPath}`);
   }
 
-  // Generate branch name. A task's name (`fix/foo`) is used as it is, so it
-  // can meet a branch made by hand: then the next free `-2`, `-3`, …
-  const baseName = generateBranchName(featureName);
-  let branchName = baseName;
+  const projectName = getRepoName(resolvedProjectPath);
+  let branchName: string;
   let suffix = "";
-  for (let n = 2; await branchExists(resolvedProjectPath, branchName); n++) {
-    if (n > 20) throw new Error(`Branch already exists: ${baseName}`);
-    suffix = `-${n}`;
-    branchName = `${baseName}${suffix}`;
+  if (options.branchName !== undefined) {
+    // Exactly this branch: never suffixed, refused when it exists
+    branchName = options.branchName;
+    await checkNewBranch(resolvedProjectPath, branchName);
+  } else {
+    // Generate branch name. A task's name (`fix/foo`) is used as it is, so it
+    // can meet a branch made by hand: then the next free `-2`, `-3`, …
+    const baseName = generateBranchName(featureName);
+    branchName = baseName;
+    for (let n = 2; await branchExists(resolvedProjectPath, branchName); n++) {
+      if (n > 20) throw new Error(`Branch already exists: ${baseName}`);
+      suffix = `-${n}`;
+      branchName = `${baseName}${suffix}`;
+    }
   }
 
   // Generate worktree path
-  const projectName = getRepoName(resolvedProjectPath);
-  const worktreeDirName =
-    generateWorktreeDirName(projectName, featureName) + suffix;
-  const worktreePath = path.join(WORKTREES_DIR, worktreeDirName);
+  const worktreePath =
+    options.worktreePath !== undefined
+      ? path.resolve(resolvePath(options.worktreePath))
+      : path.join(
+          WORKTREES_DIR,
+          generateWorktreeDirName(projectName, featureName) + suffix
+        );
 
   // Check if worktree path already exists
   if (fs.existsSync(worktreePath)) {
     throw new Error(`Worktree path already exists: ${worktreePath}`);
   }
 
-  // Ensure worktrees directory exists
-  await ensureWorktreesDir();
+  // Ensure the folder that holds it exists
+  if (options.worktreePath !== undefined) {
+    await fs.promises.mkdir(path.dirname(worktreePath), { recursive: true });
+  } else {
+    await ensureWorktreesDir();
+  }
+
+  if (options.fromRef !== undefined) {
+    // Exactly this commit (e.g. HEAD, unpushed commits included): no origin/
+    const start = await resolveCommit(resolvedProjectPath, options.fromRef);
+    try {
+      await worktreeAdd(resolvedProjectPath, branchName, worktreePath, start);
+    } catch (error: unknown) {
+      throw new Error(`Failed to create worktree: ${errorText(error)}`);
+    }
+    return {
+      worktreePath,
+      branchName,
+      baseBranch: options.fromRef,
+      projectPath: resolvedProjectPath,
+      projectName,
+    };
+  }
 
   // Create the worktree with a new branch
   // Try multiple ref formats to avoid "ambiguous refname" errors
@@ -119,10 +152,7 @@ export async function createWorktree(
   let lastError: Error | null = null;
   for (const ref of refFormats) {
     try {
-      await execAsync(
-        `git -C "${resolvedProjectPath}" worktree add -b "${branchName}" "${worktreePath}" "${ref}"`,
-        { timeout: 30000 }
-      );
+      await worktreeAdd(resolvedProjectPath, branchName, worktreePath, ref);
       lastError = null;
       break; // Success!
     } catch (error: unknown) {
@@ -142,6 +172,89 @@ export async function createWorktree(
     projectPath: resolvedProjectPath,
     projectName,
   };
+}
+
+/** argv git in the project, with a timeout */
+async function gitIn(
+  projectPath: string,
+  args: string[],
+  timeout = 10000
+): Promise<string> {
+  const { stdout } = await execFileAsync("git", ["-C", projectPath, ...args], {
+    timeout,
+  });
+  return stdout;
+}
+
+function errorText(error: unknown): string {
+  const stderr = (error as { stderr?: unknown })?.stderr;
+  if (typeof stderr === "string" && stderr.trim()) return stderr.trim();
+  return error instanceof Error ? error.message : String(error);
+}
+
+async function worktreeAdd(
+  projectPath: string,
+  branchName: string,
+  worktreePath: string,
+  ref: string
+): Promise<void> {
+  await gitIn(
+    projectPath,
+    ["worktree", "add", "-b", branchName, "--", worktreePath, ref],
+    30000
+  );
+}
+
+/** A valid branch name that does not exist yet, or throws */
+async function checkNewBranch(
+  projectPath: string,
+  branchName: string
+): Promise<void> {
+  let valid = false;
+  if (branchName && !branchName.startsWith("-")) {
+    try {
+      const out = await gitIn(projectPath, [
+        "check-ref-format",
+        "--branch",
+        branchName,
+      ]);
+      valid = out.trim() === branchName;
+    } catch {
+      valid = false;
+    }
+  }
+  if (!valid) throw new Error(`Invalid branch name: ${branchName}`);
+  try {
+    await gitIn(projectPath, [
+      "rev-parse",
+      "--verify",
+      "--quiet",
+      `refs/heads/${branchName}`,
+    ]);
+  } catch {
+    return; // Free
+  }
+  throw new Error(`Branch already exists: ${branchName}`);
+}
+
+/** The commit a ref names, or throws */
+async function resolveCommit(
+  projectPath: string,
+  ref: string
+): Promise<string> {
+  if (!ref || ref.startsWith("-")) throw new Error(`Invalid ref: ${ref}`);
+  try {
+    return (
+      await gitIn(projectPath, [
+        "rev-parse",
+        "--verify",
+        "--quiet",
+        `${ref}^{commit}`,
+      ])
+    ).trim();
+  } catch {
+    throw new Error(`Unknown ref: ${ref}`);
+  }
 }
 
 /**
