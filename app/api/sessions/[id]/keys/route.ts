@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import { queries, getDb, type Session } from "@/lib/db";
+import { isAgentOrigin } from "@/lib/agent-origin";
+import { agentActor, recordAgentAction } from "@/lib/agent-actions";
 
 const execFileAsync = promisify(execFile);
 
@@ -17,6 +19,7 @@ const KEYS: Record<string, string[]> = {
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 // POST /api/sessions/[id]/keys {key, times?} - Shift+Tab, Esc, Esc Esc or Up
+// Shift+Tab changes the permission mode, which agents may not do
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -31,6 +34,19 @@ export async function POST(
   const session = queries.getSession(getDb()).get(id) as Session | undefined;
   if (!session) {
     return NextResponse.json({ error: "Session not found" }, { status: 404 });
+  }
+  if (key === "shift-tab" && isAgentOrigin(request)) {
+    recordAgentAction({
+      actorTmux: agentActor(request),
+      targetSessionId: session.id,
+      action: "keys",
+      allowed: false,
+      detail: "Shift+Tab",
+    });
+    return NextResponse.json(
+      { error: "Only the user can change a session's permission mode" },
+      { status: 403 }
+    );
   }
   const target = session.tmux_name || `${session.agent_type || "claude"}-${id}`;
   try {

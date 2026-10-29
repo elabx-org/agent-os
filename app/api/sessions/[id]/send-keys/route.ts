@@ -9,6 +9,7 @@ import {
   PERMISSION_USER_ONLY,
   readScreenPrompt,
 } from "@/lib/agent-origin";
+import { agentActor, recordAgentAction } from "@/lib/agent-actions";
 
 const execAsync = promisify(exec);
 
@@ -68,7 +69,18 @@ export async function POST(
     // only a question's prompt (or none) may be typed into
     if (isAgentOrigin(request)) {
       const prompt = await readScreenPrompt(tmuxSessionName).catch(() => null);
-      if (prompt && !(await agentMayAnswer(session, prompt))) {
+      const allowed = !prompt || (await agentMayAnswer(session, prompt));
+      // Typing at a question answers it: shown as "Answered by" on the card
+      if (prompt) {
+        recordAgentAction({
+          actorTmux: agentActor(request),
+          targetSessionId: session.id,
+          action: "send_keys",
+          allowed,
+          detail: text.slice(0, 200),
+        });
+      }
+      if (!allowed) {
         log("REFUSED: agent message at a permission prompt");
         return NextResponse.json(
           { error: PERMISSION_USER_ONLY, permission: true },

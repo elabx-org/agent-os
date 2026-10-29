@@ -5,6 +5,8 @@ import { getDb, queries, type Session } from "@/lib/db";
 import { randomUUID } from "crypto";
 import { writeFileSync, unlinkSync, readFileSync, existsSync } from "fs";
 import { homedir } from "os";
+import { isAgentOrigin } from "@/lib/agent-origin";
+import { agentActor, recordAgentAction } from "@/lib/agent-actions";
 
 const execAsync = promisify(exec);
 
@@ -261,6 +263,17 @@ export async function POST(
       const newName = `${session.name} (fresh)`;
       const agentType = session.agent_type || "claude";
       const tmuxName = `${agentType}-${newId}`;
+      // An agent's fork asks for permission, whatever the original did
+      const autoApprove = !!session.auto_approve && !isAgentOrigin(request);
+      if (session.auto_approve && !autoApprove) {
+        recordAgentAction({
+          actorTmux: agentActor(request),
+          targetSessionId: session.id,
+          action: "summarize",
+          allowed: false,
+          detail: "Auto-approve not carried over to the fresh session",
+        });
+      }
 
       // Create new session in DB (using cwd already fetched above)
       queries.createSession(db).run(
@@ -273,7 +286,7 @@ export async function POST(
         `Continue from previous session. Here's a summary of the work so far:\n\n${summary}`,
         session.group_path,
         agentType,
-        session.auto_approve ? 1 : 0,
+        autoApprove ? 1 : 0,
         0,
         session.project_id || "uncategorized"
       );
@@ -282,7 +295,7 @@ export async function POST(
       const newTmuxSession = tmuxName;
 
       // Start new tmux session with Claude directly
-      const claudeCmd = session.auto_approve
+      const claudeCmd = autoApprove
         ? "claude --dangerously-skip-permissions"
         : "claude";
 
