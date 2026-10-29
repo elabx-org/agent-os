@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   isOpenDuoSize,
+  throughKeyboard,
   layoutModeFor,
   type LayoutInputs,
 } from "../../hooks/useLayoutMode";
@@ -113,4 +114,15 @@ test("isOpenDuoSize: only landscape, and the app's word first", () => {
   assert.equal(isOpenDuoSize(1200, 800, false, true), true);
   assert.equal(isOpenDuoSize(951, 669, true, false), false);
   assert.equal(isOpenDuoSize(1024, 768, true, undefined), false);
+});
+
+test("throughKeyboard: a shorter screen at the same width keeps the answer", () => {
+  const open = throughKeyboard((w, h) => isOpenDuoSize(w, h, true, undefined));
+  assert.equal(open(951, 669), true);
+  // The keyboard up on the open Duo
+  assert.equal(open(951, 339), true);
+  assert.equal(open(951, 669), true);
+  // Turned: the width changes, so it asks again
+  assert.equal(open(669, 951), false);
+  assert.equal(open(669, 533), false);
 });
