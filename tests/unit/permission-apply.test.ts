@@ -96,7 +96,7 @@ describe("applyPendingMode", () => {
   });
 
   test("not Claude: left for the restart, no keys", async () => {
-    for (const agent_type of ["codex", "gemini", "shell"]) {
+    for (const agent_type of ["codex", "gemini", "shell"] as const) {
       const f = fakes();
       const r = await apply.applyPendingMode(session({ agent_type }), f.deps);
       assert.equal(r.reason, "not_claude");
@@ -319,7 +319,7 @@ describe("modeEdgeHandler", () => {
       { flag: false },
       { session: { permission_pending: null } },
       { session: null },
-      { session: { agent_type: "codex" } },
+      { session: { agent_type: "codex" as const } },
     ]) {
       const x = handler(opts);
       x.h(edge("idle"));
