@@ -18,7 +18,9 @@ export interface SendRoute {
   /** The queue state has been read at least once */
   queueKnown: boolean;
   /** POST /queue {sendNow}: resolves sent=false when it waits */
-  queueSend: (text: string) => Promise<{ sent: boolean }>;
+  queueSend: (
+    text: string
+  ) => Promise<{ sent: boolean; item?: { id: number } }>;
   /** The old send-keys send */
   direct: (text: string) => Promise<void>;
 }
@@ -26,16 +28,16 @@ export interface SendRoute {
 /**
  * ComposerCard's rule: through the queue while it's on or not known yet (it
  * says when it's off), else the old direct send. sent=false: it waits in
- * the queue behind the agent's turn
+ * the queue behind the agent's turn, as queue item `itemId`
  */
 export async function deliver(
   text: string,
   route: SendRoute
-): Promise<{ sent: boolean }> {
+): Promise<{ sent: boolean; itemId?: number }> {
   if (route.queueEnabled || !route.queueKnown) {
     try {
-      const { sent } = await route.queueSend(text);
-      return { sent };
+      const { sent, item } = await route.queueSend(text);
+      return sent || !item ? { sent } : { sent, itemId: item.id };
     } catch (e) {
       if (!isQueueOff(e)) throw e;
     }
@@ -64,6 +66,11 @@ export function sendErrorText(error: unknown, agentName: string): string {
     if (error.body?.error) return error.body.error;
   }
   return `Couldn't send to ${agentName}`;
+}
+
+/** In the tray: not sent, not waiting in the queue */
+export function inTray(c: Pick<ReviewComment, "sentAt" | "queueItemId">) {
+  return c.sentAt === null && c.queueItemId === null;
 }
 
 /** The tray's comments in the order they were written (one message) */

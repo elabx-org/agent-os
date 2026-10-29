@@ -120,6 +120,8 @@ export interface ReviewCommentRow {
   body: string;
   created_at: number; // ms
   sent_at: number | null; // ms
+  /** The queued message carrying it (session_queue.id), while it waits */
+  queue_item_id: number | null;
 }
 
 export interface Group {

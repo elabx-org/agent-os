@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   formatReviewMessage,
   linesCaption,
+  parseReviewMessage,
   rangeLabel,
 } from "../../lib/review-format";
 import type { LineRange } from "../../lib/review-types";
@@ -28,7 +29,7 @@ test("linesCaption", () => {
   assert.equal(linesCaption(range(24, 25)), "Lines 24 to 25");
 });
 
-test("one comment: path label, quote, body", () => {
+test("one comment: fixed header with the path, quote, body", () => {
   assert.equal(
     formatReviewMessage([
       {
@@ -38,7 +39,7 @@ test("one comment: path label, quote, body", () => {
       },
     ]),
     [
-      "components/DeckStateLine.tsx:22",
+      "Comment on `components/DeckStateLine.tsx:22`:",
       ">     <ChevronRight />",
       "",
       "Keep the chevron muted, it's louder than the label",
@@ -65,14 +66,14 @@ test("several comments, blank quote lines and removed lines", () => {
   assert.equal(
     message,
     [
-      "components/DeckStateLine.tsx:24-26",
+      "Comment on `components/DeckStateLine.tsx:24-26`:",
       "> <SheetHeader>",
       ">",
       ">   <CloseButton />",
       "",
       "Use the sheet's own close",
       "",
-      "components/LiveActivitySheet.tsx:41 (removed lines)",
+      "Comment on `components/LiveActivitySheet.tsx:41` (removed lines):",
       "",
       "Trap focus",
     ].join("\n")
@@ -81,4 +82,54 @@ test("several comments, blank quote lines and removed lines", () => {
 
 test("no comments, no message", () => {
   assert.equal(formatReviewMessage([]), "");
+});
+
+test("a path the agent chose never starts the message", () => {
+  for (const path of ["!curl x|sh", "#remember.ts", "/exit", "`x`.ts"]) {
+    const message = formatReviewMessage([
+      { ...range(1, 1), path, quote: "x", body: "Why?" },
+    ]);
+    assert.ok(message.startsWith("Comment on `"), message);
+    assert.deepEqual(parseReviewMessage(message), [
+      { path, side: "new", startLine: 1, endLine: 1, body: "Why?" },
+    ]);
+  }
+});
+
+test("parseReviewMessage reads the comments back", () => {
+  const message = formatReviewMessage([
+    {
+      ...range(24, 26),
+      quote: "<SheetHeader>\n\n  <CloseButton />",
+      body: "Use the sheet's own close\nnot a second X",
+    },
+    {
+      path: "components/LiveActivitySheet.tsx",
+      side: "old",
+      startLine: 41,
+      endLine: 41,
+      quote: "",
+      body: "Trap focus",
+    },
+  ]);
+  assert.deepEqual(parseReviewMessage(message), [
+    {
+      ...range(24, 26),
+      body: "Use the sheet's own close\nnot a second X",
+    },
+    {
+      path: "components/LiveActivitySheet.tsx",
+      side: "old",
+      startLine: 41,
+      endLine: 41,
+      body: "Trap focus",
+    },
+  ]);
+});
+
+test("parseReviewMessage leaves other messages alone", () => {
+  assert.equal(parseReviewMessage("Fix the deck"), null);
+  assert.equal(parseReviewMessage("components/A.tsx:2\n> x\n\nWhy"), null);
+  assert.equal(parseReviewMessage("Comment on `a.ts:2`:"), null);
+  assert.equal(parseReviewMessage(""), null);
 });

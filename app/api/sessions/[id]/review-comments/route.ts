@@ -51,9 +51,12 @@ export async function POST(request: NextRequest, { params }: Params) {
   if (!parsed.ok) {
     return NextResponse.json({ error: parsed.error }, { status: 400 });
   }
-  const result: ReviewCommentResult = {
-    comment: reviewStore().add(id, parsed.comment),
-  };
+  const comment = reviewStore().add(id, parsed.comment);
+  if (!comment) {
+    // Its queued message isn't this session's, or was cancelled already
+    return NextResponse.json({ error: "Queue item gone" }, { status: 409 });
+  }
+  const result: ReviewCommentResult = { comment };
   return NextResponse.json(result, { status: 201 });
 }
 

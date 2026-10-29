@@ -47,6 +47,7 @@ const COLUMNS = [
   "body",
   "created_at",
   "sent_at",
+  "queue_item_id",
 ];
 
 test("migration 33 adds review_comments and its index, recorded once", () => {
@@ -82,4 +83,18 @@ test("migration 33 on a DB where the table exists keeps its rows and adds the in
     .prepare(`SELECT side, sent_at FROM review_comments WHERE session_id = 's'`)
     .get();
   assert.deepEqual(row, { side: "new", sent_at: null });
+});
+
+test("migration 33 adds queue_item_id to a table made without it", () => {
+  const db = migrated();
+  db.exec(`DROP TABLE review_comments`);
+  db.exec(`CREATE TABLE review_comments (
+    id INTEGER PRIMARY KEY, session_id TEXT NOT NULL, scope TEXT NOT NULL,
+    path TEXT NOT NULL, side TEXT NOT NULL DEFAULT 'new',
+    start_line INTEGER NOT NULL, end_line INTEGER NOT NULL,
+    quote TEXT NOT NULL, body TEXT NOT NULL, created_at INTEGER NOT NULL,
+    sent_at INTEGER)`);
+  db.exec(`DELETE FROM _migrations WHERE id = 33`);
+  quietly(() => runMigrations(db));
+  assert.deepEqual(columns(db).at(-1), "queue_item_id");
 });

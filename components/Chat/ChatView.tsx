@@ -52,6 +52,7 @@ import type { Session } from "@/lib/db";
 import { WorkflowPanel, workflowAgentInfo } from "@/components/WorkflowPhases";
 import { DiffReview } from "@/components/DiffViewer/DiffReview";
 import { FOLD_CLEAR } from "@/hooks/useHinge";
+import { diffReviewStore, openDiffReview } from "@/stores/diffReview";
 import {
   AnswerChips,
   DeckContext,
@@ -121,11 +122,13 @@ export function ChatView({
       turns.enabled && turns.turns.length
         ? {
             after: placeTurns(rows, turns.turns),
-            onDiff: setDiffTurn,
+            // The open turn's Diff closes it again
+            onDiff: (n) => setDiffTurn((open) => (open === n ? null : n)),
             onUndo: setUndoTurn,
+            diffTurn,
           }
         : undefined,
-    [turns.enabled, turns.turns, rows]
+    [turns.enabled, turns.turns, rows, diffTurn]
   );
   useEffect(() => {
     setDiffTurn(null);
@@ -180,17 +183,21 @@ export function ChatView({
     setOpenAgent(null);
     setOpenRun(null);
   }, [diffTurn]);
-  // The review takes the live activity rail's room (O-Diff, D-Diff)
-  const reviewing = diffTurn !== null && active;
+  // Beside the pane where SessionSpread has room (O-Diff's right page,
+  // D-Diff's room beside the chat), so the session header covers the
+  // conversation only; over the chat everywhere else
+  const { room: reviewRoom } = useSnapshot(diffReviewStore);
+  const reviewBeside = active && reviewRoom === session.id;
   useEffect(() => {
-    if (!reviewing) return;
-    mobileNavStore.reviewOpen = true;
-    return () => {
-      mobileNavStore.reviewOpen = false;
-    };
-  }, [reviewing]);
+    if (diffTurn === null || !reviewBeside) return;
+    return openDiffReview(
+      { sessionId: session.id, turnNo: diffTurn },
+      { close: () => setDiffTurn(null), undoTurn: setUndoTurn }
+    );
+  }, [diffTurn, reviewBeside, session.id]);
+  const reviewHere = diffTurn !== null && !reviewBeside;
   // What takes the right page: an agent, a whole workflow or a turn's diff
-  const side = !!opened || !!openedRun || diffTurn !== null;
+  const side = !!opened || !!openedRun || reviewHere;
 
   // Focus on the open Duo: the conversation reads across both pages like a
   // book, earlier rows on the left page and the latest with the composer on
@@ -702,9 +709,12 @@ export function ChatView({
                 onSendDirect={sendDirect}
                 onSent={sent}
                 placeholder={
-                  mode === "desktop"
-                    ? "Reply to Claude, / for commands, @ for files"
-                    : "Reply to Claude"
+                  mode !== "desktop"
+                    ? "Reply to Claude"
+                    : diffTurn !== null
+                      ? // D-Diff: the chat is narrower beside the review
+                        "Reply to Claude, / for commands"
+                      : "Reply to Claude, / for commands, @ for files"
                 }
                 inputProps={{
                   onFocus: () => {
@@ -796,7 +806,7 @@ export function ChatView({
           }
         />
       )}
-      {diffTurn !== null && (
+      {reviewHere && diffTurn !== null && (
         <DiffReview
           session={session}
           agentName="Claude"

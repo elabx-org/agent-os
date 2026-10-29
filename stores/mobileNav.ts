@@ -56,11 +56,6 @@ export const mobileNavStore = proxy<{
   changesOpen: boolean;
   /** The focused pane's last conversation view, for "Back to session" (E-Git, E-Files) */
   conversationView: "chat" | "terminal";
-  /**
-   * A turn's diff review (M12) takes the right page or the width beside the
-   * chat (O-Diff, D-Diff), so the live activity rail steps aside
-   */
-  reviewOpen: boolean;
 }>({
   viewMode: "terminal",
   request: null,
@@ -80,7 +75,6 @@ export const mobileNavStore = proxy<{
   agentCount: 0,
   changesOpen: false,
   conversationView: "chat",
-  reviewOpen: false,
 });
 
 export const mobileNavActions = {

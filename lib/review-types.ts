@@ -28,6 +28,12 @@ export interface ReviewComment extends LineRange {
   createdAt: number;
   /** Null while it waits in the tray; set once it went to the agent */
   sentAt: number | null;
+  /**
+   * Its message waits in the session's queue (behind a busy turn): neither
+   * in the tray nor sent. It becomes sent when that message goes, and goes
+   * back to the tray if the message is cancelled or fails
+   */
+  queueItemId: number | null;
 }
 
 /** GET /api/sessions/[id]/review-comments?scope= : pending, then sent */
@@ -45,6 +51,8 @@ export interface NewReviewComment extends LineRange {
    * the diff shows "Sent · …" on the line); default false = the tray's
    */
   sent?: boolean;
+  /** Not sent but queued: the queue item carrying it (sent must be false) */
+  queueItemId?: number;
 }
 
 export interface ReviewCommentResult {
@@ -62,6 +70,11 @@ export interface EditReviewCommentRequest {
  */
 export interface MarkSentRequest {
   ids: number[];
+  /**
+   * The message only went into the queue: the comments wait for this item
+   * (of the same session) instead of becoming sent now
+   */
+  queueItemId?: number;
 }
 
 export interface MarkSentResult {

@@ -32,6 +32,7 @@ export function toReviewComment(row: ReviewCommentRow): ReviewComment {
     body: row.body,
     createdAt: row.created_at,
     sentAt: row.sent_at,
+    queueItemId: row.sent_at === null ? (row.queue_item_id ?? null) : null,
   };
 }
 
@@ -79,6 +80,11 @@ export function parseNewComment(
     return { ok: false, error: "Bad quote" };
   if (b.sent !== undefined && typeof b.sent !== "boolean")
     return { ok: false, error: "Bad sent" };
+  if (
+    b.queueItemId !== undefined &&
+    (!isLine(b.queueItemId) || b.sent === true)
+  )
+    return { ok: false, error: "Bad queue item" };
   return {
     ok: true,
     comment: {
@@ -90,6 +96,9 @@ export function parseNewComment(
       quote: b.quote,
       body: b.body.trim(),
       sent: b.sent === true,
+      ...(b.queueItemId !== undefined && {
+        queueItemId: b.queueItemId as number,
+      }),
     },
   };
 }
@@ -123,23 +132,55 @@ export function createReviewStore(db: Database.Database) {
     ),
     insert: db.prepare(
       `INSERT INTO review_comments
-         (session_id, scope, path, side, start_line, end_line, quote, body, created_at, sent_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+         (session_id, scope, path, side, start_line, end_line, quote, body, created_at, sent_at, queue_item_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ),
+    // The tray's (pending, not queued) only
     setBody: db.prepare(
       `UPDATE review_comments SET body = ?
-       WHERE id = ? AND session_id = ? AND sent_at IS NULL`
+       WHERE id = ? AND session_id = ? AND sent_at IS NULL
+         AND queue_item_id IS NULL`
     ),
     removePending: db.prepare(
       `DELETE FROM review_comments
-       WHERE id = ? AND session_id = ? AND sent_at IS NULL`
+       WHERE id = ? AND session_id = ? AND sent_at IS NULL
+         AND queue_item_id IS NULL`
     ),
     discard: db.prepare(
-      `DELETE FROM review_comments WHERE session_id = ? AND sent_at IS NULL`
+      `DELETE FROM review_comments WHERE session_id = ? AND sent_at IS NULL
+         AND queue_item_id IS NULL`
     ),
     markSent: db.prepare(
-      `UPDATE review_comments SET sent_at = ?
+      `UPDATE review_comments SET sent_at = ?, queue_item_id = NULL
        WHERE id = ? AND session_id = ? AND sent_at IS NULL`
+    ),
+    markQueued: db.prepare(
+      `UPDATE review_comments SET queue_item_id = ?
+       WHERE id = ? AND session_id = ? AND sent_at IS NULL`
+    ),
+    // A session's queue item that still waits or went (not cancelled/failed)
+    queueItem: db.prepare(
+      `SELECT status FROM session_queue WHERE id = ? AND session_id = ?`
+    ),
+    // Queued comments whose message went: sent when it went
+    settleSent: db.prepare(
+      `UPDATE review_comments SET
+         sent_at = (SELECT COALESCE(q.sent_at, ?) FROM session_queue q
+                    WHERE q.id = review_comments.queue_item_id),
+         queue_item_id = NULL
+       WHERE session_id = ? AND sent_at IS NULL AND queue_item_id IS NOT NULL
+         AND EXISTS (SELECT 1 FROM session_queue q
+                     WHERE q.id = review_comments.queue_item_id
+                       AND q.status = 'sent')`
+    ),
+    // ...and whose message was cancelled, failed or is gone: the tray again
+    settleDropped: db.prepare(
+      `UPDATE review_comments SET queue_item_id = NULL
+       WHERE session_id = ? AND sent_at IS NULL AND queue_item_id IS NOT NULL
+         AND NOT EXISTS (SELECT 1 FROM session_queue q
+                         WHERE q.id = review_comments.queue_item_id
+                           AND q.session_id = review_comments.session_id
+                           AND q.status IN ('pending', 'sending', 'sent'))`
     ),
     // Sent ones beyond the newest SENT_HISTORY
     trim: db.prepare(
@@ -156,10 +197,25 @@ export function createReviewStore(db: Database.Database) {
     s.get.get(id, sessionId) as ReviewCommentRow | undefined;
   const trim = (sessionId: string) =>
     s.trim.run(sessionId, sessionId, SENT_HISTORY);
+  /** The session's queue item, while it waits or once it went */
+  const liveItem = (sessionId: string, itemId: number) => {
+    const q = s.queueItem.get(itemId, sessionId) as
+      | { status: string }
+      | undefined;
+    return !!q && ["pending", "sending", "sent"].includes(q.status);
+  };
+  /** Queued comments follow their message: sent, or back to the tray */
+  const settle = (sessionId: string) =>
+    db.transaction(() => {
+      const sent = s.settleSent.run(Date.now(), sessionId).changes;
+      s.settleDropped.run(sessionId);
+      if (sent) trim(sessionId);
+    })();
 
   return {
     /** Pending first (oldest first), then sent (newest first); scope filters */
     list(sessionId: string, scope?: DiffScope | null): ReviewComment[] {
+      settle(sessionId);
       const rows = scope
         ? s.listScope.all(sessionId, scope)
         : s.list.all(sessionId);
@@ -171,9 +227,12 @@ export function createReviewStore(db: Database.Database) {
       return r ? toReviewComment(r) : null;
     },
 
-    add(sessionId: string, input: NewReviewComment): ReviewComment {
+    /** Null when its queue item isn't the session's (or was dropped) */
+    add(sessionId: string, input: NewReviewComment): ReviewComment | null {
       return db.transaction(() => {
         const now = Date.now();
+        const queued = !input.sent ? (input.queueItemId ?? null) : null;
+        if (queued !== null && !liveItem(sessionId, queued)) return null;
         const { lastInsertRowid } = s.insert.run(
           sessionId,
           input.scope,
@@ -184,25 +243,26 @@ export function createReviewStore(db: Database.Database) {
           input.quote,
           input.body,
           now,
-          input.sent ? now : null
+          input.sent ? now : null,
+          queued
         );
         if (input.sent) trim(sessionId);
         return toReviewComment(row(sessionId, Number(lastInsertRowid))!);
       })();
     },
 
-    /** Pending only; null when missing or already sent */
+    /** The tray's only; null when missing, queued or already sent */
     edit(sessionId: string, id: number, body: string): ReviewComment | null {
       if (s.setBody.run(body, id, sessionId).changes !== 1) return null;
       return toReviewComment(row(sessionId, id)!);
     },
 
-    /** Pending only; false when missing or already sent */
+    /** The tray's only; false when missing, queued or already sent */
     remove(sessionId: string, id: number): boolean {
       return s.removePending.run(id, sessionId).changes === 1;
     },
 
-    /** Every pending comment of the session; how many went */
+    /** Every comment in the session's tray; how many went */
     discardPending(sessionId: string): number {
       return s.discard.run(sessionId).changes;
     },
@@ -221,6 +281,27 @@ export function createReviewStore(db: Database.Database) {
         }
         if (flipped.length) trim(sessionId);
         return flipped;
+      })();
+    },
+
+    /**
+     * Pending ones among `ids` wait for the session's queue item `itemId`
+     * (one transaction); null when that item isn't the session's or was
+     * dropped
+     */
+    markQueued(
+      sessionId: string,
+      ids: number[],
+      itemId: number
+    ): ReviewComment[] | null {
+      return db.transaction(() => {
+        if (!liveItem(sessionId, itemId)) return null;
+        const queued: ReviewComment[] = [];
+        for (const id of new Set(ids)) {
+          if (s.markQueued.run(itemId, id, sessionId).changes === 1)
+            queued.push(toReviewComment(row(sessionId, id)!));
+        }
+        return queued;
       })();
     },
 

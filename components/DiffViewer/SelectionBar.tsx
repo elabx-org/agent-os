@@ -26,8 +26,9 @@ function typing(target: EventTarget | null): boolean {
 }
 
 /**
- * The floating bar over a selection: "2 lines · Comment" (D-Diff), with the
- * C shortcut on the desktop. Escape clears the selection.
+ * The floating bar beside a selection: "2 lines · Comment" (D-Diff), with
+ * the C shortcut on the desktop. Escape is DiffReview's (selection first,
+ * then the review), so the order never depends on which listener came first
  */
 export function SelectionBar({
   lines,
@@ -40,10 +41,7 @@ export function SelectionBar({
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.defaultPrevented || typing(e.target)) return;
-      if (e.key === "Escape") {
-        e.preventDefault();
-        onClear();
-      } else if (
+      if (
         desktop &&
         (e.key === "c" || e.key === "C") &&
         !e.metaKey &&
@@ -56,14 +54,15 @@ export function SelectionBar({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [desktop, onComment, onClear]);
+  }, [desktop, onComment]);
 
   return (
     <div
       role="toolbar"
       aria-label={`${lines} ${lines === 1 ? "line" : "lines"} selected`}
       className={cn(
-        "glass flex items-center gap-1 rounded-[14px] p-[5px]",
+        // Solid: it sits over code lines
+        "bg-card border-border flex items-center gap-1 rounded-[14px] border p-[5px]",
         className
       )}
     >

@@ -36,6 +36,10 @@ test("deliver goes through the queue while it is on", async () => {
 test("deliver reports a queued message as not sent", async () => {
   const { r } = route({ queueSend: async () => ({ sent: false }) });
   assert.deepEqual(await deliver("hi", r), { sent: false });
+  const q = route({
+    queueSend: async () => ({ sent: false, item: { id: 7 } }),
+  });
+  assert.deepEqual(await deliver("hi", q.r), { sent: false, itemId: 7 });
 });
 
 test("deliver tries the queue while its state is unknown", async () => {

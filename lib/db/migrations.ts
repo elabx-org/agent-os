@@ -516,9 +516,13 @@ const migrations: Migration[] = [
           quote TEXT NOT NULL,
           body TEXT NOT NULL,
           created_at INTEGER NOT NULL,
-          sent_at INTEGER
+          sent_at INTEGER,
+          queue_item_id INTEGER
         )
       `);
+      // queue_item_id: the queued message (session_queue) carrying it,
+      // until that one goes (sent_at) or is cancelled (back to pending)
+      addColumnIfMissing(db, "review_comments", "queue_item_id", "INTEGER");
       db.exec(
         `CREATE INDEX IF NOT EXISTS idx_review_comments_session ON review_comments(session_id, sent_at, created_at)`
       );

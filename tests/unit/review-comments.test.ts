@@ -50,7 +50,7 @@ const input = (extra: Partial<NewReviewComment> = {}): NewReviewComment => ({
 });
 
 test("add stores a pending comment and get reads it back", () => {
-  const c = store.add(S, input());
+  const c = store.add(S, input())!;
   assert.equal(c.sessionId, S);
   assert.equal(c.scope, "turn:4");
   assert.equal(c.sentAt, null);
@@ -60,15 +60,15 @@ test("add stores a pending comment and get reads it back", () => {
 });
 
 test("add with sent records it sent", () => {
-  const c = store.add(S, input({ sent: true }));
+  const c = store.add(S, input({ sent: true }))!;
   assert.equal(c.sentAt, c.createdAt);
 });
 
 test("list: pending oldest first, then sent newest first; scope filters", () => {
-  const a = store.add(S, input({ body: "a" }));
-  const b = store.add(S, input({ body: "b", scope: "branch" }));
-  const c = store.add(S, input({ body: "c" }));
-  const d = store.add(S, input({ body: "d" }));
+  const a = store.add(S, input({ body: "a" }))!;
+  const b = store.add(S, input({ body: "b", scope: "branch" }))!;
+  const c = store.add(S, input({ body: "c" }))!;
+  const d = store.add(S, input({ body: "d" }))!;
   store.markSent(S, [a.id], 1000);
   store.markSent(S, [d.id], 2000);
   assert.deepEqual(
@@ -87,8 +87,8 @@ test("list: pending oldest first, then sent newest first; scope filters", () => 
 });
 
 test("edit and remove touch pending comments only", () => {
-  const p = store.add(S, input());
-  const s = store.add(S, input({ sent: true }));
+  const p = store.add(S, input())!;
+  const s = store.add(S, input({ sent: true }))!;
   assert.equal(store.edit(S, p.id, "new text")?.body, "new text");
   assert.equal(store.edit(S, s.id, "nope"), null);
   assert.equal(store.edit(S, 9999, "nope"), null);
@@ -105,9 +105,9 @@ test("edit and remove touch pending comments only", () => {
 });
 
 test("markSent flips the session's pending ones once", () => {
-  const a = store.add(S, input());
-  const b = store.add(S, input());
-  const other = store.add("other", input());
+  const a = store.add(S, input())!;
+  const b = store.add(S, input())!;
+  const other = store.add("other", input())!;
   const first = store.markSent(S, [a.id, b.id, a.id, other.id, 9999], 500);
   assert.deepEqual(
     first.map((c) => [c.id, c.sentAt]),
@@ -123,10 +123,10 @@ test("markSent flips the session's pending ones once", () => {
 });
 
 test("discardPending drops the pending ones and keeps the sent", () => {
-  store.add(S, input());
-  store.add(S, input());
-  const s = store.add(S, input({ sent: true }));
-  const other = store.add("other", input());
+  store.add(S, input())!;
+  store.add(S, input())!;
+  const s = store.add(S, input({ sent: true }))!;
+  const other = store.add("other", input())!;
   assert.equal(store.discardPending(S), 2);
   assert.equal(store.discardPending(S), 0);
   assert.deepEqual(
@@ -137,9 +137,9 @@ test("discardPending drops the pending ones and keeps the sent", () => {
 });
 
 test("removeSession drops every comment of that session only", () => {
-  store.add(S, input());
-  store.add(S, input({ sent: true }));
-  const other = store.add("other", input());
+  store.add(S, input())!;
+  store.add(S, input({ sent: true }))!;
+  const other = store.add("other", input())!;
   store.removeSession(S);
   assert.deepEqual(store.list(S), []);
   assert.ok(store.get("other", other.id));
@@ -147,10 +147,10 @@ test("removeSession drops every comment of that session only", () => {
 
 test("sent history is capped per session", () => {
   for (let i = 0; i < mod.SENT_HISTORY + 5; i++) {
-    const c = store.add(S, input({ body: `c${i}` }));
+    const c = store.add(S, input({ body: `c${i}` }))!;
     store.markSent(S, [c.id], 1000 + i);
   }
-  const pending = store.add(S, input({ body: "pending" }));
+  const pending = store.add(S, input({ body: "pending" }))!;
   const list = store.list(S);
   assert.equal(list.length, mod.SENT_HISTORY + 1);
   assert.equal(list[0].id, pending.id);
@@ -205,4 +205,81 @@ test("parseCommentBody", () => {
   });
   assert.equal(mod.parseCommentBody({ body: "" }).ok, false);
   assert.equal(mod.parseCommentBody(null).ok, false);
+});
+
+/** A queue item of the session, as the dispatcher has it */
+function queueItem(sessionId: string, status = "pending"): number {
+  const { lastInsertRowid } = db
+    .prepare(
+      `INSERT INTO session_queue
+         (session_id, position, text, attachments, origin, kind, status, not_before, created_at)
+       VALUES (?, 1, 'x', '[]', 'user', 'message', ?, NULL, ?)`
+    )
+    .run(sessionId, status, Date.now());
+  return Number(lastInsertRowid);
+}
+const setStatus = (id: number, status: string, sentAt: number | null = null) =>
+  db
+    .prepare(`UPDATE session_queue SET status = ?, sent_at = ? WHERE id = ?`)
+    .run(status, sentAt, id);
+
+test("queued comments wait for their message, then are sent", () => {
+  const item = queueItem(S);
+  const a = store.add(S, input())!;
+  const b = store.add(S, input({ startLine: 30, endLine: 31 }))!;
+  const queued = store.markQueued(S, [a.id, b.id, -3], item)!;
+  assert.deepEqual(
+    queued.map((c) => [c.id, c.queueItemId, c.sentAt]),
+    [
+      [a.id, item, null],
+      [b.id, item, null],
+    ]
+  );
+  // Out of the tray: no edit, remove or discard while queued
+  assert.equal(store.edit(S, a.id, "x"), null);
+  assert.equal(store.remove(S, a.id), false);
+  assert.equal(store.discardPending(S), 0);
+  assert.equal(store.list(S)[0].queueItemId, item);
+  setStatus(item, "sent", 12345);
+  const after = store.list(S);
+  assert.deepEqual(
+    after.map((c) => [c.sentAt, c.queueItemId]),
+    [
+      [12345, null],
+      [12345, null],
+    ]
+  );
+});
+
+test("a cancelled or failed queued message puts its comments back in the tray", () => {
+  for (const status of ["cancelled", "failed"]) {
+    const item = queueItem(S);
+    const c = store.add(S, input({ sent: false, queueItemId: item }))!;
+    assert.equal(c.queueItemId, item);
+    setStatus(item, status);
+    const back = store.get(S, c.id)!;
+    assert.equal(store.list(S).find((x) => x.id === c.id)?.queueItemId, null);
+    assert.equal(back.sentAt, null);
+    assert.ok(store.remove(S, c.id));
+  }
+});
+
+test("a queue item of another session, or a gone one, is refused", () => {
+  const theirs = queueItem("session-b");
+  const c = store.add(S, input())!;
+  assert.equal(store.markQueued(S, [c.id], theirs), null);
+  assert.equal(store.add(S, input({ queueItemId: theirs })), null);
+  const dropped = queueItem(S, "cancelled");
+  assert.equal(store.markQueued(S, [c.id], dropped), null);
+  assert.equal(store.get(S, c.id)!.queueItemId, null);
+});
+
+test("parseNewComment takes a queue item only with sent false", () => {
+  const ok = mod.parseNewComment({ ...input(), queueItemId: 4 });
+  assert.ok(ok.ok && ok.comment.queueItemId === 4);
+  assert.equal(
+    mod.parseNewComment({ ...input(), sent: true, queueItemId: 4 }).ok,
+    false
+  );
+  assert.equal(mod.parseNewComment({ ...input(), queueItemId: 0 }).ok, false);
 });

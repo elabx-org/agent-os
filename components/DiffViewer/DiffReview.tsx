@@ -18,6 +18,7 @@ import {
   Loader2,
   MessageSquare,
   Undo2,
+  X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Session } from "@/lib/db";
@@ -30,6 +31,7 @@ import { useTurns } from "@/hooks/useTurns";
 import { useSessionDiff } from "@/hooks/useSessionDiff";
 import { useReviewComments } from "@/hooks/useReviewComments";
 import { useReviewSend } from "@/hooks/useReviewSend";
+import { commentCount } from "@/lib/review-send";
 import { DiffCounts, DiffLines } from "./UnifiedDiff";
 import { FileDiffCard } from "./FileDiffCard";
 import { CommentBox } from "./CommentBox";
@@ -207,17 +209,20 @@ export function DiffReview({
     if (selection) setComposing(selection);
   }, [selection]);
 
-  // Escape: the selection first (SelectionBar), then the screen
+  // Escape, in one place: the selection (or its comment box) first, then
+  // the review. Not while typing elsewhere (the chat's composer beside it);
+  // the comment box takes its own Escape
+  const held = !!selection || !!composing;
   useEffect(() => {
-    if (placement !== "screen") return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape" || e.defaultPrevented) return;
+      if (e.key !== "Escape" || e.defaultPrevented || typing(e.target)) return;
       e.preventDefault();
-      onClose();
+      if (held) clear();
+      else onClose();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [placement, onClose]);
+  }, [held, clear, onClose]);
 
   const submit = async (body: string) => {
     const sel = composing;
@@ -246,18 +251,15 @@ export function DiffReview({
     setSelection(null);
   };
 
+  // Never rejects: the tray shows send.error
   const sendPending = async () => {
-    try {
-      const { sent, count } = await send.sendPending();
-      if (count)
-        toast.success(
-          sent
-            ? `Sent ${count} ${count === 1 ? "comment" : "comments"} to ${agentName}`
-            : `Queued: goes when ${agentName} is done`
-        );
-    } catch {
-      // The tray shows send.error
-    }
+    const { sent, count } = await send.sendPending();
+    if (count)
+      toast.success(
+        sent
+          ? `Sent ${commentCount(count)} to ${agentName}`
+          : `Queued: goes when ${agentName} is done`
+      );
   };
 
   const discard = async () => {
@@ -308,12 +310,29 @@ export function DiffReview({
       composing.path === path &&
       composing.side === side &&
       composing.endLine === n;
-    if (!here && !box) return null;
+    // The "2 lines · Comment" bar beside the selection's last line (D-Diff)
+    const bar =
+      selection &&
+      !composing &&
+      selection.path === path &&
+      selection.side === side &&
+      selection.endLine === n;
+    if (!here && !box && !bar) return null;
     return (
       <>
-        {here?.map((c) => (
-          <Marker key={c.id} comment={c} />
-        ))}
+        {bar && (
+          // Right under the last selected line, in the flow: an overlay
+          // would be clipped by the card at a file's last lines
+          <div className="flex justify-end px-3 py-1.5 font-sans">
+            <SelectionBar
+              className="shadow-lg"
+              lines={lineCount(selection)}
+              onComment={startComment}
+              onClear={clear}
+            />
+          </div>
+        )}
+        {here && <Markers comments={here} />}
         {box && (
           <CommentBox
             range={rangeOf(composing)}
@@ -359,17 +378,6 @@ export function DiffReview({
     .filter(Boolean)
     .join(" · ");
   const canUndo = turnNo !== null && !!onUndoTurn && !compact;
-
-  const selectionBar = selection && !composing && (
-    <div className="pointer-events-none sticky bottom-3 z-10 flex justify-center pt-3">
-      <SelectionBar
-        className="pointer-events-auto"
-        lines={lineCount(selection)}
-        onComment={startComment}
-        onClear={clear}
-      />
-    </div>
-  );
 
   let body: ReactNode;
   if (isLoading && !diff) {
@@ -420,7 +428,7 @@ export function DiffReview({
               <span className="text-muted-foreground truncate text-[13px]">
                 {fileIndex + 1} of {files.length}{" "}
                 {files.length === 1 ? "file" : "files"}
-                {pending > 0 && ` · ${commentsLabel(pending)}`}
+                {pending > 0 && ` · ${commentCount(pending)}`}
               </span>
             </span>
             {!current.isBinary && (
@@ -471,21 +479,28 @@ export function DiffReview({
               );
             })}
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+        <div
+          className={cn(
+            "min-h-0 flex-1 overflow-y-auto overscroll-contain",
+            // On a table it stops at the fold: a soft edge, not a cut line
+            mode === "tabletop" &&
+              "rounded-b-2xl [mask-image:linear-gradient(to_bottom,black_calc(100%-28px),transparent)]"
+          )}
+        >
           <div className="tools">
-            <DiffLines
-              diff={current}
-              wrap={placement === "screen"}
-              {...reviewProps(path)}
-            />
+            {/* Touch screens wrap: no sideways scroll past the page edge */}
+            <DiffLines diff={current} wrap={!desktop} {...reviewProps(path)} />
           </div>
-          {selectionBar}
         </div>
       </>
     );
   } else {
     body = (
-      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-contain pb-3">
+      <div
+        className={cn(
+          "flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-contain pb-3"
+        )}
+      >
         {files.map((f, i) => {
           const path = pathOf(f);
           const pending = pendingByPath.get(path) ?? 0;
@@ -499,7 +514,7 @@ export function DiffReview({
               actions={
                 pending > 0 && (
                   <span className="chip bg-primary/20 text-foreground h-6 text-xs">
-                    {commentsLabel(pending)}
+                    {commentCount(pending)}
                   </span>
                 )
               }
@@ -507,7 +522,6 @@ export function DiffReview({
             />
           );
         })}
-        {selectionBar}
       </div>
     );
   }
@@ -521,7 +535,11 @@ export function DiffReview({
         "flex min-h-0 min-w-0 flex-col gap-3 overflow-hidden",
         desktop
           ? "px-6 pt-[18px] pb-6"
-          : "pt-5 pr-2 pb-[max(16px,env(safe-area-inset-bottom))] pl-4",
+          : cn(
+              "pt-5 pb-[max(16px,env(safe-area-inset-bottom))] pl-4",
+              // The open Duo's right page keeps O-Diff's 16px inset
+              compact ? "pr-4" : "pr-2"
+            ),
         className
       )}
     >
@@ -549,6 +567,17 @@ export function DiffReview({
             <span className="n-add">+{totals.added}</span>
             <span className="n-del">−{totals.removed}</span>
           </span>
+        )}
+        {placement === "page" && (
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close diff"
+            title="Close (Esc)"
+            className="text-muted-foreground hover:bg-accent -mr-2 flex h-9 w-9 shrink-0 items-center justify-center rounded-full"
+          >
+            <X className="h-5 w-5" />
+          </button>
         )}
         {canUndo && (
           <button
@@ -622,12 +651,15 @@ export function DiffReview({
 
       {body}
 
-      {flow === "tray" && (
+      {/* The Duo sends at once: its tray only holds comments whose queued
+          message was cancelled, to send again or discard */}
+      {(flow === "tray" || review.pending.length > 0) && (
         <CommentTray
           className="shrink-0"
           comments={review.pending}
           agentName={agentName}
-          sending={send.sending}
+          // Not while a comment is still being saved: it'd be left out
+          sending={send.sending || adding}
           error={send.error}
           onSend={() => void sendPending()}
           onDiscard={() => void discard()}
@@ -643,27 +675,74 @@ export function DiffReview({
   );
 }
 
-/** A comment on its line: "Sent · Keep the chevron muted" */
-function Marker({ comment }: { comment: ReviewComment }) {
-  const sent = comment.sentAt !== null;
+/** Typing somewhere: Escape belongs to that field */
+function typing(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null;
   return (
-    <div className="px-3 pt-1 pb-1.5 pl-9 font-sans">
-      <span
-        data-comment-id={comment.id}
-        title={comment.body}
-        className="chip bg-primary/20 text-foreground h-7 max-w-full"
-      >
-        <MessageSquare className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-        <span className="truncate">
-          {sent ? "Sent" : "Pending"} · {comment.body}
-        </span>
-      </span>
-    </div>
+    !!el &&
+    (el.tagName === "INPUT" ||
+      el.tagName === "TEXTAREA" ||
+      el.tagName === "SELECT" ||
+      el.isContentEditable)
   );
 }
 
-function commentsLabel(n: number): string {
-  return `${n} ${n === 1 ? "comment" : "comments"}`;
+function markerState(c: ReviewComment): string {
+  return c.sentAt !== null
+    ? "Sent"
+    : c.queueItemId !== null
+      ? "Queued"
+      : "Pending";
+}
+
+/**
+ * A line's comments: one marker, the latest ("Sent · Keep the chevron
+ * muted") and "+2" for the older sent ones, which open under it
+ */
+function Markers({ comments }: { comments: ReviewComment[] }) {
+  const [open, setOpen] = useState(false);
+  const newest = [...comments].sort(
+    (a, b) => b.createdAt - a.createdAt || b.id - a.id
+  );
+  // The latest, and any still to go (the tray opens those by id)
+  const shown = open
+    ? newest
+    : newest.filter((c, i) => i === 0 || c.sentAt === null);
+  const more = newest.length - shown.length;
+  return (
+    <div className="flex flex-col items-start gap-1 px-3 pt-1 pb-1.5 pl-9 font-sans">
+      {shown.map((c, i) => (
+        <span key={c.id} className="flex max-w-full items-center gap-1">
+          <span
+            data-comment-id={c.id}
+            title={c.body}
+            className="chip bg-primary/20 text-foreground h-7 min-w-0"
+          >
+            <MessageSquare
+              className="h-3.5 w-3.5 shrink-0"
+              aria-hidden="true"
+            />
+            <span className="truncate">
+              {markerState(c)} · {c.body}
+            </span>
+          </span>
+          {i === 0 && (open ? newest.length > 1 : more > 0) && (
+            <button
+              type="button"
+              aria-expanded={open}
+              aria-label={
+                open ? "Show the latest only" : `${more} more on this line`
+              }
+              onClick={() => setOpen(!open)}
+              className="chip bg-primary/20 text-foreground h-7 shrink-0 px-2.5"
+            >
+              {open ? "−" : `+${more}`}
+            </button>
+          )}
+        </span>
+      ))}
+    </div>
+  );
 }
 
 /** A sha as 7 characters; a ref name as it is */

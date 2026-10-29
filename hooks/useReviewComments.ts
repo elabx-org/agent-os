@@ -12,6 +12,7 @@ import type {
   ReviewCommentsResponse,
 } from "@/lib/review-types";
 import type { DiffScope } from "@/lib/turn-types";
+import { inTray } from "@/lib/review-send";
 
 export const reviewKeys = {
   session: (sessionId: string) => ["review-comments", sessionId] as const,
@@ -20,7 +21,7 @@ export const reviewKeys = {
 export interface UseReviewComments {
   /** Every comment of the session: pending first, then sent */
   comments: ReviewComment[];
-  /** The tray's: not sent yet */
+  /** The tray's: not sent yet, not waiting in the queue */
   pending: ReviewComment[];
   isLoading: boolean;
   add: (input: NewReviewComment) => Promise<ReviewComment>;
@@ -28,12 +29,19 @@ export interface UseReviewComments {
   remove: (id: number) => Promise<void>;
   /** The tray's Discard: every pending comment */
   discard: () => Promise<void>;
-  markSent: (ids: number[]) => Promise<ReviewComment[]>;
+  /**
+   * After their message went; with `queueItemId` it only went into the
+   * queue, so they wait for that item (sent when it goes, back in the tray
+   * if it is cancelled)
+   */
+  markSent: (ids: number[], queueItemId?: number) => Promise<ReviewComment[]>;
 }
 
 const NONE: ReviewComment[] = [];
 /** Another tab or device may add some; the review's own writes refresh it */
 const STALE_MS = 15000;
+/** While a queued message carries some: until it goes or is cancelled */
+const QUEUED_POLL_MS = 3000;
 
 async function fetchComments(sessionId: string): Promise<ReviewComment[]> {
   const res = await fetch(`/api/sessions/${sessionId}/review-comments`);
@@ -58,7 +66,12 @@ async function request<T>(
     | (T & { error?: string; reason?: string })
     | null;
   if (!res.ok) {
-    if (res.status === 409) throw new Error("This comment was already sent");
+    if (res.status === 409)
+      throw new Error(
+        json?.error === "Queue item gone"
+          ? "The queued message was cancelled"
+          : "This comment was already sent"
+      );
     if (res.status === 404 && json?.error === "Comment not found")
       throw new Error("This comment isn't there any more");
     throw new Error(
@@ -70,6 +83,7 @@ async function request<T>(
 
 /** Pending first (oldest first), then sent (newest first), as the server lists */
 function ordered(list: ReviewComment[]): ReviewComment[] {
+  // (queued ones count as pending here, as the server lists them)
   const pending = list
     .filter((c) => c.sentAt === null)
     .sort((a, b) => a.createdAt - b.createdAt || a.id - b.id);
@@ -98,6 +112,10 @@ export function useReviewComments(
     queryFn: () => fetchComments(sessionId),
     enabled: on,
     staleTime: STALE_MS,
+    refetchInterval: (query) =>
+      query.state.data?.some((c) => c.queueItemId !== null)
+        ? QUEUED_POLL_MS
+        : false,
   });
 
   const base = `/api/sessions/${sessionId}/review-comments`;
@@ -133,13 +151,14 @@ export function useReviewComments(
   const add = useCallback<UseReviewComments["add"]>(
     async (input) => {
       const now = Date.now();
-      const { sent, ...fields } = input;
+      const { sent, queueItemId, ...fields } = input;
       const temp: ReviewComment = {
         ...fields,
         id: -++tempId,
         sessionId,
         createdAt: now,
         sentAt: sent ? now : null,
+        queueItemId: !sent ? (queueItemId ?? null) : null,
       };
       const { comment } = await optimistic(
         (list) => [...list, temp],
@@ -181,15 +200,23 @@ export function useReviewComments(
   }, [base, optimistic]);
 
   const markSent = useCallback<UseReviewComments["markSent"]>(
-    async (ids) => {
+    async (ids, queueItemId) => {
       const now = Date.now();
       const which = new Set(ids);
       const { comments } = await optimistic(
         (list) =>
           list.map((c) =>
-            which.has(c.id) && c.sentAt === null ? { ...c, sentAt: now } : c
+            which.has(c.id) && c.sentAt === null
+              ? queueItemId === undefined
+                ? { ...c, sentAt: now, queueItemId: null }
+                : { ...c, queueItemId }
+              : c
           ),
-        () => request<MarkSentResult>(`${base}/sent`, "POST", { ids }),
+        () =>
+          request<MarkSentResult>(`${base}/sent`, "POST", {
+            ids,
+            ...(queueItemId !== undefined && { queueItemId }),
+          }),
         (list, { comments }) => {
           const byId = new Map(comments.map((c) => [c.id, c]));
           return list.map((c) => byId.get(c.id) ?? c);
@@ -205,7 +232,7 @@ export function useReviewComments(
     () => (scope ? all.filter((c) => c.scope === scope) : all),
     [all, scope]
   );
-  const pending = useMemo(() => all.filter((c) => c.sentAt === null), [all]);
+  const pending = useMemo(() => all.filter(inTray), [all]);
 
   return useMemo(
     () => ({
