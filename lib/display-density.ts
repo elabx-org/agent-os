@@ -50,6 +50,12 @@ export function setOffset(cls: DisplayClass, offset: number): void {
   applyDensity(clamped);
 }
 
+/** The text size step as Display shows it: "Default", "+2", "−1" */
+export function offsetLabel(offset: number): string {
+  if (offset === 0) return "Default";
+  return offset > 0 ? `+${offset}` : `−${-offset}`;
+}
+
 export function getDensity(offset?: number): Density {
   const cls = getDisplayClass();
   const base = DEFAULTS[cls];
