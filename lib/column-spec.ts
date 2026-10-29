@@ -46,9 +46,9 @@ export interface ColumnContext {
   liveOpen?: boolean;
   /** The session in view is working: closed, Stop ends its column (N-Queue) */
   working?: boolean;
-  /** A sheet over the session other than Live activity (N-Undo's undo,
-      N-Scripts) */
-  sheet?: "undo" | "scripts" | null;
+  /** A sheet over the session other than Live activity (N-Undo,
+      N-PermMode, N-Scripts) */
+  sheet?: "undo" | "permissions" | "scripts" | null;
   /** The project surface shows the project's settings (N-Config, M3) */
   projectSettings?: boolean;
   /** The open Duo's Changes page shows beside the conversation (Open-Changes) */
@@ -141,6 +141,12 @@ const BASE = {
     symbol: "xmark",
     icon: "X",
     label: "Close",
+  },
+  done: {
+    id: "done",
+    symbol: "checkmark",
+    icon: "Check",
+    label: "Done",
   },
   sort: {
     id: "sort",
@@ -262,13 +268,18 @@ function otherView(ctx: ColumnContext, extra: Partial<ColumnItem> = {}) {
 
 /**
  * The closed Duo's column under a sheet: close | Stop while it works
- * (E-Live), close | Changes over the undo sheet (N-Undo); null when no
- * sheet is up
+ * (E-Live), close | Changes over the undo sheet (N-Undo), close | Done
+ * over the permissions sheet (N-PermMode); null when no sheet is up
  */
 function sheetColumn(ctx: ColumnContext): ColumnItem[] | null {
   if (ctx.sheet === "scripts") return scriptsColumn();
   if (ctx.sheet === "undo")
     return [item(BASE.closeSheet), changes(ctx, { selected: false, ...sep })];
+  if (ctx.sheet === "permissions")
+    return [
+      item(BASE.closeSheet),
+      item(BASE.done, { prominent: true, ...sep }),
+    ];
   if (ctx.liveOpen)
     return [
       item(BASE.closeSheet),

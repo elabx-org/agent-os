@@ -37,9 +37,9 @@ export const mobileNavStore = proxy<{
   liveOpen: boolean;
   /** The session in view is working (the closed column's Stop, M2) */
   working: boolean;
-  /** A sheet over the session other than Live activity (N-Undo, M2;
-      N-Scripts, M3) */
-  sheet: "undo" | "scripts" | null;
+  /** A sheet over the session other than Live activity (N-Undo M2,
+      N-PermMode M7, N-Scripts M3) */
+  sheet: "undo" | "permissions" | "scripts" | null;
   /**
    * The open Duo's Changes page beside the conversation (Open-Changes, M2b):
    * the column's Changes there opens this instead of the git view

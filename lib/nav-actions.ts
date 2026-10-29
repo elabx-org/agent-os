@@ -55,6 +55,7 @@ export const NAV_ACTIONS = [
   "closeSheet",
   "scripts",
   "viewConfig",
+  "done",
   "pull",
   "push",
   "newPr",
@@ -125,6 +126,8 @@ interface NavHandlers {
   /** Project settings' .agent-os.json (N-Config's <>, M3); the page
       registers it */
   viewConfig: () => void;
+  /** The column's ✓ under a sheet: apply it (N-PermMode); the sheet registers it */
+  confirmSheet: () => void;
   /**
    * The column's Changes: the git view, unless the open Duo's spread shows
    * Changes as a page beside the conversation (Open-Changes registers it)
@@ -198,6 +201,7 @@ export const navStore: NavHandlers = {
       openScripts(page.projectId);
   },
   viewConfig: () => {},
+  confirmSheet: () => {},
   openChanges: () => mobileNavActions.requestViewMode("git"),
   gitPull: () => {},
   gitPush: () => {},
@@ -303,6 +307,7 @@ export const NAV_ROUTES: Record<NavAction, (leftPage: boolean) => void> = {
   closeSheet: () => navStore.closeSheet(),
   scripts: () => navStore.openScripts(),
   viewConfig: () => navStore.viewConfig(),
+  done: () => navStore.confirmSheet(),
   pull: () => navStore.gitPull(),
   push: () => navStore.gitPush(),
   newPr: () => navStore.newPullRequest(),

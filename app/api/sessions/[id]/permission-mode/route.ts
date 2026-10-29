@@ -7,7 +7,18 @@ import {
   requester,
   userOnly,
 } from "@/lib/permission-guard";
+import { getFlag } from "@/lib/flags";
+import {
+  confirmReady,
+  decideApply,
+  forgetModeMiss,
+  noteModeMiss,
+  pendingAppliesAt,
+  retryPendingSoon,
+} from "@/lib/permission-apply";
+import { withSessionLock } from "@/lib/queue/dispatcher";
 import { isRunning } from "@/lib/session-launch";
+import { readiness } from "@/lib/session-ready";
 import {
   effectiveMode,
   isEscalation,
@@ -47,12 +58,15 @@ export async function GET(
     return NextResponse.json({ error: "Session not found" }, { status: 404 });
   }
   const running = await isRunning(session);
+  const flagOn = getFlag("modeAtIdle");
   const state: PermissionModeState = {
     mode: effectiveMode(session),
     pending: normalizeMode(session.permission_pending),
     live: running ? await readLiveMode(session) : null,
     canApplyLive: canApplyLive(session, running),
     agentType: session.agent_type,
+    pendingAppliesAt: pendingAppliesAt(session, flagOn),
+    atIdle: flagOn,
   };
   return NextResponse.json(state);
 }
@@ -65,7 +79,9 @@ export async function GET(
 // proof nor agent markers is refused (it may be the user's stale tab, which
 // re-proves and retries). With proof, a running Claude session switches at
 // once where its Shift+Tab cycle allows, else from its next launch
-// (permission_pending). allowPending answers only the request the card
+// (permission_pending). With flag modeAtIdle, a pick made mid-turn waits
+// (permission_pending, no keys) and lib/permission-apply presses it in at
+// the next idle edge. allowPending answers only the request the card
 // showed (`prompt`: its allow option's index and label).
 export async function POST(
   request: NextRequest,
@@ -117,10 +133,12 @@ export async function POST(
       pending: null,
       appliedNow: false,
       needsRestart: running,
+      appliesAt: running ? "restart" : "nextLaunch",
     };
     return NextResponse.json(result);
   }
   forgetRetried(id, "permission_mode");
+  forgetModeMiss(id);
 
   if (allowPending && shown && (await allowPendingPrompt(session, shown))) {
     // The dialog goes before the footer is back
@@ -130,16 +148,51 @@ export async function POST(
   let pending: Mode | null = null;
   let appliedNow = false;
   let needsRestart = false;
-  if (await isRunning(session)) {
-    if (session.agent_type === "claude") {
-      if (mode !== "bypassPermissions" || canApplyLive(session, true)) {
-        appliedNow = (await applyModeLive(session, mode)).applied;
-      }
-      // Claude resumes its conversation, so it can take it at the next idle
-      if (!appliedNow) pending = mode;
+  const running = await isRunning(session);
+  const flagOn = getFlag("modeAtIdle");
+  const decision = decideApply({
+    agentType: session.agent_type,
+    running,
+    // Only read when it decides something: a running Claude with the flag on
+    ready:
+      running && flagOn && session.agent_type === "claude"
+        ? (await readiness(session)).ready
+        : true,
+    mode,
+    flagOn,
+    canCycleBypass: canApplyLive(session, running),
+  });
+  let appliesAt = decision.appliesAt;
+  if (decision.action === "live") {
+    // Under the dispatcher's lock, so the presses never mix with a queued
+    // paste or the idle applier's. With the flag, readiness is read twice
+    // more there: a turn that started meanwhile makes it wait instead
+    const outcome = await withSessionLock(id, async () =>
+      flagOn && !(await confirmReady(session))
+        ? null
+        : applyModeLive(session, mode)
+    );
+    appliedNow = !!outcome?.applied;
+    if (!outcome || (!appliedNow && flagOn && outcome.live === null)) {
+      // Busy, or the footer was hidden (a dialog): the idle edge takes it
+      pending = mode;
+      appliesAt = "nextTurn";
+      retryPendingSoon(id);
+    } else if (!appliedNow) {
+      // Claude resumes its conversation, so it can take it at a restart.
+      // The cycle came round without it: the idle edge needn't try again
+      if (outcome.live !== null) noteModeMiss(id, mode);
+      pending = mode;
+      needsRestart = true;
+      appliesAt = "restart";
     }
+  } else if (decision.action === "pending") {
+    pending = mode;
+    needsRestart = decision.appliesAt === "restart";
+    if (decision.appliesAt === "nextTurn") retryPendingSoon(id);
+  } else {
     // Others take it when they're next started
-    needsRestart = !appliedNow;
+    needsRestart = running;
   }
 
   queries
@@ -154,6 +207,7 @@ export async function POST(
     pending,
     appliedNow,
     needsRestart,
+    appliesAt,
   };
   return NextResponse.json(result);
 }

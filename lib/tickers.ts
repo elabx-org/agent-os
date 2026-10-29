@@ -10,6 +10,7 @@ import {
   tickersDisabled,
   type SessionFlagName,
 } from "./flags";
+import { startModeApplier } from "./permission-apply";
 import { startDispatcher } from "./queue/dispatcher";
 import { onEdge, startSessionWatch, wantWatch } from "./session-watch";
 import { onIdleEdge } from "./turns";
@@ -22,10 +23,15 @@ function onSomewhere(name: SessionFlagName): boolean {
 export function startTickers(): void {
   if (tickersDisabled()) return;
 
-  // The poll runs for the queue and snapshots even with push turned off
-  wantWatch(() => onSomewhere("queue") || onSomewhere("snapshots"));
+  // The poll runs for the queue, snapshots and modes picked mid-turn even
+  // with push turned off
+  wantWatch(
+    () =>
+      onSomewhere("queue") || onSomewhere("snapshots") || getFlags().modeAtIdle
+  );
   startSessionWatch();
   startDispatcher();
+  startModeApplier();
 
   // The end of a turn: Codex/Gemini post snapshots, Claude's turn journal
   onEdge((edge) => {

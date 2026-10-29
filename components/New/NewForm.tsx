@@ -13,7 +13,12 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ProjectWithDevServers } from "@/lib/projects";
-import { MODES, MODE_LABELS, type Mode } from "@/lib/permission-mode";
+import {
+  MODES,
+  MODE_HINTS,
+  MODE_LABELS,
+  type Mode,
+} from "@/lib/permission-mode";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -46,14 +51,6 @@ import type { NewFormState } from "./useNewForm";
  * session can't ask for it; background agents pass the model as is
  */
 const SESSION_MODELS = MODELS.filter((m) => m.id !== "sonnet");
-
-/** One line per mode in the Permissions picker */
-const MODE_HINTS: Record<Mode, string> = {
-  manual: "Asks before it edits a file or runs a command",
-  acceptEdits: "Edits files freely, asks before commands",
-  auto: "Goes ahead with safe steps, asks about risky ones",
-  bypassPermissions: "Never asks, even to delete files",
-};
 
 // The radio value for no mode: the agent's (or project's) own default
 const DEFAULT_MODE = "default";
@@ -198,7 +195,15 @@ function ModeItems({ form }: { form: NewFormState }) {
         <DropdownMenuRadioItem key={m} value={m}>
           <span className="flex min-w-0 flex-col">
             <span>{MODE_LABELS[m]}</span>
-            <span className="text-muted-foreground text-xs">
+            <span
+              className={cn(
+                "text-xs",
+                // Red as in the session's Permissions sheet (N-PermMode)
+                m === "bypassPermissions"
+                  ? "text-[var(--del)]"
+                  : "text-muted-foreground"
+              )}
+            >
               {MODE_HINTS[m]}
             </span>
           </span>
