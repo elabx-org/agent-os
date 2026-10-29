@@ -21,7 +21,7 @@ C_PINK=$'\\033[38;5;213m'
 C_MUTED=$'\\033[38;5;245m'
 C_BOLD=$'\\033[1m'
 
-# No tmux status line: Agent-OS's header already names the session, and on a
+# No tmux status line: AgentOS's header already names the session, and on a
 # phone the keyboard leaves few enough rows
 tmux set-option status off 2>/dev/null
 

@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// The page with Agent-OS's navigation in the system bar. Built with the
+/// The page with AgentOS's navigation in the system bar. Built with the
 /// iOS 27.1 SDK, the bar goes vertical in the iPhone Duo's right-hand column
 /// under the status glyphs; elsewhere it is the usual top bar.
 struct RootView: View {
@@ -119,7 +119,7 @@ struct ColumnToolbarItem: ToolbarContent {
     let gap: Bool
     let wide: Bool
 
-    /// The page's accent, else Agent-OS purple (#7C3AED)
+    /// The page's accent, else AgentOS purple (#7C3AED)
     private var accent: Color {
         model.accentColor ?? Color(red: 0x7C / 255, green: 0x3A / 255, blue: 0xED / 255)
     }

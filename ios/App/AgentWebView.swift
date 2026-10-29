@@ -3,7 +3,7 @@ import SwiftUI
 import UIKit
 import WebKit
 
-/// Agent-OS in a web view that fills what the system leaves it: built with
+/// AgentOS in a web view that fills what the system leaves it: built with
 /// the iOS 27.1 SDK it runs edge to edge on iPhone Duo, beside the system's
 /// vertical bar instead of under Safari's.
 struct AgentWebContainer: UIViewRepresentable {
@@ -100,7 +100,7 @@ struct AgentWebContainer: UIViewRepresentable {
         }
 
         // A tapped link to another site opens in the sheet rather than
-        // replacing Agent-OS; the page's own links and redirects (sign-in)
+        // replacing AgentOS; the page's own links and redirects (sign-in)
         // stay in the app
         func webView(
             _ webView: WKWebView,
