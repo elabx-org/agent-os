@@ -21,11 +21,7 @@ import {
 } from "@/lib/native-bridge";
 import { useSessionDraft } from "@/hooks/useSessionDraft";
 import { CHAT_KEYS } from "@/components/Terminal/toolbar-config";
-import {
-  ComposerChips,
-  ComposerPopover,
-  useComposer,
-} from "@/components/Composer";
+import { ComposerChips, useComposer } from "@/components/Composer";
 import { ComposerCard } from "@/components/Composer/ComposerCard";
 import { PausedBar } from "@/components/Session/PausedBar";
 import { PausedHistory } from "@/components/Session/PausedHistory";
@@ -39,6 +35,7 @@ import { useFoldDeck } from "@/hooks/useFoldDeck";
 import { useLayoutMode } from "@/hooks/useLayoutMode";
 import { useQueue } from "@/hooks/useQueue";
 import { useTurns } from "@/hooks/useTurns";
+import { useSearchAction } from "@/hooks/useSearchAction";
 import { useSessionPrompt } from "@/data/prompts/queries";
 import { DeckActions } from "@/components/DeckActions";
 import { DeckStateLine } from "@/components/DeckStateLine";
@@ -68,6 +65,7 @@ import { TurnDiff } from "./TurnDiff";
 import { UndoSheet } from "./UndoSheet";
 import { useSeam } from "./useSeam";
 import { useTranscript } from "./useTranscript";
+import type { DirectSendOptions } from "@/lib/session-attach-types";
 
 export interface ChatViewProps {
   session: Session;
@@ -130,6 +128,10 @@ export function ChatView({
     setDiffTurn(null);
     setUndoTurn(null);
   }, [session.id]);
+  // Search's "Undo turn N" / "Open diff: This turn" (M11)
+  useSearchAction(session.id, "turn", active, (r) =>
+    r.action === "undo" ? setUndoTurn(r.turnNo) : setDiffTurn(r.turnNo)
+  );
 
   const agents = useSubagents(session.id, active);
   const agentsByTool = useMemo(
@@ -219,7 +221,13 @@ export function ChatView({
     },
     [rows, book, seam]
   );
-  useChatJump(session.id, active, findItem);
+  // A search hit far back: load earlier pages until it's there (M11)
+  useChatJump(
+    session.id,
+    active,
+    findItem,
+    truncated && !loadingEarlier ? loadEarlier : undefined
+  );
 
   // Earlier history goes in above: keep what's on screen where it was
   const shown = useRef<{ first?: string; height: number }>({ height: 0 });
@@ -280,6 +288,7 @@ export function ChatView({
     sessionId: session.id,
     cwd: session.working_directory,
     claude: session.agent_type === "claude",
+    active,
   });
   const inputRef = composer.textareaRef;
   // Claude's mode, spinner and status line, mirrored under the box
@@ -343,14 +352,26 @@ export function ChatView({
     atBottom.current = true;
   }, []);
   const sendDirect = useCallback(
-    async (text: string) => {
+    async (text: string, options?: DirectSendOptions) => {
       if (!text.trim()) return;
       const res = await fetchAsUser(`/api/sessions/${session.id}/send-keys`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: text.trim(), pressEnter: true }),
+        body: JSON.stringify({
+          text: text.trim(),
+          pressEnter: true,
+          ...(options?.sessions?.length ? { sessions: options.sessions } : {}),
+        }),
       });
-      if (!res.ok) throw new Error("Couldn't send to Claude");
+      if (!res.ok) {
+        // A 409: the attached sessions can't go with an answer (send-keys)
+        const body = await res.json().catch(() => null);
+        throw new Error(
+          res.status === 409 && body?.error
+            ? body.error
+            : "Couldn't send to Claude"
+        );
+      }
       sent();
     },
     [session.id, sent]
@@ -664,7 +685,6 @@ export function ChatView({
             {/* Handed off: Open the new session or Resume here, in place
                 of the composer (its transcript still reads above) */}
             {paused && <PausedBar session={session} />}
-            {!paused && <ComposerPopover composer={composer} />}
             {!paused && (
               <RewindSheet
                 live={live}

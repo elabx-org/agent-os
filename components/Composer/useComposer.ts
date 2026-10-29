@@ -20,8 +20,18 @@ import {
   type FileSuggestion,
 } from "@/hooks/useComposerData";
 import { useQueries } from "@tanstack/react-query";
+import { toast } from "sonner";
+import { useAttachableSessions } from "@/hooks/useAttachableSessions";
+import { sessionSummaryQuery } from "@/hooks/useSessionSummary";
+import {
+  MAX_SESSION_ATTACHMENTS,
+  type AttachableSession,
+  type AttachedSession,
+} from "@/lib/session-attach-types";
 import { uploadFilesToTemp, uploadedSize } from "@/lib/file-upload";
 import { takeVideos } from "@/stores/videoUploads";
+import { useSearchAction } from "@/hooks/useSearchAction";
+import { prependCommand } from "@/components/Search/open-result";
 import { clearQuotes, formatWithQuotes, useQuotes } from "@/stores/replyQuotes";
 import {
   MAGIC_WORDS,
@@ -40,6 +50,7 @@ import {
   type Chip,
   type Paste,
 } from "./text";
+import { parseAttached, removeAtToken, toggleAttached } from "./attach-model";
 
 export interface Suggestion {
   key: string;
@@ -54,6 +65,9 @@ export interface Suggestion {
 }
 
 export type ComposerMode = "bash" | "memory" | null;
+
+/** The @ popover's two tabs (N-Attach): files, or other sessions */
+export type AtTab = "files" | "sessions";
 
 export interface Segment {
   text: string;
@@ -72,6 +86,11 @@ interface UseComposerOptions {
   cwd?: string | null;
   /** Claude Code runs in the session: pickers, modes and history */
   claude?: boolean;
+  /**
+   * This box is on screen. The chat and the (hidden) terminal keep a
+   * composer each; only the shown one takes search's slash command
+   */
+  active?: boolean;
 }
 
 const pastesKey = (id: string) => `agentos:pastes:${id}`;
@@ -94,6 +113,31 @@ function writePastes(id: string | null | undefined, pastes: Paste[]) {
     else localStorage.removeItem(pastesKey(id));
   } catch {
     // Private mode or full: the pills just show as text after a reload
+  }
+}
+
+const attachedKey = (id: string) => `agentos:attached:${id}`;
+
+function readAttached(id: string | null | undefined): AttachedSession[] {
+  if (!id) return [];
+  try {
+    return parseAttached(localStorage.getItem(attachedKey(id)));
+  } catch {
+    return [];
+  }
+}
+
+function writeAttached(
+  id: string | null | undefined,
+  attached: AttachedSession[]
+) {
+  if (!id) return;
+  try {
+    if (attached.length)
+      localStorage.setItem(attachedKey(id), JSON.stringify(attached));
+    else localStorage.removeItem(attachedKey(id));
+  } catch {
+    // Private mode or full: the chips just don't survive a reload
   }
 }
 
@@ -168,6 +212,7 @@ export function useComposer({
   sessionId,
   cwd,
   claude = true,
+  active = true,
 }: UseComposerOptions) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -289,6 +334,13 @@ export function useComposer({
     [onChange, placeCaret]
   );
 
+  // Search's slash command (M11): first in the box, focused after it
+  useSearchAction(sessionId ?? "", "slash", claude && active, (r) => {
+    const next = prependCommand(displayRef.current, r.command);
+    textareaRef.current?.focus();
+    setDisplay(next.text, next.caret);
+  });
+
   // ---- "/" and "@" pickers
   const [dismissed, setDismissed] = useState<string | null>(null);
   const token = claude && focused ? tokenAtCaret(display, caret) : null;
@@ -302,6 +354,55 @@ export function useComposer({
 
   // The picker's list, for the box's combobox semantics
   const listboxId = useId();
+
+  // ---- @ sessions (N-Attach): the popover's Sessions tab and the chips
+  const [atTab, setAtTabState] = useState<AtTab>("files");
+  const atStart = pickerToken?.kind === "at" ? pickerToken.start : null;
+  // A new @ starts on Files
+  useEffect(() => {
+    if (atStart !== null) setAtTabState("files");
+  }, [atStart]);
+  const atOpen = atStart !== null;
+  const [attachedState, setAttachedState] = useState<AttachedSession[]>([]);
+  const { sessions: attachable, loading: attachableLoading } =
+    useAttachableSessions(
+      sessionId ?? null,
+      pickerToken?.kind === "at" ? pickerToken.query : "",
+      atOpen && atTab === "sessions",
+      attachedState.map((a) => a.sessionId)
+    );
+
+  const attachedRef = useRef(attachedState);
+  const setAttached = useCallback(
+    (next: AttachedSession[]) => {
+      attachedRef.current = next;
+      setAttachedState(next);
+      writeAttached(sessionId, next);
+    },
+    [sessionId]
+  );
+  useEffect(() => {
+    const saved = readAttached(sessionId);
+    attachedRef.current = saved;
+    setAttachedState(saved);
+  }, [sessionId]);
+  // Each chip's size, once its summary is known (shared with the rows)
+  const attachedSummaries = useQueries({
+    queries: attachedState.map((a) => sessionSummaryQuery(a.sessionId, true)),
+  });
+  const attachedTokensKey = attachedSummaries
+    .map((q) => q.data?.tokens ?? "")
+    .join(",");
+  const attached = useMemo<AttachedSession[]>(
+    () =>
+      attachedState.map((a, i) => {
+        const tokens = attachedSummaries[i]?.data?.tokens;
+        return typeof tokens === "number" ? { ...a, tokens } : a;
+      }),
+    // attachedSummaries is new each render; its key says when it changed
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [attachedState, attachedTokensKey]
+  );
 
   const suggestions = useMemo<Suggestion[]>(() => {
     if (!pickerToken) return [];
@@ -365,7 +466,7 @@ export function useComposer({
 
   const [selected, setSelected] = useState(0);
   const pickerKey = pickerToken
-    ? `${pickerToken.kind}:${pickerToken.query}`
+    ? `${pickerToken.kind}:${pickerToken.query}:${pickerToken.kind === "at" ? atTab : ""}`
     : "";
   useEffect(() => setSelected(0), [pickerKey]);
 
@@ -386,6 +487,52 @@ export function useComposer({
       textareaRef.current?.focus();
     },
     [caret, setDisplay]
+  );
+
+  // Off while a queued message is edited: its sessions can't change
+  const [sessionsOff, setSessionsOffState] = useState(false);
+  const sessionsOffRef = useRef(false);
+  const setSessionsOff = useCallback((off: boolean) => {
+    sessionsOffRef.current = off;
+    setSessionsOffState(off);
+    if (off) setAtTabState("files");
+  }, []);
+  const setAtTab = useCallback((tab: AtTab) => {
+    if (tab === "sessions" && sessionsOffRef.current) return;
+    setAtTabState(tab);
+    setSelected(0);
+  }, []);
+
+  /**
+   * A Sessions row tapped: attached as a chip (the typed "@query" goes, the
+   * session never goes in as text), or detached when it's on already
+   */
+  const toggleSession = useCallback(
+    (s: AttachableSession) => {
+      const result = toggleAttached(attachedRef.current, s);
+      if (result.change === "full") {
+        toast.error(
+          `At most ${MAX_SESSION_ATTACHMENTS} sessions on one message`
+        );
+        return;
+      }
+      setAttached(result.list);
+      if (result.change === "attached") {
+        const t = tokenAtCaret(displayRef.current, caret);
+        if (t?.kind === "at") {
+          const next = removeAtToken(displayRef.current, t);
+          setDisplay(next.text, next.caret);
+        }
+      }
+      textareaRef.current?.focus();
+    },
+    [caret, setAttached, setDisplay]
+  );
+
+  const detachSession = useCallback(
+    (id: string) =>
+      setAttached(attachedRef.current.filter((a) => a.sessionId !== id)),
+    [setAttached]
   );
 
   // ---- History: ↑ in an empty box, ↓ back; a search sheet (Ctrl-R)
@@ -594,7 +741,48 @@ export function useComposer({
         setDismissed(displayRef.current);
         return true;
       }
-      if (pickerToken && suggestions.length > 0 && plain) {
+      const sessionsTab = pickerToken?.kind === "at" && atTab === "sessions";
+      if (pickerToken?.kind === "at" && plain) {
+        // ←/→ right after a bare "@": the Files | Sessions tabs
+        const bare =
+          displayRef.current.slice(pickerToken.start, pickerToken.end) ===
+            "@" &&
+          el.selectionStart === el.selectionEnd &&
+          el.selectionStart === pickerToken.end;
+        if (bare && e.key === "ArrowRight" && atTab === "files") {
+          e.preventDefault();
+          setAtTab("sessions");
+          return true;
+        }
+        if (bare && e.key === "ArrowLeft" && atTab === "sessions") {
+          e.preventDefault();
+          setAtTab("files");
+          return true;
+        }
+        // Tab on a tab with nothing to pick: the other one
+        const none = sessionsTab ? !attachable.length : !suggestions.length;
+        if (e.key === "Tab" && none) {
+          e.preventDefault();
+          setAtTab(sessionsTab ? "files" : "sessions");
+          return true;
+        }
+      }
+      if (sessionsTab && attachable.length > 0 && plain) {
+        if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+          e.preventDefault();
+          const step = e.key === "ArrowDown" ? 1 : -1;
+          setSelected(
+            (i) => (i + step + attachable.length) % attachable.length
+          );
+          return true;
+        }
+        if (e.key === "Tab" || e.key === "Enter") {
+          e.preventDefault();
+          toggleSession(attachable[Math.min(selected, attachable.length - 1)]);
+          return true;
+        }
+      }
+      if (pickerToken && !sessionsTab && suggestions.length > 0 && plain) {
         const s = suggestions[Math.min(selected, suggestions.length - 1)];
         if (e.key === "ArrowDown" || e.key === "ArrowUp") {
           e.preventDefault();
@@ -652,6 +840,10 @@ export function useComposer({
       suggestions,
       selected,
       choose,
+      atTab,
+      setAtTab,
+      attachable,
+      toggleSession,
       claude,
       entries,
       value,
@@ -735,14 +927,19 @@ export function useComposer({
     [quotes, value, command]
   );
 
-  /** After a send: the pills, quotes and history position start over */
-  const sent = useCallback(() => {
-    setPastes([]);
-    setHist(-1);
-    setPreview(null);
-    setDismissed(null);
-    if (sessionId && !command) clearQuotes(sessionId);
-  }, [setPastes, sessionId, command]);
+  /** After a send: the pills, quotes and history position start over.
+      `keepAttached`: the caller drops only the chips that went */
+  const sent = useCallback(
+    (options?: { keepAttached?: boolean }) => {
+      setPastes([]);
+      if (!options?.keepAttached) setAttached([]);
+      setHist(-1);
+      setPreview(null);
+      setDismissed(null);
+      if (sessionId && !command) clearQuotes(sessionId);
+    },
+    [setPastes, setAttached, sessionId, command]
+  );
 
   /** The whole draft becomes `text` (cleared after a send, a queued
       message brought back to edit); no pills */
@@ -769,12 +966,30 @@ export function useComposer({
     setFocused,
     uploading,
     // pickers
-    picker: pickerToken && suggestions.length > 0 ? pickerToken.kind : null,
+    // "@" stays open with no files: its Sessions tab may have some
+    picker:
+      pickerToken && (suggestions.length > 0 || pickerToken.kind === "at")
+        ? pickerToken.kind
+        : null,
     listboxId,
     suggestions,
     selected,
     setSelected,
     choose,
+    // @ sessions (N-Attach)
+    atTab,
+    setAtTab,
+    /** No Sessions tab and no chips (a queued message being edited) */
+    sessionsOff,
+    setSessionsOff,
+    /** The Sessions tab's rows, while it's open */
+    attachable,
+    attachableLoading,
+    /** The chips: sessions whose summaries go with the message */
+    attached,
+    /** Attach a row's session (a tap on an attached one detaches it) */
+    attachSession: toggleSession,
+    detachSession,
     // history
     recalled,
     historyCount: entries.length,

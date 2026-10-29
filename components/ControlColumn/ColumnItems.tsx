@@ -177,6 +177,10 @@ function MoreMenu(props: MoreProps) {
             Move to a worktree
           </DropdownMenuItem>
         )}
+        {/* A session's column has no Find of its own (M11) */}
+        {inSession && (
+          <DropdownMenuItem onSelect={go("search")}>Find</DropdownMenuItem>
+        )}
         {inSession && wide && surface !== "beside" && (
           <DropdownMenuItem onSelect={go("beside")}>
             Open beside

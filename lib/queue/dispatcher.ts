@@ -16,6 +16,7 @@ import { limitStore } from "../limits/store";
 import { markResumed } from "../limits/watch";
 import { wentOnSince } from "../limits/went-on";
 import { clearMoving, markMoving } from "../worktree-moving";
+import { composeOutgoing, resolveAttachmentBlock } from "../session-attach";
 import { queueStore, type NewQueueItem, type QueueStore } from "./store";
 import {
   takesNotice,
@@ -82,6 +83,11 @@ export interface DispatcherDeps {
    * queue flag. Throws when the move failed. Absent: move items wait
    */
   runMove?(session: Session, item: QueueItem): Promise<void>;
+  /**
+   * The attached sessions' block (M9), resolved right before the item is
+   * typed in. Absent: items go without it
+   */
+  attachmentBlock?(session: Session, item: QueueItem): Promise<string | null>;
 }
 
 export interface DispatcherState {
@@ -97,11 +103,19 @@ export function newDispatcherState(): DispatcherState {
   return { locks: new Map(), awaitBusy: new Map(), sentAt: new Map() };
 }
 
-/** The text that goes in: the undo notice first, attachments after */
-export function composeText(notice: string | null, item: QueueItem): string {
-  return [notice, item.text, ...item.attachments]
+/**
+ * The text that goes in: the undo notice first, then the attached
+ * sessions' block (M9), the text, and the file attachments
+ */
+export function composeText(
+  notice: string | null,
+  item: QueueItem,
+  block: string | null = null
+): string {
+  const message = [item.text, ...item.attachments]
     .filter((part) => part && part.trim())
     .join(" ");
+  return composeOutgoing(notice, block, message);
 }
 
 export function createDispatcher(
@@ -145,21 +159,29 @@ export function createDispatcher(
    * the paste. False when it went back to pending; throws when it failed
    */
   async function deliver(session: Session, item: QueueItem): Promise<boolean> {
-    // A slash command must stay as it is: the notice waits for a message
-    const notice =
-      item.kind === "command" || !takesNotice(item.text)
-        ? null
-        : store.takeUndoNotice(session.id);
+    // A slash command must stay as it is: the notice waits for a message,
+    // and the attached sessions' block goes only on one too
+    const prefixable = item.kind !== "command" && takesNotice(item.text);
+    const notice = prefixable ? store.takeUndoNotice(session.id) : null;
     const restoreNotice = () => {
       if (notice) store.setUndoNotice(session.id, notice);
     };
-    const text = composeText(notice, item);
     if (session.permission_pending && deps.applyPendingMode) {
       await deps.applyPendingMode(session).catch((error) => {
         console.error("[queue] pending mode before send:", error);
       });
     }
     try {
+      // Resolved now, not when queued: the summaries as they are when it
+      // goes. A failure fails the item (kept, with Retry), nothing typed
+      const block =
+        prefixable && item.sessions?.length && deps.attachmentBlock
+          ? await deps.attachmentBlock(session, item).catch((error) => {
+              const why = error instanceof Error ? error.message : error;
+              throw new Error(`Couldn't attach the sessions: ${why}`);
+            })
+          : null;
+      const text = composeText(notice, item, block);
       if (SNAPSHOT_BEFORE_SEND.has(session.agent_type)) {
         await deps.beforeAgentSend(session, text).catch((error) => {
           console.error("[queue] snapshot before send:", error);
@@ -299,6 +321,7 @@ export function createDispatcher(
     const item: NewQueueItem = {
       text: request.text,
       attachments: request.attachments,
+      sessions: request.sessions,
       kind: request.kind ?? "message",
       origin,
     };
@@ -422,6 +445,8 @@ function dispatcher(): Dispatcher {
           }
         );
       },
+      attachmentBlock: (session, item) =>
+        resolveAttachmentBlock(session.id, item.sessions),
     },
     shared.__agentosDispatch.state
   );

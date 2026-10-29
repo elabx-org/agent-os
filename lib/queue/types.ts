@@ -1,3 +1,5 @@
+import type { SessionAttachmentRef } from "../session-attach-types";
+
 /**
  * The server message queue's shapes, shared by the API routes
  * (app/api/sessions/[id]/queue) and the client (hooks/useQueue.ts). No
@@ -52,6 +54,11 @@ export interface QueueItem {
   text: string;
   /** File paths sent after the text */
   attachments: string[];
+  /**
+   * Sessions attached with @ (M9): their summaries go in a block in front
+   * of the text, resolved when it is typed in (lib/session-attach.ts)
+   */
+  sessions: SessionAttachmentRef[];
   origin: QueueOrigin;
   kind: QueueKind;
   status: QueueStatus;
@@ -90,6 +97,8 @@ export interface QueueState {
 export interface EnqueueRequest {
   text: string;
   attachments?: string[];
+  /** Sessions attached with @ (M9), at most MAX_SESSION_ATTACHMENTS */
+  sessions?: SessionAttachmentRef[];
   /** Default message; agents may only send messages */
   kind?: Extract<QueueKind, "message" | "command">;
   /**
