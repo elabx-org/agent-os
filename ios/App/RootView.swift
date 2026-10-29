@@ -145,20 +145,30 @@ struct ColumnToolbarItem: ToolbarContent {
             }
         }
         .barPriority(true)
+        // The amber count's label is a view of its own, which the bar
+        // would otherwise move out of the Duo's column into a top row
+        .verticalInBar()
     }
 
-    private var label: some View {
-        Label {
-            Text(item.label)
-        } icon: {
-            // The bar draws a symbol's shape only (overlays are dropped), so
-            // the amber count is drawn into the image itself
-            if item.amber && item.badge > 0 {
-                Image(uiImage: AmberBadge.image(
-                    symbol: item.symbolName, filled: item.selected, count: item.badge,
-                    light: model.scheme == .light))
-                    .renderingMode(.original)
-            } else {
+    @ViewBuilder private var label: some View {
+        if item.amber && item.badge > 0 {
+            // The bar reduces a Label or Image to the symbol's shape (an
+            // overlaid or drawn-in count came out monochrome), so this
+            // label is a view of its own
+            Image(systemName: item.symbolName)
+                .symbolVariant(item.selected ? .fill : .none)
+                .imageScale(.large)
+                .frame(width: 32, height: 32)
+                // An overlay, so the symbol stays centred in its slot
+                .overlay(alignment: .topTrailing) {
+                    AmberBadge(count: item.badge).offset(x: 8, y: -4)
+                }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(item.label)
+        } else {
+            Label {
+                Text(item.label)
+            } icon: {
                 Image(systemName: item.symbolName)
                     .symbolVariant(item.selected ? .fill : .none)
             }
@@ -166,37 +176,19 @@ struct ColumnToolbarItem: ToolbarContent {
     }
 }
 
-/// Needs you's count: amber (--needs, #FBBF24) with dark text, at the
-/// symbol's top right where the system badge would be
-enum AmberBadge {
-    static let amber = UIColor(red: 0xFB / 255, green: 0xBF / 255, blue: 0x24 / 255, alpha: 1)
+/// Needs you's count: amber (--needs, #FBBF24) with dark text
+struct AmberBadge: View {
+    let count: Int
 
-    static func image(symbol: String, filled: Bool, count: Int, light: Bool) -> UIImage {
-        let config = UIImage.SymbolConfiguration(textStyle: .body, scale: .large)
-        let glyph = (filled ? UIImage(systemName: symbol + ".fill", withConfiguration: config) : nil)
-            ?? UIImage(systemName: symbol, withConfiguration: config)
-            ?? UIImage()
-        let tinted = glyph.withTintColor(light ? .black : .white, renderingMode: .alwaysOriginal)
-        let text = count > 99 ? "99+" : "\(count)"
-        let font = UIFont.monospacedDigitSystemFont(ofSize: 11, weight: .bold)
-        let textSize = (text as NSString).size(withAttributes: [.font: font])
-        let height: CGFloat = 16
-        let width = max(height, ceil(textSize.width) + 8)
-        // Even padding all round keeps the symbol centred in its slot
-        let pad = width / 2
-        let size = CGSize(width: glyph.size.width + pad * 2, height: glyph.size.height + pad * 2)
-        let format = UIGraphicsImageRendererFormat.preferred()
-        return UIGraphicsImageRenderer(size: size, format: format).image { _ in
-            tinted.draw(at: CGPoint(x: pad, y: pad))
-            let badge = CGRect(
-                x: pad + glyph.size.width - width / 2 + 2, y: pad - height / 2 + 1,
-                width: width, height: height)
-            amber.setFill()
-            UIBezierPath(roundedRect: badge, cornerRadius: height / 2).fill()
-            (text as NSString).draw(
-                at: CGPoint(x: badge.midX - textSize.width / 2, y: badge.midY - textSize.height / 2),
-                withAttributes: [.font: font, .foregroundColor: UIColor.black])
-        }
+    var body: some View {
+        Text(count > 99 ? "99+" : "\(count)")
+            .font(.system(size: 11, weight: .bold).monospacedDigit())
+            .foregroundStyle(.black)
+            .padding(.horizontal, 4)
+            .frame(minWidth: 16, minHeight: 16)
+            .background(Capsule().fill(Color(red: 0xFB / 255, green: 0xBF / 255, blue: 0x24 / 255)))
+            .fixedSize()
+            .accessibilityHidden(true)
     }
 }
 
@@ -393,6 +385,16 @@ struct PagesMenu: View {
 }
 
 extension ToolbarContent {
+    /// Stays in the Duo's vertical column. iOS 27.1 and later.
+    @ToolbarContentBuilder
+    func verticalInBar() -> some ToolbarContent {
+        if #available(iOS 27.1, *) {
+            axisBehavior(.verticalPreferred)
+        } else {
+            self
+        }
+    }
+
     /// Overflow order when the bar runs out of room. iOS 27 and later.
     @ToolbarContentBuilder
     func barPriority(_ high: Bool) -> some ToolbarContent {
