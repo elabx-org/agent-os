@@ -491,6 +491,8 @@ export const Pane = memo(function Pane({
           onTabAdd={() => addTab(paneId)}
         />
       )}
+      {/* E-Git, E-Files: on a phone those pages carry their own title */}
+      {!(isMobile && (viewMode === "git" || viewMode === "files")) && (
       <SessionTitleBar
         session={session}
         projects={projects}
@@ -513,6 +515,7 @@ export const Pane = memo(function Pane({
         onSplitVertical={() => splitVertical(paneId)}
         onClose={() => close(paneId)}
       />
+      )}
       {showStrip && session && <ActivityStrip session={session} />}
 
       {/* Content Area - Mobile: simple flex, Desktop: resizable panels */}

@@ -52,11 +52,19 @@ export function NewFileDialog({
     const path = `${folder.replace(/\/+$/, "")}/${name.trim()}`;
     setBusy(true);
     try {
-      // Only a 404 means the name is free (a folder answers with an error)
-      const probe = await fetch(
-        `/api/files/content?path=${encodeURIComponent(path)}`
+      // Free when the parent folder lists no file or folder by that name
+      // (a missing parent lists nothing)
+      const slash = path.lastIndexOf("/");
+      const listing = await fetch(
+        `/api/files?path=${encodeURIComponent(path.slice(0, slash) || "/")}`
       );
-      if (probe.status !== 404) {
+      const { files = [] } = listing.ok ? await listing.json() : {};
+      const taken =
+        !listing.ok ||
+        (files as { name: string }[]).some(
+          (f) => f.name === path.slice(slash + 1)
+        );
+      if (taken) {
         setError("That name is taken");
         return;
       }

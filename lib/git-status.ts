@@ -67,8 +67,8 @@ export function getGitStatus(workingDir: string): GitStatus {
       // No upstream configured
     }
 
-    // Get status
-    const statusOutput = execSync("git status --porcelain=v1", {
+    // Get status (each new file, not just its new folder)
+    const statusOutput = execSync("git status --porcelain=v1 --untracked-files=all", {
       cwd: workingDir,
       encoding: "utf-8",
     });
