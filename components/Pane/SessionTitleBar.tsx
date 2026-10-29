@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { useSnapshot } from "valtio";
 import { toast } from "sonner";
@@ -23,6 +23,7 @@ import {
   Columns2,
   FolderOpen,
   Activity,
+  ArrowRightLeft,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -63,6 +64,8 @@ import {
   type HeaderInfo,
 } from "@/components/Session/SessionHeader";
 import { addedLines } from "@/components/Session/activity-format";
+import { canSwitch, ModelChip } from "@/components/Session/ModelChip";
+import { SwitchSheet } from "@/components/Session/SwitchSheet";
 import { headerVariant } from "@/lib/session-views";
 
 interface SessionTitleBarProps {
@@ -149,6 +152,21 @@ export function SessionTitleBar({
     useSpreadPanes()?.mode === "fold" && !!session && besidePills();
   const titles = useListTitles(session ? [session] : []);
   const { copy } = useCopyToClipboard();
+  // N-Switch: the header's model chip (or ⋯ where it has no room) opens it
+  const [switchOpen, setSwitchOpen] = useState(false);
+  const switchable = canSwitch(session);
+  const switcher = useMemo(
+    () => ({ open: switchOpen, onOpen: () => setSwitchOpen(true) }),
+    [switchOpen]
+  );
+  // The new session opens where this one was, as a restarted one does
+  const openHandedOff = useCallback((next: Session) => {
+    window.dispatchEvent(
+      new CustomEvent("agentos-session-restarted", {
+        detail: { session: next },
+      })
+    );
+  }, []);
 
   const { title, idLabel } = session
     ? displayTitle(session, titles)
@@ -314,6 +332,12 @@ export function SessionTitleBar({
                 {focus.on ? "Leave Focus" : "Focus"}
               </DropdownMenuItem>
             )}
+            {switchable && (variant === "fold" || variant === "card") && (
+              <DropdownMenuItem onSelect={() => setSwitchOpen(true)}>
+                <ArrowRightLeft className="h-4 w-4" />
+                Agent and model
+              </DropdownMenuItem>
+            )}
             {variant === "card" && (
               <>
                 {/* No rail beside two panes, nor a strip under them */}
@@ -414,6 +438,14 @@ export function SessionTitleBar({
           dimmed={wide && !isFocused}
           actions={
             <>
+              {session && switchable && (
+                <ModelChip
+                  session={session}
+                  open={switchOpen}
+                  onOpen={switcher.onOpen}
+                  className="max-w-[220px] @max-[640px]/bar:hidden"
+                />
+              )}
               <DesktopLiveButton />
               {besideMenu}
               {moreMenu}
@@ -457,6 +489,7 @@ export function SessionTitleBar({
                 ? "compact"
                 : "title"
           }
+          switcher={switcher}
         />
       </div>
     );
@@ -639,6 +672,14 @@ export function SessionTitleBar({
         )}
       </div>
       {header}
+      {session && switchable && (
+        <SwitchSheet
+          session={session}
+          open={switchOpen}
+          onOpenChange={setSwitchOpen}
+          onHandedOff={openHandedOff}
+        />
+      )}
     </>
   );
 }

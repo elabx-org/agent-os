@@ -15,6 +15,7 @@ import { Avatar, agentAvatar, agentName } from "@/components/a/Avatar";
 import { PlanChip } from "@/components/Chat/PlanChip";
 import { useSessionActivity } from "@/hooks/useSessionActivity";
 import { openLiveSheet, StatusCardButton } from "./ActivityStrip";
+import { canSwitch, ModelChip } from "./ModelChip";
 import { formatAge, workingLine } from "./activity-format";
 
 /** What every header says about the session */
@@ -41,19 +42,28 @@ export function crumbState(state: AgentState): { word: string; cls: string } {
   }
 }
 
-/** "agent-os · Claude · main · Needs you"; `state: false` drops the word */
+/**
+ * "agent-os · Claude · main · Needs you"; `state: false` drops the word,
+ * `agent: false` the agent (the model chip beside it names it)
+ */
 export function Crumb({
   info,
   extra = [],
   state = true,
+  agent = true,
   className,
 }: {
   info: HeaderInfo;
   extra?: (string | null | undefined)[];
   state?: boolean;
+  agent?: boolean;
   className?: string;
 }) {
-  const parts = [info.project, agentName(info.session.agent_type), ...extra]
+  const parts = [
+    info.project,
+    agent ? agentName(info.session.agent_type) : null,
+    ...extra,
+  ]
     .filter(Boolean)
     .join(" · ");
   const { word, cls } = crumbState(info.state);
@@ -70,25 +80,36 @@ export function Crumb({
   );
 }
 
+/** The header's "Agent and model" chip and whether its sheet is up (M4) */
+export interface SwitchChipState {
+  open: boolean;
+  onOpen: () => void;
+}
+
 /**
  * The title in the page. `title` (Closed-Chat, N-Queue): the agent's
  * letter, "agent-os · Claude · Needs you", the 22px title, and under it the
  * plan, or while it works what it's doing; both open the Live activity.
  * `compact` (Closed-Terminal): the crumb and a 17px title, the terminal
  * gets the room. `large` (Open-Changes, the open Duo's page): the 22px
- * title alone; the activity strip under it has the rest
+ * title alone; the activity strip under it has the rest. With `switcher`
+ * (N-Switch), `title` and `large` lead with the "Claude · Opus 5.5" chip
+ * in place of the letter and the agent's name
  */
 export function PageHeader({
   info,
   size = "title",
+  switcher,
   className,
 }: {
   info: HeaderInfo;
   size?: "title" | "compact" | "large";
+  switcher?: SwitchChipState;
   className?: string;
 }) {
   const { session } = info;
   const cards = size === "title";
+  const chip = !!switcher && size !== "compact" && canSwitch(session);
   const activity = useSessionActivity(session, {
     active: cards,
     plan: cards,
@@ -104,21 +125,41 @@ export function PageHeader({
         className
       )}
     >
-      <div className="flex min-w-0 items-center gap-1.5 text-[13px]">
-        {cards && (
-          <Avatar
-            {...agentAvatar(session.agent_type)}
-            size="sm"
-            className="h-5 w-5 rounded-md text-[10px]"
+      {chip && switcher ? (
+        <div className="flex min-w-0 items-center gap-2 text-[13px]">
+          <ModelChip
+            session={session}
+            open={switcher.open}
+            onOpen={switcher.onOpen}
           />
-        )}
-        {/* Working is said by the card below */}
-        <Crumb info={info} state={!cards || state !== "work"} />
-      </div>
+          <Crumb
+            info={info}
+            agent={false}
+            state={!cards || state !== "work"}
+            className="shrink-[2]"
+          />
+        </div>
+      ) : (
+        <div className="flex min-w-0 items-center gap-1.5 text-[13px]">
+          {cards && (
+            <Avatar
+              {...agentAvatar(session.agent_type)}
+              size="sm"
+              className="h-5 w-5 rounded-md text-[10px]"
+            />
+          )}
+          {/* Working is said by the card below */}
+          <Crumb info={info} state={!cards || state !== "work"} />
+        </div>
+      )}
       <h1
         className={cn(
           "min-w-0 truncate",
-          size === "compact" ? "t-head mt-0.5 leading-tight" : "t-title mt-1"
+          size === "compact"
+            ? "t-head mt-0.5 leading-tight"
+            : chip
+              ? "t-title mt-2"
+              : "t-title mt-1"
         )}
       >
         {info.title}
