@@ -76,6 +76,8 @@ import {
   PermissionMenuItem,
 } from "@/components/Session/PermissionChip";
 import { PermissionSheetHost } from "@/components/Session/PermissionSheet";
+import { bgSendStore } from "@/stores/bgSend";
+import { isAutoSessionName } from "@/lib/session-names";
 
 interface SessionTitleBarProps {
   session: Session | null | undefined;
@@ -178,9 +180,15 @@ export function SessionTitleBar({
     );
   }, []);
 
-  const { title, idLabel } = session
-    ? displayTitle(session, titles)
-    : { title: fallbackTitle || "No session", idLabel: undefined };
+  const { fresh } = useSnapshot(bgSendStore);
+  // A session opened by "Send and start a new session" is "New session" until named
+  const { title, idLabel } = !session
+    ? { title: fallbackTitle || "No session", idLabel: undefined }
+    : session.id in fresh &&
+        !titles[session.id] &&
+        isAutoSessionName(session.name)
+      ? { title: "New session", idLabel: undefined }
+      : displayTitle(session, titles);
   const projectName = session?.project_id
     ? projects.find((p) => p.id === session.project_id)?.name
     : null;

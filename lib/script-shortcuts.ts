@@ -138,7 +138,9 @@ const RESERVED_MOD_SHIFT = new Set([..."CVFZ"]);
 /** Taken by the app, the editor, the terminal or the browser, so a script can't have it */
 export function isReservedShortcut(spec: ShortcutSpec): boolean {
   const key = spec.key.toUpperCase();
-  if (spec.mod && !spec.shift && !spec.alt) return RESERVED_MOD.has(key);
+  if (spec.mod && !spec.shift && !spec.alt)
+    // ⌘Enter is the composer's "Send and start a new session"
+    return RESERVED_MOD.has(key) || key === "ENTER";
   if (spec.mod && spec.shift && !spec.alt) return RESERVED_MOD_SHIFT.has(key);
   // Alt+N is New where the browser keeps ⌘N
   return spec.alt && !spec.mod && !spec.shift && key === "N";
