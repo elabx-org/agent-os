@@ -3,6 +3,7 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type CSSProperties,
@@ -34,6 +35,17 @@ import {
   noticeChipText,
 } from "./queue-model";
 import type { UseQueue } from "@/hooks/useQueue";
+import { useLongPress } from "@/hooks/useLongPress";
+import { isMacLike } from "@/hooks/useViewShortcuts";
+import { useBackgroundSend } from "@/hooks/useBackgroundSend";
+import {
+  sendChoiceForKey,
+  sendMenuItems,
+  type SendChoice,
+} from "@/lib/bg-send";
+import { markFreshUsed } from "@/stores/bgSend";
+import { SendMenu } from "./SendMenu";
+import { offeredSendItems, sendMenuAvailable } from "./send-menu-model";
 import { permissionModeKeys } from "@/hooks/usePermissionMode";
 import { PermissionChip } from "@/components/Session/PermissionChip";
 import type { Session } from "@/lib/db";
@@ -92,6 +104,14 @@ export interface ComposerCardProps {
       `trailing` level with it on the right one */
   pages?: SpreadPages | null;
 }
+
+/** How a message goes (send, start a new session, queue); `settle` gets
+    whether it went, as soon as it is known */
+type Dispatch = (
+  text: string,
+  sessions: SessionAttachmentRef[],
+  settle: (ok: boolean) => void
+) => Promise<unknown>;
 
 /** A queued message being edited in the box; the draft it replaced */
 interface Editing {
@@ -169,6 +189,7 @@ export function ComposerCard({
       if (queue.enabled || !queue.known) {
         try {
           onSent?.(await queue.send(text, options));
+          markFreshUsed(sessionId);
           return true;
         } catch (e) {
           if (!isQueueOff(e)) {
@@ -179,6 +200,7 @@ export function ComposerCard({
       }
       try {
         await onSendDirect(text, options);
+        markFreshUsed(sessionId);
         return true;
       } catch (e) {
         // Not sent: the draft stays
@@ -186,7 +208,7 @@ export function ComposerCard({
         return false;
       }
     },
-    [queue, onSendDirect, onSent]
+    [queue, onSendDirect, onSent, sessionId]
   );
 
   // Editing a queued message: its sessions can't change, so no Sessions
@@ -197,80 +219,129 @@ export function ComposerCard({
   }, [editing, setSessionsOff]);
   const chips = editing ? [] : composer.attached;
 
-  const send = useCallback(async () => {
-    if (sendingRef.current) return;
-    const text = composer.text;
-    if (editing) {
-      if (!text.trim()) return;
+  /** Into this session's queue behind the current turn (Send to queue) */
+  const enqueue = useCallback(
+    async (
+      text: string,
+      sessions: SessionAttachmentRef[] = []
+    ): Promise<boolean> => {
+      try {
+        onSent?.(
+          await queue.enqueue(text, sessions.length ? { sessions } : undefined)
+        );
+        markFreshUsed(sessionId);
+        return true;
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Couldn't queue it");
+        return false;
+      }
+    },
+    [queue, onSent, sessionId]
+  );
+
+  const bg = useBackgroundSend(sessionId);
+  const { sendAndStartNew } = bg;
+
+  /** Send now (or queue while busy): the normal send */
+  const viaDeliver = useCallback<Dispatch>(
+    async (text, sessions, settle) => settle(await deliver(text, sessions)),
+    [deliver]
+  );
+  const viaQueue = useCallback<Dispatch>(
+    async (text, sessions, settle) => settle(await enqueue(text, sessions)),
+    [enqueue]
+  );
+  /** Send and start a new session: the draft clears once it went, before
+      the fresh session opens */
+  const viaNew = useCallback<Dispatch>(
+    (text, sessions, settle) =>
+      sendAndStartNew(async () => {
+        const ok = await deliver(text, sessions);
+        settle(ok);
+        return ok;
+      }),
+    [sendAndStartNew, deliver]
+  );
+
+  const sendWith = useCallback(
+    async (how: Dispatch) => {
+      if (sendingRef.current) return;
+      const text = composer.text;
+      if (editing) {
+        if (!text.trim()) return;
+        sendingRef.current = true;
+        setSending(true);
+        try {
+          await queue.edit(editing.id, text);
+          composer.replace(editing.stash);
+        } catch (e) {
+          // Gone or on its way: the draft it replaced comes back, the edit
+          // after it to send again if wanted
+          toast.error(e instanceof Error ? e.message : "Couldn't change it");
+          composer.replace(
+            editing.stash.trim() ? `${editing.stash}\n\n${text}` : text
+          );
+        } finally {
+          setEditing(null);
+          sendingRef.current = false;
+          setSending(false);
+        }
+        return;
+      }
+      const attached = composer.attached;
+      const sessions = sessionRefs(attached);
+      // The chips that went: off, not one attached while it went
+      const dropSent = () => {
+        for (const a of attached) composer.detachSession(a.sessionId);
+      };
+      const clearSent = () => {
+        composer.replace("");
+        composer.sent({ keepAttached: true });
+        dropSent();
+      };
+      // A summary needs a message to go with
+      if (!text.trim() && attached.length) {
+        toast("Add a message to go with the attached session");
+        composer.textareaRef.current?.focus();
+        return;
+      }
+      // With a video: its frames first, once they're ready
+      if (videos) {
+        sendWithVideos(
+          sessionId,
+          () => textRef.current,
+          (full) => {
+            void how(full, sessions, (ok) => {
+              // Couldn't go: back into an empty box rather than lost
+              if (!ok && !textRef.current) composer.replace(full);
+            });
+          },
+          clearSent
+        );
+        return;
+      }
+      if (!text.trim()) {
+        onEmptySend?.();
+        return;
+      }
       sendingRef.current = true;
       setSending(true);
       try {
-        await queue.edit(editing.id, text);
-        composer.replace(editing.stash);
-      } catch (e) {
-        // Gone or on its way: the draft it replaced comes back, the edit
-        // after it to send again if wanted
-        toast.error(e instanceof Error ? e.message : "Couldn't change it");
-        composer.replace(
-          editing.stash.trim() ? `${editing.stash}\n\n${text}` : text
-        );
+        // The draft holds the pills' full text: that's what goes
+        await how(text, sessions, (ok) => {
+          if (!ok) return;
+          // Typed on while it went: keep that
+          if (textRef.current === text) clearSent();
+          else dropSent();
+        });
       } finally {
-        setEditing(null);
         sendingRef.current = false;
         setSending(false);
       }
-      return;
-    }
-    const attached = composer.attached;
-    const sessions = sessionRefs(attached);
-    // The chips that went: off, not one attached while it went
-    const dropSent = () => {
-      for (const a of attached) composer.detachSession(a.sessionId);
-    };
-    const clearSent = () => {
-      composer.replace("");
-      composer.sent({ keepAttached: true });
-      dropSent();
-    };
-    // A summary needs a message to go with
-    if (!text.trim() && attached.length) {
-      toast("Add a message to go with the attached session");
-      composer.textareaRef.current?.focus();
-      return;
-    }
-    // With a video: its frames first, once they're ready
-    if (videos) {
-      sendWithVideos(
-        sessionId,
-        () => textRef.current,
-        (full) => {
-          void deliver(full, sessions).then((ok) => {
-            // Couldn't go: back into an empty box rather than lost
-            if (!ok && !textRef.current) composer.replace(full);
-          });
-        },
-        clearSent
-      );
-      return;
-    }
-    if (!text.trim()) {
-      onEmptySend?.();
-      return;
-    }
-    sendingRef.current = true;
-    setSending(true);
-    try {
-      // The draft holds the pills' full text: that's what goes
-      if (await deliver(text, sessions)) {
-        // Typed on while it went: keep that
-        if (textRef.current === text) clearSent();
-        else dropSent();
-      }
-    } finally {
-      sendingRef.current = false;
-      setSending(false);
-    }
-  }, [composer, editing, queue, videos, sessionId, deliver, onEmptySend]);
+    },
+    [composer, editing, queue, videos, sessionId, onEmptySend]
+  );
+  const send = useCallback(() => sendWith(viaDeliver), [sendWith, viaDeliver]);
 
   /** A queued message back into the box, to change and save */
   const startEdit = useCallback(
@@ -321,12 +392,13 @@ export function ComposerCard({
             sessions: item.sessions,
           })
         );
+        markFreshUsed(sessionId);
         await queue.dismiss(item.id);
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Couldn't send");
       }
     },
-    [queue, onSent]
+    [queue, onSent, sessionId]
   );
   const toComposer = useCallback(
     (item: QueueItem) => {
@@ -358,33 +430,96 @@ export function ComposerCard({
 
   const keep = (e: { preventDefault: () => void }) => e.preventDefault();
 
+  // The send menu (N-BgSend): hold Send (touch) or right-click it; ⌘Return
+  // is its "Send and start a new session" without the menu
+  const startNew = bg.available && !editing && !videos;
+  const canMenu = sendMenuAvailable({ editing: !!editing, empty });
+  const [menuOpen, setMenuOpen] = useState(false);
+  const showMenu = menuOpen && canMenu;
+  useEffect(() => {
+    if (!canMenu) setMenuOpen(false);
+  }, [canMenu]);
+  const menuItems = offeredSendItems(
+    sendMenuItems({ queueOn: queue.enabled, mac: isMacLike() }),
+    startNew
+  );
+  const rowRef = useRef<HTMLDivElement>(null);
+  // The send button changes element (Queue/Send, collapsed/open): a new
+  // ref object each time, so the hold follows it
+  const [sendEl, setSendEl] = useState<HTMLButtonElement | null>(null);
+  const sendElRef = useMemo(() => ({ current: sendEl }), [sendEl]);
+  useLongPress(sendElRef, canMenu ? () => setMenuOpen(true) : undefined);
+  const pointerType = useRef("");
+  const chooseSend = useCallback(
+    (choice: SendChoice) => {
+      if (choice === "queue" && queue.enabled) void sendWith(viaQueue);
+      else if (choice === "sendAndNew" && startNew) void sendWith(viaNew);
+      else void send();
+    },
+    [queue.enabled, startNew, sendWith, viaQueue, viaNew, send]
+  );
+  const menuProps = canMenu
+    ? {
+        ref: setSendEl,
+        "aria-haspopup": "menu" as const,
+        "aria-expanded": showMenu,
+        onPointerDown: (e: { pointerType: string }) => {
+          pointerType.current = e.pointerType;
+        },
+        // A mouse's right button (a touch's hold is useLongPress)
+        onContextMenu: (e: { preventDefault: () => void }) => {
+          e.preventDefault();
+          if (pointerType.current !== "touch") setMenuOpen(true);
+        },
+      }
+    : { ref: setSendEl };
+  const ring = showMenu && "shadow-[0_0_0_4px_rgba(167,139,250,0.35)]";
+
   // Nothing typed in the terminal is Enter, which goes now as ever
   const sendButton =
     held && !editing && !empty ? (
       <button
         type="button"
+        {...menuProps}
         onMouseDown={keep}
         onClick={send}
-        disabled={sending}
-        aria-label={`Queue: sends when ${agentName} is done`}
-        className="pill pill-primary flex-none px-4 active:opacity-80 disabled:opacity-60"
+        disabled={sending || bg.starting}
+        aria-label={
+          canMenu
+            ? `Queue: sends when ${agentName} is done, hold for more options`
+            : `Queue: sends when ${agentName} is done`
+        }
+        className={cn(
+          "pill pill-primary flex-none touch-manipulation px-4 active:opacity-80 disabled:opacity-60",
+          ring
+        )}
       >
         {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Queue"}
       </button>
     ) : (
       <button
         type="button"
+        {...menuProps}
         onMouseDown={keep}
         onClick={send}
-        disabled={sending}
+        disabled={sending || bg.starting}
         // The one accent control on screen, also when it just presses Enter
         aria-label={
-          editing ? "Save" : empty && onEmptySend ? "Press Enter" : "Send"
+          editing
+            ? "Save"
+            : empty && onEmptySend
+              ? "Press Enter"
+              : canMenu
+                ? "Send, hold for more options"
+                : "Send"
         }
         title={editing ? "Save" : empty && onEmptySend ? "Press Enter" : "Send"}
-        className="send-btn touch-manipulation active:opacity-80 disabled:opacity-60"
+        className={cn(
+          "send-btn touch-manipulation active:opacity-80 disabled:opacity-60",
+          ring
+        )}
       >
-        {sending ? (
+        {sending || bg.starting ? (
           <Loader2 className="h-5 w-5 animate-spin" />
         ) : (
           <ArrowUp className="h-5 w-5" strokeWidth={2.4} />
@@ -407,8 +542,16 @@ export function ComposerCard({
       onTouchEnd={(e) => e.stopPropagation()}
     >
       <ComposerPopover composer={composer} />
+      <SendMenu
+        open={showMenu}
+        items={menuItems}
+        highlighted={startNew ? "sendAndNew" : undefined}
+        onChoose={chooseSend}
+        onClose={() => setMenuOpen(false)}
+        anchorRef={rowRef}
+      />
       {above}
-      <div className="flex items-end gap-2.5">
+      <div ref={rowRef} className="flex items-end gap-2.5">
         <div
           className={cn(
             collapsed
@@ -536,15 +679,25 @@ export function ComposerCard({
                   inputProps?.onKeyDown?.(e);
                   if (e.defaultPrevented) return;
                   if (live?.onKeyDown(e)) return;
-                  // Return sends (or queues), Shift+Return adds a line
-                  if (
-                    e.key === "Enter" &&
-                    !e.shiftKey &&
-                    !e.nativeEvent.isComposing
-                  ) {
-                    e.preventDefault();
-                    void send();
-                  }
+                  // Return sends (or queues), Shift+Return adds a line,
+                  // ⌘Return sends and starts a new session. Kept here, so
+                  // no newline reaches the box or the terminal
+                  const choice = sendChoiceForKey(
+                    {
+                      key: e.key,
+                      metaKey: e.metaKey,
+                      ctrlKey: e.ctrlKey,
+                      shiftKey: e.shiftKey,
+                      altKey: e.altKey,
+                      isComposing: e.nativeEvent.isComposing,
+                    },
+                    isMacLike()
+                  );
+                  if (!choice) return;
+                  e.preventDefault();
+                  if (choice === "sendAndNew" && startNew && !empty)
+                    void sendWith(viaNew);
+                  else void send();
                 }}
                 className={cn(
                   // Open: the whole first line, its text in line with the card's
