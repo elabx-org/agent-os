@@ -1,6 +1,14 @@
 "use client";
 
-import type { SearchRequest } from "@/stores/searchActions";
+import { useEffect, useRef } from "react";
+import { useSnapshot } from "valtio";
+import { searchRequestVerdict } from "@/components/Search/open-result";
+import {
+  clearSearchAction,
+  SEARCH_REQUEST_TTL_MS,
+  searchActionStore,
+  type SearchRequest,
+} from "@/stores/searchActions";
 
 /**
  * Takes this session's search request of `kind` while `active` (the view
@@ -13,8 +21,23 @@ export function useSearchAction<K extends SearchRequest["kind"]>(
   active: boolean,
   take: (request: Extract<SearchRequest, { kind: K }>) => void
 ): void {
-  void sessionId;
-  void kind;
-  void active;
-  void take;
+  const { request } = useSnapshot(searchActionStore);
+  const takeRef = useRef(take);
+  takeRef.current = take;
+
+  useEffect(() => {
+    // The store's own object, not the snapshot: cleared exactly once
+    const current = searchActionStore.request;
+    const verdict = searchRequestVerdict(
+      current,
+      sessionId,
+      kind,
+      active,
+      SEARCH_REQUEST_TTL_MS
+    );
+    if (verdict === "wait" || !current) return;
+    clearSearchAction();
+    if (verdict === "take")
+      takeRef.current(current as Extract<SearchRequest, { kind: K }>);
+  }, [request, sessionId, kind, active]);
 }
