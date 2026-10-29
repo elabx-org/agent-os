@@ -10,6 +10,8 @@ import {
   tickersDisabled,
   type SessionFlagName,
 } from "./flags";
+import { startLimitWatch } from "./limits/watch";
+import { startResumeTicker } from "./limits/resume";
 import { startDispatcher } from "./queue/dispatcher";
 import { onEdge, startSessionWatch, wantWatch } from "./session-watch";
 import { onIdleEdge } from "./turns";
@@ -26,6 +28,10 @@ export function startTickers(): void {
   wantWatch(() => onSomewhere("queue") || onSomewhere("snapshots"));
   startSessionWatch();
   startDispatcher();
+  // Usage limits (M6): detection registers its own wantWatch; the resume
+  // pass checks flag autoResume
+  startLimitWatch();
+  startResumeTicker();
 
   // The end of a turn: Codex/Gemini post snapshots, Claude's turn journal
   onEdge((edge) => {
