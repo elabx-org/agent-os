@@ -20,6 +20,7 @@ import { closeNew, newSurfaceStore } from "@/stores/newSurface";
 import { NewForm, StartPill } from "./NewForm";
 import { NewScreen } from "./NewPage";
 import { useNewForm, type NewFormState, type RunAs } from "./useNewForm";
+import { PageEdge } from "@/components/ui/page-edge";
 
 interface NewSurfaceProps {
   open: boolean;
@@ -88,6 +89,12 @@ function Layer({
       style={style}
       className={cn("bg-background fixed z-[45] outline-none", className)}
     >
+      <PageEdge
+        label="Cancel"
+        onClose={() => {
+          if (!formRef.current.busy) formRef.current.handleClose();
+        }}
+      />
       {children}
     </section>,
     document.body

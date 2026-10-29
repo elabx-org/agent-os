@@ -67,6 +67,7 @@ import { SessionsSection } from "./SessionsSection";
 import { UploadsSection } from "./UploadsSection";
 import { LabsSection } from "./LabsSection";
 import { Chevron, SettingGroup } from "./SettingGroup";
+import { PageEdge } from "@/components/ui/page-edge";
 
 const SECTION_TITLE: Record<SettingsSection, string> = {
   notifications: "Notifications",
@@ -361,6 +362,10 @@ function SettingsLayer(props: NotificationsSectionProps) {
           "flex-col pl-[env(safe-area-inset-left)]"
         )}
       >
+        <PageEdge
+          label={detail ? "Back to Settings" : "Close settings"}
+          onClose={() => (detail ? settingsBack() : closeSettings())}
+        />
         <div ref={scrollRef} className={scroll}>
           {navButton && <div className="-mt-2 px-3 pb-1">{navButton}</div>}
           {detail ? (
@@ -394,6 +399,7 @@ function SettingsLayer(props: NotificationsSectionProps) {
       style={{ ...layerStyle, ...gutters(20) }}
       className={layer}
     >
+      <PageEdge label="Close settings" onClose={closeSettings} />
       <aside
         style={listStyle}
         className={cn(

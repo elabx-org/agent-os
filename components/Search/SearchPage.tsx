@@ -51,6 +51,8 @@ import {
   type PageSection,
 } from "./search-page-model";
 import type { SearchResult, SearchSurfaceProps } from "./types";
+import { PageEdge } from "@/components/ui/page-edge";
+import { runNav } from "@/lib/nav-actions";
 
 /**
  * Phone and Duo full page (N-Search): pill input with count and clear,
@@ -252,6 +254,7 @@ function SearchLayer(props: SearchSurfaceProps) {
       className="bg-background fixed inset-y-0 z-[45] flex flex-col overflow-hidden pt-[env(safe-area-inset-top)] pl-[env(safe-area-inset-left)]"
       style={layerStyle}
     >
+      <PageEdge label="Close search" onClose={() => runNav("back")} />
       <div className={cn("flex flex-none flex-col gap-1 pt-4 pl-5", padRight)}>
         <div className="flex items-center gap-2">
           <div className="glass flex h-12 min-w-0 flex-1 items-center gap-2 rounded-[24px] pr-0.5 pl-3.5">
