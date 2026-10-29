@@ -28,7 +28,6 @@ import {
 } from "@/components/Composer";
 import { ComposerCard } from "@/components/Composer/ComposerCard";
 import {
-  ClaudeStateBar,
   RewindSheet,
   useClaudeLive,
 } from "@/components/Composer/ClaudeStateBar";
@@ -76,6 +75,8 @@ export interface ChatViewProps {
   onOpenTerminal: () => void;
   /** Told when the fold deck starts or stops: its state line replaces the strip */
   onDeck?: (on: boolean) => void;
+  /** The transcript was read and has nothing in it (or there is none) */
+  onEmpty?: () => void;
 }
 
 /** Claude Code's session as a conversation, read from its transcript */
@@ -85,9 +86,21 @@ export function ChatView({
   hideAgentsBar,
   onOpenTerminal,
   onDeck,
+  onEmpty,
 }: ChatViewProps) {
-  const { items, state, truncated, loadEarlier, loadingEarlier } =
-    useTranscript(`/api/sessions/${session.id}`, active);
+  const transcriptBase = `/api/sessions/${session.id}`;
+  const { items, state, settledFor, truncated, loadEarlier, loadingEarlier } =
+    useTranscript(transcriptBase, active);
+  // Read for this session and still empty a moment later: a transcript
+  // that's briefly not found (a new Claude session) doesn't count
+  const empty =
+    settledFor === transcriptBase &&
+    (state === "missing" || (state === "ready" && !items.length));
+  useEffect(() => {
+    if (!empty || !onEmpty) return;
+    const timer = setTimeout(onEmpty, 800);
+    return () => clearTimeout(timer);
+  }, [empty, onEmpty]);
   const { statuses, nativeKeyboard } = useSnapshot(mobileNavStore);
   const status = statuses[session.id]?.status;
   const { rows, results } = useMemo(() => buildRows(items), [items]);
@@ -337,6 +350,13 @@ export function ChatView({
     [session.id, sent]
   );
   const mode = useLayoutMode();
+  // The header's inset (Closed-Chat 20px, Fold, open Duo and desktop
+  // 24px); the composer row sits 16px in on the closed Duo and the phone
+  const roomy = mode !== "duo-closed" && mode !== "phone";
+  const inset = roomy ? "px-6" : "px-5";
+  const controlsPad = roomy ? 24 : 16;
+  // Desktop: one centred 672px column for the chat and the composer
+  const column = mode === "desktop" ? "max-w-[672px]" : "max-w-3xl";
 
   // The answer Claude waits on: the screen's prompt with its options, or
   // what the hook recorded when the screen can't be read
@@ -409,7 +429,8 @@ export function ChatView({
                 el.scrollHeight - el.scrollTop - el.clientHeight < 48;
             }}
             className={cn(
-              "bg-background min-h-0 shrink-0 overflow-y-auto px-3 pt-3",
+              "bg-background min-h-0 shrink-0 overflow-y-auto pt-3",
+              inset,
               !controlPages &&
                 "pb-[calc(0.75rem+var(--pane-inset-bottom,env(safe-area-inset-bottom)))]"
             )}
@@ -419,7 +440,12 @@ export function ChatView({
               paddingBottom: controlPages ? controlsHeight + 12 : undefined,
             }}
           >
-            <div className="mx-auto flex min-h-full max-w-3xl flex-col justify-end gap-3">
+            <div
+              className={cn(
+                "mx-auto flex min-h-full flex-col justify-end gap-3",
+                column
+              )}
+            >
               {earlier}
               <div ref={leftRowsRef} className="flex flex-col gap-3">
                 <Conversation
@@ -496,9 +522,9 @@ export function ChatView({
             atBottom.current =
               el.scrollHeight - el.scrollTop - el.clientHeight < 48;
           }}
-          className="min-h-0 flex-1 overflow-y-auto px-3 py-3"
+          className={cn("min-h-0 flex-1 overflow-y-auto py-3", inset)}
         >
-          <div className="mx-auto flex max-w-3xl flex-col gap-3">
+          <div className={cn("mx-auto flex flex-col gap-3", column)}>
             {state === "loading" && (
               <div className="text-muted-foreground flex items-center gap-2 py-8 text-sm">
                 <Loader2 className="h-4 w-4 animate-spin" /> Loading the
@@ -559,7 +585,8 @@ export function ChatView({
         <div
           ref={controlsRef}
           className={cn(
-            "px-2.5 pt-1.5 pb-[calc(0.625rem+var(--pane-inset-bottom,env(safe-area-inset-bottom)))]",
+            "pt-1.5 pb-[calc(0.625rem+var(--pane-inset-bottom,env(safe-area-inset-bottom)))]",
+            roomy ? "px-6" : "px-4",
             // As pages, it already sits on one side of the fold
             !paged && !controlPages && "fold-controls",
             deck && "flex flex-col",
@@ -583,11 +610,11 @@ export function ChatView({
             <DeckStateLine
               session={session}
               active={active}
-              className="-mx-2.5 pt-0"
+              className="-mx-6 pt-0"
             />
           )}
           {deckControls && (
-            <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-2 pt-1.5 pb-3">
+            <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pt-1.5 pb-3">
               {needsYou && hasCard ? (
                 needsYouCard
               ) : (
@@ -605,9 +632,17 @@ export function ChatView({
             </div>
           )}
           <div
-            className="relative shrink-0"
+            className={cn(
+              "relative shrink-0",
+              !controlPages && mode === "desktop" && "mx-auto w-full",
+              !controlPages && mode === "desktop" && column
+            )}
             // Less the container's padding, so it ends where the page does
-            style={controlPages ? { width: controlPages.left - 10 } : undefined}
+            style={
+              controlPages
+                ? { width: controlPages.left - controlsPad }
+                : undefined
+            }
           >
             <ComposerPopover composer={composer} />
             <RewindSheet
@@ -619,6 +654,7 @@ export function ChatView({
               composer={composer}
               sessionId={session.id}
               agentName="Claude"
+              inlinePlus={mode === "desktop"}
               queue={queue}
               onSendDirect={sendDirect}
               onSent={sent}
@@ -662,7 +698,6 @@ export function ChatView({
                 </>
               }
             />
-            <ClaudeStateBar live={live} />
           </div>
           {controlPages && (
             <>

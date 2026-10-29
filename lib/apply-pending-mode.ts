@@ -1,14 +1,14 @@
 /**
  * Ends a Claude session's tmux so it starts again resuming the same
  * conversation with its stored permission mode (which applies a pending
- * full access). Shared by the restart route (the next attach starts it) and
- * the queue dispatcher (at the idle edge, relaunching it at once).
+ * full access). Used by the restart route (the next attach starts it).
  */
 
 import { execFile } from "child_process";
 import { promisify } from "util";
 import { getDb, queries, type Session } from "./db";
 import { readClaudeSessionMeta } from "./claude-transcript";
+import { tmuxNameOf } from "./session-launch";
 
 const execFileAsync = promisify(execFile);
 
@@ -22,7 +22,8 @@ export async function restartWithStoredMode(
 ): Promise<StoredModeRestart> {
   const db = getDb();
   const id = session.id;
-  const target = session.tmux_name || `claude-${id}`;
+  // Only Claude sessions come here, so this is claude-<id> without a name
+  const target = tmuxNameOf(session);
 
   // The running conversation, not the newest transcript in the folder
   const meta = await readClaudeSessionMeta(target);

@@ -17,6 +17,7 @@ import { requester } from "@/lib/permission-guard";
 import { effectiveMode } from "@/lib/permission-mode";
 import { isRunning, tmuxNameOf } from "@/lib/session-launch";
 import { sendText } from "@/lib/tmux-send";
+import { takesNotice } from "@/lib/queue/types";
 import {
   getUndoNotice,
   setUndoNotice,
@@ -125,9 +126,10 @@ export async function POST(
     }
 
     // A pending undo notice rides on the next message (lib/turns.ts), not
-    // on an answer typed at a prompt
+    // on an answer typed at a prompt or a slash command
     const notice =
       pressEnter &&
+      takesNotice(text) &&
       getUndoNotice(session.id) &&
       !(await readScreenPrompt(tmuxSessionName).catch(() => null))
         ? takeUndoNotice(session.id)

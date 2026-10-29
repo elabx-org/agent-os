@@ -157,15 +157,15 @@ export function timeAgo(
  * The short age lists put on the right: "now", "12m", "3h", "2d". Takes
  * epoch ms or a timestamp; SQLite's "YYYY-MM-DD HH:MM:SS" is UTC.
  */
+/** A DB time ("2026-10-29 07:21:00", UTC) or ISO string in ms; NaN if bad */
+export function dbTimeMs(value: string): number {
+  return new Date(
+    /(Z|[+-]\d\d:?\d\d)$/.test(value) ? value : value.replace(" ", "T") + "Z"
+  ).getTime();
+}
+
 export function shortAge(value: number | string, now = Date.now()): string {
-  const at =
-    typeof value === "number"
-      ? value
-      : new Date(
-          /(Z|[+-]\d\d:?\d\d)$/.test(value)
-            ? value
-            : value.replace(" ", "T") + "Z"
-        ).getTime();
+  const at = typeof value === "number" ? value : dbTimeMs(value);
   if (Number.isNaN(at)) return "";
   const mins = Math.floor(Math.max(0, now - at) / 60_000);
   if (mins < 1) return "now";

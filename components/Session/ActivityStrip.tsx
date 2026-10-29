@@ -51,7 +51,7 @@ export function ActivityStrip({
     <div
       className={cn(
         // The header's side insets, so the two line up
-        "kb-compact-hide bg-background shrink-0 pt-1 pr-[calc(0.5rem+var(--safe-right,env(safe-area-inset-right)))] pl-[calc(0.5rem+env(safe-area-inset-left))]",
+        "activity-strip kb-compact-hide bg-background shrink-0 pt-1 pr-[calc(0.5rem+var(--safe-right,env(safe-area-inset-right)))] pl-[calc(0.5rem+env(safe-area-inset-left))]",
         nativeKeyboard && "hidden",
         className
       )}
@@ -149,9 +149,25 @@ export function LiveActivitySheet({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  // The closed Duo's web column stays beside it, its × and Stop in reach
+  // (E-Live): the sheet stops at the column, under the title
+  const { railWidth } = useSnapshot(mobileNavStore);
+  const beside = railWidth > 0;
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="sheet-surface bg-[var(--sheet)]">
+      <SheetContent
+        className="sheet-surface bg-[var(--sheet)]"
+        data-beside-column={beside ? "" : undefined}
+        style={
+          beside
+            ? { right: railWidth, top: 70, maxWidth: "none", maxHeight: "none" }
+            : undefined
+        }
+        onPointerDownOutside={(e) => {
+          const target = e.target as Element | null;
+          if (target?.closest?.("[data-control-column]")) e.preventDefault();
+        }}
+      >
         <SheetDescription className="sr-only">
           What this session is doing, its plan, changes and agents
         </SheetDescription>

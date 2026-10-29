@@ -9,6 +9,7 @@ import {
   patchPeek,
   placeTurns,
   shortElapsed,
+  shortNames,
   toolLines,
   type ResultItem,
   type ToolItem,
@@ -237,4 +238,19 @@ test("placeTurns: two turns on one prompt go in order", () => {
     placed.get("s1")?.map((t) => t.turnNo),
     [2, 3]
   );
+});
+
+test("shortNames tells same-named files apart by their folders", () => {
+  const names = shortNames([
+    "src/index.ts",
+    "test/index.ts",
+    "src/app.ts",
+    "a/lib/x.ts",
+    "b/lib/x.ts",
+  ]);
+  assert.equal(names.get("src/index.ts"), "src/index.ts");
+  assert.equal(names.get("test/index.ts"), "test/index.ts");
+  assert.equal(names.get("src/app.ts"), "app.ts");
+  assert.equal(names.get("a/lib/x.ts"), "a/lib/x.ts");
+  assert.equal(names.get("b/lib/x.ts"), "b/lib/x.ts");
 });

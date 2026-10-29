@@ -99,13 +99,6 @@ function harness(
       beforeAgentSend: async (s) => {
         calls.push(`snapshot:${s.id}`);
       },
-      applyPendingMode: async (s) => {
-        calls.push(`restart:${s.id}`);
-      },
-      pendingModeSessions: () =>
-        [...sessions.values()]
-          .filter((s) => s.permission_pending)
-          .map((s) => s.id),
       now: () => clock.now,
       sleep: () => new Promise((r) => setImmediate(r)),
       ...(opts.hookAt && { hookAt: opts.hookAt }),
@@ -246,6 +239,23 @@ describe("dispatcher", () => {
     assert.equal(store.getUndoNotice("s1")?.text, "[notice]");
   });
 
+  test("a slash command or ! line typed as a message keeps it waiting", async () => {
+    const h = harness();
+    store.setUndoNotice("s1", "[notice]");
+    add("s1", "/clear");
+    add("s1", "  ! ls");
+    add("s1", "carry on");
+    for (let i = 0; i < 3; i++) {
+      await h.d.service("s1");
+      h.clock.now += 30_000;
+    }
+    assert.deepEqual(
+      h.sent.map((s) => s.text),
+      ["/clear", "  ! ls", "[notice] carry on"]
+    );
+    assert.equal(store.getUndoNotice("s1"), null);
+  });
+
   test("a notice alone is never sent", async () => {
     const h = harness();
     store.setUndoNotice("s1", "[notice]");
@@ -299,17 +309,18 @@ describe("dispatcher", () => {
     assert.equal(h.calls.length, 0);
   });
 
-  test("a pending permission mode is applied when idle, never busy", async () => {
+  test("a pending permission mode alone never touches the session", async () => {
+    // The user may have cancelled the restart: only they restart it
     const h = harness({
       sessions: [session("s1", { permission_pending: "bypassPermissions" })],
     });
-    h.always("s1", hold("busy"));
     await h.d.recheck();
-    assert.ok(!h.calls.includes("restart:s1"));
-    h.always("s1", READY);
-    await h.d.recheck();
-    assert.ok(h.calls.includes("restart:s1"));
-    assert.equal(h.sent.length, 0);
+    await h.d.service("s1");
+    assert.deepEqual(h.calls, []);
+    // Its queue still goes as usual
+    add("s1", "one");
+    await h.d.service("s1");
+    assert.deepEqual(h.sent, [{ id: "s1", text: "one" }]);
   });
 
   test("idle edges trigger a send", async () => {

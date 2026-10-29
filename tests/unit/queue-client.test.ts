@@ -15,7 +15,12 @@ import {
   turnNoOfNotice,
   upsertItem,
 } from "../../components/Composer/queue-model";
-import { undoNoticeText, type QueueItem } from "../../lib/queue/types";
+import {
+  splitUndoNotice,
+  takesNotice,
+  undoNoticeText,
+  type QueueItem,
+} from "../../lib/queue/types";
 
 function item(id: number, position: number, extra: Partial<QueueItem> = {}) {
   return {
@@ -158,4 +163,24 @@ test("the notice chip names the undone turn", () => {
     noticeChipText("something else", "Claude"),
     "Claude will be told about the undo"
   );
+});
+
+test("the undo notice rides on plain messages only", () => {
+  assert.equal(takesNotice("carry on"), true);
+  assert.equal(takesNotice("/clear"), false);
+  assert.equal(takesNotice("  /model sonnet"), false);
+  assert.equal(takesNotice("! ls"), false);
+  assert.equal(takesNotice("# remember this"), false);
+});
+
+test("a sent message shows without its undo notice", () => {
+  const sent = `${undoNoticeText(1, ["src/added.ts", "src/app.ts"])} carry on`;
+  assert.deepEqual(splitUndoNotice(sent), {
+    text: "carry on",
+    undoneTurn: 1,
+  });
+  assert.deepEqual(splitUndoNotice("[Agent-OS] hi"), {
+    text: "[Agent-OS] hi",
+    undoneTurn: null,
+  });
 });

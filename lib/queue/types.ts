@@ -57,7 +57,15 @@ export interface QueueItem {
 export interface QueueState {
   /** Pending and sending items, by position; never the undo notice */
   items: QueueItem[];
-  /** The pending undo notice the next message carries, if any */
+  /**
+   * Messages that didn't go (a tmux error, or cut off by a restart) in the
+   * last day and not dismissed, oldest first, each with its error
+   */
+  failed: QueueItem[];
+  /**
+   * The pending undo notice the next message carries, if any. Also with the
+   * queue off: the old send prefixes it too
+   */
   notice: QueueItem | null;
   ready: boolean;
   holdReason: HoldReason | null;
@@ -103,4 +111,30 @@ export interface EditQueueItemResult {
 export function undoNoticeText(turnNo: number, paths: string[]): string {
   const files = paths.length ? paths.join(", ") : "its files";
   return `[Agent-OS: the user undid turn ${turnNo}; ${files} ${paths.length === 1 ? "is" : "are"} back to how ${paths.length === 1 ? "it was" : "they were"} before it. Re-read them before editing.]`;
+}
+
+/**
+ * Whether a message can carry the undo notice: not a slash command, a `!`
+ * shell line or a `#` memory line, which the notice in front would turn
+ * into a plain prompt. Those go as they are and the notice waits
+ */
+export function takesNotice(text: string): boolean {
+  return !/^[/!#]/.test(text.trimStart());
+}
+
+/** A sent message's leading undo notice, which the chat doesn't show */
+const NOTICE_PREFIX = /^\[Agent-OS: the user undid turn (\d+);[^\]]*\]\s*/;
+
+/**
+ * A user message as the user typed it: without the undo notice the server
+ * put in front, and the turn that notice was about
+ */
+export function splitUndoNotice(text: string): {
+  text: string;
+  undoneTurn: number | null;
+} {
+  const m = NOTICE_PREFIX.exec(text);
+  return m
+    ? { text: text.slice(m[0].length), undoneTurn: Number(m[1]) }
+    : { text, undoneTurn: null };
 }

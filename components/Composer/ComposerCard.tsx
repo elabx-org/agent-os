@@ -2,6 +2,7 @@
 
 import {
   useCallback,
+  useEffect,
   useRef,
   useState,
   type CSSProperties,
@@ -19,7 +20,7 @@ import { ComposerInput, type ComposerInputProps } from "./ComposerInput";
 import { ComposerPopover } from "./ComposerPopover";
 import { ComposerChips } from "./ModeChip";
 import { VideoPills } from "./VideoPills";
-import { QueueCard } from "./QueueCard";
+import { FailedSends, QueueCard } from "./QueueCard";
 import { modeTone, type ClaudeLive } from "./ClaudeStateBar";
 import { PlusSlot, plusButtonClass } from "./plus-slot";
 import {
@@ -30,7 +31,7 @@ import {
   noticeChipText,
 } from "./queue-model";
 import type { UseQueue } from "@/hooks/useQueue";
-import type { EnqueueResult } from "@/lib/queue/types";
+import type { EnqueueResult, QueueItem } from "@/lib/queue/types";
 
 export interface ComposerCardProps {
   composer: ComposerEngine;
@@ -68,6 +69,8 @@ export interface ComposerCardProps {
   /** Send with nothing typed (the terminal: press Enter); without it an
       empty send does nothing */
   onEmptySend?: () => void;
+  /** Desktop (Desk-Chat): the + inside the capsule rather than beside it */
+  inlinePlus?: boolean;
   /** The open Duo's Two rows: the card on the left page, send and
       `trailing` level with it on the right one */
   pages?: SpreadPages | null;
@@ -110,6 +113,7 @@ export function ComposerCard({
   modePill = true,
   onEmptySend,
   pages,
+  inlinePlus = false,
 }: ComposerCardProps) {
   const { items: videoItems } = useSnapshot(videoStore);
   const videos = videoItems.filter((v) => v.draft === sessionId).length;
@@ -123,7 +127,7 @@ export function ComposerCard({
     text: composer.display,
     attachments: videos + composer.uploading,
     queued: (queue.enabled ? queue.items.length : 0) + typed.length,
-    notice: (queue.enabled && !!queue.notice) || !!editing,
+    notice: !!queue.notice || !!editing || queue.failed.length > 0,
   });
   const collapsed = !expanded;
   const held = holdsSend(queue);
@@ -137,8 +141,9 @@ export function ComposerCard({
   /** The send rule: the server queue when it's on, the old send if not */
   const deliver = useCallback(
     async (text: string): Promise<boolean> => {
-      // Still loading: try the queue, which says when it's off
-      if (queue.enabled || queue.isLoading) {
+      // Not known yet (loading, or the reads failing): try the queue, which
+      // says when it's off, rather than typing into a busy agent
+      if (queue.enabled || !queue.known) {
         try {
           onSent?.(await queue.send(text));
           return true;
@@ -177,8 +182,12 @@ export function ComposerCard({
         await queue.edit(editing.id, text);
         composer.replace(editing.stash);
       } catch (e) {
-        // Gone or on its way: the text stays here to send as a new one
+        // Gone or on its way: the draft it replaced comes back, the edit
+        // after it to send again if wanted
         toast.error(e instanceof Error ? e.message : "Couldn't change it");
+        composer.replace(
+          editing.stash.trim() ? `${editing.stash}\n\n${text}` : text
+        );
       } finally {
         setEditing(null);
         sendingRef.current = false;
@@ -242,11 +251,54 @@ export function ComposerCard({
     },
     [queue.items, composer]
   );
-  const stopEdit = () => {
+  const stopEdit = useCallback(() => {
     if (!editing) return;
     composer.replace(editing.stash);
     setEditing(null);
-  };
+  }, [editing, composer]);
+
+  // The item being edited went (sent, or cancelled elsewhere): the box goes
+  // back to the draft, keeping the edit after it
+  const editingGone =
+    !!editing && !queue.items.some((i) => i.id === editing.id);
+  useEffect(() => {
+    if (!editingGone || !editing) return;
+    const text = composer.text;
+    const edited = text.trim() && text !== editing.stash;
+    composer.replace(
+      edited && editing.stash.trim()
+        ? `${editing.stash}\n\n${text}`
+        : edited
+          ? text
+          : editing.stash
+    );
+    setEditing(null);
+    toast("That queued message has gone: your edit is in the box");
+  }, [editingGone, editing, composer]);
+
+  /** A message that didn't go: send it again, or back into the box */
+  const retry = useCallback(
+    async (item: QueueItem) => {
+      try {
+        onSent?.(
+          await queue.send(item.text, { attachments: item.attachments })
+        );
+        await queue.dismiss(item.id);
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Couldn't send");
+      }
+    },
+    [queue, onSent]
+  );
+  const toComposer = useCallback(
+    (item: QueueItem) => {
+      const draft = composer.text;
+      composer.replace(draft.trim() ? `${draft}\n\n${item.text}` : item.text);
+      composer.textareaRef.current?.focus();
+      queue.dismiss(item.id).catch(() => {});
+    },
+    [composer, queue]
+  );
 
   const tone = live?.claude && modePill ? modeTone(live.mode) : undefined;
   const modeName = live?.mode ? MODE_PILL[live.mode] : undefined;
@@ -290,7 +342,11 @@ export function ComposerCard({
     );
 
   const plusNode = plus ?? (
-    <AttachButton composer={composer} collapsed={collapsed} />
+    <AttachButton
+      composer={composer}
+      collapsed={collapsed}
+      inline={collapsed && inlinePlus}
+    />
   );
 
   return (
@@ -318,13 +374,13 @@ export function ComposerCard({
                 type="button"
                 onMouseDown={keep}
                 onClick={stopEdit}
-                className="text-muted-foreground ml-auto underline-offset-2 hover:underline"
+                className="text-muted-foreground relative ml-auto underline-offset-2 after:absolute after:-inset-x-3 after:-inset-y-3.5 after:content-[''] hover:underline"
               >
                 Cancel
               </button>
             </div>
           )}
-          {!collapsed && queue.enabled && queue.notice && (
+          {!collapsed && queue.notice && (
             <div className="bg-primary/12 flex min-h-9 items-center gap-2 rounded-full py-0.5 pr-0.5 pl-3.5 text-[13px]">
               <span className="min-w-0 flex-1 truncate">
                 {noticeChipText(queue.notice.text, agentName)}
@@ -342,11 +398,27 @@ export function ComposerCard({
                     )
                 }
                 aria-label="Don't tell it about the undo"
-                className="text-muted-foreground active:bg-foreground/10 flex h-8 w-8 flex-none items-center justify-center rounded-full"
+                className="text-muted-foreground active:bg-foreground/10 relative flex h-8 w-8 flex-none items-center justify-center rounded-full after:absolute after:-inset-1.5 after:content-['']"
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
+          )}
+          {!collapsed && queue.failed.length > 0 && (
+            <FailedSends
+              items={queue.failed}
+              onRetry={retry}
+              onEdit={toComposer}
+              onDismiss={(id) =>
+                queue
+                  .dismiss(id)
+                  .catch((e) =>
+                    toast.error(
+                      e instanceof Error ? e.message : "Couldn't dismiss it"
+                    )
+                  )
+              }
+            />
           )}
           {!collapsed && queue.enabled && (
             <QueueCard
@@ -365,14 +437,21 @@ export function ComposerCard({
               collapsed ? "contents" : "flex flex-wrap items-center gap-2"
             )}
           >
-            <PlusSlot.Provider value={{ collapsed }}>
-              {plusNode}
-            </PlusSlot.Provider>
+            {!(collapsed && inlinePlus) && (
+              <PlusSlot.Provider value={{ collapsed }}>
+                {plusNode}
+              </PlusSlot.Provider>
+            )}
             <div
               className={cn(
                 collapsed ? "glass composer-field pl-1" : "contents"
               )}
             >
+              {collapsed && inlinePlus && (
+                <PlusSlot.Provider value={{ collapsed, inline: true }}>
+                  {plusNode}
+                </PlusSlot.Provider>
+              )}
               <ComposerInput
                 enterKeyHint="send"
                 autoCapitalize="sentences"
@@ -464,9 +543,11 @@ export function ComposerCard({
 function AttachButton({
   composer,
   collapsed,
+  inline,
 }: {
   composer: ComposerEngine;
   collapsed: boolean;
+  inline?: boolean;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -496,7 +577,7 @@ function AttachButton({
         onClick={() => fileRef.current?.click()}
         aria-label="Add photo, file or video"
         title="Add photo, file or video"
-        className={plusButtonClass(collapsed)}
+        className={plusButtonClass(collapsed, inline)}
       >
         {uploading ? (
           <Loader2 className="h-5 w-5 animate-spin" />

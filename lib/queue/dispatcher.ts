@@ -7,18 +7,17 @@
 import { getDb, queries, type Session } from "../db";
 import { claudeHookAt } from "../claude-state";
 import { flagOnFor, tickersDisabled } from "../flags";
-import { restartWithStoredMode } from "../apply-pending-mode";
-import { launchSession } from "../session-launch";
 import { readiness, type Readiness } from "../session-ready";
 import { onEdge, type WatchEdge } from "../session-watch";
 import { sendText } from "../tmux-send";
 import { beforeAgentSend } from "../turns";
 import { queueStore, type NewQueueItem, type QueueStore } from "./store";
-import type {
-  EnqueueRequest,
-  EnqueueResult,
-  QueueItem,
-  QueueOrigin,
+import {
+  takesNotice,
+  type EnqueueRequest,
+  type EnqueueResult,
+  type QueueItem,
+  type QueueOrigin,
 } from "./types";
 
 const RECHECK_MS = 2000;
@@ -40,10 +39,6 @@ export interface DispatcherDeps {
   /** Flag `queue` for this session */
   queueOn(sessionId: string): boolean;
   beforeAgentSend(session: Session, text: string): Promise<void>;
-  /** Relaunch with the stored permission mode (M0's permission_pending) */
-  applyPendingMode(session: Session): Promise<void>;
-  /** Claude sessions with a permission_pending to apply */
-  pendingModeSessions(): string[];
   now(): number;
   sleep(ms: number): Promise<void>;
   /**
@@ -117,7 +112,9 @@ export function createDispatcher(
   async function deliver(session: Session, item: QueueItem): Promise<boolean> {
     // A slash command must stay as it is: the notice waits for a message
     const notice =
-      item.kind === "command" ? null : store.takeUndoNotice(session.id);
+      item.kind === "command" || !takesNotice(item.text)
+        ? null
+        : store.takeUndoNotice(session.id);
     const restoreNotice = () => {
       if (notice) store.setUndoNotice(session.id, notice);
     };
@@ -154,33 +151,25 @@ export function createDispatcher(
   }
 
   /**
-   * One look at a session: applies a pending permission mode or sends its
-   * next item when it is ready. Skipped while another look holds the lock
+   * One look at a session: sends its next item when it is ready. Skipped
+   * while another look holds the lock. A pending permission mode is left to
+   * the user's own restart: the session is never restarted from here
    */
   async function service(sessionId: string): Promise<void> {
     if (state.locks.has(sessionId)) return;
     await withLock(sessionId, async () => {
       const session = deps.getSession(sessionId);
       if (!session || !deps.queueOn(sessionId)) return;
-      const pendingMode =
-        session.agent_type === "claude" && !!session.permission_pending;
       const head = store.head(sessionId);
       const due =
         !!head && (head.notBefore === null || head.notBefore <= deps.now());
-      if (!pendingMode && !due) return;
+      if (!due) return;
       if (awaiting(sessionId)) {
         await read(session);
         return;
       }
       if (!(await readyTwice(session, CONFIRM_MS))) return;
 
-      // Never while busy: it is idle at its prompt now
-      if (pendingMode) {
-        state.sentAt.set(sessionId, deps.now());
-        await deps.applyPendingMode(session);
-        state.awaitBusy.set(sessionId, deps.now() + BUSY_WAIT_MS);
-        return;
-      }
       const item = store.claimNext(sessionId, deps.now());
       if (!item) return;
       await deliver(session, item);
@@ -229,16 +218,16 @@ export function createDispatcher(
     );
   }
 
-  /** Every session with something to send or a mode to apply */
+  /** Every session with something to send */
   async function recheck(): Promise<void> {
-    const ids = new Set([
-      ...store.sessionsWithPending(),
-      ...deps.pendingModeSessions(),
-    ]);
     await Promise.all(
-      [...ids].map((id) =>
-        service(id).catch((error) => console.error("[queue] dispatch:", error))
-      )
+      store
+        .sessionsWithPending()
+        .map((id) =>
+          service(id).catch((error) =>
+            console.error("[queue] dispatch:", error)
+          )
+        )
     );
   }
 
@@ -246,16 +235,6 @@ export function createDispatcher(
 }
 
 export type Dispatcher = ReturnType<typeof createDispatcher>;
-
-async function applyPendingMode(session: Session): Promise<void> {
-  const result = await restartWithStoredMode(session);
-  if (!result.ok) {
-    console.error(`[queue] pending mode for ${session.id}: ${result.error}`);
-    return;
-  }
-  // Started again at once, so the queue behind it keeps going
-  await launchSession(result.session);
-}
 
 // On globalThis: the dispatcher runs in server.ts's copy of this module and
 // POST /queue in Next's, and both must share one lock per session
@@ -269,10 +248,6 @@ function dispatcher(): Dispatcher {
     started: false,
   };
   const db = getDb();
-  const pendingMode = db.prepare(
-    `SELECT id FROM sessions
-     WHERE permission_pending IS NOT NULL AND agent_type = 'claude'`
-  );
   return createDispatcher(
     {
       store: queueStore(db),
@@ -282,9 +257,6 @@ function dispatcher(): Dispatcher {
       send: (session, text) => sendText(session, text, { pressEnter: true }),
       queueOn: (id) => flagOnFor("queue", id),
       beforeAgentSend,
-      applyPendingMode,
-      pendingModeSessions: () =>
-        (pendingMode.all() as { id: string }[]).map((r) => r.id),
       now: Date.now,
       sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
       hookAt: (session) =>

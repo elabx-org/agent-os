@@ -9,6 +9,7 @@ import type { PermissionPrompt } from "@/lib/permission-prompt";
 import type { PlanResponse, PlanState } from "@/lib/claude-plan";
 import type { SessionStatus } from "@/components/views/types";
 import {
+  dbTimeMs,
   fromSessionStatus,
   STATE_WORD,
   type AgentState,
@@ -135,11 +136,20 @@ const tracked = new Map<
 function track(
   sessionId: string,
   state: AgentState,
-  lines: readonly string[] | undefined
+  lines: readonly string[] | undefined,
+  /** The server's last change (ms): the clock's start when first seen */
+  seed: number | null
 ) {
   let entry = tracked.get(sessionId);
   if (!entry || entry.state !== state) {
-    entry = { state, since: Date.now() };
+    // Seen changing here: now. First seen: since the server's last change,
+    // not since the page loaded
+    const now = Date.now();
+    const since =
+      !entry && seed !== null && !Number.isNaN(seed)
+        ? Math.min(seed, now)
+        : now;
+    entry = { state, since };
     tracked.set(sessionId, entry);
   }
   if (state !== "work") return entry;
@@ -148,14 +158,19 @@ function track(
   if (tool) {
     // A new tool restarts the clock
     if (tool.label !== doing?.label || tool.command !== doing?.command) {
-      entry.doing = { ...tool, startedAt: Date.now(), fromTool: true };
+      // The first step seen in this state started no later than the state
+      entry.doing = {
+        ...tool,
+        startedAt: doing ? Date.now() : entry.since,
+        fromTool: true,
+      };
     }
   } else if (spinner && !doing?.fromTool) {
     // The spinner only names the spell until a tool shows; its verb
     // changing isn't a new step
     entry.doing = {
       ...spinner,
-      startedAt: doing?.startedAt ?? Date.now(),
+      startedAt: doing?.startedAt ?? entry.since,
       fromTool: false,
     };
   }
@@ -216,7 +231,8 @@ export function useSessionActivity(
   const entry = track(
     id,
     state,
-    status?.recentLines ?? (status?.lastLine ? [status.lastLine] : undefined)
+    status?.recentLines ?? (status?.lastLine ? [status.lastLine] : undefined),
+    session?.updated_at ? dbTimeMs(session.updated_at) : null
   );
   const { since, doing } = entry;
 

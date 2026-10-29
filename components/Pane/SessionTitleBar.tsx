@@ -55,6 +55,7 @@ import {
 } from "@/lib/agent-state";
 import { useGitStatus } from "@/data/git/queries";
 import {
+  Crumb,
   DesktopHeader,
   FoldHeader,
   PageHeader,
@@ -205,6 +206,7 @@ export function SessionTitleBar({
   // The open Duo's right page answers the turn on the left one
   const replyPage = useReplyPage(session?.id);
   const slimRef = useRef<HTMLDivElement>(null);
+  const pageSlim = variant === "page" || variant === "large";
   const peek =
     session && (viewMode === "terminal" || viewMode === "chat")
       ? viewMode
@@ -539,59 +541,102 @@ export function SessionTitleBar({
       <div
         ref={slimRef}
         className={cn(
-          "border-border/60 bg-background shrink-0 border-b pr-[calc(0.5rem+var(--safe-right,env(safe-area-inset-right)))] pl-[calc(0.75rem+env(safe-area-inset-left))] [html[data-native]_&]:pt-[env(safe-area-inset-top)]",
+          "bg-background shrink-0 pr-[calc(0.5rem+var(--safe-right,env(safe-area-inset-right)))] [html[data-native]_&]:pt-[env(safe-area-inset-top)]",
+          // The title in the page keeps its crumb and title (Closed-Terminal)
+          pageSlim
+            ? "pl-[calc(1.25rem+env(safe-area-inset-left))]"
+            : "border-border/60 border-b pl-[calc(0.75rem+env(safe-area-inset-left))]",
           nativeTyping
             ? "block"
             : "hidden [html[data-keyboard-compact]_&]:block"
         )}
       >
-        <div className="flex h-[26px] items-center gap-1.5 text-[12.5px]">
-          {state && (
-            <span
-              role="img"
-              aria-label={STATE_WORD[state]}
-              className={cn(
-                "h-[7px] w-[7px] shrink-0 rounded-full",
-                STATE_DOT_CLASS[state]
-              )}
-            />
-          )}
-          {replyPage && (
-            <span className="text-muted-foreground shrink-0 text-[10px] font-medium tracking-[0.08em] uppercase">
-              Your reply ·
-            </span>
-          )}
-          <span className="min-w-0 truncate font-semibold">{title}</span>
-          {idLabel && !replyPage && (
-            <span className="text-muted-foreground shrink-0">· {idLabel}</span>
-          )}
-          {peek && (
-            <div
-              role="group"
-              aria-label="View"
-              className="bg-secondary ml-auto flex shrink-0 gap-0.5 rounded-lg p-0.5 text-[11px]"
-            >
-              {(["terminal", "chat"] as const).map((mode) => (
-                <button
-                  key={mode}
-                  type="button"
-                  aria-pressed={peek === mode}
-                  // Keep the box focused so the keyboard doesn't drop first
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => peekTo(mode)}
-                  className={cn(
-                    "relative rounded-md px-2 py-0.5 leading-4 after:absolute after:-inset-x-0.5 after:-inset-y-3 after:content-['']",
-                    peek === mode
-                      ? "bg-accent text-foreground"
-                      : "text-muted-foreground"
-                  )}
-                >
-                  {mode === "terminal" ? "Terminal" : "Chat"}
-                </button>
-              ))}
+        {pageSlim && info ? (
+          <div className="flex items-center gap-2 pt-2 pb-1.5">
+            <div className="flex min-w-0 flex-1 flex-col">
+              <Crumb info={info} className="text-[13px] leading-tight" />
+              <span className="truncate text-[15px] leading-snug font-semibold">
+                {title}
+              </span>
             </div>
-          )}
-        </div>
+            {peek && (
+              <div
+                role="group"
+                aria-label="View"
+                className="bg-secondary ml-auto flex shrink-0 gap-0.5 rounded-lg p-0.5 text-[11px]"
+              >
+                {(["chat", "terminal"] as const).map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    aria-pressed={peek === mode}
+                    // Keep the box focused so the keyboard doesn't drop first
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => peekTo(mode)}
+                    className={cn(
+                      "relative rounded-md px-2 py-0.5 leading-4 after:absolute after:-inset-x-0.5 after:-inset-y-3 after:content-['']",
+                      peek === mode
+                        ? "bg-accent text-foreground"
+                        : "text-muted-foreground"
+                    )}
+                  >
+                    {mode === "terminal" ? "Terminal" : "Chat"}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="flex h-[26px] items-center gap-1.5 text-[12.5px]">
+            {state && (
+              <span
+                role="img"
+                aria-label={STATE_WORD[state]}
+                className={cn(
+                  "h-[7px] w-[7px] shrink-0 rounded-full",
+                  STATE_DOT_CLASS[state]
+                )}
+              />
+            )}
+            {replyPage && (
+              <span className="text-muted-foreground shrink-0 text-[10px] font-medium tracking-[0.08em] uppercase">
+                Your reply ·
+              </span>
+            )}
+            <span className="min-w-0 truncate font-semibold">{title}</span>
+            {idLabel && !replyPage && (
+              <span className="text-muted-foreground shrink-0">
+                · {idLabel}
+              </span>
+            )}
+            {peek && (
+              <div
+                role="group"
+                aria-label="View"
+                className="bg-secondary ml-auto flex shrink-0 gap-0.5 rounded-lg p-0.5 text-[11px]"
+              >
+                {(["chat", "terminal"] as const).map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    aria-pressed={peek === mode}
+                    // Keep the box focused so the keyboard doesn't drop first
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => peekTo(mode)}
+                    className={cn(
+                      "relative rounded-md px-2 py-0.5 leading-4 after:absolute after:-inset-x-0.5 after:-inset-y-3 after:content-['']",
+                      peek === mode
+                        ? "bg-accent text-foreground"
+                        : "text-muted-foreground"
+                    )}
+                  >
+                    {mode === "terminal" ? "Terminal" : "Chat"}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
       {header}
     </>

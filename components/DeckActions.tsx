@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useSnapshot } from "valtio";
 import {
   GitBranch,
@@ -16,7 +16,8 @@ import {
 } from "@/stores/mobileNav";
 import type { SessionStatus } from "@/components/views/types";
 import { useAnswerPrompt, useSessionPrompt } from "@/data/prompts/queries";
-import { splitOptions } from "@/lib/permission-card";
+import { isAnswerableQuestion, splitOptions } from "@/lib/permission-card";
+import { useReplyContextState } from "@/hooks/useReplyContext";
 
 /** Esc to Claude in the session's pane: stops what it's doing */
 export async function interruptSession(sessionId: string) {
@@ -111,15 +112,29 @@ export function DeckActions({
 export function DeckAnswers({
   sessionId,
   className,
+  permission,
+  fallback,
 }: {
   sessionId: string;
   className?: string;
+  /** A permission prompt instead of a question: its full card */
+  permission?: ReactNode;
+  /** Nothing to answer here (no options, or still reading): Stop… */
+  fallback?: ReactNode;
 }) {
   const { statuses } = useSnapshot(mobileNavStore);
   const waiting = statuses[sessionId]?.status === "waiting";
   const { data: prompt } = useSessionPrompt(sessionId, { enabled: waiting });
   const { answer, answering, error } = useAnswerPrompt(sessionId);
-  if (!waiting || !prompt?.options.length) return null;
+  // Classified as the server's guard does: unclear means permission
+  const { context, loading } = useReplyContextState(
+    sessionId,
+    waiting && !!prompt
+  );
+  if (!waiting || !prompt?.options.length || loading)
+    return <>{fallback ?? null}</>;
+  if (!isAnswerableQuestion(context, prompt))
+    return <>{permission ?? fallback ?? null}</>;
   const { main } = splitOptions(prompt.options);
 
   return (

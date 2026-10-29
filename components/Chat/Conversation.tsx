@@ -5,6 +5,7 @@ import { Markdown } from "@/components/Markdown";
 import type { SubagentInfo } from "@/lib/claude-subagents";
 import type { WorkflowInfo } from "@/lib/claude-workflows";
 import type { Turn } from "@/lib/turn-types";
+import { splitUndoNotice } from "@/lib/queue/types";
 import type { ResultItem, Row } from "./rows";
 import { ToolRun } from "./ToolCard";
 import { TurnCard } from "./TurnCard";
@@ -34,12 +35,24 @@ function RowView({
   onShowWorkflow?: (runId: string) => void;
   quotable?: boolean;
 }) {
-  if (row.kind === "user")
+  if (row.kind === "user") {
+    // The undo notice the server put in front isn't the user's words
+    const { text, undoneTurn } = splitUndoNotice(row.text);
     return (
-      <div className="bubble-me ml-8 min-w-0 text-[15px] [overflow-wrap:anywhere] whitespace-pre-wrap">
-        {row.text}
+      <div className="flex min-w-0 flex-col items-end gap-1">
+        {undoneTurn !== null && (
+          <span className="text-muted-foreground text-xs">
+            Told it turn {undoneTurn} was undone
+          </span>
+        )}
+        {text && (
+          <div className="bubble-me ml-8 min-w-0 text-[15px] [overflow-wrap:anywhere] whitespace-pre-wrap">
+            {text}
+          </div>
+        )}
       </div>
     );
+  }
   if (row.kind === "summary")
     return (
       <details className="group text-xs">

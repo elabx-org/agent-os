@@ -212,6 +212,18 @@ function bottom(plain: readonly string[], n: number): string {
   return plain.slice(Math.max(0, end - n), end).join("\n");
 }
 
+/**
+ * Claude is idle with text in its input box: what a paste whose Enter got
+ * taken in with it leaves behind
+ */
+export function unsentInput(rawLines: readonly string[]): boolean {
+  const plain = rawLines.map(stripAnsi);
+  const tail = bottom(plain, 16);
+  if (COMPACTING.test(tail) || CLAUDE_WORKING.test(tail)) return false;
+  if (readClaudeScreen(plain).spinner) return false;
+  return !!inputText(rawLines);
+}
+
 function classifyClaude(input: ScreenInput, plain: string[]): Readiness {
   const pending = input.claude?.pendingPermission;
   const tail = bottom(plain, 16);

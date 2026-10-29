@@ -20,7 +20,8 @@ type Params = { params: Promise<{ id: string; itemId: string }> };
 async function findItem(
   request: NextRequest,
   params: Params["params"],
-  detail: string
+  detail: string,
+  statuses: QueueItem["status"][] = ["pending"]
 ): Promise<{ item: QueueItem } | { refuse: NextResponse }> {
   const { id, itemId } = await params;
   const itemNo = Number(itemId);
@@ -46,7 +47,7 @@ async function findItem(
     });
     return { refuse: userOnly(who.reason) };
   }
-  if (item.status !== "pending") {
+  if (!statuses.includes(item.status)) {
     return {
       refuse: NextResponse.json(
         { error: "Already sent or cancelled" },
@@ -107,12 +108,19 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 }
 
 // DELETE /api/sessions/[id]/queue/[itemId] - {ok: true}: cancels a pending
-// item, or drops the undo notice
+// item, drops the undo notice, or dismisses a message that failed to send
 export async function DELETE(request: NextRequest, { params }: Params) {
-  const found = await findItem(request, params, "Cancel a queued message");
+  const found = await findItem(request, params, "Cancel a queued message", [
+    "pending",
+    "failed",
+  ]);
   if ("refuse" in found) return found.refuse;
   const { item } = found;
-  if (!cancelItem(item.sessionId, item.id)) {
+  const done =
+    item.status === "failed"
+      ? queueStore().dismissFailed(item.sessionId, item.id)
+      : cancelItem(item.sessionId, item.id);
+  if (!done) {
     return NextResponse.json(
       { error: "Already sent or cancelled" },
       { status: 409 }

@@ -14,13 +14,15 @@ export interface StopPillProps {
 }
 
 /**
- * Fold-Chat's "■ Stop" pill beside the composer, while the agent works:
- * interrupts it (POST /api/sessions/[id]/interrupt). Nothing while idle
+ * Fold-Chat's "■ Stop" pill beside the composer, while the agent works or
+ * asks: interrupts it (POST /api/sessions/[id]/interrupt), which also
+ * turns a question down. Nothing while idle
  */
 export function StopPill({ session, className }: StopPillProps) {
   const { statuses } = useSnapshot(mobileNavStore);
   const [stopping, setStopping] = useState(false);
-  if (statuses[session.id]?.status !== "running") return null;
+  const status = statuses[session.id]?.status;
+  if (status !== "running" && status !== "waiting") return null;
 
   return (
     <button

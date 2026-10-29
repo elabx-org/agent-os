@@ -226,6 +226,14 @@ export const Pane = memo(function Pane({
     setViewMode(next);
   }, [chatDefault]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Opened in chat by default, but nothing has been said yet: the terminal
+  // is where there's something to see
+  const chatEmpty = useCallback(() => {
+    if (defaultedRef.current !== "chat") return;
+    defaultedRef.current = "terminal";
+    setViewMode((mode) => (mode === "chat" ? "terminal" : mode));
+  }, [setViewMode]);
+
   // Remember a change of view; a switch of session alone isn't one
   const viewSessionId = useRef(session?.id);
   viewSessionId.current = session?.id;
@@ -299,6 +307,8 @@ export const Pane = memo(function Pane({
       if (navRequest.sessionId !== session?.id) return;
     }
     if (navRequest.mode === "terminal" || session?.working_directory) {
+      // Asked for, so not a default an empty chat swaps for the terminal
+      defaultedRef.current = null;
       setViewMode(navRequest.mode);
     }
     mobileNavActions.clearRequest();
@@ -567,6 +577,7 @@ export const Pane = memo(function Pane({
               hideAgentsBar={agentsShown}
               onOpenTerminal={() => setViewMode("terminal")}
               onDeck={setDeckShown}
+              onEmpty={chatEmpty}
             />
           )}
 
@@ -690,6 +701,7 @@ export const Pane = memo(function Pane({
                       hideAgentsBar={agentsShown}
                       onOpenTerminal={() => setViewMode("terminal")}
                       onDeck={setDeckShown}
+                      onEmpty={chatEmpty}
                     />
                   )}
 

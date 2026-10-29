@@ -242,7 +242,7 @@ export function ComposerPlusMenu({
         }}
         className={cn(
           slot
-            ? plusButtonClass(slot.collapsed)
+            ? plusButtonClass(slot.collapsed, slot.inline)
             : "flex h-[44px] w-[44px] touch-manipulation items-center justify-center rounded-full",
           hidden && "hidden",
           isListening

@@ -28,9 +28,12 @@
     --sheet: #ffffff;
     --block: #ffffff;
     --say: #1c1c1f;
+    /* The edge of what needs you: amber-600 here, readable on white */
+    --needs-edge: rgba(217, 119, 6, 0.45);
   }
 
   .dark {
+    --needs-edge: hsl(var(--needs) / 0.4);
     --page: 240 8% 5%; /* #0B0B0D */
     --hair: rgba(255, 255, 255, 0.08);
     --glass-bg: rgba(44, 44, 50, 0.62);
@@ -183,7 +186,7 @@
     padding: 14px;
     border-radius: 22px;
     background: hsl(var(--card));
-    border: 1px solid hsl(var(--needs) / 0.4);
+    border: 1px solid var(--needs-edge);
   }
 
   /* A mono chip beside a title: the Project page's branch (Closed-Project) */
@@ -331,7 +334,7 @@
     border-color: hsl(var(--work) / 0.3);
   }
   .status-card.tone-needs {
-    border-color: hsl(var(--needs) / 0.4);
+    border-color: var(--needs-edge);
   }
 
   /* Plan (Closed-Chat chip, E-Live list): segments and steps */
@@ -502,7 +505,7 @@
     border-color: transparent;
   }
   .term-blk.ask {
-    border-color: hsl(var(--needs) / 0.4);
+    border-color: var(--needs-edge);
   }
   /* A terminal key: 42px row key; .big is Fold-Terminal's 56px grid key */
   .tkey {

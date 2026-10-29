@@ -9,7 +9,7 @@ import { requester, userOnly } from "@/lib/permission-guard";
 import { effectiveMode } from "@/lib/permission-mode";
 import { flagOnFor } from "@/lib/flags";
 import { readiness } from "@/lib/session-ready";
-import { getUndoNotice, listQueue } from "@/lib/queue/store";
+import { getUndoNotice, listFailed, listQueue } from "@/lib/queue/store";
 import { sendOrQueue } from "@/lib/queue/dispatcher";
 import type { EnqueueRequest, QueueState } from "@/lib/queue/types";
 
@@ -59,9 +59,11 @@ export async function GET(
     return NextResponse.json({ error: "Session not found" }, { status: 404 });
   }
   if (!flagOnFor("queue", id)) {
+    // The notice still goes, prefixed by send-keys: the chip shows it
     const off: QueueState = {
       items: [],
-      notice: null,
+      failed: [],
+      notice: getUndoNotice(id),
       ready: false,
       holdReason: null,
       enabled: false,
@@ -71,6 +73,7 @@ export async function GET(
   const { ready, holdReason } = await readiness(session);
   const state: QueueState = {
     items: listQueue(id),
+    failed: listFailed(id),
     notice: getUndoNotice(id),
     ready,
     holdReason,

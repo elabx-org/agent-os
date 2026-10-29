@@ -249,6 +249,13 @@ html[data-native] [data-slot="sheet-content"] {
 html[data-fold="vertical"] [data-slot="sheet-content"] {
   left: var(--fold-end);
 }
+/* A sheet that stops at the closed Duo's web column (E-Live): the column
+   stays over its dimmed page and takes taps */
+body:has([data-slot="sheet-content"][data-beside-column])
+  nav[data-control-column] {
+  z-index: 60;
+  pointer-events: auto;
+}
 
 /* A dialog shown as a sheet: a left-aligned, larger title, clear of the
    close button */
@@ -281,6 +288,13 @@ html[data-hinge] [data-spread="wide"] .fold-controls {
 }
 html[data-fold="vertical"] [data-spread="wide"] .fold-controls {
   padding-left: calc(var(--fold-end) - env(safe-area-inset-left)) !important;
+}
+/* The activity strip under the title stays on the left page, as the title,
+   its usual 0.5rem in from the fold's edge too */
+html[data-hinge] [data-spread="wide"] .activity-strip {
+  padding-right: calc(
+    100vw - var(--hinge-x) + var(--fold-clear) + 0.5rem
+  ) !important;
 }
 
 /* Laptop pose while typing: the key rows share the deck above the keyboard,

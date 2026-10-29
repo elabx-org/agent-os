@@ -2,7 +2,15 @@
 
 import { useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import { toast } from "sonner";
-import { Cloud, GripVertical, Loader2, Pencil, X } from "lucide-react";
+import {
+  AlertTriangle,
+  Cloud,
+  GripVertical,
+  Loader2,
+  Pencil,
+  RotateCcw,
+  X,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { UseQueue } from "@/hooks/useQueue";
 import type { QueueItem } from "@/lib/queue/types";
@@ -239,6 +247,86 @@ export function QueueCard({
           ? holdCaption(queue.holdReason, agentName)
           : `${agentName} takes these when its turn ends.`}
       </p>
+    </div>
+  );
+}
+
+export interface FailedSendsProps {
+  items: readonly QueueItem[];
+  onRetry: (item: QueueItem) => void;
+  /** Back into the composer, to change and send */
+  onEdit: (item: QueueItem) => void;
+  onDismiss: (itemId: number) => void;
+}
+
+/**
+ * Messages the queue couldn't type in (a tmux error, or cut off by a
+ * restart, when they may have gone in): never dropped quietly, each with
+ * why, Retry, Edit and ×
+ */
+export function FailedSends({
+  items,
+  onRetry,
+  onEdit,
+  onDismiss,
+}: FailedSendsProps) {
+  if (!items.length) return null;
+  return (
+    <div
+      className="flex flex-col gap-1.5"
+      role="list"
+      aria-label="Messages that didn't send"
+    >
+      {items.map((item) => (
+        <div
+          key={item.id}
+          role="listitem"
+          className="flex items-center rounded-2xl border border-dashed border-[var(--del)]/60"
+        >
+          <span className="flex h-11 w-11 flex-none items-center justify-center text-[var(--del)]">
+            <AlertTriangle className="h-4 w-4" aria-hidden="true" />
+          </span>
+          <button
+            type="button"
+            aria-label="Edit the message that didn't send"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => onEdit(item)}
+            className={BODY}
+          >
+            <span className="flex items-center gap-[5px] text-xs">
+              <span className="font-semibold text-[var(--del)]">
+                Didn&apos;t send
+              </span>
+              {item.error && (
+                <span className="text-muted-foreground truncate">
+                  {item.error}
+                </span>
+              )}
+            </span>
+            <span className="block w-full truncate text-sm">{item.text}</span>
+          </button>
+          <button
+            type="button"
+            aria-label="Send it again"
+            title="Retry"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => onRetry(item)}
+            className={ICON_BUTTON}
+          >
+            <RotateCcw className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            aria-label="Dismiss"
+            title="Dismiss"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => onDismiss(item.id)}
+            className={ICON_BUTTON}
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      ))}
     </div>
   );
 }

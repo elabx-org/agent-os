@@ -30,12 +30,20 @@ export const queueKeys = {
 export interface UseQueue {
   /** Pending and sending, by position */
   items: QueueItem[];
+  /** Messages that didn't go, with their error: Retry or dismiss */
+  failed: QueueItem[];
   /** The undo notice the next message carries ("Claude will be told…") */
   notice: QueueItem | null;
   ready: boolean;
   holdReason: HoldReason | null;
   /** The server queue is on for this session; off, use the old send */
   enabled: boolean;
+  /**
+   * The server has answered at least once. Until then (loading, or its
+   * reads failing) `enabled` is a guess: send through the queue, which
+   * says when it's off
+   */
+  known: boolean;
   isLoading: boolean;
   /** POST {sendNow: true}: the server sends it or queues it */
   send: (
@@ -53,6 +61,8 @@ export interface UseQueue {
   cancel: (itemId: number) => Promise<void>;
   /** Drops the undo notice (its ×) */
   dropNotice: () => Promise<void>;
+  /** A failed message seen: off the list */
+  dismiss: (itemId: number) => Promise<void>;
 }
 
 /** Busy or with something waiting: the queue changes by the second */
@@ -213,6 +223,16 @@ export function useQueue(
     [base, optimistic]
   );
 
+  const dismiss = useCallback<UseQueue["dismiss"]>(
+    async (itemId) => {
+      await optimistic(
+        (s) => ({ ...s, failed: removeItem(s.failed, itemId) }),
+        () => request<{ ok: true }>(`${base}/${itemId}`, "DELETE")
+      );
+    },
+    [base, optimistic]
+  );
+
   const noticeId = state.notice?.id;
   const dropNotice = useCallback<UseQueue["dropNotice"]>(async () => {
     if (noticeId === undefined) return;
@@ -225,10 +245,13 @@ export function useQueue(
   return useMemo(
     () => ({
       items: state.items,
+      // An older server's state has none
+      failed: state.failed ?? [],
       notice: state.notice,
       ready: state.ready,
       holdReason: state.holdReason,
       enabled: state.enabled,
+      known: data !== undefined,
       isLoading: on && isLoading,
       send,
       enqueue,
@@ -236,7 +259,20 @@ export function useQueue(
       move,
       cancel,
       dropNotice,
+      dismiss,
     }),
-    [state, on, isLoading, send, enqueue, edit, move, cancel, dropNotice]
+    [
+      state,
+      data,
+      on,
+      isLoading,
+      send,
+      enqueue,
+      edit,
+      move,
+      cancel,
+      dropNotice,
+      dismiss,
+    ]
   );
 }

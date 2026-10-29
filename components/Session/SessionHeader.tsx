@@ -75,8 +75,8 @@ export function Crumb({
  * letter, "agent-os · Claude · Needs you", the 22px title, and under it the
  * plan, or while it works what it's doing; both open the Live activity.
  * `compact` (Closed-Terminal): the crumb and a 17px title, the terminal
- * gets the room. `large` (Open-Changes, the open Duo's left page): the
- * 34px title; the right page has the rest
+ * gets the room. `large` (Open-Changes, the open Duo's page): the 22px
+ * title alone; the activity strip under it has the rest
  */
 export function PageHeader({
   info,
@@ -99,6 +99,8 @@ export function PageHeader({
       className={cn(
         "native-top-inset kb-compact-hide bg-background flex shrink-0 flex-col pt-4 pr-[calc(0.5rem+var(--safe-right,env(safe-area-inset-right)))] pl-[calc(1.25rem+env(safe-area-inset-left))]",
         size === "compact" && "pb-1",
+        // In line with the chat's 24px on the open Duo
+        size === "large" && "pl-[calc(1.5rem+env(safe-area-inset-left))]",
         className
       )}
     >
@@ -116,11 +118,7 @@ export function PageHeader({
       <h1
         className={cn(
           "min-w-0 truncate",
-          size === "large"
-            ? "t-large mt-1"
-            : size === "compact"
-              ? "t-head mt-0.5 leading-tight"
-              : "t-title mt-1"
+          size === "compact" ? "t-head mt-0.5 leading-tight" : "t-title mt-1"
         )}
       >
         {info.title}
@@ -315,7 +313,10 @@ export function PaneCardHeader({
 }) {
   const { state, since } = useSessionActivity(info.session, { active: false });
   return (
-    <header className="kb-compact-hide border-hair flex h-14 shrink-0 items-center gap-2.5 border-b px-3.5">
+    <header
+      data-pane-card
+      className="kb-compact-hide border-hair flex h-14 shrink-0 items-center gap-2.5 border-b px-3.5"
+    >
       <span
         aria-hidden
         className={cn("h-2 w-2 shrink-0 rounded-full", STATE_DOT_CLASS[state])}

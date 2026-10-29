@@ -285,7 +285,6 @@ function readLine(file: string): string | null {
   }
 }
 
-/** What the session's hooks and status line last recorded */
 /**
  * When Claude's hooks last wrote this session's state (ms), or null: any
  * hook event after a send means Claude took the message in
@@ -297,6 +296,7 @@ export function claudeHookAt(sessionId: string): number | null {
   return typeof at === "number" ? at : null;
 }
 
+/** What the session's hooks and status line last recorded */
 export function readClaudeState(sessionId: string): ClaudeState {
   if (!SESSION_ID.test(sessionId)) return EMPTY_CLAUDE_STATE;
   const dir = stateDir(sessionId);

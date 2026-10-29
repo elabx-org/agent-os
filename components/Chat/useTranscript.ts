@@ -22,6 +22,8 @@ export function useTranscript(base: string, active: boolean) {
   const [state, setState] = useState<"loading" | "ready" | "missing">(
     "loading"
   );
+  // The base the state was last read for (the state lags a switch)
+  const [settledFor, setSettledFor] = useState<string | null>(null);
   const [truncated, setTruncated] = useState(false);
   const [loadingEarlier, setLoadingEarlier] = useState(false);
   const busy = useRef(false);
@@ -31,6 +33,7 @@ export function useTranscript(base: string, active: boolean) {
     cursor.current = {};
     setItems([]);
     setState("loading");
+    setSettledFor(null);
   }, [base]);
 
   // The page of history above what's shown
@@ -72,6 +75,7 @@ export function useTranscript(base: string, active: boolean) {
         if (stopped) return;
         if (data.notFound || data.unsupported || !data.items) {
           setState("missing");
+          setSettledFor(base);
         } else {
           const fresh = offset === undefined || data.reset;
           cursor.current = {
@@ -87,6 +91,7 @@ export function useTranscript(base: string, active: boolean) {
             setItems((prev) => [...prev, ...data.items!]);
           }
           setState("ready");
+          setSettledFor(base);
         }
       } catch {
         // Keep what we have; try again next tick
@@ -100,5 +105,5 @@ export function useTranscript(base: string, active: boolean) {
     };
   }, [base, active]);
 
-  return { items, state, truncated, loadEarlier, loadingEarlier };
+  return { items, state, settledFor, truncated, loadEarlier, loadingEarlier };
 }

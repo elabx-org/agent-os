@@ -9,6 +9,7 @@ import type { HoldReason, QueueItem, QueueState } from "@/lib/queue/types";
 /** What the composers see while the queue is off (or not there yet) */
 export const QUEUE_OFF: QueueState = {
   items: [],
+  failed: [],
   notice: null,
   ready: true,
   holdReason: null,

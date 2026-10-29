@@ -186,6 +186,28 @@ export function baseName(path: string): string {
   return path.split("/").filter(Boolean).pop() ?? path;
 }
 
+/**
+ * Each path's shortest tail that no other path in the list shares: the
+ * file name alone, or with as many folders as tell two apart
+ * ("src/index.ts" and "test/index.ts" rather than "index.ts" twice)
+ */
+export function shortNames(paths: readonly string[]): Map<string, string> {
+  const parts = new Map(paths.map((p) => [p, p.split("/").filter(Boolean)]));
+  const tail = (p: string, n: number) => parts.get(p)!.slice(-n).join("/");
+  const names = new Map<string, string>();
+  for (const p of parts.keys()) {
+    const own = parts.get(p)!;
+    let n = 1;
+    while (
+      n < own.length &&
+      [...parts.keys()].some((q) => q !== p && tail(q, n) === tail(p, n))
+    )
+      n++;
+    names.set(p, tail(p, n) || p);
+  }
+  return names;
+}
+
 /** Turn starts and transcript stamps may differ by the hook's lag */
 const TURN_SLACK_MS = 10_000;
 

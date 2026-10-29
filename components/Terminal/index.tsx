@@ -52,6 +52,7 @@ import {
 } from "./queued-messages";
 import type { ClaudeKey } from "@/components/Composer/ClaudeStateBar";
 import { DeckActions, DeckAnswers } from "@/components/DeckActions";
+import { NeedsYouCard } from "@/components/Chat/NeedsYouCard";
 import { DeckStateLine } from "@/components/DeckStateLine";
 import { DeckContext } from "@/components/ReplyContext/ContextPanel";
 import { useSessionPrompt } from "@/data/prompts/queries";
@@ -540,7 +541,10 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
     // What the composer sent while Claude was busy: Claude queues it. Not
     // with the server queue on: the composer never types into a busy Claude
     const queuedRef = useRef<string[]>([]);
-    const serverQueue = useQueue(draftId ?? "", { enabled: !!draftId }).enabled;
+    // Hidden tabs don't poll: the composer only sends from the active one
+    const serverQueue = useQueue(draftId ?? "", {
+      enabled: !!draftId && active,
+    }).enabled;
     const sendFromComposer = useCallback(
       (text: string) => {
         const term = xtermRef.current;
@@ -1382,8 +1386,28 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
           >
             {/* Fold-Terminal: the answers (else Stop, Changes, Chat), the
                 key grid under them, the room left above the composer */}
-            {deckAnswer && draftId ? (
-              <DeckAnswers sessionId={draftId} className="px-5 pt-2" />
+            {deckAnswer && draftId && session ? (
+              <DeckAnswers
+                sessionId={draftId}
+                className="px-5 pt-2"
+                permission={
+                  <div className="min-h-0 shrink overflow-y-auto px-5 pt-2">
+                    <NeedsYouCard
+                      session={session}
+                      variant="inline"
+                      onOpenTerminal={scrollToBottom}
+                    />
+                  </div>
+                }
+                fallback={
+                  <DeckActions
+                    sessionId={draftId}
+                    status={deckStatus}
+                    view="terminal"
+                    className="px-5 pt-2"
+                  />
+                }
+              />
             ) : (
               tabletopBase &&
               draftId && (

@@ -5,10 +5,12 @@ import { useSnapshot } from "valtio";
 import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { agentName } from "@/components/a/Avatar";
+import { dbTimeMs } from "@/lib/agent-state";
 import { StateDot } from "@/components/a/StateDot";
 import { PermissionCard } from "@/components/Composer/PermissionCard";
 import { useAnswerPrompt, useSessionPrompt } from "@/data/prompts/queries";
 import { useClaudeState } from "@/hooks/useClaudeState";
+import { useQueue } from "@/hooks/useQueue";
 import { useLayoutMode } from "@/hooks/useLayoutMode";
 import { useReplyContextState } from "@/hooks/useReplyContext";
 import { haptic } from "@/lib/haptics";
@@ -56,7 +58,9 @@ function Head({ text, since }: { text: string; since?: number | null }) {
   return (
     <div className="flex items-center gap-2 text-[13px]">
       <StateDot state="needs" />
-      <span className="text-needs min-w-0 truncate font-semibold">{text}</span>
+      <span className="dark:text-needs min-w-0 truncate font-semibold text-amber-600">
+        {text}
+      </span>
       {since ? <Waited since={since} /> : null}
     </div>
   );
@@ -93,6 +97,11 @@ export function NeedsYouCard({
     { enabled: needsYou && variant !== "rail" }
   );
   const { answer, answering, error } = useAnswerPrompt(session.id);
+  // With the server queue on, the composer's text waits for the answer
+  // instead of typing into the question: a typed reply is the terminal's
+  const queued = useQueue(session.id, {
+    enabled: needsYou && variant === "inline",
+  }).enabled;
   // Classified as the server's guard does: unclear means permission
   const { context, loading: contextLoading } = useReplyContextState(
     session.id,
@@ -107,11 +116,19 @@ export function NeedsYouCard({
         ? { tool: pending, prompt: null }
         : null;
 
-  // How long it has waited: the hook's time, else since this card saw it
+  // How long it has waited: the hook's time, else the session's last
+  // change on the server, else since this card saw it
   const [seen, setSeen] = useState<number | null>(null);
+  const changedAt = session.updated_at ? dbTimeMs(session.updated_at) : NaN;
   useEffect(() => {
-    setSeen(needsYou ? Date.now() : null);
-  }, [needsYou]);
+    setSeen(
+      needsYou
+        ? Number.isNaN(changedAt)
+          ? Date.now()
+          : Math.min(changedAt, Date.now())
+        : null
+    );
+  }, [needsYou, changedAt]);
   const since = pending?.at ?? hook.notification?.at ?? seen;
 
   if (!needsYou) return null;
@@ -209,10 +226,19 @@ export function NeedsYouCard({
                 <span className="truncate">{shortLabel(option)}</span>
               </button>
             ))}
-            {desktop && !sheet && (
+            {desktop && !sheet && !queued && (
               <span className="text-muted-foreground ml-auto shrink-0 text-[13px]">
                 or type a reply
               </span>
+            )}
+            {desktop && !sheet && queued && onOpenTerminal && (
+              <button
+                type="button"
+                onClick={onOpenTerminal}
+                className="text-muted-foreground relative ml-auto shrink-0 text-[13px] after:absolute after:-inset-x-2 after:-inset-y-3 after:content-[''] hover:underline"
+              >
+                or type a reply in the terminal
+              </button>
             )}
           </div>
           {split.more && onOpenTerminal && (

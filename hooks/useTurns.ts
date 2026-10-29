@@ -41,23 +41,36 @@ async function fetchTurns(sessionId: string): Promise<TurnsResponse> {
 }
 
 /** An undo's refusal in words */
-async function undoRefusal(res: Response): Promise<string> {
+async function undoRefusal(res: Response, agentName: string): Promise<string> {
   const body = (await res.json().catch(() => null)) as {
     error?: string;
     reason?: string;
   } | null;
   if (res.status === 403) return refusalText(body ?? {});
-  if (res.status === 409)
-    return body?.reason === "undone"
-      ? "This turn was already undone"
-      : "Claude is working: undo once it's done";
+  if (body?.error === "busy")
+    return `${agentName} is working: undo once it's done`;
+  switch (body?.reason) {
+    case "undone":
+      return "This turn was already undone";
+    case "no_snapshot":
+      return "Undo isn't available for this turn";
+    case "running":
+      return "This turn is still going: undo once it's done";
+    case "not_git":
+      return "Undo needs a git folder";
+    case "not_found":
+      return "This turn isn't there any more";
+  }
   return body?.error ?? "Couldn't undo the turn";
 }
 
 /** A session's turns (GET /api/sessions/[id]/turns) */
 export function useTurns(
   sessionId: string,
-  { enabled = true }: { enabled?: boolean } = {}
+  {
+    enabled = true,
+    agentName = "Claude",
+  }: { enabled?: boolean; agentName?: string } = {}
 ): UseTurns {
   const queryClient = useQueryClient();
   const queryKey = turnsKeys.session(sessionId);
@@ -100,14 +113,14 @@ export function useTurns(
       ).catch(() => {
         throw new Error("Couldn't reach the server");
       });
-      if (!res.ok) throw new Error(await undoRefusal(res));
+      if (!res.ok) throw new Error(await undoRefusal(res, agentName));
       const result = (await res.json()) as UndoResult;
       queryClient.invalidateQueries({ queryKey: turnsKeys.session(sessionId) });
       // The undo notice the next message carries
       queryClient.invalidateQueries({ queryKey: queueKeys.session(sessionId) });
       return result;
     },
-    [queryClient, sessionId]
+    [queryClient, sessionId, agentName]
   );
 
   return {

@@ -90,6 +90,11 @@ export function createQueueStore(db: Database.Database) {
       `UPDATE session_queue SET status = 'cancelled'
        WHERE session_id = ? AND status = 'pending' AND kind = 'undo_notice'`
     ),
+    failed: db.prepare(
+      `SELECT * FROM session_queue WHERE session_id = ? AND status = 'failed'
+         AND kind != 'undo_notice' AND created_at >= ?
+       ORDER BY id`
+    ),
     withPending: db.prepare(
       `SELECT DISTINCT session_id FROM session_queue
        WHERE status = 'pending' AND kind != 'undo_notice'`
@@ -142,6 +147,18 @@ export function createQueueStore(db: Database.Database) {
     /** Pending and sending items by position, without the undo notice */
     listQueue(sessionId: string): QueueItem[] {
       return (s.list.all(sessionId) as SessionQueueRow[]).map(toQueueItem);
+    },
+
+    /** Failed items created since `since` (ms) and not dismissed */
+    listFailed(sessionId: string, since: number): QueueItem[] {
+      return (s.failed.all(sessionId, since) as SessionQueueRow[]).map(
+        toQueueItem
+      );
+    },
+
+    /** failed -> cancelled: the user has seen it; false when not failed */
+    dismissFailed(sessionId: string, itemId: number): boolean {
+      return move(sessionId, itemId, "failed", "cancelled");
     },
 
     /** Any item of the session, whatever its status */
@@ -311,12 +328,14 @@ export function createQueueStore(db: Database.Database) {
 
     /**
      * Items left sending by a process that died mid-send: failed, not
-     * retried, since the text may have gone in
+     * retried, since the text may have gone in. The composer shows them
+     * with Retry, so the user decides
      */
     failInterrupted(): number {
       return db
         .prepare(
-          `UPDATE session_queue SET status = 'failed', error = 'Interrupted by a restart'
+          `UPDATE session_queue SET status = 'failed',
+             error = 'Cut off by a restart: it may have gone in'
            WHERE status = 'sending'`
         )
         .run().changes;
@@ -342,6 +361,11 @@ export function queueStore(db: Database.Database = getDb()): QueueStore {
 /** Pending and sending items by position, without the undo notice */
 export function listQueue(sessionId: string): QueueItem[] {
   return queueStore().listQueue(sessionId);
+}
+
+/** What didn't send in the last day and wasn't dismissed */
+export function listFailed(sessionId: string): QueueItem[] {
+  return queueStore().listFailed(sessionId, Date.now() - 24 * 60 * 60 * 1000);
 }
 
 export function getUndoNotice(sessionId: string): QueueItem | null {

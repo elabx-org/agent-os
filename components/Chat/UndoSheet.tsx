@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useSnapshot } from "valtio";
 import { toast } from "sonner";
@@ -11,17 +11,20 @@ import { registerNavHandlers } from "@/lib/nav-actions";
 import { mobileNavStore } from "@/stores/mobileNav";
 import type { UseTurns } from "@/hooks/useTurns";
 import type { TurnDetail, TurnFile, UndoResult } from "@/lib/turn-types";
-import { baseName } from "./rows";
+import { shortNames } from "./rows";
 import { Counts } from "./ToolCard";
 
 /** A file to undo, ticked or not (N-Undo's rows) */
 function FileRow({
   file,
+  name,
   checked,
   disabled,
   onToggle,
 }: {
   file: TurnFile;
+  /** The file name, with folders when another file shares it */
+  name: string;
   checked: boolean;
   disabled: boolean;
   onToggle: () => void;
@@ -44,9 +47,7 @@ function FileRow({
       ) : (
         <Circle className="text-muted-foreground/60 h-4 w-4 shrink-0" />
       )}
-      <span className="min-w-0 flex-1 truncate font-mono">
-        {baseName(file.path)}
-      </span>
+      <span className="min-w-0 flex-1 truncate font-mono">{name}</span>
       <Counts added={file.added} removed={file.removed} />
     </button>
   );
@@ -54,11 +55,13 @@ function FileRow({
 
 function FileGroup({
   files,
+  names,
   picked,
   disabled,
   onToggle,
 }: {
   files: TurnFile[];
+  names: ReadonlyMap<string, string>;
   picked: ReadonlySet<string>;
   disabled: boolean;
   onToggle: (path: string) => void;
@@ -69,6 +72,7 @@ function FileGroup({
         <FileRow
           key={file.path}
           file={file}
+          name={names.get(file.path) ?? file.path}
           checked={picked.has(file.path)}
           disabled={disabled}
           onToggle={() => onToggle(file.path)}
@@ -117,6 +121,16 @@ export function UndoSheet({
       stale = true;
     };
   }, [readDetail, turnNo]);
+
+  const names = useMemo(
+    () =>
+      shortNames(
+        detail
+          ? [...detail.files, ...detail.alsoChanged].map((f) => f.path)
+          : []
+      ),
+    [detail]
+  );
 
   // The column's × closes it while it's open (closeSheet)
   const close = useCallback(() => {
@@ -202,6 +216,7 @@ export function UndoSheet({
         {detail && detail.files.length > 0 && (
           <FileGroup
             files={detail.files}
+            names={names}
             picked={picked}
             disabled={!undoable || busy}
             onToggle={toggle}
@@ -214,6 +229,7 @@ export function UndoSheet({
             </h3>
             <FileGroup
               files={detail.alsoChanged}
+              names={names}
               picked={picked}
               disabled={!undoable || busy}
               onToggle={toggle}
@@ -240,7 +256,7 @@ export function UndoSheet({
               >
                 <Circle className="h-4 w-4 shrink-0" />
                 <span className="min-w-0 truncate font-mono text-[13px]">
-                  {baseName(k.path)}
+                  {names.get(k.path) ?? k.path}
                 </span>
                 <span className="shrink-0">changed since, kept</span>
               </p>
