@@ -1,10 +1,15 @@
 "use client";
 
-import { X, Plus, Minus, ChevronLeft } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { UnifiedDiff } from "./UnifiedDiff";
-import { parseDiff, getDiffFileName, getDiffSummary } from "@/lib/diff-parser";
+import { useEffect } from "react";
+import { createPortal } from "react-dom";
+import { useSnapshot } from "valtio";
+import { ChevronLeft, Minus, Plus, X } from "lucide-react";
+import { UnifiedDiff, DiffCounts, DiffLines } from "./UnifiedDiff";
+import { parseDiff, getDiffFileName } from "@/lib/diff-parser";
+import { useLayoutMode } from "@/hooks/useLayoutMode";
+import { mobileNavStore } from "@/stores/mobileNav";
 import { cn } from "@/lib/utils";
+import { splitPath } from "./diff-format";
 
 interface DiffModalProps {
   diff: string;
@@ -15,6 +20,10 @@ interface DiffModalProps {
   isStaged?: boolean;
 }
 
+/**
+ * One file's diff over everything: a full-height sheet on phones and the
+ * Duo (back, name and folder, +N −N, Stage), a centred dialog on desktop
+ */
 export function DiffModal({
   diff,
   fileName,
@@ -25,103 +34,119 @@ export function DiffModal({
 }: DiffModalProps) {
   const parsedDiff = parseDiff(diff);
   const displayName = fileName || getDiffFileName(parsedDiff);
-  const summary = getDiffSummary(parsedDiff);
+  const { name, folder } = splitPath(displayName);
+  const dialog = useLayoutMode() === "desktop";
+  const { railWidth } = useSnapshot(mobileNavStore);
 
-  return (
-    <div className="bg-background fixed inset-0 z-50 flex flex-col">
-      {/* Header */}
-      <div className="border-border bg-background/95 flex items-center gap-2 border-b p-3 backdrop-blur-sm">
-        <Button
-          variant="ghost"
-          size="icon-sm"
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const stage = (onStage || onUnstage) && (
+    <button
+      type="button"
+      onClick={isStaged ? onUnstage : onStage}
+      className={cn(
+        "pill pill-sm shrink-0",
+        isStaged ? "pill-secondary" : "pill-primary"
+      )}
+    >
+      {isStaged ? (
+        <Minus className="h-4 w-4" aria-hidden="true" />
+      ) : (
+        <Plus className="h-4 w-4" aria-hidden="true" />
+      )}
+      {isStaged ? "Unstage" : "Stage"}
+    </button>
+  );
+
+  const header = (
+    <div className="flex items-center gap-3">
+      {!dialog && (
+        <button
+          type="button"
           onClick={onClose}
-          className="h-9 w-9"
+          aria-label="Back"
+          className="pill pill-secondary h-11 w-11 shrink-0 p-0"
         >
           <ChevronLeft className="h-5 w-5" />
-        </Button>
-
-        <div className="min-w-0 flex-1">
-          <h3 className="truncate text-sm font-medium">{displayName}</h3>
-          <p className="text-muted-foreground text-xs">{summary}</p>
-        </div>
-
-        {/* Stage/Unstage button */}
-        {(onStage || onUnstage) && (
-          <Button
-            variant={isStaged ? "outline" : "default"}
-            size="sm"
-            onClick={isStaged ? onUnstage : onStage}
-            className="h-9"
-          >
-            {isStaged ? (
-              <>
-                <Minus className="mr-1 h-4 w-4" />
-                Unstage
-              </>
-            ) : (
-              <>
-                <Plus className="mr-1 h-4 w-4" />
-                Stage
-              </>
-            )}
-          </Button>
+        </button>
+      )}
+      <div className="flex min-w-0 flex-1 flex-col">
+        <h3 className="t-head truncate font-mono">{name}</h3>
+        {folder && (
+          <p className="text-muted-foreground truncate text-[13px]">{folder}</p>
         )}
-
-        <Button
-          variant="ghost"
-          size="icon-sm"
+      </div>
+      {diff && !parsedDiff.isBinary && (
+        <DiffCounts
+          added={parsedDiff.additions}
+          removed={parsedDiff.deletions}
+        />
+      )}
+      {stage}
+      {dialog && (
+        <button
+          type="button"
           onClick={onClose}
-          className="h-9 w-9 md:hidden"
+          aria-label="Close"
+          className="text-muted-foreground hover:bg-accent flex h-9 w-9 shrink-0 items-center justify-center rounded-full"
         >
           <X className="h-4 w-4" />
-        </Button>
-      </div>
-
-      {/* Content */}
-      <div className="flex-1 overflow-auto p-3">
-        {diff ? (
-          <UnifiedDiff
-            diff={parsedDiff}
-            fileName={displayName}
-            expanded={true}
-          />
-        ) : (
-          <div className="text-muted-foreground flex h-full items-center justify-center">
-            <p className="text-sm">No changes to display</p>
-          </div>
-        )}
-      </div>
-
-      {/* Mobile action bar */}
-      <div className="border-border bg-background/95 safe-area-bottom flex items-center justify-between border-t p-3 backdrop-blur-sm md:hidden">
-        <div className="flex items-center gap-4">
-          {parsedDiff.additions > 0 && (
-            <span className="flex items-center gap-1 text-sm text-blue-400">
-              <Plus className="h-4 w-4" />
-              {parsedDiff.additions}
-            </span>
-          )}
-          {parsedDiff.deletions > 0 && (
-            <span className="flex items-center gap-1 text-sm text-amber-400">
-              <Minus className="h-4 w-4" />
-              {parsedDiff.deletions}
-            </span>
-          )}
-        </div>
-
-        {(onStage || onUnstage) && (
-          <Button
-            variant={isStaged ? "outline" : "default"}
-            size="default"
-            onClick={isStaged ? onUnstage : onStage}
-            className="min-h-[44px]"
-          >
-            {isStaged ? "Unstage" : "Stage"}
-          </Button>
-        )}
-      </div>
+        </button>
+      )}
     </div>
   );
+
+  const body = diff ? (
+    <div className="tools">
+      <DiffLines diff={parsedDiff} wrap={!dialog} />
+    </div>
+  ) : (
+    <p className="text-muted-foreground py-8 text-center text-sm">
+      No changes to display
+    </p>
+  );
+
+  const content = dialog ? (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
+      <div
+        aria-hidden="true"
+        onClick={onClose}
+        className="absolute inset-0 bg-black/55"
+      />
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-label={displayName}
+        className="relative flex max-h-[85vh] w-full max-w-4xl flex-col gap-3 overflow-hidden rounded-[20px] bg-[var(--sheet)] p-4"
+      >
+        {header}
+        <div className="min-h-0 flex-1 overflow-auto">{body}</div>
+      </section>
+    </div>
+  ) : (
+    <section
+      role="dialog"
+      aria-modal="true"
+      aria-label={displayName}
+      className="bg-background fixed inset-0 z-50 flex flex-col"
+      style={{ right: railWidth }}
+    >
+      <div className="px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3">
+        {header}
+      </div>
+      <div className="flex-1 overflow-auto overscroll-contain px-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
+        {body}
+      </div>
+    </section>
+  );
+
+  return typeof document === "undefined"
+    ? content
+    : createPortal(content, document.body);
 }
 
 interface DiffViewProps {
