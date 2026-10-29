@@ -1,8 +1,7 @@
 /**
  * M8 "Settle" (N-Settle): the shapes shared by the routes
- * (app/api/sessions/[id]/settle, app/api/presence, GET /api/sessions
- * ?settled=), lib/settle.ts, lib/pr-poller.ts, lib/auto-settle.ts and the
- * Now page. A settled session's tmux ended; its row, transcript, worktree,
+ * (app/api/sessions/[id]/settle, GET /api/sessions?settled=),
+ * lib/settle.ts, lib/pr-poller.ts, lib/auto-settle.ts and the Now page. A settled session's tmux ended; its row, transcript, worktree,
  * branch and snapshot refs stay. No server imports.
  */
 
@@ -183,26 +182,13 @@ export interface AutoSettleInput {
   pendingQueue: number;
   /** ms of the last user message or terminal input, null when unknown */
   lastInputAt: number | null;
-  /** Open in a focused pane on a connected client (lib/presence.ts) */
+  /**
+   * Shown in a visible client's focused pane (isWatching in
+   * lib/push/config.ts, fed by hooks/usePresence.ts)
+   */
   focused: boolean;
   now: number;
 }
-
-// --- POST /api/presence ---
-
-/** Each client says which sessions it has open, the focused one first */
-export interface PresenceRequest {
-  /** A random id per page load */
-  clientId: string;
-  /** The focused pane's session, null when none */
-  focused: string | null;
-  /** Sent every PRESENCE_BEAT_MS while visible */
-  visible: boolean;
-}
-
-export const PRESENCE_BEAT_MS = 30 * 1000;
-/** A client unheard of for this long no longer counts */
-export const PRESENCE_TTL_MS = 90 * 1000;
 
 /** "#107 open · checks passed": the chip's words (Working rows, N-Settle) */
 export function prChipLabel(pr: SessionPr, baseBranch?: string | null): string {
