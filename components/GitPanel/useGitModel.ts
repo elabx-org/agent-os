@@ -125,6 +125,8 @@ export function useGitModel({
 
   const { data: prData } = usePRStatus(repoPath);
   const pr = prData?.existingPR ?? null;
+  // A merged or closed PR is history: the branch can still get a new one
+  const prOpen = pr?.state === "open";
   const { data: stashes = [] } = useStashList(workingDirectory);
 
   const [syncInterval, setSyncIntervalState] = useState(() => {
@@ -200,7 +202,8 @@ export function useGitModel({
   const generateMutation = useGenerateCommitMessage(repoPath);
   const generate = () =>
     generateMutation.mutate(undefined, {
-      onSuccess: (text) => setMessage(text),
+      // Never over what was typed while Claude wrote
+      onSuccess: (text) => setMessage((cur) => (cur.trim() ? cur : text)),
       onError: (err) =>
         toast.error(errorText(err, "Couldn't write a commit message")),
     });
@@ -326,6 +329,7 @@ export function useGitModel({
     caption: status ? branchCaption(branch, status, info) : "",
     onBase: onBaseBranch(branch, info),
     pr,
+    prOpen,
     stashes,
     syncInterval,
     setSyncInterval,

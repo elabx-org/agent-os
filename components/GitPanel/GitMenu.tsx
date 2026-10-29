@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import type { PRSummary } from "@/lib/git-types";
 
-const SYNC_OPTIONS = [
+export const SYNC_OPTIONS = [
   { value: 0, label: "Off" },
   { value: 60, label: "Every minute" },
   { value: 300, label: "Every 5 minutes" },

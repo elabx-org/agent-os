@@ -19,6 +19,8 @@ export interface FileGitBadges {
   files: Map<string, GitBadge>;
   /** Absolute paths of folders with a change somewhere inside */
   dirtyDirs: Set<string>;
+  /** The root relative to the repository's top ("" or ending in "/"); absent outside git */
+  prefix?: string;
 }
 
 interface RepoLocation {
@@ -146,7 +148,7 @@ export async function gitBadges(root: string): Promise<FileGitBadges> {
       dirtyDirs.add(d);
     }
   }
-  return { files, dirtyDirs };
+  return { files, dirtyDirs, prefix: where.prefix };
 }
 
 /** Tests: forget what was cached */

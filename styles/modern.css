@@ -35,6 +35,8 @@
     --checks-edge: rgba(5, 150, 105, 0.35);
     --fail-edge: rgba(220, 38, 38, 0.35);
     --code-gutter: #aeaeb2;
+    /* The code panel and its open tab: a white card on the light page */
+    --code-bg: #ffffff;
     --syn-key: #7c3aed;
     --syn-str: #047857;
     --syn-fn: #2563eb;
@@ -64,6 +66,7 @@
     --checks-edge: rgba(52, 211, 153, 0.3);
     --fail-edge: rgba(248, 113, 113, 0.3);
     --code-gutter: #4b4b52;
+    --code-bg: var(--diff-bg);
     --syn-key: #c4b5fd;
     --syn-str: #86efac;
     --syn-fn: #93c5fd;
@@ -737,12 +740,12 @@
     color: hsl(var(--muted-foreground));
   }
   .file-tab.on {
-    background: var(--diff-bg);
+    background: var(--code-bg);
     color: hsl(var(--foreground));
   }
   /* The code under them: true black page, 44px gutter (CodeMirror's theme reads the --syn-* tokens) */
   .code-view {
-    background: var(--diff-bg);
+    background: var(--code-bg);
     font-family: var(--font-geist-mono), ui-monospace, monospace;
     font-size: 13px;
     line-height: 1.75;

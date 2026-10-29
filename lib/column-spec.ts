@@ -190,7 +190,7 @@ const BASE = {
   newPr: {
     id: "newPr",
     symbol: "arrow.triangle.pull",
-    icon: "GitPullRequestCreateArrow",
+    icon: "GitPullRequestArrow",
     label: "New pull request",
   },
   newFile: {

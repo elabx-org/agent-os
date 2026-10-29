@@ -75,78 +75,12 @@ export function usePRStatus(workingDir: string) {
 
 // --- Mutations ---
 
-export function useCreatePR(workingDir: string) {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: async () => {
-      // First get suggested content (with generate=true for AI generation)
-      const infoRes = await fetch(
-        `/api/git/pr?path=${encodeURIComponent(workingDir)}&generate=true`
-      );
-      const info = await infoRes.json();
-
-      if (info.error) throw new Error(info.error);
-
-      if (info.existingPR?.state === "open") {
-        // PR already exists, just return it (a merged one gets a new PR)
-        return { pr: info.existingPR, created: false };
-      }
-
-      // Create the PR with auto-generated content
-      const createRes = await fetch("/api/git/pr", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          path: workingDir,
-          title: info.suggestedTitle,
-          description: info.suggestedBody,
-          baseBranch: info.baseBranch,
-        }),
-      });
-
-      const result = await createRes.json();
-      if (result.error) throw new Error(result.error);
-
-      return { pr: result.pr, created: true };
-    },
-    onSuccess: (data) => {
-      // Open PR in browser
-      if (data.pr?.url) {
-        window.open(data.pr.url, "_blank");
-      }
-      // Invalidate PR status
-      queryClient.invalidateQueries({ queryKey: gitKeys.pr(workingDir) });
-    },
-  });
-}
-
 export function useStageFiles(workingDir: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: async (files?: string[]) => {
       const res = await fetch("/api/git/stage", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path: workingDir, files }),
-      });
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      return data;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: gitKeys.status(workingDir) });
-    },
-  });
-}
-
-export function useUnstageFiles(workingDir: string) {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: async (files?: string[]) => {
-      const res = await fetch("/api/git/unstage", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ path: workingDir, files }),
@@ -341,26 +275,6 @@ export function useCheckoutBranch(workingDir: string) {
   });
 }
 
-export function useSyncBranch(workingDir: string) {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: async () => {
-      const res = await fetch("/api/git/sync", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path: workingDir }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to sync");
-      return data;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: gitKeys.all });
-    },
-  });
-}
-
 // --- Multi-repo Git Status ---
 
 async function fetchMultiRepoGitStatus(
@@ -449,18 +363,6 @@ async function fetchStashList(workingDir: string): Promise<StashEntry[]> {
   return data.stashes || [];
 }
 
-async function fetchStashDetail(
-  workingDir: string,
-  index: number
-): Promise<string> {
-  const res = await fetch(
-    `/api/git/stash/${index}?path=${encodeURIComponent(workingDir)}`
-  );
-  const data = await res.json();
-  if (data.error) throw new Error(data.error);
-  return data.diff || "";
-}
-
 export function useStashList(workingDir: string) {
   return useQuery({
     queryKey: gitKeys.stash(workingDir),
@@ -468,15 +370,6 @@ export function useStashList(workingDir: string) {
     staleTime: 15000,
     refetchInterval: 30000,
     enabled: !!workingDir,
-  });
-}
-
-export function useStashDetail(workingDir: string, index: number | null) {
-  return useQuery({
-    queryKey: gitKeys.stashDetail(workingDir, index ?? -1),
-    queryFn: () => fetchStashDetail(workingDir, index!),
-    staleTime: 60000,
-    enabled: !!workingDir && index !== null,
   });
 }
 

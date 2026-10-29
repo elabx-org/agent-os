@@ -11,7 +11,7 @@ const theme = EditorView.theme({
   "&": {
     fontSize: "13px",
     height: "100%",
-    backgroundColor: "var(--diff-bg)",
+    backgroundColor: "var(--code-bg)",
     color: "hsl(var(--foreground))",
   },
   ".cm-scroller": {
@@ -24,7 +24,7 @@ const theme = EditorView.theme({
     caretColor: "hsl(var(--meter))",
   },
   ".cm-gutters": {
-    backgroundColor: "var(--diff-bg)",
+    backgroundColor: "var(--code-bg)",
     borderRight: "none",
     color: "var(--code-gutter)",
   },

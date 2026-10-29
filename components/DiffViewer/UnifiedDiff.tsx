@@ -92,7 +92,7 @@ export function DiffCounts({
   return (
     <span className="flex shrink-0 gap-2">
       <span className="n-add text-xs">+{added}</span>
-      <span className="n-del text-xs">−{removed}</span>
+      {removed > 0 && <span className="n-del text-xs">−{removed}</span>}
     </span>
   );
 }
@@ -131,7 +131,8 @@ export function DiffLines({
         {hunks &&
           diff.hunks.map((hunk, h) => (
             <Fragment key={h}>
-              <div className={cn("dl-ctx", lineClass)}>
+              {/* The @@ line stays one line even when the code wraps */}
+              <div className={cn("dl-ctx", wrap && "truncate")}>
                 {gutter(null)}
                 {hunk.header}
               </div>

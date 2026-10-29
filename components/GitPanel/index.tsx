@@ -24,6 +24,7 @@ import {
 import { useViewport } from "@/hooks/useViewport";
 import { useLayoutMode } from "@/hooks/useLayoutMode";
 import { registerNavHandlers } from "@/lib/nav-actions";
+import { setGitMenu } from "@/stores/gitMenu";
 import { cn } from "@/lib/utils";
 import type { GitFile } from "@/lib/git-status";
 import type { ProjectRepository } from "@/lib/db";
@@ -148,7 +149,7 @@ function GitPanelContent({
     if (!m.reviewInChat()) openReview();
   };
   const newPullRequest = () => {
-    if (m.pr) return openReview();
+    if (m.prOpen) return openReview();
     if (m.onBase) {
       toast(`You're on ${m.branch}: switch to a branch to open a pull request`);
       return;
@@ -167,6 +168,23 @@ function GitPanelContent({
       newPullRequest: () => latest.current.newPullRequest(),
     });
   }, [active]);
+
+  // The title row has no ⋯ here: the column's More takes its items
+  const model = useRef(m);
+  model.current = m;
+  const prUrl = m.pr?.url ?? null;
+  const prNumber = m.pr?.number ?? null;
+  useEffect(() => {
+    if (!columnActions) return;
+    setGitMenu({
+      refresh: () => model.current.refreshAll(),
+      prUrl,
+      prNumber,
+      syncInterval: m.syncInterval,
+      setSyncInterval: (s) => model.current.setSyncInterval(s),
+    });
+    return () => setGitMenu(null);
+  }, [columnActions, prUrl, prNumber, m.syncInterval]);
 
   const fileActions = {
     onStage: (f: AnyGitFile) => m.stage(f),
@@ -298,7 +316,7 @@ function GitPanelContent({
       <>
         <div
           className={cn(
-            "flex h-full min-w-0 flex-col gap-3 overflow-x-hidden overflow-y-auto overscroll-contain pt-[18px] pb-[max(1rem,var(--pane-inset-bottom,env(safe-area-inset-bottom)))]",
+            "flex h-full min-w-0 flex-col gap-3 overflow-x-hidden overflow-y-auto overscroll-contain pt-[18px] pb-[var(--git-pb)] [--git-pb:max(1rem,var(--pane-inset-bottom,env(safe-area-inset-bottom)))]",
             closed ? "pr-[8px] pl-[20px]" : "px-4"
           )}
         >
@@ -316,7 +334,7 @@ function GitPanelContent({
                   onOpen={openReview}
                 />
               )}
-              {!m.pr && !m.onBase && !columnActions && (
+              {!m.prOpen && !m.onBase && !columnActions && (
                 <button
                   type="button"
                   onClick={newPullRequest}
@@ -342,7 +360,6 @@ function GitPanelContent({
                     type="button"
                     role="tab"
                     aria-selected={tab === id}
-                    aria-pressed={tab === id}
                     onClick={() => setTab(id)}
                   >
                     {label}
@@ -351,7 +368,9 @@ function GitPanelContent({
               </div>
               {tab === "changes" && changes}
               {tab === "changes" && m.hasChanges && (
-                <div className="bg-background sticky bottom-0 -mb-1 flex-none pt-1 pb-1">
+                // On the true bottom edge, its padding taking the panel's,
+                // so no row shows below it
+                <div className="bg-background sticky bottom-[calc(-1*var(--git-pb))] mb-[calc(-1*var(--git-pb))] flex-none pt-1 pb-[calc(var(--git-pb)+0.25rem)]">
                   <CommitBar {...m} />
                 </div>
               )}
@@ -394,7 +413,9 @@ function GitPanelContent({
     <div className="flex h-full min-w-0">
       <aside
         aria-label="Working tree"
-        className="bg-page border-hair flex w-[380px] flex-none flex-col gap-3.5 overflow-x-hidden overflow-y-auto overscroll-contain border-r px-4 py-[18px]"
+        // On the open Duo the column takes the left page and the rest the
+        // right one, clear of the fold (as D-Files)
+        className="bg-page border-hair flex w-[380px] flex-none flex-col gap-3.5 overflow-x-hidden overflow-y-auto overscroll-contain border-r px-4 py-[18px] [html[data-hinge]_&]:w-[calc(var(--hinge-x)-var(--fold-clear))] [html[data-hinge]_&]:border-r-0"
       >
         {title("title")}
         {body ?? (
@@ -430,22 +451,22 @@ function GitPanelContent({
           </>
         )}
       </aside>
-      <main className="flex min-w-0 flex-1 flex-col">
+      <main className="flex min-w-0 flex-1 flex-col [html[data-hinge]_&]:ml-[calc(2*var(--fold-clear))]">
         {subpage ?? (
           <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-x-hidden overflow-y-auto overscroll-contain px-6 py-[18px]">
-            {!body &&
-              (m.pr ? (
-                <PRCard
-                  pr={m.pr}
-                  wide
-                  merging={m.merging}
-                  onMerge={m.merge}
-                  onReview={review}
-                  onOpen={openReview}
-                />
-              ) : (
-                <NoPRCard onCreate={m.onBase ? undefined : newPullRequest} />
-              ))}
+            {!body && m.pr && (
+              <PRCard
+                pr={m.pr}
+                wide
+                merging={m.merging}
+                onMerge={m.merge}
+                onReview={review}
+                onOpen={openReview}
+              />
+            )}
+            {!body && !m.prOpen && (
+              <NoPRCard onCreate={m.onBase ? undefined : newPullRequest} />
+            )}
             {!body && (
               <HistoryList
                 repoPath={m.repoPath}

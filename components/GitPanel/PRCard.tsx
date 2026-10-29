@@ -84,11 +84,14 @@ export function PRCard({
     return (
       <section
         aria-label={`Pull request #${pr.number}`}
-        className={cn("pr-card gap-3 p-[18px]", checksTone(pr.checks))}
+        className={cn(
+          "pr-card @container/pr gap-3 p-[18px]",
+          checksTone(pr.checks)
+        )}
       >
-        <div className="flex min-w-0 items-center gap-2.5">
+        <div className="flex min-w-0 items-start gap-2.5">
           {number}
-          <span className="t-head min-w-0 flex-1 truncate">{pr.title}</span>
+          <span className="t-head line-clamp-2 min-w-0 flex-1">{pr.title}</span>
           <Checks pr={pr} chip />
         </div>
         {blurb && (
@@ -96,8 +99,9 @@ export function PRCard({
             {blurb}
           </p>
         )}
-        <div className="flex min-w-0 items-center gap-2.5">
-          <span className="text-muted-foreground min-w-0 flex-1 truncate text-[13px]">
+        {/* A narrow card puts the caption on a line of its own */}
+        <div className="flex min-w-0 flex-wrap items-center justify-end gap-2.5">
+          <span className="text-muted-foreground w-full min-w-0 truncate text-[13px] @min-[640px]/pr:w-auto @min-[640px]/pr:flex-1">
             {prMetaCaption(pr)}
           </span>
           <button

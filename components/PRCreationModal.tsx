@@ -113,8 +113,8 @@ export function PRCreationModal({
   // Duo's column the way a fixed overlay would be
   const shell = "bg-background absolute inset-0 z-30 flex flex-col";
 
-  // Show existing PR
-  if (prData?.existingPR) {
+  // Show existing PR (a merged or closed one doesn't stop a new PR)
+  if (prData?.existingPR?.state === "open") {
     return (
       <div className={shell}>
         <Header onClose={onClose} />

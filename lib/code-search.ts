@@ -1,4 +1,4 @@
-import { execSync } from "child_process";
+import { execSync, spawn } from "child_process";
 
 /**
  * Check if ripgrep is available on the system
@@ -38,76 +38,93 @@ export interface FormattedMatch {
   lineText: string;
 }
 
+/** Hard cap on one search, so a huge folder cannot keep ripgrep running */
+const SEARCH_TIMEOUT_MS = 8000;
+
+/**
+ * ripgrep's JSON matches under workingDir. Runs asynchronously (never blocks
+ * the server's event loop), stops ripgrep as soon as maxResults matches are
+ * in, and kills it when the signal aborts (the request was cancelled).
+ */
 export function searchCode(
   workingDir: string,
   query: string,
-  options: SearchOptions = {}
-): SearchMatch[] {
-  const {
-    maxResults = 100,
-    contextLines = 2,
-    filePattern = "*",
-    caseSensitive = false,
-  } = options;
+  options: SearchOptions & { maxDepth?: number; signal?: AbortSignal } = {}
+): Promise<SearchMatch[]> {
+  const { maxResults = 100, contextLines = 2, maxDepth, signal } = options;
 
-  try {
-    // Use spawn instead of execSync for better control
-    const { spawnSync } = require("child_process");
+  const args = [
+    "--json",
+    `--max-count=${Math.ceil(maxResults / 10)}`,
+    `--context=${contextLines}`,
+    "--max-filesize=1M",
+    "--max-columns=500",
+    "--ignore-case",
+    ...(maxDepth ? [`--max-depth=${maxDepth}`] : []),
+    "--",
+    query,
+    ".", // CRITICAL: Tell ripgrep to search current directory explicitly
+  ];
 
-    const args = [
-      "--json",
-      `--max-count=${Math.ceil(maxResults / 10)}`,
-      `--context=${contextLines}`,
-      "--ignore-case",
-      query,
-      ".", // CRITICAL: Tell ripgrep to search current directory explicitly
-    ];
-
-    const result = spawnSync("rg", args, {
-      cwd: workingDir,
-      encoding: "utf-8",
-      timeout: 10000,
-      maxBuffer: 1024 * 1024 * 5,
-      stdio: ["ignore", "pipe", "pipe"], // Ignore stdin so ripgrep doesn't wait for it
-    });
-
-    if (result.error) {
-      throw result.error;
-    }
-
-    // Status 1 = no matches (not an error for ripgrep)
-    if (result.status !== 0 && result.status !== 1) {
-      return [];
-    }
-
-    const output = result.stdout || "";
+  return new Promise((resolve, reject) => {
     const matches: SearchMatch[] = [];
-    const lines = output.trim().split("\n").filter(Boolean);
+    if (signal?.aborted) return resolve(matches);
 
-    for (const line of lines) {
-      try {
-        const parsed = JSON.parse(line);
-        if (parsed.type === "match") {
-          matches.push(parsed);
-          if (matches.length >= maxResults) break;
+    const child = spawn("rg", args, {
+      cwd: workingDir,
+      // Ignore stdin so ripgrep doesn't wait for it
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    let done = false;
+    let pending = "";
+    const finish = () => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", finish);
+      if (child.exitCode === null) child.kill("SIGKILL");
+      resolve(matches);
+    };
+    const timer = setTimeout(finish, SEARCH_TIMEOUT_MS);
+    signal?.addEventListener("abort", finish);
+
+    child.stdout.setEncoding("utf-8");
+    child.stdout.on("data", (chunk: string) => {
+      if (done) return;
+      pending += chunk;
+      const lines = pending.split("\n");
+      pending = lines.pop() ?? "";
+      for (const line of lines) {
+        if (!line.includes('"type":"match"')) continue;
+        try {
+          const parsed = JSON.parse(line);
+          if (parsed.type === "match") matches.push(parsed);
+        } catch {
+          continue;
         }
-      } catch {
-        continue;
+        if (matches.length >= maxResults) return finish();
       }
-    }
-
-    return matches;
-  } catch (error) {
-    console.error("Error in searchCode:", error);
-    // ENOENT = command not found
-    if ((error as any).code === "ENOENT") {
-      throw new Error(
-        "ripgrep (rg) not found. Install with: brew install ripgrep"
-      );
-    }
-    // Other errors - return empty
-    return [];
-  }
+    });
+    child.on("error", (error: NodeJS.ErrnoException) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", finish);
+      // ENOENT = command not found
+      if (error.code === "ENOENT") {
+        reject(
+          new Error(
+            "ripgrep (rg) not found. Install with: brew install ripgrep"
+          )
+        );
+      } else {
+        console.error("Error in searchCode:", error);
+        resolve([]);
+      }
+    });
+    // Status 1 = no matches (not an error for ripgrep)
+    child.on("close", finish);
+  });
 }
 
 export function formatSearchResults(matches: SearchMatch[]): FormattedMatch[] {

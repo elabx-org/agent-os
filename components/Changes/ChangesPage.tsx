@@ -197,7 +197,9 @@ export function ChangesPage({
 
   const onWrite = async () => {
     try {
-      setMessage(await generate.mutateAsync());
+      const text = await generate.mutateAsync();
+      // Never over what was typed while Claude wrote
+      setMessage((cur) => (cur.trim() ? cur : text));
     } catch {
       toast.error("Couldn't write a message");
     }
@@ -217,7 +219,9 @@ export function ChangesPage({
         {files.length > 0 && (
           <span className="chip">
             <span className="n-add">+{total.additions}</span>
-            <span className="n-del">−{total.deletions}</span>
+            {total.deletions > 0 && (
+              <span className="n-del">−{total.deletions}</span>
+            )}
           </span>
         )}
       </div>

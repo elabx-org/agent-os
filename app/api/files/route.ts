@@ -48,6 +48,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({
         files: withBadges(files, badges),
         path: expandedPath,
+        // git status paths are from the repo's top: this maps them here
+        gitPrefix: badges.prefix,
       });
     }
 

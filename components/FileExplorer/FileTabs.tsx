@@ -71,11 +71,14 @@ export function FileTabs({
               }
             }}
             className={cn(
-              "file-tab group flex-shrink-0 cursor-pointer whitespace-nowrap",
+              // Tabs give way down to 96px, then the row scrolls
+              "file-tab group min-w-[96px] cursor-pointer whitespace-nowrap",
               isActive ? "on" : "hover:text-foreground"
             )}
           >
-            <span className="max-w-[180px] truncate font-mono">{fileName}</span>
+            <span className="max-w-[180px] min-w-0 truncate font-mono">
+              {fileName}
+            </span>
             {dot && (
               <span
                 className="dirty-dot"

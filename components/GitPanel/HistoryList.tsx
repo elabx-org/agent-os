@@ -78,12 +78,11 @@ export function HistoryList({
       ) : !commits?.length ? (
         <p className="text-muted-foreground px-1 text-[14px]">No commits yet</p>
       ) : (
-        <div className="group-card" role="list" aria-label="Commits">
+        <div className="group-card" role="group" aria-label="Commits">
           {commits.map((c, i) => (
             <button
               key={c.hash}
               type="button"
-              role="listitem"
               onClick={() => onOpen(c.hash)}
               className="commit-row hover:bg-foreground/[0.03] w-full min-w-0 text-left active:opacity-80"
             >

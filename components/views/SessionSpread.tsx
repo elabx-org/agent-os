@@ -339,19 +339,24 @@ export function SessionSpread({
   // Open-Changes: the column's Changes opens Changes on the right page,
   // beside the conversation, where Live would go (they share the page)
   const changesHere = changesRoom && !replyLeft;
+  // The iOS app before the column (0.1.62) sends `git` from its toolbar:
+  // that keeps opening the git view, as it always did
+  const changesFromColumn = changesHere && (!native || nativeCaps().column);
   useEffect(() => {
     if (!changesHere) return;
     return registerNavHandlers({
-      openChanges: () => {
-        mobileNavStore.changesOpen = !mobileNavStore.changesOpen;
-        mobileNavStore.liveOpen = false;
-      },
+      ...(changesFromColumn && {
+        openChanges: () => {
+          mobileNavStore.changesOpen = !mobileNavStore.changesOpen;
+          mobileNavStore.liveOpen = false;
+        },
+      }),
       openLive: () => {
         mobileNavStore.changesOpen = false;
         mobileNavStore.liveOpen = !mobileNavStore.liveOpen;
       },
     });
-  }, [changesHere]);
+  }, [changesHere, changesFromColumn]);
   // It closes once the pages go away or something else takes them
   useEffect(() => {
     if (!changesRoom) mobileNavStore.changesOpen = false;

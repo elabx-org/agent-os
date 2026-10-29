@@ -4,6 +4,7 @@ import { useRef, useCallback, useEffect, memo, useState, useMemo } from "react";
 import dynamic from "next/dynamic";
 import { usePanes } from "@/contexts/PaneContext";
 import { useViewport } from "@/hooks/useViewport";
+import { useLayoutMode } from "@/hooks/useLayoutMode";
 import type {
   TerminalHandle,
   TerminalScrollState,
@@ -90,6 +91,7 @@ export const Pane = memo(function Pane({
   onSelectSession,
 }: PaneProps) {
   const { isMobile } = useViewport();
+  const layoutMode = useLayoutMode();
   const {
     focusedPaneId,
     canSplit,
@@ -491,8 +493,9 @@ export const Pane = memo(function Pane({
           onTabAdd={() => addTab(paneId)}
         />
       )}
-      {/* E-Git, E-Files: on a phone those pages carry their own title */}
-      {!(isMobile && (viewMode === "git" || viewMode === "files")) && (
+      {/* E-Git, E-Files: on the Duo those pages carry their own title, and
+          the column goes back; a phone keeps the header's way back */}
+      {!(layoutMode !== "phone" && layoutMode !== "desktop" && (viewMode === "git" || viewMode === "files")) && (
       <SessionTitleBar
         session={session}
         projects={projects}

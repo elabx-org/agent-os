@@ -1,7 +1,14 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { FileDiff, Minus, MoreHorizontal, Plus, Undo2 } from "lucide-react";
+import {
+  Check,
+  FileDiff,
+  Minus,
+  MoreHorizontal,
+  Plus,
+  Undo2,
+} from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -32,22 +39,15 @@ const keyOf = (f: AnyGitFile) =>
 /**
  * The changed files on one card (E-Git, D-Git): letter, path, counts. A
  * tap opens the diff; hold (touch), right-click or ⋯ for stage, unstage
- * and discard. Staged files, when there are some, get a card of their own
+ * and discard. Staged files come first, each with a check
  */
 export function ChangesList(props: ChangesListProps) {
   const { files } = props;
-  const staged = files.filter((f) => f.staged);
-  if (!staged.length || staged.length === files.length)
-    return <FileGroup {...props} />;
-  const rest = files.filter((f) => !f.staged);
-  return (
-    <>
-      <h3 className="t-sec">Staged · {staged.length}</h3>
-      <FileGroup {...props} files={staged} />
-      <h3 className="t-sec">Not staged · {rest.length}</h3>
-      <FileGroup {...props} files={rest} />
-    </>
-  );
+  const ordered = [
+    ...files.filter((f) => f.staged),
+    ...files.filter((f) => !f.staged),
+  ];
+  return <FileGroup {...props} files={ordered} />;
 }
 
 function FileGroup(props: ChangesListProps) {
@@ -117,9 +117,18 @@ function FileRow({
         wide ? "min-h-[48px]" : "min-h-[50px]",
         selected ? "sel" : "hover:bg-foreground/[0.03]"
       )}
+      role="button"
+      tabIndex={0}
       // The menu's items are portaled but their clicks bubble here in React
       onClick={(e) => {
         if (ref.current?.contains(e.target as Node)) onOpen(file);
+      }}
+      onKeyDown={(e) => {
+        if (e.target !== e.currentTarget) return;
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onOpen(file);
+        }
       }}
     >
       <span className={cn("git-letter", gitBadgeClass(badge))}>{badge}</span>
@@ -129,6 +138,12 @@ function FileRow({
       >
         {file.path}
       </span>
+      {file.staged && (
+        <Check
+          aria-label="Staged"
+          className="text-muted-foreground h-3.5 w-3.5 flex-none"
+        />
+      )}
       {!!file.additions && (
         <span className="n-add flex-none text-[12px]">+{file.additions}</span>
       )}
@@ -141,11 +156,12 @@ function FileRow({
             type="button"
             aria-label={`Actions for ${file.path}`}
             onClick={(e) => e.stopPropagation()}
+            // Over the counts while shown, so the path keeps the row's room
             className={cn(
-              "text-muted-foreground hover:text-foreground -mr-1.5 flex h-7 w-7 flex-none items-center justify-center rounded-md",
+              "text-muted-foreground hover:text-foreground bg-card absolute right-2 flex h-7 w-7 items-center justify-center rounded-md opacity-0",
               isTouch
-                ? "pointer-events-none absolute right-2 opacity-0"
-                : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100"
+                ? "pointer-events-none"
+                : "group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100"
             )}
           >
             <MoreHorizontal className="h-4 w-4" />

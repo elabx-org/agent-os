@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { toast } from "sonner";
-import { FileTree, fetchListing, type TreeVariant } from "./FileTree";
+import { FileTree, type TreeVariant } from "./FileTree";
 import { FileEditor } from "./FileEditor";
 import { FileTabs } from "./FileTabs";
 import {
@@ -15,6 +15,7 @@ import { NewFileDialog } from "./NewFileDialog";
 import { baseName, breadcrumb, firstResult, relativeTo } from "./files-search";
 import type { UseFileEditorReturn } from "@/hooks/useFileEditor";
 import { useViewport } from "@/hooks/useViewport";
+import { useLayoutMode } from "@/hooks/useLayoutMode";
 import { useFileDrop } from "@/hooks/useFileDrop";
 import { uploadFileToTemp } from "@/lib/file-upload";
 import { useGitStatus } from "@/data/git/queries";
@@ -27,7 +28,9 @@ import {
   AlertCircle,
   ChevronLeft,
   Folder,
+  FileDiff,
   FolderUp,
+  MessageSquare,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -70,10 +73,15 @@ export function FileExplorer({
   fileEditor,
 }: FileExplorerProps) {
   const { isMobile, isHydrated } = useViewport();
+  const closed = useLayoutMode() === "duo-closed";
   const rootRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState<number | null>(null);
   const [currentRoot, setCurrentRoot] = useState(workingDirectory);
   const [projectRoot, setProjectRoot] = useState(workingDirectory);
+  /** The project root relative to its repository's top ("" at the top) */
+  const [gitPrefix, setGitPrefix] = useState<string | null>(null);
+  const projectRootRef = useRef(projectRoot);
+  projectRootRef.current = projectRoot;
   const [files, setFiles] = useState<FileNode[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -113,6 +121,7 @@ export function FileExplorer({
   useEffect(() => {
     setCurrentRoot(workingDirectory);
     setProjectRoot(workingDirectory);
+    setGitPrefix(null);
   }, [workingDirectory]);
 
   useEffect(() => {
@@ -141,6 +150,10 @@ export function FileExplorer({
           if (!silent) setError(data.error);
         } else {
           setFiles(data.files || []);
+          if (dir === workingDirectory || dir === projectRootRef.current)
+            setGitPrefix(
+              typeof data.gitPrefix === "string" ? data.gitPrefix : null
+            );
           // Normalize the roots: the API expands ~ to an absolute path, and
           // a ~ kept in state would be split as a breadcrumb segment
           if (data.path && data.path !== dir) {
@@ -192,9 +205,11 @@ export function FileExplorer({
   );
 
   const submitSearch = useCallback(() => {
+    // The results still on screen are for the previous query
+    if (search.loading) return;
     const first = firstResult(search.results);
     if (first) openFromSearch(first.path, first.line);
-  }, [search.results, openFromSearch]);
+  }, [search.loading, search.results, openFromSearch]);
 
   const handleFilesUpload = useCallback(
     async (fileList: File[]) => {
@@ -277,24 +292,28 @@ export function FileExplorer({
     else refresh();
   }, [activeFilePath, saveFile, refresh]);
 
-  // Files git counts as changed, by absolute path (status paths are from the
-  // repository's top, which is the session folder in the usual case)
+  // Files git counts as changed, by absolute path: status paths are from the
+  // repository's top, the project root may be a folder below it
   const changed = useMemo(() => {
     const map = new Map<string, "untracked" | "tracked">();
-    if (!gitStatus) return map;
-    const base = workingDirectory.replace(/\/+$/, "");
+    if (!gitStatus || gitPrefix === null) return map;
+    const base = projectRoot.replace(/\/+$/, "");
+    const add = (path: string, kind: "untracked" | "tracked") => {
+      if (path.startsWith(gitPrefix))
+        map.set(`${base}/${path.slice(gitPrefix.length)}`, kind);
+    };
     for (const f of [...gitStatus.staged, ...gitStatus.unstaged])
-      map.set(`${base}/${f.path}`, "tracked");
-    for (const f of gitStatus.untracked)
-      map.set(`${base}/${f.path}`, "untracked");
+      add(f.path, "tracked");
+    for (const f of gitStatus.untracked) add(f.path, "untracked");
     return map;
-  }, [gitStatus, workingDirectory]);
+  }, [gitStatus, gitPrefix, projectRoot]);
 
   const showDiff = useCallback(async () => {
     if (!activeFilePath) return;
-    const rel = relativeTo(workingDirectory, activeFilePath);
+    // The diff routes take paths relative to the folder they run in
+    const rel = relativeTo(projectRoot, activeFilePath);
     const url = (extra: string) =>
-      `/api/git/status?path=${encodeURIComponent(workingDirectory)}&file=${encodeURIComponent(rel)}${extra}`;
+      `/api/git/status?path=${encodeURIComponent(projectRoot)}&file=${encodeURIComponent(rel)}${extra}`;
     const get = async (extra: string) => {
       try {
         const res = await fetch(url(extra));
@@ -315,7 +334,7 @@ export function FileExplorer({
       return;
     }
     setDiff({ diff: text, name: rel });
-  }, [activeFilePath, workingDirectory, changed]);
+  }, [activeFilePath, projectRoot, changed]);
 
   const askClaude = useCallback(() => {
     if (!activeFilePath || !sessionId) return;
@@ -446,7 +465,7 @@ export function FileExplorer({
             it takes the left page and the code the right one */}
         <aside
           aria-label="Files"
-          className="flex h-full w-[300px] flex-shrink-0 flex-col gap-2.5 border-r border-[var(--hair)] px-2 py-4 [html[data-hinge]_&]:w-[calc(var(--hinge-x)-var(--fold-clear))] [html[data-hinge]_&]:border-r-0"
+          className="bg-page flex h-full w-[300px] flex-shrink-0 flex-col gap-2.5 border-r border-[var(--hair)] px-2 py-4 [html[data-hinge]_&]:w-[calc(var(--hinge-x)-var(--fold-clear))] [html[data-hinge]_&]:border-r-0"
         >
           <div className="flex min-w-0 items-center justify-between gap-2 px-2">
             <span className="t-head truncate">{baseName(projectRoot)}</span>
@@ -488,26 +507,34 @@ export function FileExplorer({
                   isDirty={isDirty}
                   isModified={isModified}
                 />
+                {/* Below 560px Show diff and Ask Claude keep only their
+                    icons, so the tab keeps its name */}
                 <div className="flex flex-shrink-0 items-center gap-2 pb-0.5">
                   <button
                     type="button"
-                    className="pill pill-sm pill-secondary"
+                    className="pill pill-sm pill-secondary @max-[559px]/code:w-9 @max-[559px]/code:px-0"
                     onClick={showDiff}
+                    aria-label="Show diff"
+                    title="Show diff"
                   >
-                    Show diff
+                    <FileDiff className="hidden h-4 w-4 @max-[559px]/code:block" />
+                    <span className="@max-[559px]/code:hidden">Show diff</span>
                   </button>
                   {sessionId && (
                     <button
                       type="button"
-                      className="pill pill-sm pill-secondary"
+                      className="pill pill-sm pill-secondary @max-[559px]/code:w-9 @max-[559px]/code:px-0"
                       onClick={askClaude}
                       aria-label="Ask Claude about this file"
+                      title="Ask Claude about this file"
                     >
-                      Ask Claude
-                      {/* The tabs keep their room on a narrow page */}
-                      <span className="hidden @min-[760px]/code:inline">
-                        {" "}
-                        about this file
+                      <MessageSquare className="hidden h-4 w-4 @max-[559px]/code:block" />
+                      <span className="@max-[559px]/code:hidden">
+                        Ask Claude
+                        <span className="hidden @min-[640px]/code:inline">
+                          {" "}
+                          about this file
+                        </span>
                       </span>
                     </button>
                   )}
@@ -572,7 +599,15 @@ export function FileExplorer({
             </button>
           )}
         </div>
-        <div className="code-view min-h-0 flex-1 overflow-hidden">{editor}</div>
+        {/* The code on a rounded panel, at the page's insets */}
+        <div
+          className={cn(
+            "code-view mt-0 mb-4 min-h-0 flex-1 overflow-hidden rounded-[14px]",
+            closed ? "mr-2 ml-5" : "mx-4"
+          )}
+        >
+          {editor}
+        </div>
       </div>
     );
   } else {
@@ -580,7 +615,8 @@ export function FileExplorer({
     body = (
       <div
         className="flex h-full w-full flex-col gap-3 overflow-y-auto"
-        style={{ padding: "18px 8px 16px 20px" }}
+        // The closed Duo's insets (as E-Git), else even ones
+        style={{ padding: closed ? "18px 8px 16px 20px" : "18px 16px 16px" }}
       >
         <div className="min-w-0">
           <h1 className="t-large">Files</h1>
