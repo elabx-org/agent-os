@@ -56,6 +56,7 @@ import { DeckStateLine } from "@/components/DeckStateLine";
 import { DeckContext } from "@/components/ReplyContext/ContextPanel";
 import { InboxItem } from "@/components/Inbox";
 import { useSessionPrompt } from "@/data/prompts/queries";
+import { useQueue } from "@/hooks/useQueue";
 import { useNarrowScreen } from "@/hooks/useNarrowScreen";
 import { usePortrait } from "@/hooks/usePortrait";
 import {
@@ -537,13 +538,15 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
 
     // Claude Code treats input arriving with a newline as a paste, so Enter
     // goes separately after the text has been taken
-    // What the composer sent while Claude was busy: Claude queues it
+    // What the composer sent while Claude was busy: Claude queues it. Not
+    // with the server queue on: the composer never types into a busy Claude
     const queuedRef = useRef<string[]>([]);
+    const serverQueue = useQueue(draftId ?? "", { enabled: !!draftId }).enabled;
     const sendFromComposer = useCallback(
       (text: string) => {
         const term = xtermRef.current;
         // Added to what's already waiting, if anything is
-        if (text && term)
+        if (text && term && !serverQueue)
           queuedRef.current = !isClaudeBusy(term)
             ? []
             : hasQueued(term)
@@ -567,7 +570,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
         };
         setTimeout(confirm, 900);
       },
-      [sendInput, sendPaste, xtermRef]
+      [sendInput, sendPaste, xtermRef, serverQueue]
     );
 
     // With the composer on, xterm's keyboard is off, so a tap on the terminal

@@ -1,16 +1,21 @@
 "use client";
 
-import { useState } from "react";
-import { ChevronRight, Loader2 } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useElapsed, useSessionActivity } from "@/hooks/useSessionActivity";
+import { useSessionActivity } from "@/hooks/useSessionActivity";
 import type { Session } from "@/lib/db";
-import { LiveActivitySheet } from "@/components/Session/ActivityStrip";
+import { agentName } from "@/components/a/Avatar";
+import { StateDot } from "@/components/a/StateDot";
+import { openLiveSheet } from "@/components/Session/ActivityStrip";
+import { formatAge, workingLine } from "@/components/Session/activity-format";
+import { STATE_WORD } from "@/lib/agent-state";
 
 /**
- * On the fold deck, in place of the activity strip: what the session is doing
- * right now, big enough to read from across the table. Tapping it opens the
- * live activity, as the strip does. Mounted only there, so it polls only then.
+ * On the fold deck, in place of the activity strip (Fold-Chat): what the
+ * session is doing right now, big enough to read from across the table,
+ * with its plan and clock on the right ("Plan 3 of 5 · 9m"). Tapping it
+ * opens the live activity, as the strip does. Mounted only there, so it
+ * polls only then.
  */
 export function DeckStateLine({
   session,
@@ -19,63 +24,55 @@ export function DeckStateLine({
   session: Session;
   active: boolean;
 }) {
-  const { state, now } = useSessionActivity(session, { active });
-  const elapsed = useElapsed(state === "work" ? now.startedAt : undefined);
+  const { state, now, plan } = useSessionActivity(session, {
+    active,
+    plan: true,
+  });
   const needs = state === "needs";
-  const [open, setOpen] = useState(false);
+  const work = state === "work";
+  const clock =
+    (needs || work) && now.startedAt !== undefined
+      ? formatAge(Date.now() - now.startedAt)
+      : null;
+  const right = [
+    plan && plan.total > 0 ? `Plan ${plan.done} of ${plan.total}` : null,
+    clock,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   return (
-    <>
+    <div className="shrink-0 px-6 pt-2 pb-1">
       <button
         type="button"
-        onClick={() => setOpen(true)}
+        onClick={openLiveSheet}
         aria-haspopup="dialog"
-        className="border-border active:bg-accent flex h-12 w-full shrink-0 touch-manipulation items-center gap-2.5 overflow-hidden border-b px-4 text-left whitespace-nowrap"
+        className={cn(
+          "status-card active:bg-accent h-[52px] w-full touch-manipulation gap-3 rounded-[26px] px-4 text-left text-[17px] whitespace-nowrap",
+          needs && "tone-needs",
+          work && "tone-work"
+        )}
       >
-        {needs ? (
-          <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-amber-400 shadow-[0_0_0_3px_rgba(242,176,30,.18)]" />
-        ) : state === "work" ? (
-          <Loader2 className="text-work h-4 w-4 shrink-0 animate-spin" />
-        ) : (
-          <span
-            className={cn(
-              "h-2.5 w-2.5 shrink-0 rounded-full",
-              state === "done"
-                ? "bg-emerald-500"
-                : state === "error"
-                  ? "bg-red-500"
-                  : "bg-muted-foreground/50"
-            )}
-          />
-        )}
-        <span className="shrink-0 text-xl font-medium">{now.label}</span>
-        {now.command && (
-          <code
-            title={now.command}
-            className="text-muted-foreground min-w-0 truncate font-mono text-base"
-          >
-            {now.command}
-          </code>
-        )}
-        {elapsed && (
-          <span className="text-muted-foreground ml-auto shrink-0 text-sm tabular-nums">
-            {elapsed}
+        <StateDot state={state} />
+        <span className="min-w-0 flex-1 truncate">
+          {needs
+            ? now.label === "Your turn"
+              ? "Your turn"
+              : `${agentName(session.agent_type)} is asking`
+            : work
+              ? workingLine(now)
+              : STATE_WORD[state]}
+        </span>
+        {right && (
+          <span className="text-muted-foreground shrink-0 text-[15px] tabular-nums">
+            {right}
           </span>
         )}
         <ChevronRight
           aria-hidden="true"
-          className={cn(
-            "text-muted-foreground h-4 w-4 shrink-0",
-            !elapsed && "ml-auto"
-          )}
+          className="text-muted-foreground h-4 w-4 shrink-0"
         />
       </button>
-      <LiveActivitySheet
-        session={session}
-        active={active}
-        open={open}
-        onOpenChange={setOpen}
-      />
-    </>
+    </div>
   );
 }
