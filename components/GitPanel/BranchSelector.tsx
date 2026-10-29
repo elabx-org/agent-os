@@ -1,13 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import {
-  GitBranch,
-  Check,
-  ChevronDown,
-  Loader2,
-  AlertTriangle,
-} from "lucide-react";
+import { useState, type ReactNode } from "react";
+import { Check, Loader2, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -30,6 +24,8 @@ interface BranchSelectorProps {
   currentBranch: string;
   hasChanges: boolean;
   onBranchChanged: () => void;
+  /** The control that opens the list (E-Git's branch card); it gets `disabled` while switching */
+  children: (switching: boolean) => ReactNode;
 }
 
 export function BranchSelector({
@@ -37,6 +33,7 @@ export function BranchSelector({
   currentBranch,
   hasChanges,
   onBranchChanged,
+  children,
 }: BranchSelectorProps) {
   const [open, setOpen] = useState(false);
   const [pendingBranch, setPendingBranch] = useState<string | null>(null);
@@ -85,22 +82,11 @@ export function BranchSelector({
     <>
       <DropdownMenu open={open} onOpenChange={setOpen}>
         <DropdownMenuTrigger asChild>
-          <button
-            className="bg-muted hover:bg-accent flex items-center gap-1 rounded-full px-2 py-0.5 text-xs transition-colors"
-            disabled={checkoutMutation.isPending}
-          >
-            {checkoutMutation.isPending ? (
-              <Loader2 className="mr-0.5 h-3 w-3 animate-spin" />
-            ) : (
-              <GitBranch className="mr-0.5 h-3 w-3" />
-            )}
-            {currentBranch}
-            <ChevronDown className="h-2.5 w-2.5 opacity-60" />
-          </button>
+          {children(checkoutMutation.isPending)}
         </DropdownMenuTrigger>
         <DropdownMenuContent
           align="start"
-          className="max-h-[300px] w-56 overflow-y-auto"
+          className="max-h-[300px] w-[var(--radix-dropdown-menu-trigger-width)] overflow-y-auto"
         >
           {isLoading ? (
             <div className="flex items-center justify-center py-3">
@@ -117,7 +103,9 @@ export function BranchSelector({
                 onSelect={() => handleSelect(branch)}
                 className="cursor-pointer"
               >
-                <span className="flex-1 truncate text-sm">{branch}</span>
+                <span className="flex-1 truncate font-mono text-[13px]">
+                  {branch}
+                </span>
                 {branch === currentBranch && (
                   <Check className="text-primary ml-2 h-3.5 w-3.5 flex-shrink-0" />
                 )}
@@ -136,7 +124,7 @@ export function BranchSelector({
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <AlertTriangle className="h-5 w-5 text-yellow-500" />
-              Uncommitted Changes
+              Uncommitted changes
             </DialogTitle>
             <DialogDescription>
               You have uncommitted changes. Switching to{" "}
@@ -157,7 +145,7 @@ export function BranchSelector({
               onClick={handleForceSwitch}
               disabled={checkoutMutation.isPending}
             >
-              {checkoutMutation.isPending ? "Switching..." : "Switch Branch"}
+              {checkoutMutation.isPending ? "Switching…" : "Switch branch"}
             </Button>
           </DialogFooter>
         </DialogContent>

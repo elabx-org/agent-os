@@ -2,14 +2,12 @@
 
 import { useState, useEffect } from "react";
 import {
-  X,
   GitPullRequest,
   Loader2,
   ExternalLink,
   GitBranch,
   ChevronLeft,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 interface PRData {
@@ -111,133 +109,139 @@ export function PRCreationModal({
     }
   };
 
+  // Over the git panel (its parent is `relative`), never under the closed
+  // Duo's column the way a fixed overlay would be
+  const shell = "bg-background absolute inset-0 z-30 flex flex-col";
+
   // Show existing PR
   if (prData?.existingPR) {
     return (
-      <div className="bg-background fixed inset-0 z-50 flex flex-col">
+      <div className={shell}>
         <Header onClose={onClose} />
 
-        <div className="flex flex-1 flex-col items-center justify-center p-4">
-          <GitPullRequest className="text-primary mb-4 h-12 w-12" />
-          <h2 className="mb-2 text-lg font-medium">PR Already Exists</h2>
-          <p className="text-muted-foreground mb-4 text-center text-sm">
-            #{prData.existingPR.number} - {prData.existingPR.title}
+        <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
+          <GitPullRequest className="text-primary dark:text-meter h-10 w-10" />
+          <h2 className="t-head">A pull request is already open</h2>
+          <p className="text-muted-foreground text-[14px]">
+            #{prData.existingPR.number} {prData.existingPR.title}
           </p>
-          <Button
-            variant="default"
+          <button
+            type="button"
             onClick={() => window.open(prData.existingPR!.url, "_blank")}
-            className="min-h-[44px]"
+            className="pill pill-primary active:opacity-80"
           >
-            <ExternalLink className="mr-2 h-4 w-4" />
-            View Pull Request
-          </Button>
+            <ExternalLink className="h-4 w-4" />
+            Open on GitHub
+          </button>
         </div>
       </div>
     );
   }
 
+  const field =
+    "w-full bg-transparent text-[15px] outline-0 placeholder:text-muted-foreground/70";
+
   return (
-    <div className="bg-background fixed inset-0 z-50 flex flex-col">
+    <div className={shell}>
       <Header onClose={onClose} />
 
       {loading ? (
         <div className="flex flex-1 items-center justify-center">
-          <Loader2 className="text-muted-foreground h-8 w-8 animate-spin" />
+          <Loader2 className="text-muted-foreground h-6 w-6 animate-spin" />
         </div>
       ) : error && !prData ? (
-        <div className="flex flex-1 flex-col items-center justify-center p-4">
-          <p className="mb-4 text-sm text-red-500">{error}</p>
-          <Button variant="outline" onClick={onClose}>
+        <div className="flex flex-1 flex-col items-center justify-center gap-4 p-6 text-center">
+          <p className="text-[14px] text-[var(--del)]">{error}</p>
+          <button
+            type="button"
+            onClick={onClose}
+            className="pill pill-secondary active:opacity-80"
+          >
             Close
-          </Button>
+          </button>
         </div>
       ) : (
         <>
-          <div className="flex-1 space-y-4 overflow-y-auto p-4">
-            {/* Branch info */}
-            <div className="text-muted-foreground flex items-center gap-2 text-sm">
-              <GitBranch className="h-4 w-4" />
-              <span>{prData?.branch}</span>
-              <span>→</span>
-              <span>{prData?.baseBranch}</span>
+          <div className="flex min-h-0 flex-1 flex-col gap-3.5 overflow-y-auto overscroll-contain px-4 pt-1 pb-4">
+            {/* Branch into base */}
+            <div className="text-muted-foreground flex min-w-0 items-center gap-2 px-1 text-[13px]">
+              <GitBranch className="h-4 w-4 flex-none" />
+              <span className="truncate font-mono">
+                {prData?.branch} → {prData?.baseBranch}
+              </span>
             </div>
 
-            {/* Title input */}
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Title</label>
+            <label className="group-card block px-3.5 py-3">
+              <span className="text-muted-foreground mb-1 block text-[13px]">
+                Title
+              </span>
               <input
                 type="text"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder="PR title..."
-                className={cn(
-                  "w-full rounded-md px-3 py-2 text-sm",
-                  "bg-muted/50 border-border border",
-                  "focus:ring-primary/50 focus:ring-2 focus:outline-none",
-                  "min-h-[44px]"
-                )}
+                placeholder="What it does"
+                className={field}
               />
-            </div>
+            </label>
 
-            {/* Body textarea */}
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Description</label>
+            <label className="group-card block px-3.5 py-3">
+              <span className="text-muted-foreground mb-1 block text-[13px]">
+                Description
+              </span>
               <textarea
                 value={body}
                 onChange={(e) => setBody(e.target.value)}
-                placeholder="Describe your changes..."
-                rows={12}
-                className={cn(
-                  "w-full resize-none rounded-md px-3 py-2 font-mono text-sm",
-                  "bg-muted/50 border-border border",
-                  "focus:ring-primary/50 focus:ring-2 focus:outline-none"
-                )}
+                placeholder="Describe your changes"
+                rows={10}
+                className={cn(field, "resize-none font-mono text-[13px]")}
               />
-            </div>
+            </label>
 
-            {/* Commits list */}
             {prData && prData.commits.length > 0 && (
-              <div className="space-y-1.5">
-                <label className="text-muted-foreground text-sm font-medium">
-                  Commits ({prData.commits.length})
-                </label>
-                <div className="text-muted-foreground space-y-1 text-xs">
+              <>
+                <h3 className="t-sec">Commits · {prData.commits.length}</h3>
+                <div className="group-card">
                   {prData.commits.slice(0, 10).map((commit) => (
-                    <div key={commit.hash} className="truncate">
-                      <code className="text-primary/70">
+                    <div
+                      key={commit.hash}
+                      className="row min-h-[44px] min-w-0 py-0 text-[14px]"
+                    >
+                      <span className="text-muted-foreground flex-none font-mono text-[13px]">
                         {commit.hash.slice(0, 7)}
-                      </code>{" "}
-                      {commit.subject}
+                      </span>
+                      <span className="min-w-0 flex-1 truncate">
+                        {commit.subject}
+                      </span>
                     </div>
                   ))}
                   {prData.commits.length > 10 && (
-                    <div className="text-muted-foreground/50">
-                      +{prData.commits.length - 10} more commits
+                    <div className="row text-muted-foreground min-h-[44px] py-0 text-[13px]">
+                      {prData.commits.length - 10} more
                     </div>
                   )}
                 </div>
-              </div>
+              </>
             )}
 
-            {/* Error message */}
-            {error && <p className="text-sm text-red-500">{error}</p>}
+            {error && (
+              <p className="px-1 text-[14px] text-[var(--del)]">{error}</p>
+            )}
           </div>
 
-          {/* Footer */}
-          <div className="border-border safe-area-bottom border-t p-4">
-            <Button
-              variant="default"
+          <div className="flex-none px-4 pt-2 pb-[max(1rem,var(--pane-inset-bottom,env(safe-area-inset-bottom)))]">
+            <button
+              type="button"
               onClick={handleCreate}
               disabled={creating || !title.trim()}
-              className="min-h-[44px] w-full"
+              className="pill pill-primary w-full active:opacity-80 disabled:opacity-50"
             >
               {creating ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
-                <GitPullRequest className="mr-2 h-4 w-4" />
+                <GitPullRequest className="h-4 w-4" />
               )}
-              Create Pull Request
-            </Button>
+              Create pull request
+            </button>
           </div>
         </>
       )}
@@ -247,26 +251,16 @@ export function PRCreationModal({
 
 function Header({ onClose }: { onClose: () => void }) {
   return (
-    <div className="border-border flex items-center gap-2 border-b p-3">
-      <Button
-        variant="ghost"
-        size="icon-sm"
+    <div className="flex flex-none items-center gap-1.5 px-2 pt-3 pb-2">
+      <button
+        type="button"
         onClick={onClose}
-        className="h-9 w-9"
+        aria-label="Back to git"
+        className="hover:bg-foreground/[0.06] flex size-[44px] flex-none items-center justify-center rounded-full"
       >
-        <ChevronLeft className="h-5 w-5" />
-      </Button>
-      <div className="flex-1">
-        <h2 className="text-sm font-medium">Create Pull Request</h2>
-      </div>
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        onClick={onClose}
-        className="h-9 w-9 md:hidden"
-      >
-        <X className="h-4 w-4" />
-      </Button>
+        <ChevronLeft className="h-6 w-6" strokeWidth={2.2} />
+      </button>
+      <h2 className="t-head min-w-0 flex-1 truncate">New pull request</h2>
     </div>
   );
 }

@@ -69,6 +69,9 @@ export function PRReview({ workingDirectory, prNumber }: PRReviewProps) {
     );
   }
 
+  // gh says OPEN; the M2b routes may lowercase it
+  const state = pr.state.toUpperCase();
+
   const handleSubmitReview = () => {
     if (!reviewMode) return;
     reviewMutation.mutate(
@@ -127,7 +130,7 @@ export function PRReview({ workingDirectory, prNumber }: PRReviewProps) {
         <div className="flex flex-wrap gap-1.5">
           <StatusBadge
             label={pr.state}
-            variant={pr.state === "OPEN" ? "green" : pr.state === "MERGED" ? "purple" : "red"}
+            variant={state === "OPEN" ? "green" : state === "MERGED" ? "purple" : "red"}
           />
           {pr.reviewDecision && (
             <StatusBadge
@@ -334,7 +337,7 @@ export function PRReview({ workingDirectory, prNumber }: PRReviewProps) {
             <div className="flex-1" />
 
             {/* Merge button */}
-            {pr.state === "OPEN" && (
+            {state === "OPEN" && (
               <div className="relative">
                 <div className="flex">
                   <Button
