@@ -75,6 +75,12 @@ export interface DispatcherDeps {
    * queued send; its failure never holds the send back
    */
   applyPendingMode?(session: Session): Promise<unknown>;
+  /**
+   * Runs a claimed `kind='move'` item (M5, lib/worktree-move.ts
+   * runScheduledMove) instead of typing it in; goes with or without the
+   * queue flag. Throws when the move failed. Absent: move items wait
+   */
+  runMove?(session: Session, item: QueueItem): Promise<void>;
 }
 
 export interface DispatcherState {

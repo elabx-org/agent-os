@@ -9,9 +9,16 @@ export type QueueOrigin = "user" | "system" | "agent";
 /**
  * message: text to type in. command: a slash command or mode change, sent
  * only while idle. resume: M6's "continue" after a limit. undo_notice: never
- * sent alone, merged as a prefix into the next outgoing message
+ * sent alone, merged as a prefix into the next outgoing message. move: M5's
+ * scheduled move to a worktree, never typed in; its text is a
+ * MoveQueuePayload (lib/worktree-move-types.ts) and it runs at an idle edge
  */
-export type QueueKind = "message" | "command" | "resume" | "undo_notice";
+export type QueueKind =
+  | "message"
+  | "command"
+  | "resume"
+  | "undo_notice"
+  | "move";
 
 export type QueueStatus =
   | "pending"
@@ -25,7 +32,7 @@ export type QueueStatus =
  * busy: working. asking: a question, plan approval, trust screen or picker.
  * permission: a permission prompt. typing: text half-typed in its input
  * line. unknown: a screen it can't classify (fail closed). limited, paused:
- * M6 / M4
+ * M6 / M4. moving: M5, being moved into a worktree
  */
 export type HoldReason =
   | "busy"
@@ -35,7 +42,8 @@ export type HoldReason =
   | "unknown"
   | "limited"
   | "paused"
-  | "handing_off";
+  | "handing_off"
+  | "moving";
 
 export interface QueueItem {
   id: number;

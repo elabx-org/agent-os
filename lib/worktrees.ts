@@ -32,6 +32,15 @@ export interface CreateWorktreeOptions {
   projectPath: string;
   featureName: string;
   baseBranch?: string;
+  /**
+   * M5 (move a session into a worktree): the exact branch to create (no
+   * `-2` suffixing: refused when it exists), the exact folder (refused when
+   * it exists), and the commit to start from, e.g. "HEAD" (no origin/
+   * lookup). Absent: today's behaviour. Implemented in M5 U1
+   */
+  branchName?: string;
+  worktreePath?: string;
+  fromRef?: string;
 }
 
 /**
