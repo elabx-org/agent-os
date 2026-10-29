@@ -1,0 +1,8 @@
+> /limit
+  ⎿  You've hit your limit · resets 3:40pm (UTC)
+     /upgrade to increase your usage limit.
+
+────────────────────────────────────────
+❯ 
+────────────────────────────────────────
+  ? for shortcuts
