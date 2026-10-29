@@ -732,9 +732,14 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
         const current = composerTextRef.current;
         const mirrored = mirrorRef.current;
         if (text) {
+          // A box taller than the pane shows only its last rows: still the
+          // same text. (Taking the cut copy shrank the composer, the pane
+          // grew, the whole box showed again: the two boxes flickered.)
+          const same =
+            mirrored !== null && (text === mirrored || mirrored.endsWith(text));
           // Claude's box changed and the composer is empty or still showing
           // the last copy: the composer follows it
-          if (text !== mirrored && (!current || current === mirrored)) {
+          if (!same && (!current || current === mirrored)) {
             mirrorRef.current = text;
             setComposerText(text);
             setStrayInput(null);
@@ -742,7 +747,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
           }
           // Unchanged: the composer may be editing its copy. Emptied
           // there, Claude's empties too
-          if (text === mirrored) {
+          if (same) {
             if (!current) {
               mirrorRef.current = null;
               void clearClaudeRef.current();
