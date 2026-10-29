@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { useSnapshot } from "valtio";
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { ArrowUp, History, Loader2, Plus, X } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -31,6 +32,8 @@ import {
   noticeChipText,
 } from "./queue-model";
 import type { UseQueue } from "@/hooks/useQueue";
+import { permissionModeKeys } from "@/hooks/usePermissionMode";
+import { openPermissionSheet } from "@/stores/permissionSheet";
 import type { EnqueueResult, QueueItem } from "@/lib/queue/types";
 
 export interface ComposerCardProps {
@@ -59,7 +62,7 @@ export interface ComposerCardProps {
   above?: ReactNode;
   className?: string;
   style?: CSSProperties;
-  /** Claude's live state: the mode pill (a tap cycles it, as Shift+Tab),
+  /** Claude's live state: the mode pill (a tap opens the Permissions sheet),
       the lines its own TUI holds, Shift+Tab and Esc in the box */
   live?: ClaudeLive;
   /** The bottom row's history button; default: Claude with a folder */
@@ -300,6 +303,19 @@ export function ComposerCard({
     [composer, queue]
   );
 
+  // Shift+Tab here or in the terminal: the header's shield chip follows
+  // (a prompt over the footer reads as no mode, not a change)
+  const queryClient = useQueryClient();
+  const liveMode = live?.claude ? live.screen?.mode : undefined;
+  const lastMode = useRef(liveMode);
+  useEffect(() => {
+    if (!liveMode || lastMode.current === liveMode) return;
+    lastMode.current = liveMode;
+    queryClient.invalidateQueries({
+      queryKey: permissionModeKeys.session(sessionId),
+    });
+  }, [liveMode, queryClient, sessionId]);
+
   const tone = live?.claude && modePill ? modeTone(live.mode) : undefined;
   const modeName = live?.mode ? MODE_PILL[live.mode] : undefined;
   const showHistory = history ?? (composer.claude && !!composer.cwd);
@@ -489,9 +505,11 @@ export function ComposerCard({
               <button
                 type="button"
                 onMouseDown={keep}
-                onClick={live?.cycleMode}
+                // The Permissions sheet (N-PermMode); Shift+Tab still cycles
+                onClick={() => openPermissionSheet(sessionId)}
                 title="Shift+Tab to cycle"
-                aria-label={`Mode: ${modeName}, tap to change`}
+                aria-haspopup="dialog"
+                aria-label={`Permissions: ${modeName}`}
                 className={cn("mode-pill flex-none", tone.className)}
               >
                 {tone.icon}
