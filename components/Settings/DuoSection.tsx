@@ -15,8 +15,8 @@ import {
 import { useToolbarPreferences } from "@/components/Terminal/toolbar-config";
 import { SettingGroup, SettingRow } from "./SettingGroup";
 
-/** iPhone Duo only (the iOS app): the closed-screen layout on trial and the
-    open Duo's controls. The keys are Settings → Keys */
+/** iPhone Duo only (the iOS app): the classic session header and the open
+    Duo's controls. The keys are Settings → Keys */
 export function DuoSection() {
   const { on } = useSnapshot(duoPreviewStore);
   // The open display's layout never loaded it
@@ -27,10 +27,13 @@ export function DuoSection() {
     <>
       <SettingGroup>
         <SettingRow
-          label="Closed layout: title in the page (trial)"
-          hint="On the outer display, the session's title in the page instead of a header band"
+          label="Classic session header"
+          hint="A header band with back and ⋯ over the session, instead of its title in the page"
         >
-          <Switch checked={on} onCheckedChange={setDuoPreview} />
+          <Switch
+            checked={!on}
+            onCheckedChange={(classic) => setDuoPreview(!classic)}
+          />
         </SettingRow>
       </SettingGroup>
       <SettingGroup>

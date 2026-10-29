@@ -1,27 +1,27 @@
 "use client";
 
-import { useState } from "react";
 import { useSnapshot } from "valtio";
-import { ChevronRight, Loader2 } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import type { Session } from "@/lib/db";
 import { cn } from "@/lib/utils";
-import { useElapsed, useSessionActivity } from "@/hooks/useSessionActivity";
+import { useSessionActivity } from "@/hooks/useSessionActivity";
 import { mobileNavStore } from "@/stores/mobileNav";
+import { StateDot } from "@/components/a/StateDot";
 import {
   Sheet,
-  SheetBody,
   SheetContent,
   SheetDescription,
-  SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { ActivityRail } from "./ActivityRail";
+import { LiveActivity } from "./LiveActivity";
+import { formatAge, workingLine } from "./activity-format";
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 /**
- * One row under the session header saying what it's doing, for screens with
- * no room for the live activity rail. Tapping it opens the rail as a sheet.
+ * One card under the session header saying what it's doing (N-Queue's
+ * status card: "Working · Editing ActivityStrip.tsx  4m"), for screens with
+ * no room for the live activity rail. Tapping it opens the Live activity.
  */
 export function ActivityStrip({
   session,
@@ -32,14 +32,13 @@ export function ActivityStrip({
   active?: boolean;
   className?: string;
 }) {
-  const [open, setOpen] = useState(false);
   // Hidden while typing, as the slim header (the iOS app reports its keyboard)
   const { nativeKeyboard } = useSnapshot(mobileNavStore);
   const { state, now, files, agents, workflows } = useSessionActivity(session, {
     active,
   });
-  const elapsed = useElapsed(state === "work" ? now.startedAt : undefined);
   const needs = state === "needs";
+  const work = state === "work";
 
   const counts = [
     files.count > 0 && plural(files.count, "file"),
@@ -57,70 +56,88 @@ export function ActivityStrip({
         className
       )}
     >
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        aria-haspopup="dialog"
-        className={cn(
-          "bg-secondary/60 text-muted-foreground active:bg-accent hover:bg-accent/60 flex h-9 w-full min-w-0 touch-manipulation items-center gap-2 rounded-xl px-2.5 text-[12.5px] whitespace-nowrap ring-1 ring-inset",
-          needs ? "ring-amber-400/40" : "ring-border"
-        )}
-      >
-        <span className="grid w-3.5 shrink-0 place-items-center">
-          {needs ? (
-            <span className="h-2 w-2 rounded-full bg-amber-400 shadow-[0_0_0_3px_rgba(242,176,30,.18)]" />
-          ) : state === "work" ? (
-            <Loader2 className="text-work h-3.5 w-3.5 animate-spin" />
-          ) : (
-            <span
-              className={cn(
-                "h-2 w-2 rounded-full",
-                state === "done"
-                  ? "bg-emerald-500"
-                  : state === "error"
-                    ? "bg-red-500"
-                    : "bg-muted-foreground/50"
-              )}
-            />
-          )}
-        </span>
-        <span className="text-foreground min-w-0 flex-1 truncate text-left">
-          {needs ? "Waiting for you" : now.label}
-          {now.command && (
-            <>
-              {needs ? " · " : " "}
-              <code
-                title={now.command}
-                className="text-muted-foreground font-mono text-[11.5px]"
-              >
-                {tail(now.command)}
-              </code>
-            </>
-          )}
-          {elapsed && (
-            <span className="text-muted-foreground tabular-nums">
-              {" "}
-              · {elapsed}
+      <StatusCardButton
+        state={state}
+        onOpen={openLiveSheet}
+        label={
+          needs ? (
+            <span className="dark:text-needs font-semibold text-amber-600">
+              Waiting for you
             </span>
-          )}
-        </span>
-        {counts.length > 0 && (
-          <span className="shrink-0">{counts.join(" · ")}</span>
-        )}
-        <ChevronRight aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
-      </button>
-
-      <LiveActivitySheet
-        session={session}
-        active={active}
-        open={open}
-        onOpenChange={setOpen}
+          ) : work ? (
+            <>
+              <span className="dark:text-work font-semibold text-emerald-600">
+                Working
+              </span>
+              {now.label !== "Working" && ` · ${workingLine(now)}`}
+            </>
+          ) : (
+            now.label
+          )
+        }
+        right={[
+          counts.length > 0 ? counts.join(" · ") : null,
+          (work || needs) && now.startedAt !== undefined
+            ? formatAge(Date.now() - now.startedAt)
+            : null,
+        ]
+          .filter(Boolean)
+          .join(" · ")}
       />
     </div>
   );
 }
 
-/** The live activity rail as a sheet, for screens with no room beside the pane */
+/**
+ * The column's Live activity (LiveSheet, for the focused session: tapping
+ * a pane focuses it), so the column shows close and Stop beside it
+ */
+export function openLiveSheet() {
+  mobileNavStore.liveOpen = true;
+}
+
+/** The status card as a button that opens the Live activity */
+export function StatusCardButton({
+  state,
+  label,
+  right,
+  onOpen,
+  className,
+}: {
+  state: ReturnType<typeof useSessionActivity>["state"];
+  label: React.ReactNode;
+  right?: string;
+  onOpen: () => void;
+  className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      aria-haspopup="dialog"
+      className={cn(
+        "status-card active:bg-accent hover:bg-accent/60 w-full min-w-0 touch-manipulation text-left whitespace-nowrap",
+        state === "work" && "tone-work",
+        state === "needs" && "tone-needs",
+        className
+      )}
+    >
+      <StateDot state={state} className="mr-1" />
+      <span className="text-foreground min-w-0 flex-1 truncate">{label}</span>
+      {right && (
+        <span className="text-muted-foreground shrink-0 text-[13px] tabular-nums">
+          {right}
+        </span>
+      )}
+      <ChevronRight
+        aria-hidden="true"
+        className="text-muted-foreground h-4 w-4 shrink-0"
+      />
+    </button>
+  );
+}
+
+/** The Live activity as a sheet (E-Live), for screens with no room beside the pane */
 export function LiveActivitySheet({
   session,
   active,
@@ -134,32 +151,27 @@ export function LiveActivitySheet({
 }) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent>
-        <SheetHeader>
-          <SheetTitle>Live activity</SheetTitle>
-          <SheetDescription className="sr-only">
-            What this session is doing, its changes and agents
-          </SheetDescription>
-        </SheetHeader>
-        <SheetBody className="px-2">
-          {/* Mounted only while open: the rail looks up the PR too */}
-          {open && (
-            <ActivityRail
-              session={session}
-              active={active}
-              compact
-              onNavigate={() => onOpenChange(false)}
-            />
-          )}
-        </SheetBody>
+      <SheetContent className="sheet-surface bg-[var(--sheet)]">
+        <SheetDescription className="sr-only">
+          What this session is doing, its plan, changes and agents
+        </SheetDescription>
+        {/* Mounted only while open: it looks up the PR too */}
+        {open && (
+          <LiveActivity
+            session={session}
+            active={active}
+            variant="sheet"
+            title={(text) => (
+              <SheetTitle className="text-[20px] leading-tight font-bold tracking-normal">
+                {text}
+              </SheetTitle>
+            )}
+            onNavigate={() => onOpenChange(false)}
+            className="pt-2"
+          />
+        )}
+        {!open && <SheetTitle className="sr-only">Live activity</SheetTitle>}
       </SheetContent>
     </Sheet>
   );
-}
-
-/** A path's end, where its file name is: the start is cut off first anyway */
-function tail(command: string): string {
-  if (/\s/.test(command) || !command.includes("/")) return command;
-  const parts = command.split("/").filter(Boolean);
-  return parts.length > 2 ? `…/${parts.slice(-2).join("/")}` : command;
 }

@@ -24,6 +24,7 @@ import {
   Upload,
   Ellipsis,
   Space,
+  Image as ImageIcon,
   type LucideIcon,
 } from "lucide-react";
 import { createPortal } from "react-dom";
@@ -407,11 +408,10 @@ function SimpleKeyButton({
         onKeyPress(keyCode);
       }}
       className={cn(
-        "flex h-[40px] min-w-[40px] flex-shrink-0 items-center justify-center rounded-xl px-3 text-[13px] font-medium",
-        "active:bg-primary active:text-primary-foreground",
-        highlight
-          ? "mx-1 border border-red-500/40 bg-red-500/15 text-red-400"
-          : "bg-secondary text-secondary-foreground"
+        "tkey h-[42px] min-w-[40px] flex-shrink-0 rounded-xl px-3 text-[13px] font-medium",
+        "active:bg-primary active:text-primary-foreground active:bg-none",
+        highlight && "danger mx-1",
+        keyCode === "\x1b" && "esc"
       )}
     >
       {displayLabel}
@@ -436,10 +436,10 @@ function MicButton({
         onToggle();
       }}
       className={cn(
-        "flex h-[40px] min-w-[40px] flex-shrink-0 items-center justify-center rounded-xl px-3 text-[13px] font-medium",
+        "tkey h-[42px] min-w-[40px] flex-shrink-0 rounded-xl px-3 text-[13px] font-medium",
         isListening
-          ? "animate-pulse bg-red-500 text-white"
-          : "bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground"
+          ? "animate-pulse bg-red-500 bg-none text-white"
+          : "active:bg-primary active:text-primary-foreground active:bg-none"
       )}
     >
       {isListening ? (
@@ -460,7 +460,7 @@ function PasteButton({ onPaste }: { onPaste: () => void }) {
         e.stopPropagation();
         onPaste();
       }}
-      className="bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground flex h-[40px] min-w-[40px] flex-shrink-0 items-center justify-center rounded-xl px-3 text-[13px] font-medium"
+      className="active:bg-primary active:text-primary-foreground tkey h-[42px] min-w-[40px] flex-shrink-0 rounded-xl px-3 text-[13px] font-medium active:bg-none"
     >
       <Clipboard className="h-4 w-4" />
     </button>
@@ -483,10 +483,10 @@ function SelectModeButton({
         onToggle();
       }}
       className={cn(
-        "flex h-[40px] min-w-[40px] flex-shrink-0 items-center justify-center rounded-xl px-3 text-[13px] font-medium",
+        "tkey h-[42px] min-w-[40px] flex-shrink-0 rounded-xl px-3 text-[13px] font-medium",
         active
-          ? "bg-primary text-primary-foreground"
-          : "bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground"
+          ? "bg-primary text-primary-foreground bg-none"
+          : "active:bg-primary active:text-primary-foreground active:bg-none"
       )}
     >
       <MousePointer2 className="h-4 w-4" />
@@ -503,7 +503,7 @@ function ImagePickerButton({ onPick }: { onPick: () => void }) {
         e.stopPropagation();
         onPick();
       }}
-      className="bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground flex h-[40px] min-w-[40px] flex-shrink-0 items-center justify-center rounded-xl px-3 text-[13px] font-medium"
+      className="active:bg-primary active:text-primary-foreground tkey h-[42px] min-w-[40px] flex-shrink-0 rounded-xl px-3 text-[13px] font-medium active:bg-none"
     >
       <ImagePlus className="h-4 w-4" />
     </button>
@@ -519,7 +519,7 @@ function SnippetsButton({ onOpen }: { onOpen: () => void }) {
         e.stopPropagation();
         onOpen();
       }}
-      className="bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground flex h-[40px] min-w-[40px] flex-shrink-0 items-center justify-center rounded-xl px-3 text-[13px] font-medium"
+      className="active:bg-primary active:text-primary-foreground tkey h-[42px] min-w-[40px] flex-shrink-0 rounded-xl px-3 text-[13px] font-medium active:bg-none"
     >
       <FileText className="h-4 w-4" />
     </button>
@@ -527,7 +527,13 @@ function SnippetsButton({ onOpen }: { onOpen: () => void }) {
 }
 
 // Tap: return. Hold: a new line without sending (Claude Code's ⇧↵)
-function EnterButton({ onPress }: { onPress: (key: string) => void }) {
+function EnterButton({
+  onPress,
+  className = "tkey h-[42px] min-w-[40px] flex-shrink-0 rounded-xl px-3 text-[13px] font-medium",
+}: {
+  onPress: (key: string) => void;
+  className?: string;
+}) {
   const ref = useRef<HTMLButtonElement>(null);
   useLongPress(ref, () => onPress("\n"));
   return (
@@ -539,7 +545,10 @@ function EnterButton({ onPress }: { onPress: (key: string) => void }) {
         e.stopPropagation();
         onPress("\r");
       }}
-      className="bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground flex h-[40px] min-w-[40px] flex-shrink-0 items-center justify-center rounded-xl px-3 text-[13px] font-medium"
+      className={cn(
+        "active:bg-primary active:text-primary-foreground active:bg-none",
+        className
+      )}
       title="Tap: return | Hold: new line"
     >
       {"\u21B5"}
@@ -607,10 +616,10 @@ function CursorTrackpadButton({
         }
       }}
       className={cn(
-        "flex h-[40px] min-w-[40px] flex-shrink-0 items-center justify-center rounded-xl px-3 text-[13px] font-medium",
+        "tkey h-[42px] min-w-[40px] flex-shrink-0 rounded-xl px-3 text-[13px] font-medium",
         cursorMoveMode
-          ? "bg-primary text-primary-foreground"
-          : "bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground"
+          ? "bg-primary text-primary-foreground bg-none"
+          : "active:bg-primary active:text-primary-foreground active:bg-none"
       )}
       title="Tap: space | Hold: slide left/right to move cursor"
     >
@@ -668,7 +677,7 @@ function BackspaceButton({
         e.stopPropagation();
         onKeyPress("\x7f");
       }}
-      className="bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground flex h-[40px] min-w-[40px] flex-shrink-0 items-center justify-center rounded-xl px-3 text-[13px] font-medium"
+      className="active:bg-primary active:text-primary-foreground tkey h-[42px] min-w-[40px] flex-shrink-0 rounded-xl px-3 text-[13px] font-medium active:bg-none"
       title="Tap: delete | Hold: rapid delete"
     >
       {"\u232B"}
@@ -692,10 +701,10 @@ function CopyButton({
         onCopy();
       }}
       className={cn(
-        "flex h-[40px] min-w-[40px] flex-shrink-0 items-center justify-center rounded-xl px-3 text-[13px] font-medium",
+        "tkey h-[42px] min-w-[40px] flex-shrink-0 rounded-xl px-3 text-[13px] font-medium",
         copyFeedback
-          ? "bg-green-500 text-white"
-          : "bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground"
+          ? "bg-green-500 bg-none text-white"
+          : "active:bg-primary active:text-primary-foreground active:bg-none"
       )}
     >
       <Copy className="h-4 w-4" />
@@ -740,10 +749,10 @@ function ClipboardKey({
       className={cn(
         KEY_CLASS,
         copied
-          ? "bg-green-500 text-white"
+          ? "bg-green-500 bg-none text-white"
           : canCopy
-            ? "bg-primary text-primary-foreground ring-primary/40 ring-2"
-            : "bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground"
+            ? "bg-primary text-primary-foreground ring-primary/40 bg-none ring-2"
+            : "active:bg-primary active:text-primary-foreground active:bg-none"
       )}
     >
       <Icon className="h-4 w-4" />
@@ -774,7 +783,7 @@ function ToolKey({
       }}
       className={cn(
         KEY_CLASS,
-        "bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground"
+        "active:bg-primary active:text-primary-foreground active:bg-none"
       )}
     >
       <Icon className="h-4 w-4" />
@@ -1100,7 +1109,7 @@ export function TerminalToolbar({
               onKeyPress={onKeyPress}
               className={cn(
                 KEY_CLASS,
-                "active:bg-primary active:text-primary-foreground border border-red-500/40 bg-red-500/15 text-red-400",
+                "danger active:bg-primary active:text-primary-foreground active:bg-none",
                 // Set apart at the end of the context row
                 contextMode ? "ml-auto" : "mx-1"
               )}
@@ -1117,7 +1126,7 @@ export function TerminalToolbar({
                           close();
                           setShowSettings(true);
                         }}
-                        className="text-muted-foreground active:bg-primary active:text-primary-foreground flex h-[40px] min-w-[40px] items-center justify-center rounded-lg"
+                        className="text-muted-foreground active:bg-primary active:text-primary-foreground flex h-[40px] min-w-[40px] items-center justify-center rounded-lg active:bg-none"
                       >
                         <Settings className="h-4 w-4" />
                       </button>
@@ -1136,7 +1145,7 @@ export function TerminalToolbar({
               onKeyPress={onKeyPress}
               className={cn(
                 KEY_CLASS,
-                "bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground"
+                "active:bg-primary active:text-primary-foreground active:bg-none"
               )}
             />
           );
@@ -1219,10 +1228,10 @@ export function TerminalToolbar({
         setShowSettings(true);
       }}
       className={cn(
-        "active:bg-primary active:text-primary-foreground flex h-[40px] flex-shrink-0 items-center justify-center rounded-xl text-[13px] font-medium",
+        "active:bg-primary active:text-primary-foreground flex h-[42px] flex-shrink-0 items-center justify-center rounded-xl text-[13px] font-medium active:bg-none",
         contextMode
           ? "text-muted-foreground min-w-[32px] px-1.5"
-          : "bg-secondary text-secondary-foreground min-w-[40px] px-3"
+          : "tkey h-[42px] min-w-[40px] px-3"
       )}
     >
       <Settings className="h-4 w-4" />
@@ -1240,6 +1249,85 @@ export function TerminalToolbar({
       row={rowIdFor(context, keyboardUp)}
     />
   );
+
+  // The tabletop base (Fold-Terminal): Claude's keys as a 5-column grid of
+  // big keys, the tools on its last row, every other key in ⋯
+  if (singleRow && context === "claude")
+    return (
+      <>
+        <PasteModal
+          open={showPasteModal}
+          onClose={() => setShowPasteModal(false)}
+          onPaste={onPaste || sendText}
+        />
+        <SnippetsModal
+          open={showSnippetsModal}
+          onClose={() => setShowSnippetsModal(false)}
+          onInsert={onPaste || sendText}
+        />
+        {settings}
+        <div
+          role="toolbar"
+          aria-label="Terminal keys"
+          className="bg-background grid grid-cols-5 gap-2 px-5 py-2 font-mono"
+          onTouchEnd={(e) => e.stopPropagation()}
+        >
+          {DECK_KEYS.map(({ label, key, name, tone }) =>
+            key === SPECIAL_KEYS.CTRL_C || key === "/" ? (
+              <KeyLongPressMenu
+                key={key}
+                label={label}
+                keyCode={key}
+                menu={key === "/" ? SLASH_MENU : CTRL_C_MENU}
+                onKeyPress={onKeyPress}
+                className={cn(BIG_KEY, tone)}
+              />
+            ) : key === "\r" ? (
+              <EnterButton key={key} onPress={onKeyPress} className={BIG_KEY} />
+            ) : (
+              <button
+                key={key}
+                type="button"
+                aria-label={name}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onKeyPress(key);
+                }}
+                className={cn(BIG_KEY, tone)}
+              >
+                {label}
+              </button>
+            )
+          )}
+          <BigToolKey
+            icon={ImageIcon}
+            label="Photo"
+            onPress={() => onImagePicker?.()}
+          />
+          <BigToolKey icon={Clipboard} label="Paste" onPress={handlePaste} />
+          <BigToolKey
+            icon={FileText}
+            label="File or snippet"
+            onPress={() => setShowSnippetsModal(true)}
+          />
+          <BigToolKey
+            icon={MousePointer2}
+            label="Select text"
+            pressed={selectMode}
+            onPress={() => onSelectModeChange?.(!selectMode)}
+          />
+          <MoreKey
+            label="All keys"
+            keys={allKeys}
+            renderKey={renderButton}
+            onSettings={() => setShowSettings(true)}
+            actions={actions}
+            className={BIG_KEY}
+          />
+        </div>
+      </>
+    );
 
   if (adaptive)
     return (
@@ -1381,7 +1469,63 @@ export function TerminalToolbar({
 }
 
 const KEY_CLASS =
-  "flex h-[40px] min-w-[40px] flex-shrink-0 items-center justify-center rounded-xl px-3 text-[13px] font-medium";
+  "tkey h-[42px] min-w-[40px] flex-shrink-0 rounded-xl px-3 text-[13px] font-medium";
+
+// Fold-Terminal's grid keys: 56px, sharing the row
+const BIG_KEY =
+  "tkey big active:bg-none active:bg-primary active:text-primary-foreground";
+
+/** The grid's first two rows; the tools and ⋯ make the third */
+const DECK_KEYS: {
+  label: string;
+  key: string;
+  name?: string;
+  tone?: string;
+}[] = [
+  { label: "Esc", key: SPECIAL_KEYS.ESC, tone: "esc" },
+  { label: "\u21E7Tab", key: SPECIAL_KEYS.SHIFT_TAB, name: "Shift Tab" },
+  { label: "Tab", key: SPECIAL_KEYS.TAB },
+  { label: "/", key: "/" },
+  { label: "^C", key: SPECIAL_KEYS.CTRL_C, tone: "danger" },
+  { label: "\u2190", key: SPECIAL_KEYS.LEFT, name: "Left" },
+  { label: "\u2191", key: SPECIAL_KEYS.UP, name: "Up" },
+  { label: "\u2193", key: SPECIAL_KEYS.DOWN, name: "Down" },
+  { label: "\u2192", key: SPECIAL_KEYS.RIGHT, name: "Right" },
+  { label: "\u23CE", key: "\r", name: "Enter" },
+];
+
+/** A tool on the grid's last row: an icon, pressed while its mode is on */
+function BigToolKey({
+  icon: Icon,
+  label,
+  pressed,
+  onPress,
+}: {
+  icon: LucideIcon;
+  label: string;
+  pressed?: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      aria-pressed={pressed}
+      title={label}
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={(e) => {
+        e.stopPropagation();
+        onPress();
+      }}
+      className={cn(
+        BIG_KEY,
+        pressed && "bg-primary text-primary-foreground bg-none"
+      )}
+    >
+      <Icon aria-hidden className="h-5 w-5" />
+    </button>
+  );
+}
 
 const NO_KEYS: ToolbarButtonId[] = [];
 
@@ -1423,6 +1567,7 @@ function MoreKey({
   renderKey,
   onSettings,
   actions,
+  className = KEY_CLASS,
 }: {
   label?: string;
   keys: ToolbarButtonId[];
@@ -1430,6 +1575,7 @@ function MoreKey({
   onSettings: () => void;
   /** Listed under the keys, each closing the panel */
   actions?: RowAction[];
+  className?: string;
 }) {
   const buttonRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -1483,10 +1629,10 @@ function MoreKey({
           );
         }}
         className={cn(
-          KEY_CLASS,
+          className,
           anchor
-            ? "bg-primary text-primary-foreground"
-            : "bg-secondary text-secondary-foreground active:bg-primary active:text-primary-foreground"
+            ? "bg-primary text-primary-foreground bg-none"
+            : "active:bg-primary active:text-primary-foreground active:bg-none"
         )}
       >
         <Ellipsis className="h-4 w-4" />
@@ -1529,7 +1675,7 @@ function MoreKey({
                 e.stopPropagation();
                 onSettings();
               }}
-              className="text-muted-foreground active:bg-primary active:text-primary-foreground flex h-[40px] min-w-[40px] items-center justify-center rounded-xl"
+              className="text-muted-foreground active:bg-primary active:text-primary-foreground flex h-[40px] min-w-[40px] items-center justify-center rounded-xl active:bg-none"
             >
               <Settings className="h-4 w-4" />
             </button>
