@@ -100,8 +100,6 @@ interface ProjectListProps {
   sessions: Session[];
   projects: ProjectWithDevServers[];
   sessionStatuses: Record<string, SessionStatus>;
-  /** Unused: the web follows E-Projects too (its sidebar is M1b U1b.4's) */
-  pills?: boolean;
   onNewSession: (projectId: string) => void;
   onOpenTerminal: (projectId: string) => void;
   onStartDevServer: (projectId: string) => void;
@@ -440,9 +438,10 @@ export function ProjectList({
 
   const empty = !isPending && movable.length === 0 && sessions.length === 0;
   // The column (or the iOS app's own) holds Back, + and sort; the phone's
-  // tab bar and the iOS app before it takes the column don't
+  // tab bar, the desktop sidebar and the iOS app before it takes the
+  // column don't
   const appBar = native && !nativeCaps().column;
-  const ownButtons = appBar || mode === "phone";
+  const ownButtons = appBar || mode === "phone" || mode === "desktop";
   // The ungrouped rest gets a title only below other groups
   const titled = groups.length > 1;
 

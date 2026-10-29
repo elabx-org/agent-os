@@ -163,6 +163,22 @@ export function DesktopView(props: ViewProps) {
   const beside = desktop && paneIds.length > 1;
   const projectsShown = desktop && homeTab === "projects";
   const rail = beside && !pageOpen && !projectsShown;
+  const homeWidth = !desktop
+    ? undefined
+    : rail
+      ? AVATAR_RAIL_WIDTH
+      : projectsShown
+        ? DESKTOP_PROJECTS_WIDTH
+        : DESKTOP_SIDEBAR_WIDTH;
+  // New's desktop layer (portalled to body) starts where the home ends
+  useEffect(() => {
+    const root = document.documentElement.style;
+    if (homeWidth === undefined) return;
+    root.setProperty("--desktop-home-w", `${sidebarOpen ? homeWidth : 0}px`);
+    return () => {
+      root.removeProperty("--desktop-home-w");
+    };
+  }, [homeWidth, sidebarOpen]);
 
   // The Projects tab: a project opens its page beside the home; the old
   // tree stays one row away for managing sessions
@@ -171,7 +187,6 @@ export function DesktopView(props: ViewProps) {
       sessions={sessions}
       projects={projects}
       sessionStatuses={sessionStatuses}
-      pills={!native}
       onNewSession={handleNewSessionInProject}
       onOpenTerminal={handleOpenTerminal}
       onStartDevServer={handleStartDevServer}
@@ -209,15 +224,7 @@ export function DesktopView(props: ViewProps) {
         session={activeSession}
         projects={projects}
         homeOpen={sidebarOpen}
-        homeWidth={
-          !desktop
-            ? undefined
-            : rail
-              ? AVATAR_RAIL_WIDTH
-              : projectsShown
-                ? DESKTOP_PROJECTS_WIDTH
-                : DESKTOP_SIDEBAR_WIDTH
-        }
+        homeWidth={homeWidth}
         pageSpread={page?.kind === "inbox"}
         page={
           pageOpen && (

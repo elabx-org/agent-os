@@ -6,6 +6,7 @@ import { exec } from "child_process";
 import { promisify } from "util";
 import * as path from "path";
 import * as fs from "fs";
+import { branchForFeature } from "./branch-name";
 
 const execAsync = promisify(exec);
 
@@ -127,11 +128,11 @@ export function slugify(text: string): string {
 }
 
 /**
- * Generate a branch name from a feature description
+ * Generate a branch name from a feature description: the same rule New
+ * shows (lib/branch-name.ts), so `chore/dev-profile` stays as it is
  */
 export function generateBranchName(feature: string): string {
-  const slug = slugify(feature);
-  return `feature/${slug}`;
+  return branchForFeature(feature);
 }
 
 /**

@@ -40,9 +40,10 @@ export interface PermissionCardProps {
   /**
    * As the Inbox card's variants; "full" by default. "now": Now's one line,
    * the command with Allow and Deny beside it (the full card is in Needs
-   * you and the session)
+   * you and the session). "ask": Needs you's card, which says the request
+   * itself: only Allow, Always allow and Deny as pills
    */
-  variant?: "full" | "card" | "page" | "now";
+  variant?: "full" | "card" | "page" | "now" | "ask";
   /**
    * Opens the session: "More…" on the compact card, and "Answer in
    * terminal" when only the hook saw the request (nothing to answer here)
@@ -213,6 +214,52 @@ export function PermissionCard({
         {error && <p className="text-xs text-red-400">{error}</p>}
       </div>
     );
+
+  if (variant === "ask" && prompt && split) {
+    const always = prompt.options.find((o) => o.kind === "always");
+    const row =
+      always && split.main[0]?.kind === "allow" && !split.main.includes(always)
+        ? [split.main[0], always, ...split.main.slice(1)]
+        : split.main;
+    return (
+      <div className="grid gap-1.5">
+        <div className="mt-1 flex gap-2">
+          {row.map((option) => (
+            <button
+              key={`${option.index}-${option.label}`}
+              type="button"
+              title={option.label}
+              disabled={busy}
+              onClick={() => choose(option)}
+              className={cn(
+                "pill pill-sm min-w-0 touch-manipulation disabled:opacity-60",
+                option.kind === "deny" ? "shrink-0" : "flex-1",
+                option.kind === "allow"
+                  ? "pill-primary active:opacity-80"
+                  : "pill-secondary active:bg-accent"
+              )}
+            >
+              {answering === option.index && (
+                <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+              )}
+              <span className="truncate">
+                {option.kind === "always" ? "Always allow" : shortLabel(option)}
+              </span>
+            </button>
+          ))}
+        </div>
+        {blocked && (
+          <p className="text-muted-foreground/80 flex items-start gap-1.5 text-xs leading-snug">
+            <Ban className="mt-px h-3.5 w-3.5 shrink-0" />
+            <span className="truncate">
+              {blockedText(blocked)} · {timeAgo(blocked.at)}
+            </span>
+          </p>
+        )}
+        {error && <p className="text-xs text-red-400">{error}</p>}
+      </div>
+    );
+  }
 
   return (
     <div className="@container grid gap-2.5">

@@ -131,7 +131,7 @@ export function NewSurface({
         label="New session"
         autoFocus={!isTouch}
         className="inset-y-0 right-0 overflow-y-auto overscroll-contain"
-        style={{ left: DESKTOP_SIDEBAR_WIDTH }}
+        style={{ left: `var(--desktop-home-w, ${DESKTOP_SIDEBAR_WIDTH}px)` }}
       >
         <NewForm
           form={form}

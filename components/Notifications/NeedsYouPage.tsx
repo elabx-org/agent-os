@@ -449,13 +449,9 @@ function AskCard({
             <Loader2 className="h-4 w-4 animate-spin" /> Reading the session…
           </span>
         ) : (
-          // Until PermissionCard has its "ask" variant, "now" shows the
-          // command beside its answers
-          !permission && (
-            <span className="w-full text-[16px] font-medium break-words">
-              {prompt ? <AskText prompt={prompt} /> : "Needs a typed reply"}
-            </span>
-          )
+          <span className="w-full text-[16px] font-medium break-words">
+            {prompt ? <AskText prompt={prompt} /> : "Needs a typed reply"}
+          </span>
         )}
       </button>
 
@@ -463,7 +459,7 @@ function AskCard({
         <PermissionCard
           session={session}
           permission={permission}
-          variant="now"
+          variant="ask"
           onOpen={onOpen}
         />
       )}

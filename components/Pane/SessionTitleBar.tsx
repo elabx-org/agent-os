@@ -126,7 +126,7 @@ export function SessionTitleBar({
   // The iOS app's closed-screen trial: a bigger title, as a page has
   const { on: duoPreview } = useSnapshot(duoPreviewStore);
   const focus = useSnapshot(focusStore);
-  const { paneCount, canSplitDown, swap } = usePanes();
+  const { paneCount, canSplitDown } = usePanes();
   const pageTitle = duoPreview && railActive && isMobile;
   const titles = useListTitles(session ? [session] : []);
   const { copy } = useCopyToClipboard();
@@ -293,7 +293,7 @@ export function SessionTitleBar({
         {native && wide && paneCount === 2 && (
           <button
             type="button"
-            onClick={swap}
+            onClick={() => runNav("swap")}
             aria-label="Swap sides"
             className={cn(
               "text-muted-foreground hover:bg-accent hover:text-foreground flex h-9 w-9 shrink-0 items-center justify-center rounded-md",
