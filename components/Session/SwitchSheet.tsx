@@ -83,6 +83,8 @@ export function SwitchSheet({
           "sheet-surface bg-[var(--sheet)]",
           // Half folded (tabletop): on the base, below the hinge
           "[html[data-fold=horizontal]_&]:top-[calc(var(--fold-end)+0.5rem)] [html[data-fold=horizontal]_&]:max-h-none",
+          // Book pose without the app (globals.css sets left): the right page
+          "[html[data-fold=vertical]_&]:right-0 [html[data-fold=vertical]_&]:mx-0 [html[data-fold=vertical]_&]:w-auto [html[data-fold=vertical]_&]:max-w-none",
           // The open Duo lying flat: on the right page, clear of the hinge
           "[html[data-hinge]_&]:right-0 [html[data-hinge]_&]:left-[calc(var(--hinge-x)+var(--fold-clear))] [html[data-hinge]_&]:mx-0 [html[data-hinge]_&]:w-auto [html[data-hinge]_&]:max-w-none"
         )}
