@@ -37,8 +37,12 @@ export interface PermissionCardProps {
   session: Session;
   permission: PendingPermission;
   onAnswered?: () => void;
-  /** As the Inbox card's variants; "full" by default */
-  variant?: "full" | "card" | "page";
+  /**
+   * As the Inbox card's variants; "full" by default. "now": Now's one line,
+   * the command with Allow and Deny beside it (the full card is in Needs
+   * you and the session)
+   */
+  variant?: "full" | "card" | "page" | "now";
   /**
    * Opens the session: "More…" on the compact card, and "Answer in
    * terminal" when only the hook saw the request (nothing to answer here)
@@ -169,6 +173,46 @@ export function PermissionCard({
       </span>
     </button>
   );
+
+  if (variant === "now" && prompt && split)
+    return (
+      <div className="grid gap-1.5">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <span className="text-foreground/90 line-clamp-2 min-w-0 flex-1 font-mono text-[13px] break-words">
+            {prompt.detail?.split("\n")[0] || summary || prompt.question}
+          </span>
+          {split.main.map((option) => (
+            <button
+              key={`${option.index}-${option.label}`}
+              type="button"
+              title={option.label}
+              disabled={busy}
+              onClick={() => choose(option)}
+              className={cn(
+                "pill pill-sm max-w-[9rem] shrink-0 touch-manipulation disabled:opacity-60",
+                option.kind === "allow"
+                  ? "pill-primary active:opacity-80"
+                  : "pill-secondary active:bg-accent"
+              )}
+            >
+              {answering === option.index && (
+                <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+              )}
+              <span className="truncate">{shortLabel(option)}</span>
+            </button>
+          ))}
+        </div>
+        {blocked && (
+          <p className="text-muted-foreground/80 flex items-start gap-1.5 text-xs leading-snug">
+            <Ban className="mt-px h-3.5 w-3.5 shrink-0" />
+            <span className="truncate">
+              {blockedText(blocked)} · {timeAgo(blocked.at)}
+            </span>
+          </p>
+        )}
+        {error && <p className="text-xs text-red-400">{error}</p>}
+      </div>
+    );
 
   return (
     <div className="@container grid gap-2.5">

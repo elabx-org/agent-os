@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, type CSSProperties } from "react";
 import { useSnapshot } from "valtio";
 import { SessionList } from "@/components/SessionList";
 import { ProjectList } from "@/components/Projects";
@@ -18,7 +18,7 @@ import { LiveSheet } from "@/components/ControlColumn/LiveSheet";
 import { useSideRail } from "@/hooks/useSideRail";
 import { useLayoutMode } from "@/hooks/useLayoutMode";
 import { isNative, nativeCaps } from "@/lib/native-bridge";
-import { surfaceStore } from "@/stores/surface";
+import { setHome } from "@/stores/surface";
 import { loadDuoPreview } from "@/stores/duoPreview";
 import { cn } from "@/lib/utils";
 import { WorkspacePage } from "@/components/WorkspacePage";
@@ -97,9 +97,9 @@ export function MobileView(props: ViewProps) {
 
   // The home itself, for the surface (a page over it is the page)
   useEffect(() => {
-    surfaceStore.home = sidebarOpen;
+    setHome(sidebarOpen);
     return () => {
-      surfaceStore.home = false;
+      setHome(false);
     };
   }, [sidebarOpen]);
 
@@ -168,6 +168,13 @@ export function MobileView(props: ViewProps) {
         ? { bottom: "var(--control-bar-h, 0px)" }
         : undefined;
 
+  // The home scrolls on under the glass (E-iPhone): its list pads itself
+  // with --home-pad-b instead
+  const homeStyle =
+    !railWidth && bar === "tabs"
+      ? ({ "--home-pad-b": "var(--control-bar-h, 0px)" } as CSSProperties)
+      : layerStyle;
+
   return (
     <main
       className="bg-background flex h-dvh flex-col overflow-hidden"
@@ -180,7 +187,7 @@ export function MobileView(props: ViewProps) {
           app and a browser. The column or bar stays beside it */}
       {sidebarOpen && (
         // Out of reach while a page covers it
-        <div className={layerClass} style={layerStyle} inert={pageOpen}>
+        <div className={layerClass} style={homeStyle} inert={pageOpen}>
           <MissionControl
             sessions={sessions}
             sessionStatuses={sessionStatuses}

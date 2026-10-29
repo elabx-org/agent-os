@@ -72,6 +72,15 @@ export const surfaceStore = proxy<{
   home: false,
 });
 
+/**
+ * The views say whether the home is up. Closed, it comes back as Now: only
+ * the phone's tab bar keeps Projects as a tab of its own
+ */
+export function setHome(open: boolean): void {
+  surfaceStore.home = open;
+  if (!open && layoutStore.mode !== "phone") mobileNavStore.homeTab = "now";
+}
+
 /** Called once from app/page.tsx with its own state */
 export function useSurfaceSource(inputs: {
   paneCount: number;

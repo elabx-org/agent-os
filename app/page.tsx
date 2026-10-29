@@ -499,11 +499,12 @@ function HomeContent() {
           closePage();
           setSidebarOpen(true);
         },
-        // The most recent other session beside the focused one
+        // The most recent other session beside the focused one (workers
+        // show inside their conductor's)
         openBeside: () => {
           const current = focusedActiveTab?.sessionId;
           const next = sessions
-            .filter((s) => s.id !== current)
+            .filter((s) => s.id !== current && !s.conductor_session_id)
             .sort((a, b) => b.updated_at.localeCompare(a.updated_at))[0];
           if (next) openSessionBeside(next);
           setSidebarOpen(false);

@@ -25,7 +25,8 @@ import { useIsNative } from "@/hooks/useIsNative";
 import { FOLD_CLEAR, useHinge } from "@/hooks/useHinge";
 import { useLayoutMode } from "@/hooks/useLayoutMode";
 import { registerNavHandlers } from "@/lib/nav-actions";
-import { surfaceStore } from "@/stores/surface";
+import { setHome } from "@/stores/surface";
+import { nativeCaps } from "@/lib/native-bridge";
 import { postureStore } from "@/stores/posture";
 import { focusStore } from "@/stores/focus";
 import { mobileNavStore } from "@/stores/mobileNav";
@@ -244,7 +245,9 @@ export function SessionSpread({
     !!folder;
   // On the pages the rail sits beside a conversation, once the column's
   // Live asks for it; Changes, Files and Workers take both pages for their
-  // own list | detail split
+  // own list | detail split. An iOS app without the column has no Live
+  // to ask with, so there it stays as before
+  const railByDefault = native && !nativeCaps().column;
   const showRail =
     !!session &&
     !pageOpen &&
@@ -253,7 +256,7 @@ export function SessionSpread({
     !replyLeft &&
     (pages
       ? !homeOpen &&
-        liveOpen &&
+        (liveOpen || railByDefault) &&
         (viewMode === "terminal" || viewMode === "chat")
       : roomForRail && !duo);
   // Pane on the left page, the rail on the right (the home and Changes left
@@ -310,9 +313,9 @@ export function SessionSpread({
 
   // The home beside the panes, for the surface (Now)
   useEffect(() => {
-    surfaceStore.home = homeWanted;
+    setHome(homeWanted);
     return () => {
-      surfaceStore.home = false;
+      setHome(false);
     };
   }, [homeWanted]);
 
@@ -352,10 +355,9 @@ export function SessionSpread({
         )}
         style={homeStyle}
       >
-        {/* Its rows are inset px-4 already: px-1 more makes the 20px that,
-            with the bottom inset, keeps the last row clear of the open
-            Duo's round screen corner */}
-        <div className="bg-background h-full px-1 pb-[max(1rem,env(safe-area-inset-bottom))]">
+        {/* The page's own colour edge to edge (Open-Now); the bottom inset
+            keeps the last row clear of the open Duo's round screen corner */}
+        <div className="bg-page h-full pb-[max(1rem,env(safe-area-inset-bottom))]">
           {home}
         </div>
       </div>
@@ -455,12 +457,13 @@ export function SessionSpread({
       )}
 
       {/* The one view switcher; the iOS app has its own. On the open Duo
-          it sits in the system column's 86px (Open-Now) */}
+          it sits in the system column's 86px, below the camera (Open-Now:
+          20 + 16 + 24 + 40) */}
       {!native && (
         <div
           className={cn(
             "flex flex-shrink-0 justify-center",
-            duo ? "w-[86px] pt-10" : "w-16 py-2"
+            duo ? "w-[86px] pt-[100px]" : "w-16 py-2"
           )}
         >
           <ControlColumn variant="column" className="self-start" />

@@ -15,7 +15,11 @@ export function GroupCard({
   "aria-label"?: string;
 }) {
   return (
-    <div aria-label={ariaLabel} className={cn("group-card", className)}>
+    <div
+      role={ariaLabel ? "group" : undefined}
+      aria-label={ariaLabel}
+      className={cn("group-card", className)}
+    >
       {children}
     </div>
   );
@@ -51,9 +55,11 @@ export function GroupRow({
     <>
       {leading}
       <span className="min-w-0 flex-1 text-left">
-        <span className="block truncate text-base font-medium">{title}</span>
+        {/* Fixed px, as the mocks' .body/.sub: the density root size moves
+            rem, and the large title doesn't */}
+        <span className="block truncate text-[16px] font-medium">{title}</span>
         {subtitle && (
-          <span className="text-muted-foreground mt-0.5 block truncate text-sm">
+          <span className="text-muted-foreground mt-0.5 block truncate text-[14px]">
             {subtitle}
           </span>
         )}

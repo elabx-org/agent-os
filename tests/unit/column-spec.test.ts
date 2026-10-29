@@ -38,13 +38,13 @@ const homeBeside = (mode: LayoutMode) =>
 // Every surface in every posture, as the mocks draw them
 const TABLE: [Surface, LayoutMode, string][] = [
   ["now", "phone", "now(on) inbox[2a] projects settings | new*"],
-  ["now", "duo-closed", "new* inbox[2a] projects search | settings"],
+  ["now", "duo-closed", "new* inbox(on)[2a] projects search | settings"],
   [
     "now",
     "duo-open",
     "new* inbox[2a] | terminal git[3n] files beside | search more",
   ],
-  ["now", "tabletop", "new* inbox[2a] projects search | settings"],
+  ["now", "tabletop", "new* inbox(on)[2a] projects search | settings"],
   [
     "now",
     "book",

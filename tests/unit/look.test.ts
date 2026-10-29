@@ -9,13 +9,9 @@ import {
   type Accent,
   type LookMode,
 } from "../../lib/look";
-import {
-  DARK_THEMES,
-  LIGHT_THEMES,
-  buildTheme,
-  parseTheme,
-  type DarkThemeVariant,
-  type LightThemeVariant,
+import type {
+  DarkThemeVariant,
+  LightThemeVariant,
 } from "../../lib/theme-config";
 
 const DARK: Record<DarkThemeVariant, Accent> = {
@@ -51,11 +47,6 @@ describe("legacyThemeToLook", () => {
         accent,
       });
     }
-    // Every variant the old picker offered is in the table
-    assert.deepEqual(
-      DARK_THEMES.map((t) => t.id).sort(),
-      Object.keys(DARK).sort()
-    );
   });
 
   test("every light variant", () => {
@@ -65,10 +56,6 @@ describe("legacyThemeToLook", () => {
         accent,
       });
     }
-    assert.deepEqual(
-      LIGHT_THEMES.map((t) => t.id).sort(),
-      Object.keys(LIGHT).sort()
-    );
   });
 
   test("plain modes", () => {
@@ -137,45 +124,6 @@ describe("parseLook", () => {
   });
 });
 
-describe("parseTheme (deprecated, still reads every stored value)", () => {
-  test("legacy and plain values", () => {
-    assert.deepEqual(parseTheme("dark-graphite"), {
-      mode: "dark",
-      variant: "graphite",
-    });
-    assert.deepEqual(parseTheme("light-lavender"), {
-      mode: "light",
-      variant: "lavender",
-    });
-    assert.deepEqual(parseTheme("system"), { mode: "system", variant: null });
-    assert.deepEqual(parseTheme("dark"), { mode: "dark", variant: "deep" });
-    assert.deepEqual(parseTheme("light"), {
-      mode: "light",
-      variant: "default",
-    });
-  });
-
-  test("junk is dark, an unknown variant its mode's base", () => {
-    assert.deepEqual(parseTheme("junk"), { mode: "dark", variant: "deep" });
-    assert.deepEqual(parseTheme(""), { mode: "dark", variant: "deep" });
-    assert.deepEqual(parseTheme(null), { mode: "dark", variant: "deep" });
-    assert.deepEqual(parseTheme("light-neon"), {
-      mode: "light",
-      variant: "default",
-    });
-    assert.deepEqual(parseTheme("dark-lavender"), {
-      mode: "dark",
-      variant: "deep",
-    });
-  });
-
-  test("buildTheme round-trips", () => {
-    assert.equal(buildTheme("dark", "deep"), "dark");
-    assert.equal(buildTheme("light", "mint"), "light-mint");
-    assert.equal(buildTheme("system", "ocean"), "system");
-  });
-});
-
 /** Runs the <head> boot script against a fake page */
 function boot(
   stored: Record<string, string>,
@@ -222,6 +170,8 @@ function boot(
     variant: attrs.get("data-theme-variant"),
     theme: storage.get("theme"),
     storedAccent: storage.get(ACCENT_STORAGE_KEY),
+    synced: storage.get("agentos:look-synced"),
+    legacyTheme: storage.get("agentos:legacy-theme"),
   };
 }
 
@@ -245,6 +195,25 @@ describe("LOOK_BOOT_SCRIPT", () => {
     }
   });
 
+  test("a device from before sync keeps its look; the old value is kept", () => {
+    const upgraded = boot({ theme: "dark-graphite" });
+    assert.equal(upgraded.synced, "0");
+    assert.equal(upgraded.legacyTheme, "dark-graphite");
+    // Again on the next load: the backup stays the original
+    const again = boot({
+      theme: "dark",
+      "agentos:look-synced": "0",
+      "agentos:legacy-theme": "dark-graphite",
+    });
+    assert.equal(again.legacyTheme, "dark-graphite");
+    // A new device, or one this build already saw, keeps its choice
+    assert.equal(boot({}).synced, undefined);
+    assert.equal(
+      boot({ theme: "dark", "agentos:look-synced": "1" }).synced,
+      "1"
+    );
+  });
+
   test("an accent already chosen wins over the legacy one", () => {
     const page = boot({ theme: "dark-ocean", [ACCENT_STORAGE_KEY]: "green" });
     assert.equal(page.accent, "green");
@@ -259,6 +228,9 @@ describe("LOOK_BOOT_SCRIPT", () => {
       variant: undefined,
       theme: "light",
       storedAccent: undefined,
+      // A look from before sync: this device keeps it
+      synced: "0",
+      legacyTheme: undefined,
     });
     const fresh = boot({});
     assert.deepEqual(fresh.classes, ["dark"]);

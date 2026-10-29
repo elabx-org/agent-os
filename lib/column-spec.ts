@@ -241,7 +241,8 @@ function tabs(surface: Surface, ctx: ColumnContext): ColumnItem[] {
 function nowColumn(ctx: ColumnContext): ColumnItem[] {
   return [
     item(BASE.new, { prominent: true }),
-    inbox(ctx),
+    // No Now item here: what needs you leads the page, so it's the one on
+    inbox(ctx, { selected: !ctx.focus && ctx.needsYou > 0 }),
     item(BASE.projects),
     item(BASE.search),
     item(BASE.settings, sep),

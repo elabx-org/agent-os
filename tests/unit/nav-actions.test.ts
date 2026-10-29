@@ -192,6 +192,34 @@ test("defaults: Projects is Now's other half, Live toggles", () => {
   surfaceStore.home = false;
 });
 
+test("back: Projects goes back to Now", () => {
+  reset();
+  const { calls, stop } = spyHandlers();
+  surfaceStore.home = true;
+  mobileNavStore.homeTab = "now";
+  runNav("projects");
+  assert.equal(mobileNavStore.homeTab, "projects");
+  calls.length = 0;
+  runNav("back");
+  assert.equal(mobileNavStore.homeTab, "now");
+  assert.deepEqual(calls, []);
+  stop();
+  surfaceStore.home = false;
+});
+
+test("back: Find closes before the page under it", () => {
+  reset();
+  const { calls, stop } = spyHandlers();
+  workspacePageStore.page = { kind: "project", projectId: "p1" };
+  surfaceStore.searchOpen = true;
+  runNav("back");
+  assert.deepEqual(calls, ["goBack"]);
+  assert.equal(workspacePageStore.page?.kind, "project");
+  stop();
+  surfaceStore.searchOpen = false;
+  workspacePageStore.page = null;
+});
+
 test("registerNavHandlers: overlapping registrations undo only their own", () => {
   const original = navStore.openFind;
   const a = () => {};

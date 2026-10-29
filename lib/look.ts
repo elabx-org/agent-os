@@ -159,7 +159,8 @@ export function readAccent(): Accent {
  * Before the first paint: the mode's class and the accent on <html>. A legacy
  * `dark-<variant>` is rewritten to its mode (next-themes only knows light,
  * dark and system, and would otherwise fall back to its default) and its
- * accent saved, unless this device has one already. Self-contained like
+ * accent saved, unless this device has one already; the original stays
+ * under agentos:legacy-theme. Self-contained like
  * legacyThemeToLook, which it is handed.
  */
 function bootLook(toLook: typeof legacyThemeToLook) {
@@ -181,11 +182,17 @@ function bootLook(toLook: typeof legacyThemeToLook) {
       } catch (e) {}
     }
   }
-  if (legacy) {
-    try {
+  try {
+    // A device that had a look before sync: it keeps it (Display turns
+    // sync on). The old value is kept too, for a rollback to restore
+    if (theme !== null && localStorage.getItem("agentos:look-synced") === null)
+      localStorage.setItem("agentos:look-synced", "0");
+    if (legacy) {
+      if (localStorage.getItem("agentos:legacy-theme") === null)
+        localStorage.setItem("agentos:legacy-theme", theme as string);
       localStorage.setItem("theme", look.mode);
-    } catch (e) {}
-  }
+    }
+  } catch (e) {}
   const dark =
     look.mode === "system"
       ? window.matchMedia("(prefers-color-scheme: dark)").matches

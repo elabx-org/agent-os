@@ -166,12 +166,17 @@ export function registerNavHandlers(
   };
 }
 
-/** One level up: a Settings section, Settings, New, a page, else Now */
+/**
+ * One level up, topmost layer first as surfaceFor ranks them: a Settings
+ * section, Settings, Find, New, a page, Needs you, Projects, else Now
+ */
 function goBack() {
   if (settingsPageStore.open) {
     if (!settingsBack()) closeSettings();
     return;
   }
+  // app/page.tsx's goBack closes Find before anything else
+  if (surfaceStore.searchOpen) return navStore.goBack();
   if (newSurfaceStore.open) return closeNew();
   if (workspacePageStore.page) {
     if (workspacePageStore.previous) backPage();
@@ -179,6 +184,11 @@ function goBack() {
     return;
   }
   if (mobileNavStore.inboxOpen) return mobileNavActions.setInboxOpen(false);
+  // Projects is Now's other half: back from it is Now
+  if (surfaceStore.home && mobileNavStore.homeTab === "projects") {
+    mobileNavStore.homeTab = "now";
+    return;
+  }
   navStore.goBack();
 }
 

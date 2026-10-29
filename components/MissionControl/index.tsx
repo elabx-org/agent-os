@@ -11,6 +11,9 @@ import { displayTitle } from "@/hooks/useSessionTitles";
 import { useSnapshot } from "valtio";
 import { openNew } from "@/stores/newSurface";
 import { mobileNavStore } from "@/stores/mobileNav";
+import { runNav } from "@/lib/nav-actions";
+import { nativeCaps } from "@/lib/native-bridge";
+import { useIsNative } from "@/hooks/useIsNative";
 import type { SessionStatus } from "@/components/views/types";
 import type { Session } from "@/lib/db";
 import { cn } from "@/lib/utils";
@@ -76,6 +79,7 @@ export function MissionControl({
   projectsView,
 }: MissionControlProps) {
   const mode = useLayoutMode();
+  const native = useIsNative();
   const { homeTab } = useSnapshot(mobileNavStore);
   const wide = isWide(mode);
   const now = useNowItems(sessions, sessionStatuses);
@@ -98,11 +102,17 @@ export function MissionControl({
   };
 
   // On a table the list stays above the fold and the base answers the
-  // first prompt, or starts something when nothing waits. The base has room
-  // for every answer, so it shows them all rather than hiding some in More…
+  // first prompt, the same card as above it, or starts something when
+  // nothing waits
   const ref = useRef<HTMLDivElement>(null);
   const list = (cardOnBase: boolean) => (
-    <div className={cn("min-h-0 flex-1 overflow-y-auto pb-6", PAD[mode])}>
+    // --home-pad-b: on a phone the list scrolls on under the tab bar
+    <div
+      className={cn(
+        "min-h-0 flex-1 overflow-y-auto pb-[calc(1.5rem+var(--home-pad-b,0px))]",
+        PAD[mode]
+      )}
+    >
       <div className="flex flex-col gap-3.5">
         {onClose && (
           <button
@@ -130,12 +140,14 @@ export function MissionControl({
           <div className="px-1 py-2">
             <p className="font-medium">Nothing running</p>
             <p className="text-muted-foreground text-sm">
-              Start a session, or pick up a project below.
+              {now.quiet.length + now.loose.length
+                ? "Start a session, or pick up one below."
+                : "Start a session."}
             </p>
           </div>
         )}
         <DoneTodaySection {...sectionProps} sessions={sessions} />
-        <QuietSection now={now} wide={wide} />
+        <QuietSection {...sectionProps} />
 
         {/* Agents outside every project, once they've stopped working:
             listed nowhere else, so open and remove them from here */}
@@ -154,8 +166,24 @@ export function MissionControl({
           wide ? "bg-page" : "bg-background"
         )}
       >
-        <h1 className={cn("t-large shrink-0 pb-2", PAD[mode])}>Projects</h1>
-        <div className="min-h-0 flex-1">{projectsView}</div>
+        <div className={cn("flex shrink-0 flex-col gap-3.5 pb-2", PAD[mode])}>
+          {/* The web column and bars have Back (the phone's tab bar Now);
+              the iOS app's own bar has neither until it takes the column */}
+          {native && !nativeCaps().column && (
+            <button
+              type="button"
+              onClick={() => runNav("back")}
+              aria-label="Back to Now"
+              className="text-muted-foreground active:bg-accent -mb-2 -ml-2 flex h-11 w-11 items-center justify-center rounded-full"
+            >
+              <ChevronLeft className="h-5 w-5" />
+            </button>
+          )}
+          <h1 className="t-large">Projects</h1>
+        </div>
+        <div className="min-h-0 flex-1 pb-[var(--home-pad-b,0px)]">
+          {projectsView}
+        </div>
       </div>
     );
 
@@ -176,7 +204,7 @@ export function MissionControl({
             {first && (
               <InboxItem
                 as="div"
-                variant="full"
+                variant="card"
                 session={first}
                 projectName={
                   first.project_id ? projectNames[first.project_id] : undefined

@@ -183,7 +183,8 @@ function SettingsLayer(props: NotificationsSectionProps) {
     };
     [...(layer?.parentElement?.children ?? [])].forEach(shut);
     behind.forEach((el) => (el.inert = true));
-    (navRef.current ?? layer)?.focus();
+    // The layer, not its close button: focus moved by script shows a ring
+    layer?.focus();
     return () => {
       behind.forEach((el) => (el.inert = false));
       if (previous?.isConnected) previous.focus();
@@ -336,7 +337,9 @@ function SettingsLayer(props: NotificationsSectionProps) {
       <div
         ref={layerRef}
         role="dialog"
-        aria-modal="true"
+        // The web column outside it closes it and goes back, so VoiceOver
+        // must reach it (inert keeps the rest behind out)
+        aria-modal={columnNav && !nativeColumn ? undefined : true}
         aria-label="Settings"
         tabIndex={-1}
         style={{ ...layerStyle, ...gutters(columnNav ? 8 : 20) }}
@@ -385,7 +388,10 @@ function SettingsLayer(props: NotificationsSectionProps) {
           "flex shrink-0 flex-col pl-[env(safe-area-inset-left)]",
           !book && "border-hair border-r",
           !book &&
-            (native ? "w-[455px]" : "w-[40%] max-w-[440px] min-w-[300px]")
+            // Flat open Duo: the left page, up to the fold
+            (layout === "duo-open"
+              ? "w-[455px]"
+              : "w-[40%] max-w-[440px] min-w-[300px]")
         )}
       >
         <nav aria-label="Settings sections" className={scroll}>

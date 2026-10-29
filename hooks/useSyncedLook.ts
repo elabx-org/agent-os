@@ -44,9 +44,11 @@ function loadDeviceLook() {
   deviceLook.accent = readAccent();
   deviceLook.textSize = getOffset(getDisplayClass());
   try {
-    deviceLook.synced = readSynced(
-      localStorage.getItem(LOOK_SYNCED_STORAGE_KEY)
-    );
+    const stored = localStorage.getItem(LOOK_SYNCED_STORAGE_KEY);
+    deviceLook.synced = readSynced(stored);
+    // Noted, so the boot script can tell this device from one that had a
+    // look before sync (it starts unsynced: lib/look.ts bootLook)
+    if (stored === null) localStorage.setItem(LOOK_SYNCED_STORAGE_KEY, "1");
   } catch {
     // Storage blocked: synced, the default
   }
@@ -107,18 +109,21 @@ export function useSyncedLook(): {
       setTheme(next.mode);
       applyAccent(next.accent);
       deviceLook.accent = next.accent;
-      setOffset(getDisplayClass(), next.textSize);
     },
     [setTheme]
   );
 
-  // Synced: the server's look wins once on load; with none there yet, this
-  // device's becomes it
+  // Synced: the server's mode and accent win once on load; with none there
+  // yet, this device's become them. The text size stays per display class:
+  // a phone's and a desktop's are different sizes
   useEffect(() => {
     if (!isSuccess || !device.loaded || !device.synced || serverLookApplied)
       return;
     serverLookApplied = true;
-    const merged = mergeLook(look, server, true);
+    const merged = {
+      ...mergeLook(look, server, true),
+      textSize: look.textSize,
+    };
     if (server === null || server === undefined) {
       save({ key: LOOK_PREFERENCE_KEY, value: merged });
     } else if (lookDiffers(look, merged)) {

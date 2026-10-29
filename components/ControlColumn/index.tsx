@@ -24,10 +24,9 @@ interface ControlColumnProps {
   /**
    * column: a vertical capsule, placed by the parent (or by sideRailWidth);
    * hbar: the tabletop's centred bar (HBar); tabs: the phone's tab bar and
-   * New button (TabBar), or in a session the bar of views. `bar` is the old
-   * name for `tabs`
+   * New button (TabBar), or in a session the bar of views
    */
-  variant: "column" | "bar" | "hbar" | "tabs";
+  variant: "column" | "hbar" | "tabs";
   /**
    * The iPhone Duo's right-hand system column in a browser: the capsule is
    * fixed in it, under the status glyphs, and stays above a docked keyboard
@@ -46,8 +45,7 @@ export function ControlColumn({
   className,
 }: ControlColumnProps) {
   if (variant === "hbar") return <HBar className={className} />;
-  if (variant === "tabs" || variant === "bar")
-    return <PhoneBar className={className} />;
+  if (variant === "tabs") return <PhoneBar className={className} />;
   return <Column sideRailWidth={sideRailWidth} className={className} />;
 }
 

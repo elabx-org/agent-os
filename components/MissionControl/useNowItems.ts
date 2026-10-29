@@ -40,6 +40,9 @@ export interface NowItems {
   workingCount: number;
   /** Projects with nothing waiting or working, most recently used first */
   quiet: ProjectWithRepositories[];
+  /** Idle sessions outside every project, most recent first: no quiet
+      project lists them */
+  loose: Session[];
   /** Agents outside every project that are neither blocked nor working */
   elsewhere: BackgroundAgent[];
   /** At a usage limit (M6 fills it) */
@@ -159,6 +162,18 @@ export function useNowItems(
         a.sort_order - b.sort_order
     );
 
+  const uncategorized = new Set(
+    projects.filter((p) => p.is_uncategorized).map((p) => p.id)
+  );
+  const loose = sessions
+    .filter(
+      (s) =>
+        !s.conductor_session_id &&
+        !byId.has(s.id) &&
+        (!s.project_id || uncategorized.has(s.project_id))
+    )
+    .sort((a, b) => b.updated_at.localeCompare(a.updated_at));
+
   return {
     needsCount: needs.count,
     waiting,
@@ -175,6 +190,7 @@ export function useNowItems(
       workingAgents.length +
       devServers.length,
     quiet,
+    loose,
     elsewhere,
     limited: EMPTY_SESSIONS,
     settled: EMPTY_SESSIONS,

@@ -48,6 +48,7 @@ export function InboxItem({
   variant = "full",
   title,
   as: Root = "li",
+  pollMs,
 }: {
   session: Session;
   projectName?: string;
@@ -63,9 +64,12 @@ export function InboxItem({
   title?: ReactNode;
   /** "div" when it isn't inside a list */
   as?: "li" | "div";
+  /** How often to reread the prompt; 2s by default */
+  pollMs?: number;
 }) {
   const { data: prompt, isLoading: promptLoading } = useSessionPrompt(
-    session.id
+    session.id,
+    { pollMs }
   );
   const { answer, answering, error } = useAnswerPrompt(session.id);
   // Classified as the server's guard does: unclear means permission. Until
@@ -95,34 +99,38 @@ export function InboxItem({
     const name = title ?? session.name;
     return (
       // The mocks' .ask card
-      <Root className="bg-card border-needs/40 flex flex-col gap-1.5 rounded-[22px] border p-3.5">
+      <Root
+        className={cn(
+          "bg-card border-needs/40 flex flex-col gap-1.5 rounded-[22px] border",
+          permission ? "px-3.5 py-3" : "p-3.5"
+        )}
+      >
+        {/* One target for the header and the title: it opens the session.
+            Alone, the header reaches into the card's padding above and the
+            gap below, short of the answers */}
         <button
           type="button"
           onClick={onOpen}
-          className="text-muted-foreground flex min-w-0 items-center gap-2 text-left text-[13px]"
+          className="relative flex min-w-0 flex-col gap-1.5 text-left after:absolute after:inset-x-0 after:-top-3 after:-bottom-1.5 after:content-['']"
         >
-          <StateDot state="needs" />
-          <span className={cn("font-semibold", STATE_TEXT_CLASS.needs)}>
-            {word}
+          <span className="text-muted-foreground flex w-full min-w-0 items-center gap-2 text-[13px]">
+            <StateDot state="needs" />
+            <span className={cn("font-semibold", STATE_TEXT_CLASS.needs)}>
+              {word}
+            </span>
+            <span className="min-w-0 flex-1 truncate">
+              {/* A permission card has no title line: the header names it */}
+              {"· " +
+                [projectName, permission ? name : agentName(session.agent_type)]
+                  .filter(Boolean)
+                  .join(" · ")}
+            </span>
+            <span className="shrink-0">{shortAge(session.updated_at)}</span>
           </span>
-          <span className="min-w-0 flex-1 truncate">
-            {/* A permission card has no title line: the header names it */}
-            {"· " +
-              [projectName, permission ? name : agentName(session.agent_type)]
-                .filter(Boolean)
-                .join(" · ")}
-          </span>
-          <span className="shrink-0">{shortAge(session.updated_at)}</span>
+          {!permission && (
+            <span className="t-head w-full min-w-0 truncate">{name}</span>
+          )}
         </button>
-        {!permission && (
-          <button
-            type="button"
-            onClick={onOpen}
-            className="t-head min-w-0 truncate text-left"
-          >
-            {name}
-          </button>
-        )}
 
         {isLoading && (
           <div className="text-muted-foreground flex items-center gap-2 text-[13px]">
@@ -138,14 +146,12 @@ export function InboxItem({
         )}
 
         {permission && (
-          <div className="mt-0.5">
-            <PermissionCard
-              session={session}
-              permission={permission}
-              variant="card"
-              onOpen={onOpen}
-            />
-          </div>
+          <PermissionCard
+            session={session}
+            permission={permission}
+            variant="now"
+            onOpen={onOpen}
+          />
         )}
 
         {question && split && (

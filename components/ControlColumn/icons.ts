@@ -14,7 +14,7 @@ import {
   MessageSquare,
   Plus,
   Search,
-  Settings,
+  Sun,
   Terminal,
   Trash,
   X,
@@ -37,7 +37,8 @@ const ICONS: Record<string, LucideIcon> = {
   MessageSquare,
   Plus,
   Search,
-  Settings,
+  // The mocks' Settings: a circle with rays, not a cog
+  Settings: Sun,
   Terminal,
   Trash,
   X,

@@ -34,8 +34,9 @@
   /* Translucent over what scrolls behind: bars, the usage pill, the FAB row */
   .glass {
     background: var(--glass-bg);
-    backdrop-filter: blur(24px) saturate(170%);
+    /* Unprefixed last: before it, the minifier keeps only the -webkit- one */
     -webkit-backdrop-filter: blur(24px) saturate(170%);
+    backdrop-filter: blur(24px) saturate(170%);
     border: 1px solid var(--glass-border);
     box-shadow: var(--glass-shadow);
   }
@@ -107,6 +108,23 @@
   .pill-primary {
     background: hsl(var(--primary));
     color: hsl(var(--primary-foreground));
+  }
+  /* The mocks' .btn.sec2: the quiet answer beside the primary one */
+  .pill-secondary {
+    background: hsl(var(--foreground) / 0.08);
+    border: 1px solid hsl(var(--foreground) / 0.12);
+    font-weight: 500;
+  }
+  .light .pill-secondary {
+    background: hsl(var(--foreground) / 0.05);
+    border-color: hsl(var(--foreground) / 0.1);
+  }
+  /* The mocks' .btn.sm: answers inline on a Now card */
+  .pill-sm {
+    height: 36px;
+    padding: 0 14px;
+    border-radius: 18px;
+    font-size: 14px;
   }
 
   /* Segmented control: buttons with aria-pressed */

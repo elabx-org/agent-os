@@ -8,7 +8,7 @@ import { StateDot } from "@/components/a/StateDot";
 import { openBackgroundAgent } from "@/components/BackgroundAgents";
 import { DevServerRow } from "@/components/DevServers/DevServerCard";
 import { askLabel, InboxItem } from "@/components/Inbox";
-import { useSessionPrompt } from "@/data/prompts/queries";
+import { PROMPT_POLL_SLOW_MS, useSessionPrompt } from "@/data/prompts/queries";
 import { displayTitle } from "@/hooks/useSessionTitles";
 import { STATE_TEXT_CLASS } from "@/lib/agent-state";
 import { runNav } from "@/lib/nav-actions";
@@ -80,10 +80,11 @@ export function NeedsSection({
       <>
         <SectionTitle state="needs">Needs you</SectionTitle>
         <GroupCard aria-label="Needs you">
-          {now.waiting.map((session) => (
+          {now.waiting.map((session, i) => (
             <NeedsRow
               key={session.id}
               session={session}
+              pollMs={pollFor(i)}
               title={displayTitle(session, now.titles).title}
               selected={session.id === selectedId}
               onOpen={() => onOpenSession(session)}
@@ -105,11 +106,12 @@ export function NeedsSection({
 
   return (
     <>
-      {now.waiting.slice(skipFirst ? 1 : 0).map((session) => (
+      {now.waiting.slice(skipFirst ? 1 : 0).map((session, i) => (
         <InboxItem
           key={session.id}
           as="div"
           variant="card"
+          pollMs={pollFor(skipFirst ? i + 1 : i)}
           session={session}
           projectName={projectOf(projectNames, session)}
           title={displayTitle(session, now.titles).title}
@@ -123,19 +125,26 @@ export function NeedsSection({
   );
 }
 
+/** The first waiting session's prompt is reread every 2s, the rest less
+    often: each read is a tmux capture on the server */
+const pollFor = (index: number) =>
+  index === 0 ? undefined : PROMPT_POLL_SLOW_MS;
+
 /** A waiting session on the wide page: what it's asking, under its title */
 function NeedsRow({
   session,
   title,
   selected,
+  pollMs,
   onOpen,
 }: {
   session: Session;
   title: string;
   selected: boolean;
+  pollMs?: number;
   onOpen: () => void;
 }) {
-  const { data: prompt } = useSessionPrompt(session.id);
+  const { data: prompt } = useSessionPrompt(session.id, { pollMs });
   const ask = !prompt ? (
     "Your turn"
   ) : prompt.question ? (
@@ -307,9 +316,7 @@ export function DoneTodaySection({
           }
           title={<span className="font-normal">Done today</span>}
           trailing={joined(`${done.length}`, prs ? `${prs} PRs` : null)}
-          chevron
-          // M8 gives Done today a list of its own
-          onClick={() => runNav("projects")}
+          // M8 gives Done today a list of its own to open
         />
       </GroupCard>
     );
@@ -337,31 +344,44 @@ export function DoneTodaySection({
   );
 }
 
-/** Projects with nothing going on: quiet grey rows, Projects one tap away */
+/** Projects with nothing going on, then sessions outside any project:
+    quiet grey rows, Projects one tap away */
 export function QuietSection({
   now,
   wide,
-}: Pick<SectionProps, "now" | "wide">) {
-  if (!now.quiet.length) return null;
+  onOpenSession,
+}: Pick<SectionProps, "now" | "wide" | "onOpenSession">) {
+  const projects = now.quiet.slice(0, QUIET_SHOWN);
+  const loose = now.loose.slice(0, QUIET_SHOWN - projects.length);
+  if (!projects.length && !loose.length) return null;
+  const quietRow = (label: string) => (
+    <span className="text-muted-foreground font-normal">{label}</span>
+  );
   return (
     <section className={cn("flex flex-col", wide ? "gap-3.5" : "gap-2")}>
       <SectionTitle
         action={{ label: "All projects", onClick: () => runNav("projects") }}
       >
-        Quiet · {now.quiet.length}
+        Quiet · {now.quiet.length + now.loose.length}
       </SectionTitle>
-      <GroupCard aria-label="Quiet projects">
-        {now.quiet.slice(0, QUIET_SHOWN).map((project) => (
+      <GroupCard aria-label="Quiet">
+        {projects.map((project) => (
           <GroupRow
             key={project.id}
             leading={<Avatar label={project.name} size="sm" />}
-            title={
-              <span className="text-muted-foreground font-normal">
-                {project.name}
-              </span>
-            }
+            title={quietRow(project.name)}
             chevron
             onClick={() => openPage({ kind: "project", projectId: project.id })}
+            className="min-h-12 py-2.5"
+          />
+        ))}
+        {loose.map((session) => (
+          <GroupRow
+            key={session.id}
+            leading={<Avatar {...agentAvatar(session.agent_type)} size="sm" />}
+            title={quietRow(displayTitle(session, now.titles).title)}
+            chevron
+            onClick={() => onOpenSession(session)}
             className="min-h-12 py-2.5"
           />
         ))}

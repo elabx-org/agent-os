@@ -43,13 +43,6 @@ export function shortcutKey(action: NavAction): string | null {
   return key ? key.toUpperCase() : null;
 }
 
-/** The hint the control column shows on hover, e.g. "⌘2" or "Ctrl+2" */
-export function shortcutHint(action: NavAction): string | null {
-  const key = shortcutKey(action);
-  if (!key) return null;
-  return isMacLike() ? `⌘${key}` : `Ctrl+${key}`;
-}
-
 function fromTerminal(target: EventTarget | null): boolean {
   return target instanceof Element && !!target.closest(".xterm");
 }
