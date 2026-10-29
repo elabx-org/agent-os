@@ -188,8 +188,6 @@ struct AmberBadge: View {
             .frame(minWidth: 16, minHeight: 16)
             .background(Capsule().fill(Color(red: 0xFB / 255, green: 0xBF / 255, blue: 0x24 / 255)))
             .fixedSize()
-            // Drawn flat first: the bar's vibrancy washed it out in light mode
-            .compositingGroup()
             .accessibilityHidden(true)
     }
 }
