@@ -15,6 +15,7 @@ import {
   isValidProviderId,
 } from "./providers/registry";
 import { permissionFlags } from "./permission-mode";
+import { isEffortLevel } from "./handoff-types";
 
 export type AgentType = ProviderId;
 
@@ -118,6 +119,11 @@ export const claudeProvider: AgentProvider = {
       /^[\w.-]+$/.test(options.model)
     ) {
       flags.push(`${def.modelFlag} ${options.model}`);
+    }
+
+    // sessions.effort (M4): one of a fixed list, so shell-safe
+    if (isEffortLevel(options.effort)) {
+      flags.push(`--effort ${options.effort}`);
     }
 
     // Initial prompt (positional argument for Claude)
