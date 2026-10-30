@@ -62,6 +62,7 @@ import { useReplyContext } from "@/hooks/useReplyContext";
 import { fetchAsUser } from "@/lib/client/user-fetch";
 import { Conversation, type TurnActions } from "./Conversation";
 import { LimitedCardSlot } from "./LimitedCardSlot";
+import { RunningCardSlot } from "@/components/Running/RunningCard";
 import { NeedsYouCard } from "./NeedsYouCard";
 import { buildRows, placeTurns } from "./rows";
 import { SubagentPanel } from "./SubagentPanel";
@@ -455,6 +456,7 @@ export function ChatView({
         />
       )}
       <LimitedCardSlot session={session} />
+      <RunningCardSlot session={session} active={active} />
     </>
   );
 
