@@ -1,0 +1,40 @@
+[100m  [97mline 18[39m
+  [97mline 19[39m
+  [97mline 20[39m
+  [97mline 21[39m
+  [97mline 22[39m
+
+[97m[49m●[39m hi
+
+[2m[37m✻[0m [2m[37mChurned for 3s · done 4:38 PM[0m
+
+[95m[40m! [97mecho this is a long bash command that should wrap past the edge of the box ok[39m
+[2m[37m[49m  ⎿  [0mthis is a long bash command that should wrap past the edge of the box ok
+
+[97m●[39m The command ran and printed [94mthis is a long bash command that should wrap past the edge of the box ok[39m. Nothing failed.
+  Tell me if you wanted something else checked about the wrapping.
+
+[2m[37m✻[0m [2m[37mWorked for 2s · done 4:40 PM
+
+[0m[37m[100m❯ [97mpasted one[39m
+  [97mpasted two[39m
+  [97mpasted three[39m
+  [97mpasted four[39m
+  [97msay ok[39m
+
+[97m[49m●[39m ok
+
+[2m[37m✻[0m [2m[37mCooked for 2s · done 4:41 PM
+
+[0m[95m[40m! [97msleep 12[39m
+[2m[37m[49m  ⎿  [0m(Bash completed with no output)
+
+[97m●[39m The [94msleep 12[39m finished with no output and no errors.
+
+[2m[37m✻[0m [2m[37mCrunched for 13s · done 4:42 PM[0m
+
+[37m───────────────────────────────────────────────────────────────────────────────── Agentos package on code server image ─
+[95m! [39m请帮我修复这个组件里的镜像问题，当用户在终端里输入文字的时候，输入框应该同步显示相同的内容，而不是多出换行或者丢失空
+  格，谢谢你的帮助
+[37m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[39m  [95m! for shell mode[39m

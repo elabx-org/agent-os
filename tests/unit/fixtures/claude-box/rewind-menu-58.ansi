@@ -1,0 +1,40 @@
+
+[97m●[39m Hi! What can I help you with in [94m/config/.claude/jobs/b45
+[39m  [94m86bae/tmp/mirror-lab/scratch/proj[39m?
+
+[2m[37m✻[0m [2m[37mWorked for 2s · done 3:56 PM[0m
+
+[37m[100m❯ [97mreply ok[39m
+  [97msecond line here[39m
+  [97mthird[39m
+
+[97m[49m●[39m ok
+  second line here
+  third
+
+[2m[37m✻[0m [2m[37mBrewed for 1s · done 3:56 PM[0m
+
+[37m[100m❯ [97mreply with only the word yes, this message is [39m
+  [97mdeliberately long so that it wraps across several rows [39m
+  [97mof the narrow box ok https://example.com/a/very/long/pa[39m
+  [97mth/that/does/not/fit/on/one/row/at/all/xyz end[39m
+
+[97m[49m●[39m yes
+
+[2m[37m✻[0m [2m[37mBaked for 1s · done 3:56 PM
+[0m[94m▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔
+[39m   [1m[94mRewind[0m
+
+   Restore the code and/or conversation to the point
+   before…
+
+     [2m[37m↑ 2 more[0m
+     reply with only the word yes, this message is d…
+     [2m[37mNo code changes[0m
+
+   [94m❯[39m [3m[94m(current)
+[0m
+
+
+
+   [2;3m[37mEnter to continue · Esc to cancel[0m

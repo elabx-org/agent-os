@@ -1,0 +1,40 @@
+[100m  [97mline 04[39m
+  [97mline 05[39m
+  [97mline 06[39m
+  [97mline 07[39m
+  [97mline 08[39m
+  [97mline 09[39m
+  [97mline 10[39m
+  [97mline 11[39m
+  [97mline 12[39m
+  [97mline 13[39m
+  [97mline 14[39m
+  [97mline 15[39m
+  [97mline 16[39m
+  [97mline 17[39m
+  [97mline 18[39m
+  [97mline 19[39m
+  [97mline 20[39m
+  [97mline 21[39m
+  [97mline 22[39m
+
+[97m[49m●[39m hi
+
+[2m[37m✻[0m [2m[37mChurned for 3s · done 4:38 PM[0m
+
+[37m[100m❯ [97mreply ok to this message and nothing else at all ok.[39m
+  [97msecond line here[39m
+  [97m中文测试一下宽字符的换行是否会被读成两行内容而不是一行[39m
+  [97m文字吧[39m
+
+[97m[49m●[39m ok
+
+[2m[37m✻[0m [2m[37mSautéed for 1s · done 4:39 PM[0m
+                                  [2m[37mctrl+g to edit in nano[0m
+[37m───[39m [2mHistory 2/2[0m [37m──────────────────────────────────────────
+[39m❯ reply ok to this message and nothing else at all ok.
+  second line here
+  中文测试一下宽字符的换行是否会被读成两行内容而不是一行
+  文字吧
+[37m──────────────────────────────────────────────────────────
+[39m  [93m⏵⏵ auto mode on[2m[37m (shift+tab to cycle)[0m
