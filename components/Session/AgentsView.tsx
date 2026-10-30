@@ -81,7 +81,9 @@ export function AgentsView({
   const mode = useLayoutMode();
   const ref = useRef<HTMLDivElement>(null);
   const pages = useSpreadPages(ref, useSpreadFold());
-  const desktop = mode === "desktop" && !native;
+  // A browser the size of a desktop on the open Duo (Safari) still has a
+  // fold: the two pages there, not the graph across it
+  const desktop = mode === "desktop" && !native && !pages;
   const { fold } = useSnapshot(postureStore);
   const halfFolded = !desktop && !pages && fold?.axis === "horizontal";
   // Half folded the hinge runs across the view: the tree above it, the

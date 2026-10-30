@@ -80,7 +80,11 @@ export function AgentDetail({
       setOutput(
         data.items
           ? { items: data.items }
-          : { logs: data.logs ?? data.error ?? "" }
+          : data.ended
+            ? {
+                logs: "Its job has ended and it left no conversation to show.",
+              }
+            : { logs: data.logs ?? data.error ?? "" }
       );
     } catch {
       setOutput({ logs: "Couldn't load its output" });
