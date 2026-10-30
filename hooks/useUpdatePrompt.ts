@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { toast } from "sonner";
+import { isChunkFailure, reloadOnce } from "@/lib/chunk-error";
 
 const POLL_MS = 60_000;
 
@@ -24,7 +25,8 @@ export async function fetchBuild(): Promise<Build | null> {
 
 /**
  * After a deploy the open page keeps running the old build until it is
- * reloaded: offer the reload, never do it (a draft or a tap may be mid-way).
+ * reloaded: offer the reload, never do it (a draft or a tap may be mid-way),
+ * unless a code file it needs is already gone (lib/chunk-error.ts).
  */
 export function useUpdatePrompt() {
   useEffect(() => {
@@ -56,9 +58,21 @@ export function useUpdatePrompt() {
       if (document.visibilityState === "visible") check();
     };
     document.addEventListener("visibilitychange", onVisible);
+    // Except when the old build's code is already gone: the page can't
+    // go on, so reload now
+    const onError = (e: ErrorEvent) => {
+      if (isChunkFailure(e.error ?? e.message)) reloadOnce();
+    };
+    const onRejection = (e: PromiseRejectionEvent) => {
+      if (isChunkFailure(e.reason)) reloadOnce();
+    };
+    window.addEventListener("error", onError);
+    window.addEventListener("unhandledrejection", onRejection);
     return () => {
       clearInterval(timer);
       document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("error", onError);
+      window.removeEventListener("unhandledrejection", onRejection);
     };
   }, []);
 }
