@@ -232,7 +232,8 @@ export function nativeColumn(): {
             // The closed Duo's session column, cut down above the keyboard
             mode === "duo-closed" &&
               mobileNavStore.nativeKeyboard &&
-              (surface === "session" || surface === "beside")
+              (surface === "session" || surface === "beside"),
+            WIDE.includes(mode)
           )
         : []),
       ...(agentsMore ? [agentsMore] : []),

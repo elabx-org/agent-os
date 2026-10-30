@@ -3,7 +3,11 @@
  * the iOS app's bar, the session header's back and the shortcuts.
  */
 
-import { mobileNavActions, mobileNavStore } from "@/stores/mobileNav";
+import {
+  mobileNavActions,
+  mobileNavStore,
+  type PaneViewMode,
+} from "@/stores/mobileNav";
 import {
   closeSettings,
   openSettings,
@@ -31,7 +35,7 @@ import {
 import { backStore, setOrigin, type BackOrigin } from "@/stores/back";
 import { isNative, postToNative } from "@/lib/native-bridge";
 import { WIDE } from "@/lib/column-spec";
-import { layoutStore } from "@/hooks/useLayoutMode";
+import { layoutStore, type LayoutMode } from "@/hooks/useLayoutMode";
 
 /** Every action, for the routes table and its test */
 export const NAV_ACTIONS = [
@@ -459,9 +463,9 @@ export function backTarget(): BackTarget {
             : "Back to live activity",
       go: () => navStore.goBack(),
     };
-  // On one page Changes and Files go back to the conversation (E-Git,
-  // E-Files); beside it they're pages of their own
-  if (!wide && (view === "git" || view === "files"))
+  // Changes and Files go back to the conversation (E-Git, E-Files); on the
+  // desktop they're tabs of their own
+  if (mode !== "desktop" && (view === "git" || view === "files"))
     return {
       label: "Back to session",
       go: () =>
@@ -484,6 +488,22 @@ export function backTarget(): BackTarget {
 
 function goBack() {
   backTarget().go();
+}
+
+/**
+ * The view to bring up when the open Duo's Now steps aside for the session
+ * (resume): its conversation if Changes or Files was left beside Now, as
+ * those would take both pages with no way back on them; null keeps the view
+ */
+export function resumeView(
+  mode: LayoutMode,
+  viewMode: PaneViewMode,
+  conversationView: "chat" | "terminal"
+): "chat" | "terminal" | null {
+  const pages = mode === "duo-open" || mode === "book";
+  return pages && (viewMode === "git" || viewMode === "files")
+    ? conversationView
+    : null;
 }
 
 /**

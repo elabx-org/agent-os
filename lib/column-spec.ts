@@ -576,16 +576,26 @@ const VIEW_SLOT: Partial<
 /** What the closed Duo's session column keeps with the keyboard up (sessionColumn) */
 const KEYBOARD_SLOTS: ColumnSlot[] = ["view", "git"];
 
+/** Slots for two sessions side by side: one page has no room for them */
+const BESIDE_SLOTS: ColumnSlot[] = ["beside", "swap"];
+
+/** A saved order as one page shows it */
+function onePage(slots: ColumnSlot[]): ColumnSlot[] {
+  return slots.filter((slot) => !BESIDE_SLOTS.includes(slot));
+}
+
 /**
  * What the column leaves out, as items for More (most menus skip ones they
  * already list). With the keyboard up the closed Duo's session column is
- * cut to KEYBOARD_SLOTS whatever the saved order, so More has the rest
+ * cut to KEYBOARD_SLOTS whatever the saved order, so More has the rest. On
+ * one page (not `wide`) there's no Open beside
  */
 export function moreItems(
   kind: ColumnKind,
   order: ColumnOrder | undefined,
   viewMode: ColumnContext["viewMode"] = null,
-  keyboardUp = false
+  keyboardUp = false,
+  wide = true
 ): ColumnItem[] {
   const ctx: ColumnContext = {
     viewMode,
@@ -600,7 +610,7 @@ export function moreItems(
   const hidden = keyboardUp
     ? COLUMN_CHOICES[kind].filter((slot) => !KEYBOARD_SLOTS.includes(slot))
     : hiddenSlots(kind, order);
-  return hidden
+  return (wide ? hidden : onePage(hidden))
     .filter((slot) => slot !== current)
     .map((slot) => {
       const {
@@ -680,7 +690,8 @@ function sessionColumn(
       changes(ctx),
       item(BASE.more),
     ];
-  const own = savedOrder("session", ctx.order);
+  const saved = savedOrder("session", ctx.order);
+  const own = saved && closed ? onePage(saved) : saved;
   // N-Queue: while it works, Stop stands before More (never in its place)
   const end = [
     ...(closed && ctx.working
@@ -688,7 +699,12 @@ function sessionColumn(
       : []),
     item(BASE.more, closed && ctx.working ? {} : sep),
   ];
-  if (own) return [back(ctx), ...arranged("session", own, ctx, true), ...end];
+  if (own) {
+    // Changes or Files left out of it still shows, picked, while it's up
+    const current = ctx.viewMode ? VIEW_SLOT[ctx.viewMode] : undefined;
+    const slots = current && !own.includes(current) ? [...own, current] : own;
+    return [back(ctx), ...arranged("session", slots, ctx, true), ...end];
+  }
   if (closed && ctx.working)
     // Files makes room for Stop
     return [
@@ -712,7 +728,8 @@ function sessionColumn(
 
 /** Fold-Chat / Fold-Terminal: the view showing, Changes, Files, Agents, Live | Needs you, More */
 function sessionBar(ctx: ColumnContext): ColumnItem[] {
-  const own = savedOrder("session", ctx.order);
+  const saved = savedOrder("session", ctx.order);
+  const own = saved && onePage(saved);
   if (own) {
     // The bar has no back: the view showing stands where "view" was put
     const shown = own.map((slot) =>

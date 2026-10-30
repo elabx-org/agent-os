@@ -791,3 +791,50 @@ test("keyboard up on the closed Duo: More has all the column leaves out", () => 
   ]);
   for (const id of more) assert.ok(!column.includes(id), id);
 });
+
+test("an arranged column shows Files or Changes, picked, while it's up (15)", () => {
+  const order: ColumnOrder = { session: ["projects", "inbox", "live", "view"] };
+  assert.equal(
+    fmt(columnFor("session", "duo-open", { ...CTX, viewMode: "files", order })),
+    "back | projects inbox[2a] live chat files(on) | more"
+  );
+  assert.equal(
+    fmt(columnFor("session", "duo-open", { ...CTX, viewMode: "git", order })),
+    "back | projects inbox[2a] live chat git(on)[3n] | more"
+  );
+  // In the order already: where it was put
+  assert.equal(
+    fmt(
+      columnFor("session", "duo-open", {
+        ...CTX,
+        viewMode: "files",
+        order: { session: ["files", "view"] },
+      })
+    ),
+    "back | files(on) chat | more"
+  );
+});
+
+test("one page has no Open beside, in More or an arranged column (DPDV-N1)", () => {
+  assert.deepEqual(
+    moreItems("session", {}, "chat", false, false).map((i) => i.id),
+    ["inbox", "new", "search", "projects"]
+  );
+  assert.ok(
+    moreItems("session", {}, "chat").some((i) => i.id === "beside"),
+    "the open Duo keeps it"
+  );
+  const order: ColumnOrder = { session: ["view", "beside", "git"] };
+  assert.equal(
+    fmt(columnFor("session", "duo-closed", { ...CTX, order })),
+    "back | terminal git[3n] | more"
+  );
+  assert.equal(
+    fmt(columnFor("session", "tabletop", { ...CTX, order })),
+    "chat(on) git[3n] | inbox[2a] more"
+  );
+  assert.equal(
+    fmt(columnFor("session", "duo-open", { ...CTX, order })),
+    "back | terminal beside git[3n] | more"
+  );
+});

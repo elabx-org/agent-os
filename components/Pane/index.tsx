@@ -345,16 +345,17 @@ export const Pane = memo(function Pane({
   }, [isFocused, gitStatus]);
 
   useEffect(() => {
-    if (!navRequest || !isFocused) return;
+    if (!navRequest) return;
     // Asked for a session that's still attaching: wait until it's this one's,
-    // but not for ever, nor apply it once it's that old
+    // but not for ever, nor apply it once it's that old. It needn't be the
+    // focused pane's: one opened beside leaves the focus where it was
     if (navRequest.sessionId) {
       if (Date.now() - navRequest.timestamp > 10_000) {
-        mobileNavActions.clearRequest();
+        if (isFocused) mobileNavActions.clearRequest();
         return;
       }
       if (navRequest.sessionId !== session?.id) return;
-    }
+    } else if (!isFocused) return;
     if (navRequest.mode === "terminal" || session?.working_directory) {
       // Asked for, so not a default an empty chat swaps for the terminal
       defaultedRef.current = null;

@@ -27,13 +27,13 @@ import { GitPanelSkeleton } from "@/components/Pane/PaneSkeletons";
 import { useIsNative } from "@/hooks/useIsNative";
 import { FOLD_CLEAR, useHinge } from "@/hooks/useHinge";
 import { useLayoutMode } from "@/hooks/useLayoutMode";
-import { registerNavHandlers, runNav } from "@/lib/nav-actions";
+import { navStore, registerNavHandlers, runNav } from "@/lib/nav-actions";
 import { dropHome, notePageUsed, setHome } from "@/stores/surface";
 import { isNative, nativeCaps } from "@/lib/native-bridge";
 import { postureStore } from "@/stores/posture";
 import { resetSwap, toggleSwap } from "@/stores/paneOrder";
 import { focusStore } from "@/stores/focus";
-import { mobileNavStore } from "@/stores/mobileNav";
+import { mobileNavActions, mobileNavStore } from "@/stores/mobileNav";
 import { ContextPanel } from "@/components/ReplyContext/ContextPanel";
 import { ChangesPage } from "@/components/Changes/ChangesPage";
 import { DiffReview } from "@/components/DiffViewer/DiffReview";
@@ -271,9 +271,11 @@ export function SessionSpread({
     twoPages,
     replyLeft,
     homeOpen,
+    homeFill,
     splitFold,
     changesLeft,
     changesRoom,
+    changesReach,
     changesBeside,
     reviewRoom,
     reviewBeside,
@@ -354,7 +356,7 @@ export function SessionSpread({
   // a view picked for the session
   const homeRef = useRef<HTMLDivElement>(null);
   const notePage = (e: PointerEvent) => {
-    if (pages && homeOpen)
+    if (pages && homeOpen && !homeFill)
       notePageUsed(
         homeRef.current?.contains(e.target as Node) ? "home" : "session"
       );
@@ -375,24 +377,34 @@ export function SessionSpread({
   // Open-Changes: the column's Changes opens Changes on the right page,
   // beside the conversation, where Live would go (they share the page)
   const changesHere = changesRoom && !replyLeft;
-  // The iOS app before the column (0.1.62) sends `git` from its toolbar:
-  // that keeps opening the git view, as it always did
-  const changesFromColumn = changesHere && (!native || nativeCaps().column);
   useEffect(() => {
     if (!changesHere) return;
     return registerNavHandlers({
-      ...(changesFromColumn && {
-        openChanges: () => {
-          mobileNavStore.changesOpen = true;
-          mobileNavStore.liveOpen = false;
-        },
-      }),
       openLive: () => {
         mobileNavStore.changesOpen = false;
         mobileNavStore.liveOpen = true;
       },
     });
-  }, [changesHere, changesFromColumn]);
+  }, [changesHere]);
+  // The same Changes from Now, Files or the git view: Now steps aside and
+  // the conversation comes back beside it. The iOS app before the column
+  // (0.1.62) sends `git` from its toolbar: that keeps opening the git view,
+  // as it always did
+  const changesFromColumn =
+    changesReach && !replyLeft && (!native || nativeCaps().column);
+  useEffect(() => {
+    if (!changesFromColumn) return;
+    return registerNavHandlers({
+      openChanges: () => {
+        if (homeWanted) navStore.resume();
+        const view = mobileNavStore.viewMode;
+        if (view !== "chat" && view !== "terminal")
+          mobileNavActions.requestViewMode(mobileNavStore.conversationView);
+        mobileNavStore.changesOpen = true;
+        mobileNavStore.liveOpen = false;
+      },
+    });
+  }, [changesFromColumn, homeWanted]);
   // The right page's ×, handle and ‹: whichever panel is there closes
   const closePanel = useCallback(() => {
     mobileNavStore.changesOpen = false;
@@ -466,7 +478,7 @@ export function SessionSpread({
       >
         {/* On the pages Now sits beside the session: its fold-side grip
             puts it away and the session takes both pages */}
-        {homeOpen && pages && session && (
+        {homeOpen && !homeFill && pages && session && (
           <PageEdge
             side="right"
             label="Back to session"

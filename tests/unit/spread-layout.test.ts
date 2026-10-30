@@ -28,10 +28,11 @@ const OPEN: SpreadInput = {
 };
 const BOOK: SpreadInput = { ...OPEN, book: true };
 
-/** The slots that are on, for compact asserts (the review's own test reads reviewRoom) */
+/** The slots that are on, for compact asserts (reviewRoom and changesReach
+    have tests of their own) */
 function on(layout: SpreadLayout): string[] {
   return Object.entries(layout)
-    .filter(([k, v]) => v && k !== "reviewRoom")
+    .filter(([k, v]) => v && k !== "reviewRoom" && k !== "changesReach")
     .map(([k]) => k)
     .sort();
 }
@@ -58,10 +59,12 @@ test("book pose, Changes asked: the same, chat or terminal", () => {
 
 test("book pose without Changes keeps its own layout", () => {
   assert.deepEqual(on(spreadLayout(BOOK)), ["changesRoom", "paneWide"]);
+  // The terminal on the right page, Now on the left (DPD-5)
   assert.deepEqual(on(spreadLayout({ ...BOOK, viewMode: "terminal" })), [
     "changesRoom",
+    "homeFill",
+    "homeOpen",
     "pageGap",
-    "paneRight",
   ]);
   // Focus on the terminal: Changes reads on the left page
   assert.deepEqual(
@@ -226,4 +229,46 @@ test("typing in the terminal keeps it on both pages: no last turn beside it", ()
   assert.equal(terminal.replyLeft, false);
   assert.equal(terminal.paneRight, false);
   assert.equal(spreadLayout({ ...OPEN, replying: true }).replyLeft, true);
+});
+
+test("book pose: Now fills the left page the pane leaves (DPD-5)", () => {
+  for (const viewMode of ["terminal", "git", "files"] as const) {
+    const l = spreadLayout({ ...BOOK, viewMode });
+    assert.equal(l.homeFill, true, viewMode);
+    assert.equal(l.homeOpen, true, viewMode);
+    assert.equal(l.paneRight, false, viewMode);
+  }
+  // A page over the session takes the right page, Now beside it
+  assert.equal(spreadLayout({ ...BOOK, pageOpen: true }).homeFill, true);
+  // The chat reads as a book; Now asked for is no fill; Focus keeps it empty
+  assert.equal(spreadLayout(BOOK).homeFill, false);
+  assert.equal(
+    spreadLayout({ ...BOOK, viewMode: "terminal", homeWanted: true }).homeFill,
+    false
+  );
+  const focus = spreadLayout({
+    ...BOOK,
+    viewMode: "terminal",
+    focus: true,
+    hasFolder: false,
+  });
+  assert.equal(focus.homeFill, false);
+  assert.equal(focus.paneRight, true);
+  // Flat, the pane spans the pages as before
+  assert.equal(spreadLayout({ ...OPEN, viewMode: "terminal" }).homeFill, false);
+});
+
+test("Changes reaches the session past Now, Changes and Files (7)", () => {
+  for (const viewMode of ["chat", "terminal", "git", "files"] as const) {
+    assert.equal(
+      spreadLayout({ ...OPEN, viewMode, homeWanted: true }).changesReach,
+      true,
+      viewMode
+    );
+  }
+  // Not from a page, two sessions, or one without a folder
+  assert.equal(spreadLayout({ ...OPEN, pageOpen: true }).changesReach, false);
+  assert.equal(spreadLayout({ ...OPEN, paneCount: 2 }).changesReach, false);
+  assert.equal(spreadLayout({ ...OPEN, hasFolder: false }).changesReach, false);
+  assert.equal(spreadLayout({ ...OPEN, pages: false }).changesReach, false);
 });

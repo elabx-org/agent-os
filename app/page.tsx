@@ -40,7 +40,7 @@ import { useSessionLinks } from "@/hooks/useSessionLinks";
 import { usePresence } from "@/hooks/usePresence";
 import { useFoldPosture } from "@/hooks/useFoldPosture";
 import { useViewShortcuts } from "@/hooks/useViewShortcuts";
-import { useLayoutModeSource } from "@/hooks/useLayoutMode";
+import { layoutStore, useLayoutModeSource } from "@/hooks/useLayoutMode";
 import {
   homeAfterSwitch,
   lastPageUsed,
@@ -74,7 +74,13 @@ import {
 } from "@/stores/newSurface";
 import { mobileNavActions, mobileNavStore } from "@/stores/mobileNav";
 import { focusStore, loadFocus } from "@/stores/focus";
-import { noteOrigin, registerNavHandlers, runNav } from "@/lib/nav-actions";
+import {
+  noteOrigin,
+  registerNavHandlers,
+  resumeView,
+  runNav,
+} from "@/lib/nav-actions";
+import { WIDE } from "@/lib/column-spec";
 import { backStore } from "@/stores/back";
 import { runningStore } from "@/stores/running";
 import { isNative } from "@/lib/native-bridge";
@@ -392,8 +398,9 @@ function HomeContent() {
   attachToSessionRef.current = attachToSession;
 
   // Open beside: a session in a pane next to the focused one (the other
-  // page on the open Duo). Splits while there's room, else takes the other
-  // pane over. Already on screen, it just takes focus.
+  // page on the open Duo). Splits while there's room, keeping the focus on
+  // the pane being typed into, else takes the other pane over. Already on
+  // screen, it just takes focus.
   const openSessionBeside = useCallback(
     (session: Session) => {
       // One screen, one session: it just opens
@@ -421,6 +428,8 @@ function HomeContent() {
           )
         );
         splitHorizontal(focusedPaneId, paneId);
+        // Leaving side by side or folding keeps the session you were in
+        focusPane(focusedPaneId);
         return;
       }
       const target = ids.filter((id) => id !== focusedPaneId).at(-1);
@@ -549,9 +558,17 @@ function HomeContent() {
   useEffect(
     () =>
       registerNavHandlers({
+        // The open Duo lands on the conversation, not Changes or Files
+        // across both pages
         resume: () => {
           closePage();
           setSidebarOpen(false);
+          const view = resumeView(
+            layoutStore.mode,
+            mobileNavStore.viewMode,
+            mobileNavStore.conversationView
+          );
+          if (view) mobileNavActions.requestViewMode(view);
         },
         // On a phone a page covers the home: leave it for the home
         openSessions: () =>
@@ -585,6 +602,8 @@ function HomeContent() {
         // The most recent other session beside the focused one (workers
         // show inside their conductor's)
         openBeside: () => {
+          // One page has no beside: it never swaps another session in
+          if (!WIDE.includes(layoutStore.mode)) return;
           // The column's toggle: one press, delivered twice, mustn't undo itself
           const now = Date.now();
           if (now - lastBesideRef.current < 700) return;

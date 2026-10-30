@@ -10,6 +10,7 @@ import {
   registerNavHandlers,
   registerPageBack,
   registerViewBack,
+  resumeView,
   runNav,
   type NavAction,
 } from "../../lib/nav-actions";
@@ -186,7 +187,7 @@ test("runNav: back goes one level up", () => {
   }
 });
 
-test("runNav: back from the closed Changes or Files is the conversation", () => {
+test("runNav: back from Changes or Files is the conversation (15)", () => {
   const { calls, stop } = spyHandlers();
   try {
     reset();
@@ -204,9 +205,19 @@ test("runNav: back from the closed Changes or Files is the conversation", () => 
     runNav("back");
     assert.equal(mobileNavStore.request?.mode, "chat");
 
-    // Open, their back is Now's as before
+    // Open too, named for it, not Now
     reset();
     layoutStore.mode = "duo-open";
+    mobileNavStore.viewMode = "files";
+    mobileNavStore.conversationView = "terminal";
+    assert.equal(backTarget().label, "Back to session");
+    runNav("back");
+    assert.equal(mobileNavStore.request?.mode, "terminal");
+    assert.deepEqual(calls, []);
+
+    // On the desktop they're tabs: their back is Now's as before
+    reset();
+    layoutStore.mode = "desktop";
     mobileNavStore.viewMode = "git";
     runNav("back");
     assert.equal(mobileNavStore.request, null);
@@ -215,6 +226,15 @@ test("runNav: back from the closed Changes or Files is the conversation", () => 
     layoutStore.mode = "desktop";
     stop();
   }
+});
+
+test("resumeView: the open Duo's Now steps aside to the conversation (7)", () => {
+  assert.equal(resumeView("duo-open", "git", "terminal"), "terminal");
+  assert.equal(resumeView("book", "files", "chat"), "chat");
+  assert.equal(resumeView("duo-open", "chat", "terminal"), null);
+  // One page, or the desktop's tabs: the view stays
+  assert.equal(resumeView("duo-closed", "git", "terminal"), null);
+  assert.equal(resumeView("desktop", "files", "terminal"), null);
 });
 
 test("runNav: Changes without a page beside asks for the git view", () => {
