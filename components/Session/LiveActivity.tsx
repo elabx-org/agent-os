@@ -85,7 +85,7 @@ export function LiveActivity({
   useTick(15_000);
   const rail = variant === "rail";
   // The family tree (N-Tree) opens from here
-  const { agentCount } = useSnapshot(mobileNavStore);
+  const { agentCount, agentLive } = useSnapshot(mobileNavStore);
 
   const toChat = () => {
     mobileNavActions.requestViewMode("chat", session.id);
@@ -175,7 +175,7 @@ export function LiveActivity({
             className="h-4 w-4 shrink-0 text-violet-700 dark:text-[#C4B5FD]"
           />
           <span className="min-w-0 flex-1 truncate font-semibold">
-            Agents · {agentCount}
+            {agentLive > 0 ? `Agents · ${agentLive} running` : "Agents"}
           </span>
           <ChevronRight
             aria-hidden

@@ -8,7 +8,11 @@ import type { AgentTreeResponse, TreeNode } from "@/lib/agent-tree-types";
 import { cn } from "@/lib/utils";
 import { Avatar, agentAvatar, agentName } from "@/components/a/Avatar";
 import { StateDot } from "@/components/a/StateDot";
-import { agentTreeStore, toggleCollapsed } from "@/stores/agentTree";
+import {
+  agentTreeStore,
+  toggleCollapsed,
+  toggleShowFinished,
+} from "@/stores/agentTree";
 import {
   countParts,
   nodeAge,
@@ -470,9 +474,20 @@ export function AgentTree({
               now={now}
             />
           ) : (
-            <p className="text-muted-foreground px-3 pt-3 pb-1 text-sm">
-              {tree.total > 0 ? "No agents running" : "No agents yet"}
-            </p>
+            <div className="text-muted-foreground flex items-center gap-3 px-3 pt-3 pb-1 text-sm">
+              <span>
+                {tree.total > 0 ? "No agents running" : "No agents yet"}
+              </span>
+              {!showFinished && tree.total > 0 && (
+                <button
+                  type="button"
+                  onClick={toggleShowFinished}
+                  className="text-foreground ml-auto font-semibold"
+                >
+                  Show finished ({tree.total})
+                </button>
+              )}
+            </div>
           )}
         </li>
       </ul>

@@ -360,10 +360,12 @@ export const RUNNING_ITEM: Base = BASE.running;
  */
 export function agentsMoreItem(
   agents: number,
+  live: number,
   viewMode: ColumnContext["viewMode"]
 ): Base | null {
   if (agents <= 0 || viewMode === "agents") return null;
-  return { ...BASE.agents, label: `Agents (${agents})` };
+  // The number is what still runs; finished ones are history
+  return live > 0 ? { ...BASE.agents, label: `Agents (${live})` } : BASE.agents;
 }
 
 function item(base: Base, extra: Partial<ColumnItem> = {}): ColumnItem {
