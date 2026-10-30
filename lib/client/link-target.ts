@@ -47,6 +47,13 @@ export function linkTarget(
   });
 }
 
+/** A link's href as rendered: through the proxy once in the browser */
+export function linkHref(uri: string): string {
+  return typeof window === "undefined"
+    ? uri
+    : linkTarget(uri, window.location.origin);
+}
+
 /** Opens a link from a session (the iOS app opens it in Safari) */
 export function openSessionLink(uri: string) {
   window.open(linkTarget(uri, window.location.origin), "_blank", "noopener");

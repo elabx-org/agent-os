@@ -26,7 +26,7 @@ import { registerPageBack, runNav } from "@/lib/nav-actions";
 import type { RunningServer } from "@/lib/running";
 import { cn } from "@/lib/utils";
 import { workspacePageStore } from "@/stores/workspacePage";
-import { useRunning, useStopServer } from "./data";
+import { canStop, useRunning, useStopServer } from "./data";
 
 const POLL_MS = 3000;
 
@@ -46,9 +46,13 @@ function folderName(dir: string): string {
 function startedLine(s: RunningServer): string {
   const who = s.sessionName
     ? `started by ${s.sessionName}`
-    : s.cwd
-      ? folderName(s.cwd)
-      : s.name || "outside AgentOS";
+    : s.script
+      ? `script ${s.script.scriptId}`
+      : s.devServer
+        ? `dev server ${s.devServer.name}`
+        : s.cwd
+          ? folderName(s.cwd)
+          : s.name || "outside AgentOS";
   return s.startedAt ? `${who} · ${shortAge(s.startedAt)}` : who;
 }
 
@@ -76,11 +80,10 @@ export function RunningPage({ page, view }: PageProps<"running">) {
     : null;
   const current =
     list.find((s) => s.port === picked) ?? (pages ? list[0] : undefined);
-  // Grouped by the project of the session that started each (N-Ports)
+  // Grouped by the project of what started each (N-Ports)
   const groupOf = (s: RunningServer) => {
-    const session = view.sessions.find((x) => x.id === s.sessionId);
-    if (!session) return OTHER;
-    const project = view.projects.find((p) => p.id === session.project_id);
+    if (!canStop(s)) return OTHER;
+    const project = view.projects.find((p) => p.id === s.projectId);
     return project && !project.is_uncategorized ? project.name : "Sessions";
   };
 
@@ -191,7 +194,7 @@ function ServerList({
     else groups.push([name, [s]]);
   }
   groups.sort(([a], [b]) => Number(a === OTHER) - Number(b === OTHER));
-  const fromSessions = servers.filter((s) => s.sessionId).length;
+  const fromSessions = servers.filter(canStop).length;
   const mode = useLayoutMode();
   const native = useIsNative();
   // Where no column holds back, the title does
@@ -218,7 +221,7 @@ function ServerList({
         {!sessionName && servers.length > 0 && (
           <p className="text-muted-foreground mt-1 text-[14px]">
             {servers.length} {servers.length === 1 ? "port" : "ports"}
-            {fromSessions > 0 && ` · ${fromSessions} from sessions`}
+            {fromSessions > 0 && ` · ${fromSessions} started in AgentOS`}
           </p>
         )}
         {sessionName && (
@@ -405,7 +408,7 @@ function Preview({
           {startedLine(server)}
           {server.pid ? ` · pid ${server.pid}` : ""}
         </p>
-        {server.pid && server.sessionId && (
+        {server.pid && canStop(server) && (
           <button
             type="button"
             onClick={() => stopServer(server)}

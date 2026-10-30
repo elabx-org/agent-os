@@ -25,6 +25,7 @@ import {
 import { isMacLike } from "@/hooks/useViewShortcuts";
 import { CONFIG_FILE } from "@/lib/project-config-types";
 import { formatShortcut, parseShortcut } from "@/lib/script-shortcuts";
+import { linkHref } from "@/lib/client/link-target";
 import { cn } from "@/lib/utils";
 import { mobileNavStore } from "@/stores/mobileNav";
 import { postureStore } from "@/stores/posture";
@@ -192,7 +193,7 @@ function RunningCard({
           )}
           {previewUrl && (
             <a
-              href={previewUrl}
+              href={linkHref(previewUrl)}
               target="_blank"
               rel="noopener noreferrer"
               className="pill pill-primary ml-auto active:opacity-80"

@@ -10,6 +10,7 @@ import {
 } from "@/hooks/useProjectConfig";
 import { shortAge } from "@/lib/agent-state";
 import type { ProjectWithDevServers } from "@/lib/projects";
+import { linkHref } from "@/lib/client/link-target";
 import { cn } from "@/lib/utils";
 import { openProjectSettings } from "@/stores/projectSettings";
 import { openScripts } from "@/stores/scriptsSheet";
@@ -83,7 +84,7 @@ export function ProjectScripts({
                   <span className="flex items-center gap-2">
                     {preview && (
                       <a
-                        href={preview}
+                        href={linkHref(preview)}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="pill pill-secondary pill-sm text-foreground active:opacity-80"

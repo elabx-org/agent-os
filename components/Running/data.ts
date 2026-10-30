@@ -21,12 +21,20 @@ export function useRunning(pollMs: number, enabled = true) {
   });
 }
 
-/** Stop, after asking: only what a session started (the server says so too) */
+/**
+ * AgentOS started it (a session, a project script, a dev server), so it
+ * may stop it; lib/running.ts's stoppable, which the client can't import
+ */
+export function canStop(s: RunningServer): boolean {
+  return !!(s.sessionId || s.script || s.devServer);
+}
+
+/** Stop, after asking: only what AgentOS started (the server says so too) */
 export function useStopServer() {
   const queryClient = useQueryClient();
   const [stopping, setStopping] = useState<number | null>(null);
   const stop = async (server: RunningServer) => {
-    if (!server.pid || !server.sessionId) return;
+    if (!server.pid || !canStop(server)) return;
     const ok = await confirmAction({
       title: `Stop :${server.port}?`,
       message: server.command || server.name,
