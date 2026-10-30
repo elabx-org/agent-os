@@ -9,7 +9,7 @@ export type WorkspacePage =
   | { kind: "agent"; agentId: string }
   | { kind: "projectSettings"; projectId: string }
   | { kind: "inbox" }
-  | { kind: "running" };
+  | { kind: "running"; sessionId?: string };
 
 export type WorkspacePageKind = WorkspacePage["kind"];
 

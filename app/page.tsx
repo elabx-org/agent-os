@@ -63,6 +63,7 @@ import { closeNew, newSurfaceStore, openNew } from "@/stores/newSurface";
 import { mobileNavActions, mobileNavStore } from "@/stores/mobileNav";
 import { focusStore, loadFocus } from "@/stores/focus";
 import { registerNavHandlers, runNav } from "@/lib/nav-actions";
+import { runningStore } from "@/stores/running";
 import { isNative } from "@/lib/native-bridge";
 import { isEnded } from "@/lib/settle-types";
 import { SettingsPage } from "@/components/Settings/SettingsPage";
@@ -501,6 +502,9 @@ function HomeContent() {
     behind: !!focusedActiveTab?.sessionId,
   });
   useEffect(loadFocus, []);
+  useEffect(() => {
+    runningStore.sessionId = focusedActiveTab?.sessionId ?? null;
+  }, [focusedActiveTab?.sessionId]);
   const lastBesideRef = useRef(0);
   useEffect(
     () =>

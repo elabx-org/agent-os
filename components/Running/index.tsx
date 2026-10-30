@@ -28,6 +28,7 @@ import { nativeCaps } from "@/lib/native-bridge";
 import { registerPageBack, runNav } from "@/lib/nav-actions";
 import type { RunningServer } from "@/lib/running";
 import { cn } from "@/lib/utils";
+import { workspacePageStore } from "@/stores/workspacePage";
 
 const POLL_MS = 3000;
 
@@ -68,7 +69,7 @@ function startedLine(s: RunningServer): string {
  * them and pushes the preview; the open Duo keeps the list on the left
  * page and the preview on the right, nothing across the fold.
  */
-export function RunningPage(_props: PageProps<"running">) {
+export function RunningPage({ page, view }: PageProps<"running">) {
   const { data: servers, isLoading, error } = useRunning();
   const ref = useRef<HTMLDivElement>(null);
   const pages = useSpreadPages(ref, useSpreadFold());
@@ -77,7 +78,12 @@ export function RunningPage(_props: PageProps<"running">) {
   // The open Duo's preview on both pages, the list put away
   const [full, setFull] = useState(false);
 
-  const list = servers ?? [];
+  // From a session's More: only what that session started
+  const only = page.sessionId;
+  const list = (servers ?? []).filter((s) => !only || s.sessionId === only);
+  const sessionName = only
+    ? (view.sessions.find((s) => s.id === only)?.name ?? "this session")
+    : null;
   const current =
     list.find((s) => s.port === picked) ?? (pages ? list[0] : undefined);
 
@@ -113,6 +119,7 @@ export function RunningPage(_props: PageProps<"running">) {
       loading={isLoading}
       failed={!!error}
       selected={pages ? current?.port : undefined}
+      sessionName={sessionName}
       onPick={pick}
     />
   );
@@ -165,12 +172,15 @@ function ServerList({
   failed,
   selected,
   onPick,
+  sessionName,
 }: {
   servers: RunningServer[];
   loading: boolean;
   failed: boolean;
   selected?: number;
   onPick: (s: RunningServer) => void;
+  /** Filtered to one session: its name, and Show all */
+  sessionName?: string | null;
 }) {
   const mode = useLayoutMode();
   const native = useIsNative();
@@ -193,7 +203,25 @@ function ServerList({
           <ChevronLeft className="h-5 w-5" />
         </button>
       )}
-      <h1 className="t-large">Running</h1>
+      <header className="flex shrink-0 flex-col">
+        <h1 className="t-large">Running</h1>
+        {sessionName && (
+          <div className="text-muted-foreground mt-1 flex min-w-0 items-center gap-2 text-[14px]">
+            <span className="min-w-0 flex-1 truncate">
+              Started by {sessionName}
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                workspacePageStore.page = { kind: "running" };
+              }}
+              className="text-primary active:bg-accent min-h-[44px] shrink-0 rounded-full px-3 text-[15px] font-medium"
+            >
+              Show all
+            </button>
+          </div>
+        )}
+      </header>
       {failed ? (
         <p className="text-muted-foreground text-sm">
           Couldn&apos;t list what&apos;s running.
@@ -224,17 +252,25 @@ function ServerList({
           ))}
         </GroupCard>
       ) : (
-        <Quiet loading={loading} />
+        <Quiet loading={loading} filtered={!!sessionName} />
       )}
     </div>
   );
 }
 
-function Quiet({ loading }: { loading: boolean }) {
+function Quiet({
+  loading,
+  filtered,
+}: {
+  loading: boolean;
+  filtered?: boolean;
+}) {
   return (
     <div className="text-muted-foreground grid min-h-0 flex-1 place-items-center p-6 text-center text-sm">
       {loading ? (
         <Loader2 className="h-5 w-5 animate-spin" />
+      ) : filtered ? (
+        "Nothing this session started is running."
       ) : (
         "Nothing is running. Servers a session starts show here."
       )}
