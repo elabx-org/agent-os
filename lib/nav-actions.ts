@@ -107,6 +107,8 @@ export const MORE_EVENT = "agentos-more";
 interface NavHandlers {
   openSessions: () => void;
   openFind: () => void;
+  /** Close Find, showing what was under it */
+  closeFind: () => void;
   openNewSession: () => void;
   openSettings: () => void;
   /** Now, never toggled: the home shown (app/page.tsx registers it) */
@@ -185,6 +187,7 @@ function leaveForHome(tab: "now" | "projects") {
 export const navStore: NavHandlers = {
   openSessions: () => {},
   openFind: () => {},
+  closeFind: () => {},
   openNewSession: () => {},
   openSettings: () => openSettings(),
   openNow: showNow,
@@ -584,10 +587,24 @@ const KEEPS_SETTINGS = new Set<NavAction>([
   "closeSettings",
 ]);
 
+/** Actions on or over Find: it stays up for them (Settings opens over it) */
+const KEEPS_FIND = new Set<NavAction>([
+  "search",
+  "find",
+  "more",
+  "back",
+  "focus",
+  "settings",
+  "server",
+  "closeSettings",
+]);
+
 export function runNav(action: NavAction): void {
   // Settings covers the app: anything else in the column leaves it. Focus
   // only changes what shows around the session, so it keeps Settings up
   if (!KEEPS_SETTINGS.has(action)) closeSettings();
+  // Find's More goes somewhere else: Find closes rather than stay on top
+  if (surfaceStore.searchOpen && !KEEPS_FIND.has(action)) navStore.closeFind();
   // A view picked over a workspace page goes back to the session
   const leftPage =
     (action === "chat" ||

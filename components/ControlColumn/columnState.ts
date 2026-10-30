@@ -225,7 +225,15 @@ export function nativeColumn(): {
     // What the column shows already isn't offered again
     more: [
       ...(kind
-        ? moreItems(kind, columnOrderStore.order, mobileNavStore.viewMode)
+        ? moreItems(
+            kind,
+            columnOrderStore.order,
+            mobileNavStore.viewMode,
+            // The closed Duo's session column, cut down above the keyboard
+            mode === "duo-closed" &&
+              mobileNavStore.nativeKeyboard &&
+              (surface === "session" || surface === "beside")
+          )
         : []),
       ...(agentsMore ? [agentsMore] : []),
       ...moreExtras({

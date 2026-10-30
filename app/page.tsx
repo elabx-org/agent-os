@@ -540,6 +540,11 @@ function HomeContent() {
             ? setSidebarOpen(true)
             : setSidebarOpen((open) => !open),
         openFind: () => setShowQuickSwitcher(true),
+        // At once, so the action that closes it sees what was under it
+        closeFind: () => {
+          surfaceStore.searchOpen = false;
+          setShowQuickSwitcher(false);
+        },
         // On a project page, in that project (as the page's own + does)
         openNewSession: () => {
           const page = workspacePageStore.page;

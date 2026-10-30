@@ -768,3 +768,26 @@ test("columnFor: Settings from Needs you goes back to it", () => {
   assert.equal(fmt(closed), "back");
   assert.equal(closed[0].label, "Back to Needs you");
 });
+
+test("keyboard up on the closed Duo: More has all the column leaves out", () => {
+  // The column is back | view git | more whatever the saved order
+  const order: ColumnOrder = {
+    session: ["projects", "inbox", "live", "view", "git"],
+  };
+  const column = columnFor("session", "duo-closed", {
+    ...CTX,
+    order,
+    keyboardUp: true,
+  }).map((i) => i.id);
+  const more = moreItems("session", order, "chat", true).map((i) => i.id);
+  assert.deepEqual(more, [
+    "files",
+    "live",
+    "inbox",
+    "new",
+    "search",
+    "beside",
+    "projects",
+  ]);
+  for (const id of more) assert.ok(!column.includes(id), id);
+});

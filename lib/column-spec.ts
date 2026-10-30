@@ -573,11 +573,19 @@ const VIEW_SLOT: Partial<
   files: "files",
 };
 
-/** What the column leaves out, as items for More (most menus skip ones they already list) */
+/** What the closed Duo's session column keeps with the keyboard up (sessionColumn) */
+const KEYBOARD_SLOTS: ColumnSlot[] = ["view", "git"];
+
+/**
+ * What the column leaves out, as items for More (most menus skip ones they
+ * already list). With the keyboard up the closed Duo's session column is
+ * cut to KEYBOARD_SLOTS whatever the saved order, so More has the rest
+ */
 export function moreItems(
   kind: ColumnKind,
   order: ColumnOrder | undefined,
-  viewMode: ColumnContext["viewMode"] = null
+  viewMode: ColumnContext["viewMode"] = null,
+  keyboardUp = false
 ): ColumnItem[] {
   const ctx: ColumnContext = {
     viewMode,
@@ -589,7 +597,10 @@ export function moreItems(
     canGoBack: false,
   };
   const current = viewMode ? VIEW_SLOT[viewMode] : undefined;
-  return hiddenSlots(kind, order)
+  const hidden = keyboardUp
+    ? COLUMN_CHOICES[kind].filter((slot) => !KEYBOARD_SLOTS.includes(slot))
+    : hiddenSlots(kind, order);
+  return hidden
     .filter((slot) => slot !== current)
     .map((slot) => {
       const {

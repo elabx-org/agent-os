@@ -586,3 +586,29 @@ test("back: Notification settings from Needs you go back to it", () => {
     reset();
   }
 });
+
+test("Find's More: going elsewhere closes Find; More, back, Settings keep it", () => {
+  for (const action of NAV_ACTIONS) {
+    reset();
+    surfaceStore.searchOpen = true;
+    const { calls, stop } = spyHandlers();
+    runNav(action);
+    stop();
+    const keeps = [
+      "search",
+      "find",
+      "more",
+      "back",
+      "focus",
+      "settings",
+      "server",
+      "closeSettings",
+    ].includes(action);
+    assert.equal(calls.includes("closeFind"), !keeps, action);
+  }
+  reset();
+  const { calls, stop } = spyHandlers();
+  runNav("projects");
+  stop();
+  assert.ok(!calls.includes("closeFind"), "no Find, nothing to close");
+});
