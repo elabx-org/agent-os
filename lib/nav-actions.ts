@@ -21,7 +21,7 @@ import { runningStore } from "@/stores/running";
 import { closeNew, newSurfaceStore } from "@/stores/newSurface";
 import { openProjectSettings } from "@/stores/projectSettings";
 import { openScripts } from "@/stores/scriptsSheet";
-import { surfaceStore } from "@/stores/surface";
+import { currentSurface, surfaceStore } from "@/stores/surface";
 import { toggleAllCollapsed, toggleShowFinished } from "@/stores/agentTree";
 import { isNative, postToNative } from "@/lib/native-bridge";
 import { layoutStore } from "@/hooks/useLayoutMode";
@@ -353,8 +353,13 @@ export const NAV_ROUTES: Record<NavAction, (leftPage: boolean) => void> = {
   newFile: () => navStore.newFile(),
   upload: () => navStore.uploadFile(),
   // M16, behind Labs: what sessions left running, with a preview
+  // From a session, what it started; elsewhere everything
   running: () => {
-    if (runningStore.enabled) openPage({ kind: "running" });
+    if (!runningStore.enabled) return;
+    const surface = currentSurface();
+    const sessionId =
+      (surface === "session" || surface === "beside") && runningStore.sessionId;
+    openPage(sessionId ? { kind: "running", sessionId } : { kind: "running" });
   },
 };
 

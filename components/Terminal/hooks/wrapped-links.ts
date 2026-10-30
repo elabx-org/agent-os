@@ -1,4 +1,5 @@
 import type { ILink, ILinkProvider, Terminal } from "@xterm/xterm";
+import { openSessionLink } from "@/lib/client/link-target";
 
 /**
  * Links that run onto the next row. Claude Code wraps its own text, so a long
@@ -16,8 +17,9 @@ const URL_CHAR = /[\w\-.~:/?#[\]@!$&'()*+,;=%]/;
 const MAX_ROWS = 8;
 
 export function openLink(uri: string) {
-  // The iOS app opens window.open targets in Safari
-  window.open(uri, "_blank", "noopener");
+  // localhost links go through the port proxy; the iOS app opens
+  // window.open targets in Safari
+  openSessionLink(uri);
 }
 
 export function registerWrappedLinks(term: Terminal) {

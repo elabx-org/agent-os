@@ -8,6 +8,35 @@ import type { Element, ElementContent } from "hast";
 import { Check, ChevronRight, Copy, Globe, Lock } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { linkTarget, loadLinkProxy } from "@/lib/client/link-target";
+
+/** A link in a reply: localhost:<port> opens through the port proxy */
+function LinkOut({
+  href,
+  children,
+}: {
+  href?: string;
+  children: React.ReactNode;
+}) {
+  const [, loaded] = React.useReducer((n: number) => n + 1, 0);
+  React.useEffect(() => {
+    loadLinkProxy().then(loaded);
+  }, []);
+  const target =
+    href && typeof window !== "undefined"
+      ? linkTarget(href, window.location.origin)
+      : href;
+  return (
+    <a
+      href={target}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="text-primary break-words underline underline-offset-2"
+    >
+      {children}
+    </a>
+  );
+}
 
 /**
  * Claude's replies as GitHub-flavoured markdown: tables, links, quotes,
@@ -274,16 +303,7 @@ const components: Components = {
       </h6>
     );
   },
-  a: ({ href, children }) => (
-    <a
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="text-primary break-words underline underline-offset-2"
-    >
-      {children}
-    </a>
-  ),
+  a: ({ href, children }) => <LinkOut href={href}>{children}</LinkOut>,
   ul: ({ children, className }) => (
     <ul
       className={cn(
