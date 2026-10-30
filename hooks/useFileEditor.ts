@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { getLanguageFromExtension } from "@/lib/file-utils";
 
 export interface OpenFile {
@@ -26,9 +26,26 @@ export interface UseFileEditorReturn {
   reset: () => void;
 }
 
-export function useFileEditor(): UseFileEditorReturn {
-  const [openFiles, setOpenFiles] = useState<OpenFile[]>([]);
-  const [activeFilePath, setActiveFilePath] = useState<string | null>(null);
+/**
+ * The files each pane had open, edits and all: folding an iPhone Duo or
+ * turning a phone remounts the pane, and the file you were in stays open
+ */
+const kept = new Map<
+  string,
+  { openFiles: OpenFile[]; activeFilePath: string | null }
+>();
+
+/** keep: the pane's id, to keep its files across a remount */
+export function useFileEditor(keep?: string): UseFileEditorReturn {
+  const [openFiles, setOpenFiles] = useState<OpenFile[]>(
+    () => (keep && kept.get(keep)?.openFiles) || []
+  );
+  const [activeFilePath, setActiveFilePath] = useState<string | null>(
+    () => (keep && kept.get(keep)?.activeFilePath) || null
+  );
+  useEffect(() => {
+    if (keep) kept.set(keep, { openFiles, activeFilePath });
+  }, [keep, openFiles, activeFilePath]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 

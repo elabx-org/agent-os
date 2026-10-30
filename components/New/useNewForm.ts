@@ -10,6 +10,12 @@ import { useNewSessionForm } from "@/components/NewSessionDialog/hooks/useNewSes
 import { poll as refreshBackgroundAgents } from "@/components/BackgroundAgents";
 import { useEnsureTrusted } from "@/components/Projects/TrustConfigPrompt";
 import { useProjectConfig } from "@/hooks/useProjectConfig";
+import type { Mode } from "@/lib/permission-mode";
+import {
+  clearNewDraft,
+  loadNewDraft,
+  patchNewDraft,
+} from "@/stores/newSurface";
 
 export type RunAs = "session" | "background";
 
@@ -64,7 +70,11 @@ export function useNewForm({
     open,
     projects,
     selectedProjectId,
-    onCreated,
+    // Started: the draft is done with
+    onCreated: (sessionId) => {
+      clearNewDraft();
+      onCreated(sessionId);
+    },
     onClose,
     onCreateProject,
     // The worktree toggle starts off: the session works on the current branch
@@ -128,6 +138,7 @@ export function useNewForm({
       if (!res.ok) throw new Error(data.error);
       toast.success("Started in the background");
       session.setInitialPrompt("");
+      clearNewDraft();
       // So it shows under its project now rather than at the next poll
       refreshBackgroundAgents();
       (onStarted ?? onClose)();
@@ -193,12 +204,36 @@ export function useNewForm({
     if (!id || !projectConfig || presetFor.current === id) return;
     presetFor.current = id;
     const d = projectConfig.defaults;
-    if (d.agent && isValidProviderId(d.agent)) session.setAgentType(d.agent);
-    if (d.permissionMode) session.setPermissionMode(d.permissionMode);
+    // Never over what the draft says you picked
+    const picked = loadNewDraft() ?? {};
+    if (d.agent && isValidProviderId(d.agent) && !picked.agentType)
+      session.setAgentType(d.agent);
+    if (d.permissionMode && picked.permissionMode === undefined)
+      session.setPermissionMode(d.permissionMode);
     // Other agents' models come from the file on the server (showModel)
-    if (d.model && d.agent === "claude") session.setModel(d.model);
+    if (d.model && d.agent === "claude" && picked.model === undefined)
+      session.setModel(d.model);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session.projectId, projectConfig]);
+
+  // The draft (stores/newSurface) over the defaults: after a fold, a turn
+  // or a reload New shows what you had typed and picked. Again whenever
+  // the defaults are set again (the projects arriving)
+  useEffect(() => {
+    if (!open) return;
+    const draft = loadNewDraft();
+    if (!draft) return;
+    if (draft.projectId && projects.some((p) => p.id === draft.projectId))
+      session.handleProjectChange(draft.projectId);
+    if (draft.workingDirectory !== undefined)
+      session.setWorkingDirectory(draft.workingDirectory);
+    if (draft.agentType) session.setAgentType(draft.agentType);
+    if (draft.model !== undefined) session.setModel(draft.model);
+    if (draft.permissionMode !== undefined)
+      session.setPermissionMode(draft.permissionMode);
+    if (draft.task !== undefined) session.setInitialPrompt(draft.task);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, selectedProjectId, projects]);
 
   const project = projects.find((p) => p.id === session.projectId);
   const projectName =
@@ -209,10 +244,40 @@ export function useNewForm({
 
   return {
     ...session,
+    // What you change goes in the draft too
+    handleProjectChange: (projectId: string | null) => {
+      session.handleProjectChange(projectId);
+      const project = projects.find((p) => p.id === projectId);
+      patchNewDraft({
+        projectId,
+        // The project's folder and agent come with it
+        workingDirectory: undefined,
+        agentType: project?.agent_type,
+      });
+    },
+    setWorkingDirectory: (workingDirectory: string) => {
+      session.setWorkingDirectory(workingDirectory);
+      patchNewDraft({ workingDirectory });
+    },
+    handleAgentTypeChange: (agentType: AgentType) => {
+      session.handleAgentTypeChange(agentType);
+      patchNewDraft({ agentType });
+    },
+    setModel: (model: string) => {
+      session.setModel(model);
+      patchNewDraft({ model });
+    },
+    setPermissionMode: (permissionMode: Mode | null) => {
+      session.setPermissionMode(permissionMode);
+      patchNewDraft({ permissionMode });
+    },
     runAs,
     setRunAs,
     task,
-    setTask: session.setInitialPrompt,
+    setTask: (value: string) => {
+      session.setInitialPrompt(value);
+      patchNewDraft({ task: value });
+    },
     worktree,
     setWorktree,
     isGit,
@@ -234,6 +299,7 @@ export function useNewForm({
     error: background ? startError : session.error,
     handleClose: () => {
       setStartError(null);
+      clearNewDraft();
       session.handleClose();
     },
   };

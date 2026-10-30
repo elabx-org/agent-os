@@ -27,7 +27,7 @@ import { useIsNative } from "@/hooks/useIsNative";
 import { FOLD_CLEAR, useHinge } from "@/hooks/useHinge";
 import { useLayoutMode } from "@/hooks/useLayoutMode";
 import { registerNavHandlers, runNav } from "@/lib/nav-actions";
-import { setHome } from "@/stores/surface";
+import { dropHome, setHome } from "@/stores/surface";
 import { isNative, nativeCaps } from "@/lib/native-bridge";
 import { postureStore } from "@/stores/posture";
 import { resetSwap, toggleSwap } from "@/stores/paneOrder";
@@ -346,12 +346,8 @@ export function SessionSpread({
   }, []);
 
   // The home beside the panes, for the surface (Now)
-  useEffect(() => {
-    setHome(homeWanted);
-    return () => {
-      setHome(false);
-    };
-  }, [homeWanted]);
+  useEffect(() => setHome(homeWanted), [homeWanted]);
+  useEffect(() => dropHome, []);
 
   // Two on the pages trade sides in place (CSS order, nothing remounts);
   // elsewhere the split itself swaps

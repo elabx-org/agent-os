@@ -175,7 +175,7 @@ export const Pane = memo(function Pane({
   }, [terminalRun]);
 
   // File editor state - lifted here so it persists across view switches
-  const fileEditor = useFileEditor();
+  const fileEditor = useFileEditor(paneId);
 
   // Its agents (the agents view; the column's Agents item and the ⋯)
   const agentCounts = useAgentCount({

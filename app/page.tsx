@@ -60,7 +60,12 @@ import { getPendingPrompt, clearPendingPrompt } from "@/stores/initialPrompt";
 import { closeSettings } from "@/stores/settingsPage";
 import { closePage, workspacePageStore } from "@/stores/workspacePage";
 import { besideStore, setPaneLaunch } from "@/stores/beside";
-import { closeNew, newSurfaceStore, openNew } from "@/stores/newSurface";
+import {
+  closeNew,
+  keepNewDraftOnClose,
+  newSurfaceStore,
+  openNew,
+} from "@/stores/newSurface";
 import { mobileNavActions, mobileNavStore } from "@/stores/mobileNav";
 import { focusStore, loadFocus } from "@/stores/focus";
 import { noteOrigin, registerNavHandlers, runNav } from "@/lib/nav-actions";
@@ -74,6 +79,7 @@ import { useScriptShortcuts } from "@/hooks/useScriptShortcuts";
 import { useFreshSessionCleanup } from "@/hooks/useFreshSessionCleanup";
 import { OPEN_SESSION_EVENT, type OpenSessionDetail } from "@/lib/bg-send";
 import { EdgeBack } from "@/components/EdgeBack";
+import { keepPlace, restorePlace, takePlace } from "@/stores/place";
 
 function HomeContent() {
   // UI State
@@ -355,7 +361,8 @@ function HomeContent() {
       // Its back returns to what it was opened from
       noteOrigin(session.id);
       // Whatever opened it, the session shows rather than staying under
-      // Settings or a workspace page
+      // Settings or a workspace page (a half-typed New is kept for later)
+      keepNewDraftOnClose();
       closeSettings();
       closePage();
       const terminalInfo = getTerminalWithFallback();
@@ -645,12 +652,32 @@ function HomeContent() {
 
   // Open beside the session on the web, unless Focus is on. On narrow
   // screens and the open iPhone Duo (where the home is a page that back
-  // shows) start on the home unless a session is up; folding keeps the session
+  // shows) start on the home unless a session is up. A reload of the tab
+  // starts where it was (stores/place), unless a link opened a session
+  const started = useRef(false);
   useEffect(() => {
     if (!isHydrated) return;
     const onSession = !!focusedActiveTab?.sessionId || linkedSession.current;
+    const linked = linkedSession.current;
     linkedSession.current = false;
-    setSidebarOpen(isMobile || isNative() ? !onSession : !focusStore.on);
+    const narrow = isMobile || isNative();
+    if (!started.current) {
+      started.current = true;
+      const place = takePlace();
+      if (place && !linked) {
+        restorePlace(place);
+        setShowQuickSwitcher(place.find);
+        setSidebarOpen(place.home || (narrow && !onSession));
+      } else {
+        setSidebarOpen(narrow ? !onSession : !focusStore.on);
+      }
+      // For as long as the page lives
+      keepPlace();
+      return;
+    }
+    // Folding, unfolding or turning keeps what showed: Now stays Now, a
+    // session its session. Only with nothing behind is it the home
+    if (narrow && !onSession) setSidebarOpen(true);
   }, [isMobile, isHydrated]);
 
   useViewShortcuts();

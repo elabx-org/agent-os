@@ -19,7 +19,7 @@ import { useRunningFlag } from "@/hooks/useRunningFlag";
 import { useSideRail } from "@/hooks/useSideRail";
 import { useLayoutMode } from "@/hooks/useLayoutMode";
 import { isNative, nativeCaps } from "@/lib/native-bridge";
-import { setHome } from "@/stores/surface";
+import { dropHome, setHome } from "@/stores/surface";
 import { loadDuoPreview } from "@/stores/duoPreview";
 import { cn } from "@/lib/utils";
 import { WorkspacePage } from "@/components/WorkspacePage";
@@ -98,12 +98,8 @@ export function MobileView(props: ViewProps) {
   }, [sidebarOpen, pageOpen]);
 
   // The home itself, for the surface (a page over it is the page)
-  useEffect(() => {
-    setHome(sidebarOpen);
-    return () => {
-      setHome(false);
-    };
-  }, [sidebarOpen]);
+  useEffect(() => setHome(sidebarOpen), [sidebarOpen]);
+  useEffect(() => dropHome, []);
 
   const { request: viewRequest } = useSnapshot(mobileNavStore);
   // Picking a view in the column or bar leaves the home for the session

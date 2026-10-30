@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  dropHome,
   setHome,
   surfaceFor,
   surfaceStore,
@@ -99,5 +100,21 @@ test("setHome: Projects picked from a session survives the home opening (9)", ()
   setHome(false);
   assert.equal(mobileNavStore.homeTab, "projects");
   mobileNavStore.homeTab = "now";
+  layoutStore.mode = mode;
+});
+
+test("dropHome: a fold swapping the views keeps Projects (14)", () => {
+  const mode = layoutStore.mode;
+  layoutStore.mode = "duo-open";
+  setHome(true);
+  mobileNavStore.homeTab = "projects";
+  // The open Duo's view goes, the closed one's comes with the home up
+  layoutStore.mode = "duo-closed";
+  dropHome();
+  assert.equal(surfaceStore.home, false);
+  setHome(true);
+  assert.equal(mobileNavStore.homeTab, "projects");
+  setHome(false);
+  assert.equal(mobileNavStore.homeTab, "now");
   layoutStore.mode = mode;
 });

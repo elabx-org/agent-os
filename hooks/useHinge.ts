@@ -1,20 +1,21 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { throughKeyboard } from "@/hooks/useLayoutMode";
+import {
+  isOpenDuoSize as openDuoSize,
+  throughKeyboard,
+} from "@/hooks/useLayoutMode";
 
 /** Controls keep this far either side of the hinge while the Duo lies flat */
 export const FOLD_CLEAR = 20;
 
 /**
  * The open Duo's inner display (about 951x669), not any landscape iPhone or
- * iPad: a Pro Max on its side is far wider than tall, an iPad taller
+ * iPad, nor the closed Duo on its side: useLayoutMode's test, here on any
+ * screen (a desktop that size is ruled out by the caller's mode)
  */
 function isOpenDuoSize(width: number, height: number): boolean {
-  if (width <= height) return false;
-  const flag = window.agentosNative?.duo;
-  if (flag !== undefined) return flag;
-  return width >= 900 && width <= 1000 && height >= 600 && height <= 720;
+  return openDuoSize(width, height, true, window.agentosNative?.duo);
 }
 
 /**

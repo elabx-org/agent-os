@@ -89,6 +89,14 @@ export function setHome(open: boolean): void {
   surfaceStore.home = open;
 }
 
+/**
+ * The view showing the home is gone: a fold or a turn swaps it for the
+ * other, which says again whether the home is up. Projects stays picked
+ */
+export function dropHome(): void {
+  surfaceStore.home = false;
+}
+
 /** Called once from app/page.tsx with its own state */
 export function useSurfaceSource(inputs: {
   paneCount: number;
