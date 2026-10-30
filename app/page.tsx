@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useSnapshot } from "valtio";
+import { toast } from "sonner";
 
 // Debug log buffer - persists even if console is closed
 const debugLogs: string[] = [];
@@ -135,6 +136,13 @@ function HomeContent() {
   // Set CSS variable for viewport height (handles mobile keyboard)
   useViewportHeight();
 
+  // A session picked before any terminal connected, and the attach that
+  // opens it (defined below) once one registers
+  const queuedSession = useRef<{ session: Session; ts: number } | null>(null);
+  const attachToSessionRef = useRef<((session: Session) => void) | null>(
+    null
+  );
+
   // Terminal ref management
   const registerTerminalRef = useCallback(
     (paneId: string, tabId: string, ref: TerminalHandle | null) => {
@@ -144,6 +152,13 @@ function HomeContent() {
         debugLog(
           `Terminal registered: ${key}, total refs: ${terminalRefs.current.size}`
         );
+        // A session picked while none was connected opens now, unless it
+        // waited too long to still be what you want
+        const queued = queuedSession.current;
+        queuedSession.current = null;
+        if (queued && Date.now() - queued.ts < 15_000) {
+          setTimeout(() => attachToSessionRef.current?.(queued.session), 0);
+        }
       } else {
         terminalRefs.current.delete(key);
         debugLog(
@@ -272,13 +287,15 @@ function HomeContent() {
     [sessions, getInitScriptCommand]
   );
 
-  // Attach a session to a terminal
+  // Attach a session to a terminal. leave: out of what the terminal shows
+  // first (another session's tmux); otherwise it starts in a fresh shell
   const runSessionInTerminal = useCallback(
-    (
+    async (
       terminal: TerminalHandle,
       paneId: string,
       session: Session,
-      sessionInfo: { sessionName: string; cwd: string; command: string }
+      sessionInfo: { sessionName: string; cwd: string; command: string },
+      leave = false
     ) => {
       // Paused (handed off, M4) or settled (M8): its chat shows, its agent
       // isn't relaunched
@@ -301,9 +318,19 @@ function HomeContent() {
         `tmux bind-key -T copy-mode-vi WheelDownPane send-keys -X -N 5 scroll-down`,
         `tmux bind-key m display-menu -T "Tmux" -x R -y P "Copy Mode" c copy-mode "Paste Buffer" p paste-buffer "" "" "" "Split Horizontal" h 'split-window -h' "Split Vertical" v 'split-window -v'`,
       ].map(c => `${c} 2>/dev/null`).join("; ");
-      terminal.sendCommand(
-        `${tmuxSetup}; tmux attach -t ${sessionName} 2>/dev/null || ${tmuxNew}`
+      // The server types it only at the shell's prompt, never into tmux or
+      // an agent running there
+      const typed = await terminal.sendShellCommand(
+        `${tmuxSetup}; tmux attach -t ${sessionName} 2>/dev/null || ${tmuxNew}`,
+        leave
       );
+      if (!typed) {
+        debugLog(`Terminal busy, not attaching: ${session.name}`);
+        toast("Terminal busy", {
+          description: "Quit what runs there, then open the session again",
+        });
+        return;
+      }
       attachSession(paneId, session.id, sessionName);
       // A pane starting beside the one being typed into leaves the keyboard
       if (!typingElsewhere()) terminal.focus();
@@ -311,28 +338,14 @@ function HomeContent() {
     [attachSession]
   );
 
-  // Leave whatever a pane's terminal runs and attach the session there
+  // Leave whatever a pane's terminal runs and attach the session there.
+  // The server knows whether it's in tmux (the tab's attachedTmux can lag)
   const switchTerminalTo = useCallback(
-    (terminal: TerminalHandle, paneId: string, session: Session) => {
-      const activeTab = getActiveTab(paneId);
-      const isInTmux = !!activeTab?.attachedTmux;
-
-      if (isInTmux) {
-        terminal.sendInput("\x02d");
-      }
-
-      setTimeout(
-        () => {
-          terminal.sendInput("\x03");
-          setTimeout(async () => {
-            const sessionInfo = await buildSessionCommand(session);
-            runSessionInTerminal(terminal, paneId, session, sessionInfo);
-          }, 50);
-        },
-        isInTmux ? 100 : 0
-      );
+    async (terminal: TerminalHandle, paneId: string, session: Session) => {
+      const sessionInfo = await buildSessionCommand(session);
+      await runSessionInTerminal(terminal, paneId, session, sessionInfo, true);
     },
-    [getActiveTab, buildSessionCommand, runSessionInTerminal]
+    [buildSessionCommand, runSessionInTerminal]
   );
 
   // Attach session to terminal
@@ -344,18 +357,17 @@ function HomeContent() {
       closePage();
       const terminalInfo = getTerminalWithFallback();
       if (!terminalInfo) {
-        debugLog(
-          `ERROR: No terminal available to attach session: ${session.name}`
-        );
-        alert(
-          `[AgentOS Debug] No terminal available!\n\nRun agentOSLogs() in console to see debug logs.`
-        );
+        // Picked before the first terminal connected: it opens once one does
+        debugLog(`No terminal yet, queueing session: ${session.name}`);
+        queuedSession.current = { session, ts: Date.now() };
         return;
       }
+      queuedSession.current = null;
       switchTerminalTo(terminalInfo.terminal, terminalInfo.paneId, session);
     },
     [getTerminalWithFallback, switchTerminalTo]
   );
+  attachToSessionRef.current = attachToSession;
 
   // Open beside: a session in a pane next to the focused one (the other
   // page on the open Duo). Splits while there's room, else takes the other
@@ -603,8 +615,8 @@ function HomeContent() {
   // link can land before the start state below is chosen, so note it
   const linkedSession = useRef(false);
   useSessionLinks(sessions, (session) => {
-    // A link that loaded the page can come before the first terminal
-    if (!getTerminalWithFallback()) return false;
+    // A link that loaded the page can come before the first terminal: it
+    // queues like a pick, so a session picked after it still wins
     linkedSession.current = true;
     attachToSession(session);
     if (isMobile) setSidebarOpen(false);
@@ -654,20 +666,16 @@ function HomeContent() {
       if (!/^\w[\w-]*$/.test(id)) return;
       const terminalInfo = getTerminalWithFallback();
       if (!terminalInfo) return;
-      const { terminal, paneId } = terminalInfo;
+      const { terminal } = terminalInfo;
       // Out of any tmux session first, as attaching a session does
-      if (getActiveTab(paneId)?.attachedTmux) terminal.sendInput("\x02d");
-      setTimeout(() => {
-        terminal.sendInput("\x03");
-        setTimeout(() => terminal.sendCommand(`claude attach ${id}`), 50);
-      }, 100);
+      terminal.sendShellCommand(`claude attach ${id}`, true);
       terminal.focus();
       if (isMobile) setSidebarOpen(false);
     };
     window.addEventListener("agentos-attach-background", onAttach);
     return () =>
       window.removeEventListener("agentos-attach-background", onAttach);
-  }, [getTerminalWithFallback, getActiveTab, isMobile]);
+  }, [getTerminalWithFallback, isMobile]);
 
   // Session selection handler
   const handleSelectSession = useCallback(

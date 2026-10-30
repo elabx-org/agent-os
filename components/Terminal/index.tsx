@@ -111,6 +111,9 @@ export type { TerminalScrollState };
 
 export interface TerminalHandle {
   sendCommand: (command: string) => void;
+  /** A tmux attach or agent launch, typed only at the shell's prompt (with
+      leave, after leaving tmux there). Resolves false when it wasn't */
+  sendShellCommand: (command: string, leave?: boolean) => Promise<boolean>;
   sendInput: (data: string) => void;
   sendPaste: (data: string) => void;
   /** A file's path from elsewhere (the share sheet): into the composer as
@@ -233,6 +236,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
       sendInput,
       sendPaste,
       sendCommand,
+      sendShellCommand,
       execViaWs,
       focus,
       getScrollState,
@@ -339,6 +343,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
     // Expose imperative methods
     useImperativeHandle(ref, () => ({
       sendCommand,
+      sendShellCommand,
       sendInput,
       sendPaste,
       attachPath: (path: string) =>

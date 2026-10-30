@@ -101,6 +101,42 @@ export function useTerminalConnection({
     }
   }, []);
 
+  // A tmux attach or agent launch: the server types it only at the shell's
+  // prompt (leave: first out of tmux). False when it didn't
+  const sendShellCommand = useCallback(
+    (command: string, leave = false): Promise<boolean> => {
+      return new Promise((resolve) => {
+        const ws = wsRef.current;
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
+          resolve(false);
+          return;
+        }
+        const id = Math.random().toString(36).slice(2);
+        const timeout = setTimeout(() => {
+          ws.removeEventListener("message", handler);
+          resolve(false);
+        }, 10_000);
+        const handler = (event: MessageEvent) => {
+          try {
+            const msg = JSON.parse(event.data);
+            if (msg.type === "shell-command-result" && msg.id === id) {
+              clearTimeout(timeout);
+              ws.removeEventListener("message", handler);
+              resolve(!!msg.ok);
+            }
+          } catch {
+            /* ignore */
+          }
+        };
+        ws.addEventListener("message", handler);
+        ws.send(
+          JSON.stringify({ type: "shell-command", data: command, leave, id })
+        );
+      });
+    },
+    []
+  );
+
   // Execute a command via WebSocket (bypasses /api/exec which may be blocked by reverse proxy)
   const execViaWs = useCallback((command: string): Promise<string> => {
     return new Promise((resolve) => {
@@ -414,6 +450,7 @@ export function useTerminalConnection({
     sendInput,
     sendPaste,
     sendCommand,
+    sendShellCommand,
     execViaWs,
     focus,
     getScrollState,
