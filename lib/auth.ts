@@ -162,14 +162,10 @@ function sessionCookie(config: AuthConfig, sub: string, name: string): string {
 
 // --- The gate ---
 
-/**
- * Paths reachable without signing in: the sign-in itself, static assets and
- * the widget feed, which checks its own key (lib/widget-key.ts)
- */
+/** Paths reachable without signing in: the sign-in itself and static assets */
 function isPublic(pathname: string): boolean {
   return (
     pathname.startsWith("/auth/") ||
-    pathname === "/api/widget" ||
     pathname.startsWith("/_next/static/") ||
     /^\/(favicon\.ico|icon[^/]*|apple-icon[^/]*|manifest\.webmanifest)$/.test(
       pathname
