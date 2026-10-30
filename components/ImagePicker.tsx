@@ -18,6 +18,8 @@ import { cn } from "@/lib/utils";
 import type { FileNode } from "@/lib/file-utils";
 import { uploadFilesToTemp } from "@/lib/file-upload";
 import { useFileDrop } from "@/hooks/useFileDrop";
+import { ImageThumb } from "@/components/Composer/ImagePill";
+import { imageName } from "@/components/Composer/text";
 
 const IMAGE_EXTENSIONS = [
   "png",
@@ -105,6 +107,22 @@ export function ImagePicker({
     document.addEventListener("paste", handlePaste);
     return () => document.removeEventListener("paste", handlePaste);
   }, [handleImageFiles]);
+
+  // The newest uploads, a tap away (a picture cleared from the box, or one
+  // to send again)
+  const [recent, setRecent] = useState<string[]>([]);
+  useEffect(() => {
+    let live = true;
+    fetch("/api/files/recent-images?limit=12")
+      .then((res) => (res.ok ? res.json() : { images: [] }))
+      .then((data: { images?: { path: string }[] }) => {
+        if (live) setRecent((data.images ?? []).map((i) => i.path));
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, []);
 
   // Load directory contents
   const loadDirectory = useCallback(async (path: string) => {
@@ -316,6 +334,36 @@ export function ImagePicker({
           </>
         )}
       </div>
+
+      {recent.length > 0 && (
+        <div className="mt-3">
+          <h4 className="text-muted-foreground px-3 pb-1.5 text-xs font-medium tracking-wide uppercase">
+            Recent
+          </h4>
+          <div className="flex gap-2 overflow-x-auto px-3 pb-1">
+            {recent.map((path) => {
+              const name = imageName(path).replace(/\u2011/g, "-");
+              return (
+                <button
+                  key={path}
+                  type="button"
+                  onClick={() => onSelect(path)}
+                  aria-label={`Add ${name}`}
+                  className="flex w-[72px] shrink-0 flex-col items-center gap-1"
+                >
+                  <ImageThumb
+                    path={path}
+                    className="h-[72px] w-[72px] rounded-xl"
+                  />
+                  <span className="text-muted-foreground w-full truncate text-[11px]">
+                    {name}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto">

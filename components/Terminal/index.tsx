@@ -87,6 +87,8 @@ import { KeyboardDebugOverlay, useKeyboardDebug } from "./KeyboardDebugOverlay";
 import { useFileDrop } from "@/hooks/useFileDrop";
 import { uploadFilesToTemp } from "@/lib/file-upload";
 import { ImagePicker } from "@/components/ImagePicker";
+import { ImageViewer } from "@/components/ImageViewer";
+import { useImageEvents } from "@/lib/client/image-view";
 import { takeVideos } from "@/stores/videoUploads";
 import { joinWrappedUrls, linkify } from "./linkify";
 import {
@@ -250,6 +252,11 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
       },
       [sendInput, focus]
     );
+
+    // A picture path tapped in the terminal, full screen; it can go back
+    // into the message from there
+    const [viewingImage, setViewingImage] = useState<string | null>(null);
+    useImageEvents(containerRef, setViewingImage);
 
     // Handle file drop - upload them all, paths into the composer or terminal
     const handleFileDrop = useCallback(
@@ -1394,6 +1401,16 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
               draftId ? (files) => takeVideos(files, draftId) : undefined
             }
             onClose={() => setShowImagePicker(false)}
+          />
+        )}
+        {viewingImage && (
+          <ImageViewer
+            path={viewingImage}
+            onAdd={() => {
+              setViewingImage(null);
+              handleImageSelect(viewingImage);
+            }}
+            onClose={() => setViewingImage(null)}
           />
         )}
 

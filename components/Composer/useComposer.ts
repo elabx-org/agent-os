@@ -42,6 +42,7 @@ import {
   PASTE_LINES,
   collapse,
   expand,
+  droppedImages,
   imagePaths,
   keepChipsWhole,
   lineCount,
@@ -250,6 +251,32 @@ export function useComposer({
       retry: false,
     })),
   });
+  // Pictures the box lost all at once without being sent (the text cleared
+  // by mistake), offered back until put back, dismissed or sent
+  const [dropped, setDropped] = useState<string[]>([]);
+  const lastImages = useRef<{ session?: string | null; paths: string[] }>({
+    session: sessionId,
+    paths: images,
+  });
+  // A send or a × takes pictures out on purpose
+  const meant = useRef(false);
+  useEffect(() => {
+    const last = lastImages.current;
+    lastImages.current = { session: sessionId, paths: images };
+    if (last.session !== sessionId) {
+      setDropped([]);
+      return;
+    }
+    if (meant.current) {
+      meant.current = false;
+      return;
+    }
+    const gone = droppedImages(last.paths, images);
+    if (gone.length) setDropped(gone);
+    // A picture back in the box, by any route: nothing to offer
+    else if (images.length) setDropped([]);
+  }, [images, sessionId]);
+
   const sizes = images.map(
     (path, i) => uploadedSize(path) ?? metas[i]?.data?.size
   );
@@ -573,6 +600,7 @@ export function useComposer({
       const text = displayRef.current;
       // The space it was set apart with goes too
       const end = text[chip.end] === " " ? chip.end + 1 : chip.end;
+      if (chip.kind === "image") meant.current = true;
       setDisplay(text.slice(0, chip.start) + text.slice(end), chip.start);
       if (chip.kind === "paste")
         setPastes(pastesRef.current.filter((p) => p.n !== chip.n));
@@ -936,6 +964,7 @@ export function useComposer({
       setHist(-1);
       setPreview(null);
       setDismissed(null);
+      setDropped([]);
       if (sessionId && !command) clearQuotes(sessionId);
     },
     [setPastes, setAttached, sessionId, command]
@@ -944,9 +973,19 @@ export function useComposer({
   /** The whole draft becomes `text` (cleared after a send, a queued
       message brought back to edit); no pills */
   const replace = useCallback(
-    (next: string) => setDisplay(next, next.length, []),
+    (next: string) => {
+      meant.current = true;
+      setDisplay(next, next.length, []);
+    },
     [setDisplay]
   );
+
+  /** The pictures the box lost, back at the end of what's typed */
+  const putBack = useCallback(() => {
+    const paths = dropped;
+    setDropped([]);
+    if (paths.length) insert(`${paths.join(" ")} `, true);
+  }, [dropped, insert]);
 
   return {
     textareaRef,
@@ -1004,6 +1043,10 @@ export function useComposer({
     closePreview: () => setPreview(null),
     removeChip,
     unfoldChip,
+    /** Pictures the box lost without being sent, to put back */
+    dropped,
+    putBack,
+    dismissDropped: () => setDropped([]),
     // editing
     insert,
     replace,

@@ -63,6 +63,8 @@ import { fetchAsUser } from "@/lib/client/user-fetch";
 import { Conversation, type TurnActions } from "./Conversation";
 import { LimitedCardSlot } from "./LimitedCardSlot";
 import { RunningCardSlot } from "@/components/Running/RunningCard";
+import { ImageViewer } from "@/components/ImageViewer";
+import { useImageEvents } from "@/lib/client/image-view";
 import { NeedsYouCard } from "./NeedsYouCard";
 import { buildRows, placeTurns } from "./rows";
 import { SubagentPanel } from "./SubagentPanel";
@@ -373,6 +375,11 @@ export function ChatView({
   // live state joins the work above (the pane drops its strip for it); on a
   // table (not typing) the base holds the actions or the answer first, the
   // composer last.
+  // A picture in the conversation, full screen; it can go back into the
+  // message from there
+  const [viewingImage, setViewingImage] = useState<string | null>(null);
+  useImageEvents(outerRef, setViewingImage);
+
   const rootRef = useRef<HTMLDivElement>(null);
   const [composerFocused, setComposerFocused] = useState(false);
   const deck = useFoldDeck(rootRef);
@@ -871,6 +878,16 @@ export function ChatView({
               ? "@2xl/chat:w-auto @2xl/chat:max-w-none @2xl/chat:flex-1 @2xl/chat:border-l-0"
               : undefined
           }
+        />
+      )}
+      {viewingImage && (
+        <ImageViewer
+          path={viewingImage}
+          onAdd={() => {
+            setViewingImage(null);
+            composer.insert(`${viewingImage} `, true);
+          }}
+          onClose={() => setViewingImage(null)}
         />
       )}
       {reviewHere && diffTurn !== null && (
