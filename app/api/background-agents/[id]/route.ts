@@ -23,8 +23,13 @@ export async function GET(_request: NextRequest, { params }: Params) {
     return NextResponse.json({ logs: await backgroundAgentLogs(id) });
   } catch (error) {
     const err = error as { stderr?: string };
+    const message = err.stderr?.trim() || "";
+    // Its job is gone and it left no conversation: nothing to show, which
+    // isn't an error to the page
+    if (/job not found|already exited/i.test(message))
+      return NextResponse.json({ logs: "", ended: true });
     return NextResponse.json(
-      { error: err.stderr?.trim() || "No output for it" },
+      { error: message || "No output for it" },
       { status: 404 }
     );
   }
