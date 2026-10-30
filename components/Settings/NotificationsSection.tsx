@@ -21,7 +21,6 @@ import {
 } from "@/lib/notifications";
 import { cn } from "@/lib/utils";
 import { SettingGroup, SettingRow } from "./SettingGroup";
-import { WidgetLink } from "./WidgetLink";
 
 export interface NotificationsSectionProps {
   settings: NotificationSettings;
@@ -172,8 +171,6 @@ export function NotificationsSection({
           notify.
         </p>
       </div>
-
-      <WidgetLink />
     </>
   );
 }
