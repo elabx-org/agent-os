@@ -64,6 +64,7 @@ import { Conversation, type TurnActions } from "./Conversation";
 import { LimitedCardSlot } from "./LimitedCardSlot";
 import { RunningCardSlot } from "@/components/Running/RunningCard";
 import { ImageViewer } from "@/components/ImageViewer";
+import { LastMinePill } from "@/components/LastMinePill";
 import { useImageEvents } from "@/lib/client/image-view";
 import { NeedsYouCard } from "./NeedsYouCard";
 import { buildRows, placeTurns } from "./rows";
@@ -380,6 +381,57 @@ export function ChatView({
   const [viewingImage, setViewingImage] = useState<string | null>(null);
   useImageEvents(outerRef, setViewingImage);
 
+  // "Your last message" while it's above the view (a long reply after it)
+  const [mineAbove, setMineAbove] = useState(false);
+  const lastMine = useCallback(() => {
+    const all = scrollRef.current?.querySelectorAll(".bubble-me");
+    return all?.length ? all[all.length - 1] : null;
+  }, []);
+  const checkMine = useCallback(() => {
+    const el = scrollRef.current;
+    const mine = lastMine();
+    setMineAbove(
+      !!el &&
+        !!mine &&
+        mine.getBoundingClientRect().bottom < el.getBoundingClientRect().top
+    );
+  }, [lastMine]);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    let frame = 0;
+    const soon = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(checkMine);
+    };
+    const changes = new MutationObserver(soon);
+    changes.observe(el, { childList: true, subtree: true });
+    el.addEventListener("scroll", soon, { passive: true });
+    soon();
+    return () => {
+      cancelAnimationFrame(frame);
+      changes.disconnect();
+      el.removeEventListener("scroll", soon);
+    };
+  }, [checkMine]);
+  // "Edit and resend": a sent message back in the box, after what's typed
+  const reuseMessage = useCallback(
+    (text: string) => {
+      const c = composerRef.current;
+      if (c.draft.trim()) c.insert(text, true);
+      else c.replace(text);
+      c.textareaRef.current?.focus();
+    },
+    []
+  );
+  const jumpToMine = () =>
+    lastMine()?.scrollIntoView({
+      block: "start",
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+        ? "auto"
+        : "smooth",
+    });
+
   const rootRef = useRef<HTMLDivElement>(null);
   const [composerFocused, setComposerFocused] = useState(false);
   const deck = useFoldDeck(rootRef);
@@ -540,6 +592,7 @@ export function ChatView({
                   onShowWorkflow={setOpenRun}
                   quotable
                   turns={turnActions}
+                  onReuse={reuseMessage}
                 />
               </div>
             </div>
@@ -608,6 +661,13 @@ export function ChatView({
             <div className={cn("pointer-events-auto mx-auto", column)}>
               <SentToast sessionId={session.id} />
             </div>
+            <div className="mt-2 flex justify-center">
+              <LastMinePill
+                visible={mineAbove}
+                onJump={jumpToMine}
+                className="pointer-events-auto"
+              />
+            </div>
           </div>
         </div>
         <div
@@ -667,6 +727,7 @@ export function ChatView({
                   onShowWorkflow={setOpenRun}
                   quotable
                   turns={turnActions}
+                  onReuse={reuseMessage}
                 />
               </div>
             ) : (
@@ -680,6 +741,7 @@ export function ChatView({
                   onShowWorkflow={setOpenRun}
                   quotable
                   turns={turnActions}
+                  onReuse={reuseMessage}
                 />
               </div>
             )}

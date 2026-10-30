@@ -4,7 +4,7 @@ import { Terminal as XTerm } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { openLink, registerWrappedLinks } from "./wrapped-links";
-import { registerImageLinks } from "./image-links";
+import { registerPathLinks } from "./path-links";
 import { loadLinkProxy } from "@/lib/client/link-target";
 import { SearchAddon } from "@xterm/addon-search";
 import { CanvasAddon } from "@xterm/addon-canvas";
@@ -66,7 +66,7 @@ export function createTerminal(
   term.loadAddon(fitAddon);
   // First, so a wrapped URL beats WebLinksAddon's half of it
   registerWrappedLinks(term);
-  registerImageLinks(term);
+  registerPathLinks(term);
   void loadLinkProxy();
   term.loadAddon(new WebLinksAddon((_event, uri) => openLink(uri)));
   term.loadAddon(searchAddon);

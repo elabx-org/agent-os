@@ -200,6 +200,11 @@ export const Pane = memo(function Pane({
 
   // Watch for file open requests
   const { request: fileOpenRequest } = useSnapshot(fileOpenStore);
+  // The line an open request asked for, for Files to put the cursor on
+  const [fileJump, setFileJump] = useState<{
+    path: string;
+    line: number;
+  } | null>(null);
 
   // The activity strip says what the session is doing, unless the rail
   // beside the pane already does, Focus hides both, or the view on the fold
@@ -301,11 +306,15 @@ export const Pane = memo(function Pane({
     if (fileOpenRequest && isFocused && session) {
       // Switch to files view
       setViewMode("files");
-      // Open the file
+      // Open the file, at its line
       fileEditor.openFile(fileOpenRequest.path);
+      setFileJump(
+        fileOpenRequest.line > 0
+          ? { path: fileOpenRequest.path, line: fileOpenRequest.line }
+          : null
+      );
       // Clear the request
       fileOpenActions.clearRequest();
-      // TODO: Scroll to line (requires FileEditor enhancement)
     }
   }, [fileOpenRequest, isFocused, session, fileEditor]);
 
@@ -639,6 +648,7 @@ export const Pane = memo(function Pane({
                 active={isFocused && viewMode === "files"}
                 workingDirectory={session.working_directory}
                 fileEditor={fileEditor}
+                jumpRequest={fileJump}
               />
             </div>
           )}

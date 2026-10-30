@@ -34,3 +34,13 @@ test("a message with no pictures is left alone", () => {
 test("only pictures: no words", () => {
   assert.deepEqual(splitImages(A), { images: [A], text: "" });
 });
+
+test("pictures named in a reply", async () => {
+  const { replyImages } = await import("../../components/Composer/text");
+  assert.deepEqual(
+    replyImages(
+      "Saved `/config/shots/home.png` and (/tmp/a.jpg). Also ~/b.webp.\nNot https://x.dev/c.png or c.png"
+    ),
+    ["/config/shots/home.png", "/tmp/a.jpg", "~/b.webp"]
+  );
+});

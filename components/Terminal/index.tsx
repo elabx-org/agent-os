@@ -26,7 +26,9 @@ import {
   Undo2,
   KeyboardOff,
   ChevronDown,
+  ArrowUpToLine,
 } from "lucide-react";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { SearchBar } from "./SearchBar";
 import { ScrollToBottomButton } from "./ScrollToBottomButton";
@@ -88,7 +90,8 @@ import { useFileDrop } from "@/hooks/useFileDrop";
 import { uploadFilesToTemp } from "@/lib/file-upload";
 import { ImagePicker } from "@/components/ImagePicker";
 import { ImageViewer } from "@/components/ImageViewer";
-import { useImageEvents } from "@/lib/client/image-view";
+import { useFileEvents, useImageEvents } from "@/lib/client/image-view";
+import { fileOpenActions } from "@/stores/fileOpen";
 import { takeVideos } from "@/stores/videoUploads";
 import { joinWrappedUrls, linkify } from "./linkify";
 import {
@@ -257,6 +260,36 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
     // into the message from there
     const [viewingImage, setViewingImage] = useState<string | null>(null);
     useImageEvents(containerRef, setViewingImage);
+    // A file path tapped in the terminal opens in Files, at its line; a
+    // relative one is the session folder's
+    const cwd = session?.working_directory;
+    const openTappedFile = useCallback(
+      ({ path, line }: { path: string; line?: number }) => {
+        const full =
+          path.startsWith("/") || path.startsWith("~") || !cwd
+            ? path
+            : `${cwd.replace(/\/$/, "")}/${path.replace(/^\.\//, "")}`;
+        fileOpenActions.requestOpen(full, line ?? 0);
+      },
+      [cwd]
+    );
+    useFileEvents(containerRef, openTappedFile);
+
+    // Back to where the user's last message starts: tmux holds the
+    // history, so the server finds it and scrolls copy mode there
+    const sessionId = session?.id;
+    const jumpToLastMessage = useCallback(async () => {
+      if (!sessionId) return;
+      try {
+        const res = await fetch(`/api/sessions/${sessionId}/last-message`, {
+          method: "POST",
+        });
+        const data = (await res.json()) as { found?: boolean };
+        if (!data.found) toast("No message of yours in this terminal yet");
+      } catch {
+        toast.error("Couldn't scroll the terminal");
+      }
+    }, [sessionId]);
 
     // Handle file drop - upload them all, paths into the composer or terminal
     const handleFileDrop = useCallback(
@@ -1148,6 +1181,11 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
                 label: "Rewind",
                 onSelect: () => composerToolsRef.current?.rewind?.(),
               },
+              {
+                icon: ArrowUpToLine,
+                label: "Your last message",
+                onSelect: () => void jumpToLastMessage(),
+              },
             ]
           : []),
         {
@@ -1157,7 +1195,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
         },
         { icon: KeyboardOff, label: "Hide keys", onSelect: toggleToolbar },
       ],
-      [keysContext, typeInTerminal, toggleToolbar]
+      [keysContext, typeInTerminal, toggleToolbar, jumpToLastMessage]
     );
 
     // Auto-copy: when user drags to select text (tmux handles the selection),
@@ -1528,6 +1566,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
                   sessionId={draftId}
                   onSend={sendFromComposer}
                   onTypeInTerminal={typeInTerminal}
+                  onLastMessage={jumpToLastMessage}
                   onPhoto={() => setShowImagePicker(true)}
                   onSelectText={() => setSelectMode(true)}
                   readScreen={readScreen}
