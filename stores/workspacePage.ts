@@ -8,7 +8,8 @@ export type WorkspacePage =
   | { kind: "new"; projectId?: string; runAs?: "session" | "agent" }
   | { kind: "agent"; agentId: string }
   | { kind: "projectSettings"; projectId: string }
-  | { kind: "inbox" };
+  | { kind: "inbox" }
+  | { kind: "running" };
 
 export type WorkspacePageKind = WorkspacePage["kind"];
 

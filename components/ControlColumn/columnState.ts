@@ -6,6 +6,7 @@ import {
   columnFor,
   columnKindFor,
   moreItems,
+  RUNNING_ITEM,
   type ColumnContext,
   type ColumnItem,
   type ColumnOrder,
@@ -19,6 +20,7 @@ import { newSurfaceStore } from "@/stores/newSurface";
 import { focusStore } from "@/stores/focus";
 import { settingsPageStore } from "@/stores/settingsPage";
 import { workspacePageStore } from "@/stores/workspacePage";
+import { runningStore } from "@/stores/running";
 import {
   currentSurface,
   surfaceStore,
@@ -178,7 +180,10 @@ export function nativeColumn(): {
     wide: WIDE.includes(mode),
     // What the column shows already isn't offered again
     more: kind
-      ? moreItems(kind, columnOrderStore.order, mobileNavStore.viewMode)
+      ? [
+          ...moreItems(kind, columnOrderStore.order, mobileNavStore.viewMode),
+          ...(runningStore.enabled ? [RUNNING_ITEM] : []),
+        ]
           .filter((it) => !items.some((shown) => shown.id === it.id))
           .map(({ icon: _icon, ...rest }) => rest)
       : [],

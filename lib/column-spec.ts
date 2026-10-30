@@ -178,6 +178,12 @@ const BASE = {
     label: "Close settings",
   },
   server: { id: "server", symbol: "globe", icon: "Globe", label: "Server" },
+  running: {
+    id: "running",
+    symbol: "play.rectangle",
+    icon: "MonitorPlay",
+    label: "Running",
+  },
   chat: {
     id: "chat",
     symbol: "bubble.left",
@@ -344,6 +350,9 @@ const BASE = {
     label: "Upload",
   },
 } satisfies Record<string, Base & { id: NavAction }>;
+
+/** More's Running (M16), while Labs has it on */
+export const RUNNING_ITEM: Base = BASE.running;
 
 function item(base: Base, extra: Partial<ColumnItem> = {}): ColumnItem {
   const out: ColumnItem = { ...base, ...extra };

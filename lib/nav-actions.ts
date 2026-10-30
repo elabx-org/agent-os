@@ -14,8 +14,10 @@ import { toggleFocus } from "@/stores/focus";
 import {
   backPage,
   closePage,
+  openPage,
   workspacePageStore,
 } from "@/stores/workspacePage";
+import { runningStore } from "@/stores/running";
 import { closeNew, newSurfaceStore } from "@/stores/newSurface";
 import { openProjectSettings } from "@/stores/projectSettings";
 import { openScripts } from "@/stores/scriptsSheet";
@@ -66,6 +68,7 @@ export const NAV_ACTIONS = [
   "newPr",
   "newFile",
   "upload",
+  "running",
 ] as const;
 
 /**
@@ -236,6 +239,17 @@ export function registerNavHandlers(
   };
 }
 
+/** A workspace page's own back (a pushed detail): true if it went back */
+let pageBack: (() => boolean) | null = null;
+
+/** Sets the page's back; the returned cleanup clears it while still set */
+export function registerPageBack(back: () => boolean): () => void {
+  pageBack = back;
+  return () => {
+    if (pageBack === back) pageBack = null;
+  };
+}
+
 /**
  * One level up, topmost layer first as surfaceFor ranks them: a Settings
  * section, Settings, Find, New, a page, Needs you, Projects, else Now
@@ -258,6 +272,7 @@ function goBack() {
   if (surfaceStore.searchOpen) return navStore.goBack();
   if (newSurfaceStore.open) return closeNew();
   if (workspacePageStore.page) {
+    if (pageBack?.()) return;
     if (workspacePageStore.previous) backPage();
     else navStore.openNow();
     return;
@@ -337,6 +352,10 @@ export const NAV_ROUTES: Record<NavAction, (leftPage: boolean) => void> = {
   newPr: () => navStore.newPullRequest(),
   newFile: () => navStore.newFile(),
   upload: () => navStore.uploadFile(),
+  // M16, behind Labs: what sessions left running, with a preview
+  running: () => {
+    if (runningStore.enabled) openPage({ kind: "running" });
+  },
 };
 
 /** Actions on or beside Settings: it stays up for them */
