@@ -18,6 +18,7 @@ import { mobileNavStore } from "@/stores/mobileNav";
 import { focusStore } from "@/stores/focus";
 import { gitMenuStore } from "@/stores/gitMenu";
 import { moveSheetStore, openMoveSheet } from "@/stores/moveSheet";
+import { runningStore } from "@/stores/running";
 import { useSurface } from "@/stores/surface";
 import {
   DropdownMenu,
@@ -139,6 +140,7 @@ function MoreMenu({ shown, ...props }: MoreProps) {
   const { on: focus } = useSnapshot(focusStore);
   const { actions: git } = useSnapshot(gitMenuStore);
   const { offer: movable } = useSnapshot(moveSheetStore);
+  const { enabled: running } = useSnapshot(runningStore);
   const inSession = surface === "session" || surface === "beside";
   const wide = mode === "duo-open" || mode === "book" || mode === "desktop";
   const go = (action: NavAction) => () => runNav(action);
@@ -222,6 +224,9 @@ function MoreMenu({ shown, ...props }: MoreProps) {
             {it.label}
           </DropdownMenuItem>
         ))}
+        {running && (
+          <DropdownMenuItem onSelect={go("running")}>Running</DropdownMenuItem>
+        )}
         {!has("projects") && (
           <DropdownMenuItem onSelect={go("projects")}>
             Projects

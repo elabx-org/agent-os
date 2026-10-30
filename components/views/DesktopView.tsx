@@ -21,6 +21,7 @@ import { mobileNavStore } from "@/stores/mobileNav";
 import { diffReviewStore } from "@/stores/diffReview";
 import { focusStore } from "@/stores/focus";
 import { isNative } from "@/lib/native-bridge";
+import { useRunningFlag } from "@/hooks/useRunningFlag";
 import { useIsNative } from "@/hooks/useIsNative";
 import type { Session } from "@/lib/db";
 import { besidePills, SessionSpread } from "./SessionSpread";
@@ -82,6 +83,7 @@ export function DesktopView(props: ViewProps) {
   });
   // Needs you: a page across the open Duo, a dialog on the web
   useNeedsYouPage(!desktop);
+  useRunningFlag();
 
   // A page covers the pane, so the column selects no view
   useEffect(() => {
@@ -238,7 +240,7 @@ export function DesktopView(props: ViewProps) {
         projects={projects}
         homeOpen={sidebarOpen}
         homeWidth={homeWidth}
-        pageSpread={page?.kind === "inbox"}
+        pageSpread={page?.kind === "inbox" || page?.kind === "running"}
         page={
           pageOpen && (
             <WorkspacePage view={props} onOpenSession={openFromHome} />

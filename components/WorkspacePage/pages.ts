@@ -44,4 +44,8 @@ export const PAGES: { [K in WorkspacePageKind]: ComponentType<PageProps<K>> } =
         ),
       { ssr: false }
     ),
+    running: dynamic(
+      () => import("@/components/Running").then((m) => m.RunningPage),
+      { ssr: false }
+    ),
   };

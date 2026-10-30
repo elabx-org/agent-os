@@ -16,6 +16,7 @@ export const FLAG_NAMES = [
   "modeAtIdle",
   "portProxy",
   "bgSendCleanup",
+  "running",
 ] as const;
 
 export type FlagName = (typeof FLAG_NAMES)[number];
@@ -50,6 +51,8 @@ export const FLAG_DEFAULTS: Flags = {
   // M10: on, so "Send and start a new session" doesn't litter Now; Labs
   // turns it off (fresh sessions are then kept)
   bgSendCleanup: true,
+  // M16: the Running view, off until it settles
+  running: false,
 };
 
 export const FLAGS_PREFERENCE_KEY = "flags";
@@ -133,6 +136,10 @@ export const FLAG_LABELS: Record<FlagName, { label: string; hint: string }> = {
   bgSendCleanup: {
     label: "Remove unused new sessions",
     hint: "A session opened by Send and start a new session is deleted when left without a message",
+  },
+  running: {
+    label: "Running",
+    hint: "Lists the dev servers sessions started, with a live preview through the port proxy",
   },
 };
 

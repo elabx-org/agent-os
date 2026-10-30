@@ -15,6 +15,7 @@ import { fileOpenActions } from "@/stores/fileOpen";
 import { mobileNavStore } from "@/stores/mobileNav";
 import { ControlColumn } from "@/components/ControlColumn";
 import { LiveSheet } from "@/components/ControlColumn/LiveSheet";
+import { useRunningFlag } from "@/hooks/useRunningFlag";
 import { useSideRail } from "@/hooks/useSideRail";
 import { useLayoutMode } from "@/hooks/useLayoutMode";
 import { isNative, nativeCaps } from "@/lib/native-bridge";
@@ -86,6 +87,7 @@ export function MobileView(props: ViewProps) {
   const pageOpen = !!page;
   // Needs you is a page here, over the home like the others
   useNeedsYouPage(true);
+  useRunningFlag();
 
   // A page covers the pane too
   useEffect(() => {

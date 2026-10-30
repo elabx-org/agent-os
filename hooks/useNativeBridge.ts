@@ -17,6 +17,7 @@ import { mobileNavStore } from "@/stores/mobileNav";
 import { settingsPageStore } from "@/stores/settingsPage";
 import { workspacePageStore } from "@/stores/workspacePage";
 import { focusStore } from "@/stores/focus";
+import { runningStore } from "@/stores/running";
 import { newSurfaceStore } from "@/stores/newSurface";
 import { surfaceStore } from "@/stores/surface";
 import { layoutStore } from "@/hooks/useLayoutMode";
@@ -117,6 +118,7 @@ export function useNativeBridge({ waitingCount }: NativeBridgeOptions) {
       subscribeKey(settingsPageStore, "open", report),
       subscribeKey(workspacePageStore, "page", report),
       subscribeKey(focusStore, "on", report),
+      subscribeKey(runningStore, "enabled", report),
       ...(column
         ? [
             subscribeKey(mobileNavStore, "homeOpen", report),
