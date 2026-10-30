@@ -22,6 +22,7 @@ import { ComposerInput, type ComposerInputProps } from "./ComposerInput";
 import { ComposerPopover } from "./ComposerPopover";
 import { ComposerChips } from "./ModeChip";
 import { VideoPills } from "./VideoPills";
+import { PutBackChip } from "./PutBackChip";
 import { SessionAttachChip } from "./SessionAttachChip";
 import { attachFooter, sessionRefs } from "./attach-model";
 import { FailedSends, QueueCard } from "./QueueCard";
@@ -583,6 +584,7 @@ export function ComposerCard({
         anchorRef={rowRef}
       />
       {above}
+      <PutBackChip composer={composer} />
       <div ref={rowRef} className="flex items-end gap-2.5">
         <div
           className={cn(

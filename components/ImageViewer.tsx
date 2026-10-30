@@ -21,6 +21,8 @@ interface ImageViewerProps {
   size?: number;
   /** Take the picture out of the message */
   onRemove?: () => void;
+  /** Put the picture in the message (one already sent, shown again) */
+  onAdd?: () => void;
   onClose: () => void;
 }
 
@@ -52,6 +54,7 @@ export function ImageViewer({
   path,
   size,
   onRemove,
+  onAdd,
   onClose,
 }: ImageViewerProps) {
   const [view, setView] = useState<View>(FIT);
@@ -289,6 +292,11 @@ export function ImageViewer({
             className={cn(BUTTON, "text-red-400")}
           >
             Remove
+          </button>
+        )}
+        {onAdd && (
+          <button type="button" onClick={onAdd} className={BUTTON}>
+            Add to message
           </button>
         )}
         <button

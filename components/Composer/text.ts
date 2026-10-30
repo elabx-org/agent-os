@@ -43,6 +43,31 @@ export function imagePaths(draft: string): string[] {
   return [...new Set([...draft.matchAll(IMAGE_PATH)].map((m) => m[0]))];
 }
 
+/**
+ * The pictures a change of draft dropped all at once (the box cleared or
+ * the text that held them deleted), to offer back; none when any stayed
+ */
+export function droppedImages(before: string[], after: string[]): string[] {
+  if (!before.length || before.some((p) => after.includes(p))) return [];
+  return before;
+}
+
+/**
+ * A sent message's pictures, shown as pictures, and its words without the
+ * paths (spaces they leave behind tidied away)
+ */
+export function splitImages(text: string): { images: string[]; text: string } {
+  const images = imagePaths(text);
+  if (!images.length) return { images, text };
+  const rest = text
+    .replace(IMAGE_PATH, "")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/[ \t]+$/gm, "")
+    .replace(/^[ \t]+/gm, "")
+    .trim();
+  return { images, text: rest };
+}
+
 /** "IMG_7654" from ".../1730000000000-1a2b3c4d-IMG_7654.jpeg" */
 export function imageName(path: string): string {
   const base = path.slice(path.lastIndexOf("/") + 1);

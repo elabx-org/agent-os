@@ -16,6 +16,9 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
+import { ImageThumb } from "@/components/Composer/ImagePill";
+import { imagePaths } from "@/components/Composer/text";
+import { showImage } from "@/lib/client/image-view";
 import { cn } from "@/lib/utils";
 import { StateDot } from "@/components/a/StateDot";
 import { AgentRow, StateWord } from "@/components/rows/AgentRow";
@@ -175,10 +178,31 @@ function PlainLine({ line }: { line: ToolLine & { kind: "tool" | "agent" } }) {
 
 function Line({ line }: { line: ToolLine }) {
   switch (line.kind) {
-    case "read":
+    case "read": {
+      // Pictures Claude looked at: a thumbnail to tap instead of the icon
+      const pictures = imagePaths(line.files.join(" "));
       return (
         <div className="tool" title={line.files.join("\n")}>
-          <FileText className={ICON} />
+          {pictures.length ? (
+            <span className="flex flex-none -space-x-2">
+              {pictures.slice(0, 3).map((path) => (
+                <button
+                  key={path}
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    showImage(e.currentTarget, path);
+                  }}
+                  aria-label={`View ${baseName(path)}`}
+                  className="ring-card relative rounded-md ring-2 after:absolute after:-inset-2 after:content-['']"
+                >
+                  <ImageThumb path={path} className="h-6 w-6 rounded-md" />
+                </button>
+              ))}
+            </span>
+          ) : (
+            <FileText className={ICON} />
+          )}
           <span className="min-w-0 flex-1 truncate">
             Read{" "}
             {line.files.length === 1 ? (
@@ -192,6 +216,7 @@ function Line({ line }: { line: ToolLine }) {
           <LineEnd line={line} />
         </div>
       );
+    }
     case "search":
       return (
         <div className="tool" title={line.patterns.join("\n")}>

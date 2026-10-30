@@ -2,6 +2,9 @@
 
 import { ChevronRight } from "lucide-react";
 import { Markdown } from "@/components/Markdown";
+import { ImageThumb } from "@/components/Composer/ImagePill";
+import { imageName, splitImages } from "@/components/Composer/text";
+import { showImage } from "@/lib/client/image-view";
 import type { SubagentInfo } from "@/lib/claude-subagents";
 import type { WorkflowInfo } from "@/lib/claude-workflows";
 import type { Turn } from "@/lib/turn-types";
@@ -103,10 +106,15 @@ function RowView({
  * The user's message. Line comments sent from the diff review (O-Diff) read
  * as a quote card per comment: the file:lines label, then the comment
  */
-function UserBubble({ text }: { text: string }) {
-  const comments = parseReviewMessage(text);
+function UserBubble({ text: sent }: { text: string }) {
+  const comments = parseReviewMessage(sent);
+  // Pictures sent with it show as pictures, not their /tmp paths
+  const { images, text } = comments
+    ? { images: [], text: sent }
+    : splitImages(sent);
   return (
     <div className="bubble-me ml-8 flex min-w-0 flex-col gap-2 text-[15px] [overflow-wrap:anywhere] whitespace-pre-wrap">
+      {images.length > 0 && <SentImages paths={images} />}
       {comments
         ? comments.map((c, i) => (
             <div key={i} className="flex min-w-0 flex-col gap-1.5">
@@ -120,7 +128,30 @@ function UserBubble({ text }: { text: string }) {
               <span>{c.body}</span>
             </div>
           ))
-        : text}
+        : text || null}
+    </div>
+  );
+}
+
+/** A message's pictures: one large, several as a row of squares */
+function SentImages({ paths }: { paths: string[] }) {
+  const one = paths.length === 1;
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {paths.map((path) => (
+        <button
+          key={path}
+          type="button"
+          onClick={(e) => showImage(e.currentTarget, path)}
+          aria-label={`View ${imageName(path).replace(/\u2011/g, "-")}`}
+          className="block overflow-hidden rounded-xl"
+        >
+          <ImageThumb
+            path={path}
+            className={one ? "h-44 w-36 sm:h-56 sm:w-44" : "h-20 w-20"}
+          />
+        </button>
+      ))}
     </div>
   );
 }
