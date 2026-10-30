@@ -7,6 +7,8 @@ import { getProject, getProjectSessions } from "./projects";
 import { readClaudeSessionMeta } from "./claude-transcript";
 import { parseProjectHooks } from "./project-hooks";
 import { withClaudeState, type HookGroup } from "./claude-state";
+import { proxyEnabled } from "./port-proxy-config";
+import { publicOrigin } from "./public-origin";
 
 export { parseProjectHooks } from "./project-hooks";
 
@@ -64,7 +66,8 @@ export async function buildProjectNote(
     (s) => s.id !== session?.id && s.agent_type !== "shell"
   );
   const instructions = project.instructions?.trim();
-  if (!instructions && others.length === 0) return null;
+  const proxy = proxyEnabled();
+  if (!instructions && others.length === 0 && !proxy) return null;
 
   const rows = await Promise.all(
     others.map(async (s) => {
@@ -110,6 +113,14 @@ They are other Claude Code sessions on this machine, working on related code. Wh
 - A reply arrives as a message at the end of the other session's turn. Don't wait idle for one.
 
 This list was written when this session started; ListAgents shows who is running now.`);
+  }
+
+  if (proxy) {
+    const origin = publicOrigin();
+    const example = origin ? `${origin}/proxy/5173/` : "/proxy/5173/";
+    sections.push(`## Servers you start
+
+The user works from their phone through AgentOS, not on this machine, so localhost links don't reach them. A server you start (a dev server, a preview, a test page) is reachable through AgentOS's port proxy: port 5173 is ${example}. When you start one, give the user that link (the agent-os MCP tool preview_url gives it for a port), never a localhost or 0.0.0.0 address, and don't open ports to the network. Stop servers you started when you're done with them (stop_server).`);
   }
 
   const dropFile = path.join(

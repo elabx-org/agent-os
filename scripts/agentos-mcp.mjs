@@ -203,6 +203,7 @@ const server = new McpServer(
       "A typical run: list_projects (or create_project), start_session with a task, then wait_for_session and read_session; when it is asking a question, answer_prompt.",
       "Permission requests are the user's: you can't answer them (answer_prompt and send_message refuse) or start sessions that skip them. When a session is waiting for permission, tell the user and let them answer it in AgentOS.",
       "You can't control your own session. Don't stop, interrupt or answer prompts in sessions you didn't start unless the user asks.",
+      "The user is on their phone, not this machine: a server you start (a dev server, a preview, a test page) is reachable only through AgentOS's port proxy. When you start one, give the user its preview_url link, never a localhost or 0.0.0.0 address, and don't open ports to the network. Bind to 127.0.0.1 or 0.0.0.0 on any free port. list_servers shows what runs; stop_server stops only servers your own session started.",
     ].join("\n"),
   }
 );
@@ -547,6 +548,71 @@ server.registerTool(
       method: "POST",
     });
     return stopped ? `Stopped ${s.name}` : `${s.name} wasn't running`;
+  })
+);
+
+async function servers() {
+  return (await api("/api/running")).servers;
+}
+
+const serverRow = (s) => ({
+  port: s.port,
+  link: s.link,
+  command: s.command || s.name,
+  folder: s.cwd,
+  started_by: s.sessionName,
+  yours: !!ownTmux && s.tmux === ownTmux,
+  started_at: s.startedAt ? new Date(s.startedAt).toISOString() : null,
+});
+
+server.registerTool(
+  "list_servers",
+  {
+    description:
+      "List the servers listening in this machine that the user can reach through AgentOS: port, the link to give the user, command, folder, and the session that started it.",
+    inputSchema: {},
+  },
+  tool(async () => (await servers()).map(serverRow))
+);
+
+server.registerTool(
+  "preview_url",
+  {
+    description:
+      "The link the user opens to reach a server on this machine (through AgentOS's port proxy). Give the user this, never localhost.",
+    inputSchema: {
+      port: z.number().int().min(1).max(65535).describe("The server's port"),
+      path: z
+        .string()
+        .optional()
+        .describe("A path on the server, e.g. /settings (default /)"),
+    },
+  },
+  tool(async ({ port, path }) => {
+    const found = (await servers()).find((s) => s.port === port);
+    if (!found)
+      throw new Error(
+        `Nothing the user can reach listens on port ${port}. Start the server first (or it is AgentOS itself, or a port the proxy refuses).`
+      );
+    const rest = (path || "/").replace(/^\/*/, "");
+    return found.link + rest;
+  })
+);
+
+server.registerTool(
+  "stop_server",
+  {
+    description:
+      "Stop a server your own session started (SIGTERM). Servers other sessions or the user started are theirs: ask the user.",
+    inputSchema: {
+      port: z.number().int().min(1).max(65535).describe("The server's port"),
+    },
+  },
+  tool(async ({ port }) => {
+    const found = (await servers()).find((s) => s.port === port);
+    if (!found?.pid) throw new Error(`Nothing listens on port ${port}`);
+    await api(`/api/running/${found.pid}`, { method: "DELETE" });
+    return `Stopped :${port}`;
   })
 );
 

@@ -62,6 +62,13 @@ function isSecret(values: string[]): boolean {
   });
 }
 
+/** The request carries this boot's proof cookie (the user's browser) */
+export function hasUserCookie(req: Request): boolean {
+  if (req.headers.get("x-agentos-origin")?.toLowerCase() === "agent")
+    return false;
+  return isSecret(readCookies(req.headers.get("cookie"), USER_PROOF_COOKIE));
+}
+
 /** Origin is this site, as the browser sees it (directly or via the proxy) */
 function originMatches(
   origin: string | null,

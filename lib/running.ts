@@ -11,6 +11,8 @@ import { listListeningPorts } from "@/lib/listening-ports";
 import { proxyConfig } from "@/lib/port-proxy-config";
 import { isRefusedPort } from "@/lib/port-proxy-target";
 import { getDb, queries, type Session } from "@/lib/db";
+import { publicOrigin } from "@/lib/public-origin";
+import { proxyUrlFor } from "@/lib/proxy-url";
 
 const execFileAsync = promisify(execFile);
 
@@ -26,8 +28,12 @@ export interface RunningServer {
   startedAt: number | null;
   sessionId: string | null;
   sessionName: string | null;
-  /** Through the port proxy */
+  /** The tmux session it runs under, an agent's or not */
+  tmux: string | null;
+  /** Through the port proxy, from this origin */
   url: string;
+  /** The same, from where the user opens AgentOS when that's known */
+  link: string;
 }
 
 const MAX_COMMAND = 160;
@@ -97,6 +103,7 @@ export async function listRunning(): Promise<RunningServer[]> {
   const sessions = queries.getAllSessions(getDb()).all() as Session[];
   const byTmux = new Map(sessions.map((s) => [s.tmux_name, s]));
   const boot = bootTime();
+  const origin = publicOrigin();
   const out: RunningServer[] = [];
   for (const entry of ports) {
     // AgentOS itself, and what the proxy refuses, aren't for previewing
@@ -134,6 +141,14 @@ export async function listRunning(): Promise<RunningServer[]> {
       sessionId: session?.id ?? null,
       sessionName: session?.name ?? null,
       url: `/proxy/${entry.port}/`,
+      link: origin
+        ? proxyUrlFor(entry.port, "/", {
+            origin,
+            subdomainBase: config.subdomainBase,
+            enabled: config.enabled,
+          })
+        : `/proxy/${entry.port}/`,
+      tmux,
     });
   }
   // What sessions started first, newest first; the rest by port
@@ -148,11 +163,16 @@ export async function listRunning(): Promise<RunningServer[]> {
 /**
  * Stops a server the list shows, by its pid: SIGTERM, only to a process
  * a session started that still listens on a port the list would show (not
- * code-server or anything else the container runs on its own)
+ * code-server or anything else the container runs on its own). An agent
+ * (`actor`, its tmux session) stops only what its own session started
  */
-export async function stopRunning(pid: number): Promise<boolean> {
+export async function stopRunning(
+  pid: number,
+  actor: string | null = null
+): Promise<boolean> {
   const running = await listRunning();
-  if (!running.some((r) => r.pid === pid && r.sessionId)) return false;
+  const server = running.find((r) => r.pid === pid && r.sessionId);
+  if (!server || (actor !== null && server.tmux !== actor)) return false;
   process.kill(pid, "SIGTERM");
   return true;
 }
