@@ -1023,10 +1023,13 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
           emptiedRef.current = false;
           setStrayInput(null);
         };
-        // Claude works, or holds messages sent meanwhile: the composer
-        // doesn't take its box then, but a copy Claude took (Enter pressed
-        // in the terminal, or on another device) isn't left to send again
-        if (busy || queuedRef.current.length > 0) {
+        // Claude holds messages sent meanwhile: the composer doesn't take
+        // its box then, but a copy Claude took (Enter pressed in the
+        // terminal, or on another device) isn't left to send again. While
+        // it only works, ↑ still recalls a prompt into the box: that shows
+        const queued =
+          queuedRef.current.length > 0 || (busy && hasQueued(term));
+        if (queued) {
           if (
             mirrored !== null &&
             current === mirrored &&
