@@ -350,14 +350,14 @@ export function DesktopHeader({
   onViewModeChange: (mode: PaneViewMode) => void;
   dimmed?: boolean;
   /**
-   * Agents the session started (its tree's total); by default the focused
-   * session's (the desktop header is the one pane's)
+   * The session's agents still at work, asking or queued; by default the
+   * focused session's (the desktop header is the one pane's)
    */
   agents?: number;
   actions: ReactNode;
 }) {
-  const { agentCount } = useSnapshot(mobileNavStore);
-  const count = agents ?? agentCount;
+  const { agentLive } = useSnapshot(mobileNavStore);
+  const count = agents ?? agentLive;
   const agentsView = canonicalViewMode(viewMode) === "agents";
   return (
     <header

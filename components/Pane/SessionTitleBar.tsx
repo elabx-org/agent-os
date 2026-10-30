@@ -96,6 +96,8 @@ interface SessionTitleBarProps {
   viewMode: PaneViewMode;
   /** Agents the session started: the ⋯ menu's Agents item */
   agentCount: number;
+  /** Of those, the ones still at work, asking or queued: the number shown */
+  agentLive: number;
   onViewModeChange: (mode: PaneViewMode) => void;
   hasAttachedTmux: boolean;
   onDetach: () => void;
@@ -144,6 +146,7 @@ export function SessionTitleBar({
   isFocused,
   viewMode,
   agentCount,
+  agentLive,
   onViewModeChange,
   hasAttachedTmux,
   onDetach,
@@ -441,10 +444,8 @@ export function SessionTitleBar({
             <span className="flex-1">
               {viewMode === "agents" ? "Hide agents" : "Agents"}
             </span>
-            {agentCount > 0 && (
-              <span className="text-muted-foreground text-xs">
-                {agentCount}
-              </span>
+            {agentLive > 0 && (
+              <span className="text-muted-foreground text-xs">{agentLive}</span>
             )}
           </DropdownMenuItem>
         )}

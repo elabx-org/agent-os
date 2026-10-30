@@ -172,7 +172,11 @@ export function nativeColumn(): {
   const kind = columnKindFor(surface, mode);
   const agentsMore =
     surface === "session" || surface === "beside"
-      ? agentsMoreItem(mobileNavStore.agentCount, mobileNavStore.viewMode)
+      ? agentsMoreItem(
+          mobileNavStore.agentCount,
+          mobileNavStore.agentLive,
+          mobileNavStore.viewMode
+        )
       : null;
   const column = PAGE_BARS.includes(mode)
     ? []

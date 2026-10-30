@@ -51,6 +51,8 @@ export const mobileNavStore = proxy<{
   sheetAction: "move" | "cancel" | "none";
   /** Agents the focused session started (its tree's total): the column's Agents item */
   agentCount: number;
+  /** Those still at work, asking or queued: the number the Agents item shows */
+  agentLive: number;
   /**
    * The open Duo's Changes page beside the conversation (Open-Changes, M2b):
    * the column's Changes there opens this instead of the git view
@@ -76,6 +78,7 @@ export const mobileNavStore = proxy<{
   sheet: null,
   sheetAction: "move",
   agentCount: 0,
+  agentLive: 0,
   changesOpen: false,
   conversationView: "chat",
 });

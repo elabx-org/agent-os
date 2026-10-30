@@ -22,7 +22,8 @@ export const agentTreeStore = proxy<{
    */
   detailOpen: boolean;
 }>({
-  showFinished: true,
+  // A long session's finished agents run to hundreds: what runs comes first
+  showFinished: false,
   allCollapsed: false,
   collapsed: {},
   selected: {},

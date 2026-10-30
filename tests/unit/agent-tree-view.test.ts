@@ -248,18 +248,33 @@ test("detail helpers: title, paths, tool ages", () => {
 
 test("cheapAgentCount: subagents, workflow agents, forks and workers", () => {
   const sessions = [
-    { parent_session_id: "s1", conductor_session_id: null },
-    { parent_session_id: null, conductor_session_id: "s1" },
-    { parent_session_id: "other", conductor_session_id: null },
-  ];
-  assert.equal(
+    { parent_session_id: "s1", conductor_session_id: null, status: "idle" },
+    { parent_session_id: null, conductor_session_id: "s1", status: "running" },
+    {
+      parent_session_id: "other",
+      conductor_session_id: null,
+      status: "running",
+    },
+  ] as const;
+  assert.deepEqual(
     cheapAgentCount(
       "s1",
-      [{}, {}],
-      [{ agents: [{}, {}, {}] as never }],
+      [{ status: "done" }, { status: "running" }],
+      [
+        {
+          agents: [
+            { status: "done" },
+            { status: "running" },
+            { status: "stopped" },
+          ] as never,
+        },
+      ],
       sessions
     ),
-    7
+    { total: 7, live: 3 }
   );
-  assert.equal(cheapAgentCount("s2", [], [], sessions), 0);
+  assert.deepEqual(cheapAgentCount("s2", [], [], sessions), {
+    total: 0,
+    live: 0,
+  });
 });

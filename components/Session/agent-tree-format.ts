@@ -11,6 +11,7 @@ import type {
   TreeNodeKind,
 } from "@/lib/agent-tree-types";
 import type { Session } from "@/lib/db";
+import type { SubagentInfo } from "@/lib/claude-subagents";
 import type { WorkflowInfo } from "@/lib/claude-workflows";
 import { STATE_WORD, dbTimeMs } from "@/lib/agent-state";
 import { withoutFinished } from "@/lib/agent-tree-view";
@@ -225,23 +226,45 @@ export function toolAge(
 }
 
 /**
+ * Every agent a session started, and those still live (working, asking or
+ * queued): a long session's finished ones run to hundreds
+ */
+export interface AgentCounts {
+  total: number;
+  live: number;
+}
+
+/**
  * Roughly how many agents a session started, from what is already polled:
  * its subagents, its workflows' agents, and the sessions forked from it or
  * working for it. The tree's total once the agents view shows.
  */
 export function cheapAgentCount(
   sessionId: string,
-  subagents: readonly unknown[],
+  subagents: readonly Pick<SubagentInfo, "status">[],
   workflows: readonly Pick<WorkflowInfo, "agents">[],
   sessions: readonly Pick<
     Session,
-    "parent_session_id" | "conductor_session_id"
+    "parent_session_id" | "conductor_session_id" | "status"
   >[]
-): number {
-  const inWorkflows = workflows.reduce((n, run) => n + run.agents.length, 0);
+): AgentCounts {
+  const agents = workflows.flatMap((run) => run.agents);
   const related = sessions.filter(
     (s) =>
       s.parent_session_id === sessionId || s.conductor_session_id === sessionId
-  ).length;
-  return subagents.length + inWorkflows + related;
+  );
+  return {
+    total: subagents.length + agents.length + related.length,
+    live:
+      subagents.filter((a) => a.status === "running").length +
+      agents.filter((a) => a.status === "running").length +
+      related.filter((s) => s.status === "running" || s.status === "waiting")
+        .length,
+  };
+}
+
+/** The tree's own: working, asking and queued are live */
+export function treeAgentCounts(tree: AgentTreeResponse): AgentCounts {
+  const { working, asking, queued } = tree.counts;
+  return { total: tree.total, live: working + asking + queued };
 }

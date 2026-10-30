@@ -178,7 +178,7 @@ export const Pane = memo(function Pane({
   const fileEditor = useFileEditor();
 
   // Its agents (the agents view; the column's Agents item and the ⋯)
-  const agentCount = useAgentCount({
+  const agentCounts = useAgentCount({
     session,
     sessions,
     isFocused,
@@ -551,7 +551,8 @@ export const Pane = memo(function Pane({
         isMobile={isMobile}
         isFocused={isFocused}
         viewMode={viewMode}
-        agentCount={agentCount}
+        agentCount={agentCounts.total}
+        agentLive={agentCounts.live}
         onViewModeChange={setViewMode}
         hasAttachedTmux={!!activeTab?.attachedTmux}
         onDetach={handleDetach}

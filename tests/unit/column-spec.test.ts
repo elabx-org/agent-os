@@ -631,9 +631,10 @@ test("a session behind Now: back to it leads, closed and on tabletop", () => {
 });
 
 test("More offers a session's agents while the column leaves them out", () => {
-  assert.equal(agentsMoreItem(0, "terminal"), null);
-  assert.equal(agentsMoreItem(3, "agents"), null);
-  const it = agentsMoreItem(3, "chat");
+  assert.equal(agentsMoreItem(0, 0, "terminal"), null);
+  assert.equal(agentsMoreItem(3, 1, "agents"), null);
+  const it = agentsMoreItem(323, 2, "chat");
   assert.equal(it?.id, "agents");
-  assert.equal(it?.label, "Agents (3)");
+  assert.equal(it?.label, "Agents (2)");
+  assert.equal(agentsMoreItem(322, 0, "chat")?.label, "Agents");
 });
