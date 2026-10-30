@@ -5,7 +5,11 @@ import { ChevronRight, Copy, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { useLongPress } from "@/hooks/useLongPress";
 import { Markdown } from "@/components/Markdown";
-import { ImageThumb, imageSrc } from "@/components/Composer/ImagePill";
+import {
+  ImageThumb,
+  imageSrc,
+  isImageUrl,
+} from "@/components/Composer/ImagePill";
 import {
   imageName,
   replyImages,
@@ -42,6 +46,7 @@ function RowView({
   onShowWorkflow,
   quotable,
   onReuse,
+  sessionId,
 }: {
   row: Row;
   results: Map<string, ResultItem>;
@@ -51,6 +56,7 @@ function RowView({
   onShowWorkflow?: (runId: string) => void;
   quotable?: boolean;
   onReuse?: (text: string) => void;
+  sessionId?: string;
 }) {
   if (row.kind === "user") {
     // The undo notice and the attached sessions' block the server put in
@@ -70,7 +76,14 @@ function RowView({
           summaries={summaries}
           className="ml-8"
         />
-        {text && <UserBubble text={text} onReuse={onReuse} />}
+        {text && (
+          <UserBubble
+            text={text}
+            onReuse={onReuse}
+            sessionId={sessionId}
+            entryId={row.id}
+          />
+        )}
       </div>
     );
   }
@@ -127,9 +140,14 @@ function RowView({
 function UserBubble({
   text: sent,
   onReuse,
+  sessionId,
+  entryId,
 }: {
   text: string;
   onReuse?: (text: string) => void;
+  /** The session and transcript entry, for pictures pasted into Claude Code */
+  sessionId?: string;
+  entryId?: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [menu, setMenu] = useState(false);
@@ -137,9 +155,20 @@ function UserBubble({
   useLongPress(ref, () => setMenu(true));
   const comments = parseReviewMessage(sent);
   // Pictures sent with it show as pictures, not their /tmp paths
-  const { images, text } = comments
-    ? { images: [], text: sent }
+  const split = comments
+    ? { images: [], pasted: 0, text: sent }
     : splitImages(sent);
+  const { text } = split;
+  // Pictures pasted into Claude Code are kept in the transcript itself
+  const pasted =
+    sessionId && entryId
+      ? Array.from(
+          { length: split.pasted },
+          (_, n) =>
+            `/api/sessions/${sessionId}/transcript-image?entry=${entryId}&n=${n}`
+        )
+      : [];
+  const images = [...pasted, ...split.images];
   return (
     <div className="relative ml-8 flex min-w-0 flex-col items-end">
       <div
@@ -288,7 +317,11 @@ function SentImages({ paths }: { paths: string[] }) {
           key={path}
           type="button"
           onClick={(e) => showImage(e.currentTarget, path)}
-          aria-label={`View ${imageName(path).replace(/\u2011/g, "-")}`}
+          aria-label={`View ${
+            isImageUrl(path)
+              ? "pasted image"
+              : imageName(path).replace(/\u2011/g, "-")
+          }`}
           className="block overflow-hidden rounded-xl"
         >
           <ImageThumb
@@ -322,6 +355,8 @@ export function Conversation({
   turns?: TurnActions;
   /** The user's messages offer "Edit and resend": the text, to the box */
   onReuse?: (text: string) => void;
+  /** Whose transcript: pictures pasted into Claude Code load from it */
+  sessionId?: string;
 }) {
   return (
     <>

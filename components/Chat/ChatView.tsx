@@ -64,6 +64,7 @@ import { Conversation, type TurnActions } from "./Conversation";
 import { LimitedCardSlot } from "./LimitedCardSlot";
 import { RunningCardSlot } from "@/components/Running/RunningCard";
 import { ImageViewer } from "@/components/ImageViewer";
+import { isImageUrl } from "@/components/Composer/ImagePill";
 import { LastMinePill } from "@/components/LastMinePill";
 import { useImageEvents } from "@/lib/client/image-view";
 import { NeedsYouCard } from "./NeedsYouCard";
@@ -415,15 +416,12 @@ export function ChatView({
     };
   }, [checkMine]);
   // "Edit and resend": a sent message back in the box, after what's typed
-  const reuseMessage = useCallback(
-    (text: string) => {
-      const c = composerRef.current;
-      if (c.draft.trim()) c.insert(text, true);
-      else c.replace(text);
-      c.textareaRef.current?.focus();
-    },
-    []
-  );
+  const reuseMessage = useCallback((text: string) => {
+    const c = composerRef.current;
+    if (c.draft.trim()) c.insert(text, true);
+    else c.replace(text);
+    c.textareaRef.current?.focus();
+  }, []);
   const jumpToMine = () =>
     lastMine()?.scrollIntoView({
       block: "start",
@@ -593,6 +591,7 @@ export function ChatView({
                   quotable
                   turns={turnActions}
                   onReuse={reuseMessage}
+                  sessionId={session.id}
                 />
               </div>
             </div>
@@ -728,6 +727,7 @@ export function ChatView({
                   quotable
                   turns={turnActions}
                   onReuse={reuseMessage}
+                  sessionId={session.id}
                 />
               </div>
             ) : (
@@ -742,6 +742,7 @@ export function ChatView({
                   quotable
                   turns={turnActions}
                   onReuse={reuseMessage}
+                  sessionId={session.id}
                 />
               </div>
             )}
@@ -945,10 +946,15 @@ export function ChatView({
       {viewingImage && (
         <ImageViewer
           path={viewingImage}
-          onAdd={() => {
-            setViewingImage(null);
-            composer.insert(`${viewingImage} `, true);
-          }}
+          // A pasted picture has no file to put in a message
+          onAdd={
+            isImageUrl(viewingImage)
+              ? undefined
+              : () => {
+                  setViewingImage(null);
+                  composer.insert(`${viewingImage} `, true);
+                }
+          }
           onClose={() => setViewingImage(null)}
         />
       )}

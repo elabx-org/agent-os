@@ -11,7 +11,7 @@ import {
 import { createPortal } from "react-dom";
 import { ImageOff } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { imageSrc } from "@/components/Composer/ImagePill";
+import { imageSrc, isImageUrl } from "@/components/Composer/ImagePill";
 import { formatSize } from "@/components/Composer/text";
 
 interface ImageViewerProps {
@@ -40,7 +40,9 @@ const clampScale = (s: number) => Math.min(MAX_SCALE, Math.max(1, s));
 
 /** "IMG_7654.jpeg" from ".../1730000000000-IMG_7654.jpeg" */
 const fileName = (path: string) =>
-  path.slice(path.lastIndexOf("/") + 1).replace(/^\d{10,}-/, "");
+  isImageUrl(path)
+    ? "Pasted image"
+    : path.slice(path.lastIndexOf("/") + 1).replace(/^\d{10,}-/, "");
 
 const BUTTON =
   "min-h-11 flex-1 rounded-xl bg-white/10 px-4 text-sm font-medium active:bg-white/20 hover:bg-white/15 focus-visible:outline-2 focus-visible:outline-white/60";

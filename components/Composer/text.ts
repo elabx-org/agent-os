@@ -52,20 +52,38 @@ export function droppedImages(before: string[], after: string[]): string[] {
   return before;
 }
 
+// In a sent message a path may follow Claude Code's "[Image #8]" directly
+const SENT_IMAGE =
+  /(?<=^|\s|\])(?:~|\/)\S*\.(?:png|jpe?g|gif|webp|heic|heif|bmp)(?=\s|$)/gi;
+/** Claude Code's marks for pictures: "[Image #8]" typed, "[image]" for one
+    pasted into it (lib/claude-transcript.ts) */
+const IMAGE_MARK = /\[Image #\d+\]/g;
+export const PASTED_IMAGE = "[image]";
+
 /**
  * A sent message's pictures, shown as pictures, and its words without the
- * paths (spaces they leave behind tidied away)
+ * paths and marks (spaces they leave behind tidied away). `pasted`: how
+ * many pictures were pasted into Claude Code itself, kept in the transcript
  */
-export function splitImages(text: string): { images: string[]; text: string } {
-  const images = imagePaths(text);
-  if (!images.length) return { images, text };
+export function splitImages(text: string): {
+  images: string[];
+  pasted: number;
+  text: string;
+} {
+  const images = [...new Set([...text.matchAll(SENT_IMAGE)].map((m) => m[0]))];
+  const pasted = text.split(PASTED_IMAGE).length - 1;
+  if (!images.length && !pasted && !/\[Image #\d+\]/.test(text))
+    return { images, pasted, text };
   const rest = text
-    .replace(IMAGE_PATH, "")
+    .replace(SENT_IMAGE, "")
+    .replace(IMAGE_MARK, "")
+    .split(PASTED_IMAGE)
+    .join("")
     .replace(/[ \t]{2,}/g, " ")
     .replace(/[ \t]+$/gm, "")
     .replace(/^[ \t]+/gm, "")
     .trim();
-  return { images, text: rest };
+  return { images, pasted, text: rest };
 }
 
 // In a reply a path is often in backticks, brackets or ends a sentence

@@ -5,9 +5,13 @@ import { ImageIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { THUMB_ROOM, type Chip } from "./text";
 
+/** A picture the page loads from an address of its own (one pasted into
+    Claude Code, app/api/sessions/[id]/transcript-image), not a file path */
+export const isImageUrl = (path: string) => path.startsWith("/api/");
+
 /** Where the page loads an attached image from (app/api/files/image) */
 export const imageSrc = (path: string) =>
-  `/api/files/image?path=${encodeURIComponent(path)}`;
+  isImageUrl(path) ? path : `/api/files/image?path=${encodeURIComponent(path)}`;
 
 /** The picture itself, or an icon when it can't be shown */
 export function ImageThumb({
