@@ -68,6 +68,15 @@ export function splitImages(text: string): { images: string[]; text: string } {
   return { images, text: rest };
 }
 
+// In a reply a path is often in backticks, brackets or ends a sentence
+const REPLY_IMAGE =
+  /(?<=^|[\s`'"(\[*_])(?:~|\/)[^\s`'"()[\]*]*\.(?:png|jpe?g|gif|webp|bmp)(?=$|[\s`'")\].,;:!?*_])/gim;
+
+/** The pictures a reply names by path, once each, in order */
+export function replyImages(text: string): string[] {
+  return [...new Set([...text.matchAll(REPLY_IMAGE)].map((m) => m[0]))];
+}
+
 /** "IMG_7654" from ".../1730000000000-1a2b3c4d-IMG_7654.jpeg" */
 export function imageName(path: string): string {
   const base = path.slice(path.lastIndexOf("/") + 1);

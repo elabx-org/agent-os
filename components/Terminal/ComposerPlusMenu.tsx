@@ -9,6 +9,7 @@ import {
   type MutableRefObject,
 } from "react";
 import {
+  ArrowUpToLine,
   FileText,
   History,
   ImagePlus,
@@ -42,6 +43,8 @@ interface ComposerPlusMenuProps {
   onHistory?: () => void;
   /** Jump back to an earlier prompt, as Esc Esc (Claude sessions) */
   onRewind?: () => void;
+  /** Scroll back to the user's last message (Claude sessions) */
+  onLastMessage?: () => void;
   /** No + (the key row above the composer has the tools): the menu's
       actions are offered through `toolsRef` instead */
   hidden?: boolean;
@@ -77,6 +80,7 @@ export function ComposerPlusMenu({
   onTypeInTerminal,
   onHistory,
   onRewind,
+  onLastMessage,
   hidden = false,
   toolsRef,
 }: ComposerPlusMenuProps) {
@@ -214,6 +218,15 @@ export function ComposerPlusMenu({
       ? [{ icon: History, label: "Earlier prompts", onSelect: onHistory }]
       : []),
     ...(onRewind ? [{ icon: Undo2, label: "Rewind", onSelect: onRewind }] : []),
+    ...(onLastMessage
+      ? [
+          {
+            icon: ArrowUpToLine,
+            label: "Your last message",
+            onSelect: onLastMessage,
+          },
+        ]
+      : []),
     {
       icon: TerminalSquare,
       label: "Type in terminal",

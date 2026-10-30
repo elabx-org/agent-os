@@ -1,9 +1,16 @@
 "use client";
 
-import { ChevronRight } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ChevronRight, Copy, Pencil } from "lucide-react";
+import { toast } from "sonner";
+import { useLongPress } from "@/hooks/useLongPress";
 import { Markdown } from "@/components/Markdown";
-import { ImageThumb } from "@/components/Composer/ImagePill";
-import { imageName, splitImages } from "@/components/Composer/text";
+import { ImageThumb, imageSrc } from "@/components/Composer/ImagePill";
+import {
+  imageName,
+  replyImages,
+  splitImages,
+} from "@/components/Composer/text";
 import { showImage } from "@/lib/client/image-view";
 import type { SubagentInfo } from "@/lib/claude-subagents";
 import type { WorkflowInfo } from "@/lib/claude-workflows";
@@ -34,6 +41,7 @@ function RowView({
   workflows,
   onShowWorkflow,
   quotable,
+  onReuse,
 }: {
   row: Row;
   results: Map<string, ResultItem>;
@@ -42,6 +50,7 @@ function RowView({
   workflows?: Map<string, WorkflowInfo>;
   onShowWorkflow?: (runId: string) => void;
   quotable?: boolean;
+  onReuse?: (text: string) => void;
 }) {
   if (row.kind === "user") {
     // The undo notice and the attached sessions' block the server put in
@@ -61,7 +70,7 @@ function RowView({
           summaries={summaries}
           className="ml-8"
         />
-        {text && <UserBubble text={text} />}
+        {text && <UserBubble text={text} onReuse={onReuse} />}
       </div>
     );
   }
@@ -81,8 +90,9 @@ function RowView({
         </div>
       </details>
     );
-  if (row.kind === "assistant")
-    return (
+  if (row.kind === "assistant") {
+    const pictures = replyImages(row.text);
+    const say = (
       <Markdown
         text={row.text}
         className="say text-[15px] leading-normal break-words"
@@ -90,6 +100,14 @@ function RowView({
         sourceId={row.id}
       />
     );
+    if (!pictures.length) return say;
+    return (
+      <div className="flex min-w-0 flex-col gap-2">
+        {say}
+        <ReplyImages paths={pictures} />
+      </div>
+    );
+  }
   return (
     <ToolRun
       tools={row.tools}
@@ -106,29 +124,156 @@ function RowView({
  * The user's message. Line comments sent from the diff review (O-Diff) read
  * as a quote card per comment: the file:lines label, then the comment
  */
-function UserBubble({ text: sent }: { text: string }) {
+function UserBubble({
+  text: sent,
+  onReuse,
+}: {
+  text: string;
+  onReuse?: (text: string) => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [menu, setMenu] = useState(false);
+  // Hold (or right-click): Edit and resend, Copy
+  useLongPress(ref, () => setMenu(true));
   const comments = parseReviewMessage(sent);
   // Pictures sent with it show as pictures, not their /tmp paths
   const { images, text } = comments
     ? { images: [], text: sent }
     : splitImages(sent);
   return (
-    <div className="bubble-me ml-8 flex min-w-0 flex-col gap-2 text-[15px] [overflow-wrap:anywhere] whitespace-pre-wrap">
-      {images.length > 0 && <SentImages paths={images} />}
-      {comments
-        ? comments.map((c, i) => (
-            <div key={i} className="flex min-w-0 flex-col gap-1.5">
-              <span
-                title={c.path}
-                className="truncate border-l-2 border-current/50 pl-2.5 font-mono text-[13px] opacity-80"
-              >
-                {rangeLabel(c)}
-                {c.side === "old" && " (removed)"}
-              </span>
-              <span>{c.body}</span>
-            </div>
-          ))
-        : text || null}
+    <div className="relative ml-8 flex min-w-0 flex-col items-end">
+      <div
+        ref={ref}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          setMenu(true);
+        }}
+        className="bubble-me flex min-w-0 flex-col gap-2 text-[15px] [overflow-wrap:anywhere] whitespace-pre-wrap select-none [-webkit-touch-callout:none] data-[held]:opacity-80 pointer-fine:select-text"
+      >
+        {images.length > 0 && <SentImages paths={images} />}
+        {comments
+          ? comments.map((c, i) => (
+              <div key={i} className="flex min-w-0 flex-col gap-1.5">
+                <span
+                  title={c.path}
+                  className="truncate border-l-2 border-current/50 pl-2.5 font-mono text-[13px] opacity-80"
+                >
+                  {rangeLabel(c)}
+                  {c.side === "old" && " (removed)"}
+                </span>
+                <span>{c.body}</span>
+              </div>
+            ))
+          : text || null}
+      </div>
+      {menu && (
+        <MessageMenu
+          onClose={() => setMenu(false)}
+          onEdit={
+            onReuse
+              ? () => {
+                  setMenu(false);
+                  onReuse(sent);
+                }
+              : undefined
+          }
+          onCopy={() => {
+            setMenu(false);
+            navigator.clipboard
+              ?.writeText(sent)
+              .then(() => toast("Copied"))
+              .catch(() => toast.error("Couldn't copy it"));
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+/** A sent message's menu, under its bubble */
+function MessageMenu({
+  onEdit,
+  onCopy,
+  onClose,
+}: {
+  onEdit?: () => void;
+  onCopy: () => void;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      e.stopPropagation();
+      onClose();
+    };
+    document.addEventListener("keydown", onKey, true);
+    return () => document.removeEventListener("keydown", onKey, true);
+  }, [onClose]);
+  const item =
+    "active:bg-foreground/10 hover:bg-foreground/8 flex min-h-11 w-full items-center gap-2.5 rounded-xl px-3 text-left text-sm";
+  return (
+    <>
+      <div aria-hidden className="fixed inset-0 z-40" onClick={onClose} />
+      <div
+        role="menu"
+        className="glass absolute top-full right-0 z-50 mt-1.5 flex w-52 flex-col rounded-2xl p-1.5 shadow-xl"
+      >
+        {onEdit && (
+          <button
+            type="button"
+            role="menuitem"
+            onClick={onEdit}
+            className={item}
+          >
+            <Pencil className="h-4 w-4" />
+            Edit and resend
+          </button>
+        )}
+        <button type="button" role="menuitem" onClick={onCopy} className={item}>
+          <Copy className="h-4 w-4" />
+          Copy
+        </button>
+      </div>
+    </>
+  );
+}
+
+/**
+ * Pictures a reply names (a screenshot Claude took): a row to tap, without
+ * the ones that can't be shown (gone, or outside the folders pictures may
+ * come from)
+ */
+function ReplyImages({ paths }: { paths: string[] }) {
+  const [broken, setBroken] = useState<string[]>([]);
+  const shown = paths.filter((p) => !broken.includes(p)).slice(0, 6);
+  if (!shown.length) return null;
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {shown.map((path) => (
+        <button
+          key={path}
+          type="button"
+          onClick={(e) => showImage(e.currentTarget, path)}
+          aria-label={`View ${imageName(path).replace(/\u2011/g, "-")}`}
+          className="bg-muted block overflow-hidden rounded-xl"
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={imageSrc(path)}
+            alt=""
+            loading="lazy"
+            decoding="async"
+            draggable={false}
+            onError={() => setBroken((b) => [...b, path])}
+            className={
+              shown.length === 1
+                ? "max-h-56 max-w-[min(100%,20rem)] object-contain"
+                : "h-24 w-24 object-cover"
+            }
+          />
+        </button>
+      ))}
     </div>
   );
 }
@@ -175,6 +320,8 @@ export function Conversation({
   /** Claude's messages offer "Reply to this" */
   quotable?: boolean;
   turns?: TurnActions;
+  /** The user's messages offer "Edit and resend": the text, to the box */
+  onReuse?: (text: string) => void;
 }) {
   return (
     <>

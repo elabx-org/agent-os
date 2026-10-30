@@ -36,6 +36,8 @@ interface ComposerProps {
   onSend: (text: string) => void;
   /** Hand the keyboard to the terminal (Claude Code's / and @ pickers) */
   onTypeInTerminal: () => void;
+  /** Scroll the terminal back to the user's last message (Claude) */
+  onLastMessage?: () => void;
   onPhoto: () => void;
   onSelectText: () => void;
   /** A control beside the send button (the keybar toggle) */
@@ -77,6 +79,7 @@ export function Composer({
   sessionId,
   onSend,
   onTypeInTerminal,
+  onLastMessage,
   onPhoto,
   onSelectText,
   extra,
@@ -213,6 +216,7 @@ export function Composer({
               onRewind={
                 live.claude ? () => live.setRewindOpen(true) : undefined
               }
+              onLastMessage={live.claude ? onLastMessage : undefined}
               hidden={noPlus}
               toolsRef={toolsRef}
             />

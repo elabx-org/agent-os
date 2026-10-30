@@ -32,3 +32,41 @@ export function useImageEvents(
     return () => el.removeEventListener(IMAGE_EVENT, on);
   }, [ref, onImage]);
 }
+
+/** A file path tapped in the terminal, to open in Files (at its line) */
+export const FILE_EVENT = "agentos-file";
+
+export interface FileAsk {
+  path: string;
+  line?: number;
+}
+
+export function showFile(
+  from: Element | null | undefined,
+  path: string,
+  line?: number
+) {
+  from?.dispatchEvent(
+    new CustomEvent<FileAsk>(FILE_EVENT, {
+      detail: { path, line },
+      bubbles: true,
+    })
+  );
+}
+
+/** Calls onFile with each file asked for inside the element */
+export function useFileEvents(
+  ref: RefObject<HTMLElement | null>,
+  onFile: (ask: FileAsk) => void
+) {
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const on = (e: Event) => {
+      e.stopPropagation();
+      onFile((e as CustomEvent<FileAsk>).detail);
+    };
+    el.addEventListener(FILE_EVENT, on);
+    return () => el.removeEventListener(FILE_EVENT, on);
+  }, [ref, onFile]);
+}

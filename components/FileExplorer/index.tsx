@@ -51,6 +51,8 @@ interface FileExplorerProps {
   active?: boolean;
   workingDirectory: string;
   fileEditor: UseFileEditorReturn;
+  /** A file opened from elsewhere (a path tapped in the terminal): its line */
+  jumpRequest?: Jump | null;
 }
 
 /** Below this the pane gets E-Files' single column even on a wide screen */
@@ -71,6 +73,7 @@ export function FileExplorer({
   active,
   workingDirectory,
   fileEditor,
+  jumpRequest,
 }: FileExplorerProps) {
   const { isMobile, isHydrated } = useViewport();
   const closed = useLayoutMode() === "duo-closed";
@@ -88,6 +91,9 @@ export function FileExplorer({
   const [refreshKey, setRefreshKey] = useState(0);
   const [query, setQuery] = useState("");
   const [jump, setJump] = useState<Jump | null>(null);
+  useEffect(() => {
+    if (jumpRequest) setJump({ ...jumpRequest });
+  }, [jumpRequest]);
   const [pendingClose, setPendingClose] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [newFileOpen, setNewFileOpen] = useState(false);
