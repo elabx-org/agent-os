@@ -8,6 +8,8 @@ import {
   Copy,
   ExternalLink,
   Loader2,
+  Maximize2,
+  Minimize2,
   MonitorPlay,
   RotateCw,
 } from "lucide-react";
@@ -72,6 +74,8 @@ export function RunningPage(_props: PageProps<"running">) {
   const pages = useSpreadPages(ref, useSpreadFold());
   const [picked, setPicked] = useState<number | null>(null);
   const [pushed, setPushed] = useState(false);
+  // The open Duo's preview on both pages, the list put away
+  const [full, setFull] = useState(false);
 
   const list = servers ?? [];
   const current =
@@ -85,6 +89,14 @@ export function RunningPage(_props: PageProps<"running">) {
       return true;
     });
   }, [pages, pushed]);
+  // Back off the expanded preview to the list beside it
+  useEffect(() => {
+    if (!pages || !full) return;
+    return registerPageBack(() => {
+      setFull(false);
+      return true;
+    });
+  }, [pages, full]);
   // A server that stopped takes its preview with it
   useEffect(() => {
     if (pushed && servers && !current) setPushed(false);
@@ -109,16 +121,26 @@ export function RunningPage(_props: PageProps<"running">) {
     <div ref={ref} className="flex min-h-0 flex-1 flex-col">
       {pages ? (
         <div className="flex min-h-0 flex-1">
-          <aside
-            className="flex shrink-0 flex-col"
-            style={{ width: pages.left }}
-          >
-            {listView}
-          </aside>
-          <div aria-hidden="true" style={{ width: pages.gutter }} />
+          {/* Hidden, not unmounted: the preview keeps its page */}
+          {!full && (
+            <>
+              <aside
+                className="flex shrink-0 flex-col"
+                style={{ width: pages.left }}
+              >
+                {listView}
+              </aside>
+              <div aria-hidden="true" style={{ width: pages.gutter }} />
+            </>
+          )}
           <main className="flex min-w-0 flex-1 flex-col">
             {current ? (
-              <Preview key={current.port} server={current} />
+              <Preview
+                key={current.port}
+                server={current}
+                expanded={full}
+                onExpand={() => setFull((f) => !f)}
+              />
             ) : (
               <Quiet loading={isLoading} />
             )}
@@ -246,10 +268,15 @@ function IconButton({
 function Preview({
   server,
   onBack,
+  expanded,
+  onExpand,
 }: {
   server: RunningServer;
   /** The closed Duo's pushed preview: back to the list */
   onBack?: () => void;
+  /** The open Duo: across both pages, the list put away */
+  expanded?: boolean;
+  onExpand?: () => void;
 }) {
   const queryClient = useQueryClient();
   const [reload, setReload] = useState(0);
@@ -317,6 +344,18 @@ function Preview({
         >
           <ExternalLink className="h-[18px] w-[18px]" />
         </IconButton>
+        {onExpand && (
+          <IconButton
+            label={expanded ? "Show the list" : "Expand"}
+            onClick={onExpand}
+          >
+            {expanded ? (
+              <Minimize2 className="h-[18px] w-[18px]" />
+            ) : (
+              <Maximize2 className="h-[18px] w-[18px]" />
+            )}
+          </IconButton>
+        )}
         <IconButton label="Copy link" onClick={copy}>
           <Copy className="h-[18px] w-[18px]" />
         </IconButton>
