@@ -63,7 +63,8 @@ import { besideStore, setPaneLaunch } from "@/stores/beside";
 import { closeNew, newSurfaceStore, openNew } from "@/stores/newSurface";
 import { mobileNavActions, mobileNavStore } from "@/stores/mobileNav";
 import { focusStore, loadFocus } from "@/stores/focus";
-import { registerNavHandlers, runNav } from "@/lib/nav-actions";
+import { noteOrigin, registerNavHandlers, runNav } from "@/lib/nav-actions";
+import { backStore } from "@/stores/back";
 import { runningStore } from "@/stores/running";
 import { isNative } from "@/lib/native-bridge";
 import { isEnded } from "@/lib/settle-types";
@@ -351,6 +352,8 @@ function HomeContent() {
   // Attach session to terminal
   const attachToSession = useCallback(
     async (session: Session) => {
+      // Its back returns to what it was opened from
+      noteOrigin(session.id);
       // Whatever opened it, the session shows rather than staying under
       // Settings or a workspace page
       closeSettings();
@@ -517,6 +520,12 @@ function HomeContent() {
   useEffect(() => {
     runningStore.sessionId = focusedActiveTab?.sessionId ?? null;
   }, [focusedActiveTab?.sessionId]);
+  // Back's labels name the project they go back to
+  useEffect(() => {
+    backStore.projectNames = Object.fromEntries(
+      projects.map((p) => [p.id, p.name])
+    );
+  }, [projects]);
   const lastBesideRef = useRef(0);
   useEffect(
     () =>

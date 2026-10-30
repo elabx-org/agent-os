@@ -24,7 +24,7 @@ import {
 } from "./useGitModel";
 import { useViewport } from "@/hooks/useViewport";
 import { useLayoutMode } from "@/hooks/useLayoutMode";
-import { registerNavHandlers } from "@/lib/nav-actions";
+import { registerNavHandlers, registerViewBack } from "@/lib/nav-actions";
 import { setGitMenu } from "@/stores/gitMenu";
 import { moveSheetStore, openMoveSheet } from "@/stores/moveSheet";
 import { cn } from "@/lib/utils";
@@ -174,6 +174,24 @@ function GitPanelContent({
       newPullRequest: () => latest.current.newPullRequest(),
     });
   }, [active]);
+
+  // Back off a diff, a commit or the PR's review to the list before
+  // leaving the view, where it is pushed over the list
+  const subpageBack = openFile
+    ? "Back to changes"
+    : commitHash
+      ? "Back to history"
+      : reviewing && m.pr
+        ? "Back to git"
+        : null;
+  useEffect(() => {
+    if (!active || !narrow || !subpageBack) return;
+    return registerViewBack(subpageBack, () => {
+      setOpenFile(null);
+      setCommitHash(null);
+      setReviewing(false);
+    });
+  }, [active, narrow, subpageBack]);
 
   // The title row has no ⋯ here: the column's More takes its items
   const model = useRef(m);

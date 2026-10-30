@@ -709,7 +709,7 @@ function NeedsYou({ view, onOpenSession, dialog, onClose }: NeedsYouProps) {
 
   const onSettings = () => {
     onClose();
-    openSettings("notifications");
+    openSettings("notifications", "needs");
   };
   const quiet = !list.count && !list.finished.length && !list.earlier.length;
   const title = (

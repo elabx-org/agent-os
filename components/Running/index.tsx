@@ -22,6 +22,7 @@ import {
 import { useIsNative } from "@/hooks/useIsNative";
 import { useLayoutMode } from "@/hooks/useLayoutMode";
 import { nativeCaps } from "@/lib/native-bridge";
+import { PAGE_BARS } from "@/components/ControlColumn/columnState";
 import { registerPageBack, runNav } from "@/lib/nav-actions";
 import type { RunningServer } from "@/lib/running";
 import { cn } from "@/lib/utils";
@@ -90,18 +91,12 @@ export function RunningPage({ page, view }: PageProps<"running">) {
   // Back off a pushed preview to the list, before leaving the page
   useEffect(() => {
     if (pages || !pushed) return;
-    return registerPageBack(() => {
-      setPushed(false);
-      return true;
-    });
+    return registerPageBack("Back to Running", () => setPushed(false));
   }, [pages, pushed]);
   // Back off the expanded preview to the list beside it
   useEffect(() => {
     if (!pages || !full) return;
-    return registerPageBack(() => {
-      setFull(false);
-      return true;
-    });
+    return registerPageBack("Back to Running", () => setFull(false));
   }, [pages, full]);
   // A server that stopped takes its preview with it
   useEffect(() => {
@@ -197,8 +192,9 @@ function ServerList({
   const fromSessions = servers.filter(canStop).length;
   const mode = useLayoutMode();
   const native = useIsNative();
-  // Where no column holds back, the title does
-  const back = native ? !nativeCaps().column : mode === "phone";
+  // Where no column holds back, the title does: the phone's and tabletop's
+  // bars don't
+  const back = PAGE_BARS.includes(mode) || (native && !nativeCaps().column);
   return (
     <div
       className={cn(

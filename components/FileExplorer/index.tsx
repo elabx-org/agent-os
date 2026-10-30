@@ -19,7 +19,7 @@ import { useLayoutMode } from "@/hooks/useLayoutMode";
 import { useFileDrop } from "@/hooks/useFileDrop";
 import { uploadFileToTemp } from "@/lib/file-upload";
 import { useGitStatus } from "@/data/git/queries";
-import { registerNavHandlers } from "@/lib/nav-actions";
+import { registerNavHandlers, registerViewBack } from "@/lib/nav-actions";
 import { addQuote } from "@/stores/replyQuotes";
 import { mobileNavActions } from "@/stores/mobileNav";
 import { DiffModal } from "@/components/DiffViewer";
@@ -349,6 +349,17 @@ export function FileExplorer({
   }, [activeFilePath, sessionId, projectRoot]);
 
   const wide = isHydrated && !isMobile && (width === null || width >= WIDE_MIN);
+
+  // Narrow, an open file is pushed over the tree: back closes it first
+  const fileOpen = !wide && !!(activeFilePath || fileLoading);
+  const closeEditor = useRef(setActiveFile);
+  closeEditor.current = setActiveFile;
+  useEffect(() => {
+    if (!active || !fileOpen) return;
+    return registerViewBack("Back to files", () =>
+      closeEditor.current(null as unknown as string)
+    );
+  }, [active, fileOpen]);
 
   // ⌘P / Ctrl-P: the sidebar's search (D-Files)
   useEffect(() => {

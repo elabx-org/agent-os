@@ -49,6 +49,7 @@ import { useIsNative } from "@/hooks/useIsNative";
 import { besidePills, useSpreadPanes } from "@/components/views/SessionSpread";
 import { usePanes } from "@/contexts/PaneContext";
 import { useLayoutMode } from "@/hooks/useLayoutMode";
+import { useBackLabel } from "@/components/ControlColumn/columnState";
 import { DesktopLiveButton } from "./DesktopViewSwitch";
 import { BesideItems } from "@/components/BesideItems";
 import { useReplyPage } from "@/components/ReplyContext/store";
@@ -218,6 +219,7 @@ export function SessionTitleBar({
   const wide = !isMobile;
   // The desktop shell has no column, so its views switch in this bar
   const layout = useLayoutMode();
+  const backLabel = useBackLabel();
   const hasFolder = !!session?.working_directory;
   // Plain phones get the column as a bottom bar, which has no room for it
   const settingsHere = isMobile && !native && railWidth === 0;
@@ -643,8 +645,11 @@ export function SessionTitleBar({
       >
         <button
           type="button"
-          onClick={() => runNav("sessions")}
-          aria-label="Sessions"
+          // The desktop's shows and hides the sidebar; elsewhere it goes
+          // back as the column's would (Changes to the conversation, a
+          // session to the project it was opened from)
+          onClick={() => runNav(layout === "desktop" ? "sessions" : "back")}
+          aria-label={layout === "desktop" ? "Sessions" : backLabel}
           className={iconButton}
         >
           <ChevronLeft className="h-5 w-5" />

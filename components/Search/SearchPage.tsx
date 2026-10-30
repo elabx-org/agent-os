@@ -34,6 +34,7 @@ import { isNative, nativeCaps } from "@/lib/native-bridge";
 import { useLayoutMode } from "@/hooks/useLayoutMode";
 import { mobileNavStore } from "@/stores/mobileNav";
 import { postureStore } from "@/stores/posture";
+import { searchQueryStore } from "@/stores/searchActions";
 import { StateDot } from "@/components/a/StateDot";
 import { agentName } from "@/components/a/Avatar";
 import { Highlight } from "./Highlight";
@@ -77,7 +78,7 @@ function SearchLayer(props: SearchSurfaceProps) {
   const mode = useLayoutMode();
   const { railWidth, statuses } = useSnapshot(mobileNavStore);
   const { fold } = useSnapshot(postureStore);
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(() => searchQueryStore.query);
   const [filter, setFilter] = useState<PageFilter>("all");
   const inputRef = useRef<HTMLInputElement>(null);
   const layerRef = useRef<HTMLDivElement>(null);
@@ -129,6 +130,10 @@ function SearchLayer(props: SearchSurfaceProps) {
         : 0
     );
   }, [mode]);
+
+  useEffect(() => {
+    searchQueryStore.query = query;
+  }, [query]);
 
   // Typing at once: in the same tap that opened it, so iOS shows the keyboard
   useLayoutEffect(() => {

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ChevronLeft } from "lucide-react";
 import { layoutStore } from "@/hooks/useLayoutMode";
+import { WIDE } from "@/lib/column-spec";
 import { haptic } from "@/lib/haptics";
 import { runNav } from "@/lib/nav-actions";
 import { mobileNavStore } from "@/stores/mobileNav";
@@ -32,8 +33,10 @@ export function edgeBackAction(): "back" | "resume" | null {
     return "back";
   if (wide && (mobileNavStore.liveOpen || mobileNavStore.changesOpen))
     return "back";
+  // Changes and Files on one page go back to the conversation (or their
+  // list, from a diff or a file)
   const view = mobileNavStore.viewMode;
-  if (layoutStore.mode === "duo-closed" && (view === "git" || view === "files"))
+  if (!WIDE.includes(layoutStore.mode) && (view === "git" || view === "files"))
     return "back";
   // Now over a session, on one page: back to it
   if (surfaceStore.home && surfaceStore.behind && !wide) return "resume";

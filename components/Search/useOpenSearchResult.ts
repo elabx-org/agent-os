@@ -8,6 +8,7 @@ import { openBeside } from "@/stores/beside";
 import { mobileNavActions } from "@/stores/mobileNav";
 import { openScripts } from "@/stores/scriptsSheet";
 import { requestSearchAction } from "@/stores/searchActions";
+import { setOrigin } from "@/stores/back";
 import { openSteps, type OpenStep } from "./open-result";
 import type {
   OpenResultOptions,
@@ -89,6 +90,23 @@ export function useOpenSearchResult(
           return requestSearchAction(step.request);
       }
     };
+    // Back from what it opens reopens Find, on the same query
+    for (const step of steps)
+      if (
+        step.kind === "select" ||
+        step.kind === "chat" ||
+        step.kind === "jump"
+      ) {
+        setOrigin(
+          step.sessionId,
+          { kind: "search" },
+          props.currentSessionId ?? null
+        );
+        break;
+      } else if (step.kind === "file" && props.currentSessionId) {
+        setOrigin(props.currentSessionId, { kind: "search" });
+        break;
+      }
     steps.forEach(perform);
     props.onOpenChange(false);
   }, []);

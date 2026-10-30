@@ -32,6 +32,7 @@ import { isMacLike } from "@/hooks/useViewShortcuts";
 import { useProjectsQuery } from "@/data/projects";
 import { statusKeys } from "@/data/sessions/keys";
 import { useSearch } from "@/data/search";
+import { searchQueryStore } from "@/stores/searchActions";
 import { Highlight } from "./Highlight";
 import { useOpenSearchResult } from "./useOpenSearchResult";
 import {
@@ -132,11 +133,14 @@ interface Section {
 
 function PaletteBody(props: SearchSurfaceProps) {
   const { sessions, currentSessionId } = props;
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(() => searchQueryStore.query);
   const [filter, setFilter] = useState<PaletteFilter>("all");
   const [index, setIndex] = useState(0);
   const openResult = useOpenSearchResult(props);
   const mac = isMacLike();
+  useEffect(() => {
+    searchQueryStore.query = query;
+  }, [query]);
 
   const { data: projects } = useProjectsQuery();
   const projectNames = useMemo(
@@ -265,6 +269,8 @@ function PaletteBody(props: SearchSurfaceProps) {
             setIndex(0);
           }}
           onKeyDown={onKeyDown}
+          // The last query comes back selected: typing starts a new one
+          onFocus={(e) => e.currentTarget.select()}
           placeholder="Search sessions, messages, files"
           aria-label="Search everything"
           role="combobox"

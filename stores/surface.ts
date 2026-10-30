@@ -124,8 +124,11 @@ function fromState(s: SurfaceState): Surface {
   });
 }
 
-/** The surface now, outside React (the iOS bridge) */
-export function currentSurface(): Surface {
+/**
+ * The surface now, outside React (the iOS bridge); with a layer left out,
+ * the one under it (what Back shows)
+ */
+export function currentSurface(without: Partial<SurfaceState> = {}): Surface {
   return fromState({
     home: surfaceStore.home,
     homeTab: mobileNavStore.homeTab,
@@ -136,6 +139,7 @@ export function currentSurface(): Surface {
     searchOpen: surfaceStore.searchOpen,
     paneCount: surfaceStore.paneCount,
     mode: layoutStore.mode,
+    ...without,
   });
 }
 

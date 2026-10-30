@@ -70,6 +70,10 @@ export interface ColumnContext {
   behind?: boolean;
   /** The person's own order (Settings → Control column); none keeps the default */
   order?: ColumnOrder;
+  /** Where back goes, as lib/nav-actions.ts backTarget() names it */
+  backLabel?: string;
+  /** Settings opened from Needs you: it closes back to it */
+  settingsFrom?: "needs";
 }
 
 /**
@@ -379,6 +383,12 @@ function item(base: Base, extra: Partial<ColumnItem> = {}): ColumnItem {
 
 const sep = { sep: true } as const;
 
+/** Back, named for where it goes; the fallback where nothing says */
+function back(ctx: ColumnContext, fallback?: string): ColumnItem {
+  const label = ctx.backLabel ?? fallback;
+  return item(BASE.back, label ? { label } : {});
+}
+
 /** Needs you, with its amber count (Focus keeps the column quiet) */
 function inbox(ctx: ColumnContext, extra: Partial<ColumnItem> = {}) {
   const badge = ctx.focus ? 0 : ctx.needsYou;
@@ -491,12 +501,12 @@ function scriptsColumn(): ColumnItem[] {
  * E-Files' New file, Upload | More (the keyboard up keeps the first two)
  */
 function viewColumn(ctx: ColumnContext): ColumnItem[] | null {
-  const back = item(BASE.back, { label: "Back to session" });
+  const backItem = back(ctx, "Back to session");
   if (ctx.viewMode === "git")
     return ctx.keyboardUp
-      ? [back, item(BASE.pull, sep), item(BASE.push), item(BASE.more)]
+      ? [backItem, item(BASE.pull, sep), item(BASE.push), item(BASE.more)]
       : [
-          back,
+          backItem,
           item(BASE.pull, sep),
           item(BASE.push),
           item(BASE.newPr),
@@ -504,9 +514,9 @@ function viewColumn(ctx: ColumnContext): ColumnItem[] | null {
         ];
   if (ctx.viewMode === "files")
     return ctx.keyboardUp
-      ? [back, item(BASE.newFile, sep), item(BASE.upload), item(BASE.more)]
+      ? [backItem, item(BASE.newFile, sep), item(BASE.upload), item(BASE.more)]
       : [
-          back,
+          backItem,
           item(BASE.newFile, sep),
           item(BASE.upload),
           item(BASE.more, sep),
@@ -607,7 +617,7 @@ function sessionColumn(
         ? item(BASE.stop, { danger: true, ...sep })
         : item(BASE.more, compact ? {} : sep);
     return [
-      item(BASE.back, compact ? { label: "Back" } : {}),
+      compact ? item(BASE.back, { label: "Back" }) : back(ctx),
       ...arranged("session", slots, ctx, true),
       last,
     ];
@@ -623,7 +633,7 @@ function sessionColumn(
   if (closed && ctx.working)
     // N-Queue: while it works, Stop takes More's place
     return [
-      item(BASE.back),
+      back(ctx),
       otherView(ctx, sep),
       changes(ctx),
       item(BASE.live, { selected: ctx.liveOpen }),
@@ -631,9 +641,7 @@ function sessionColumn(
     ];
   // O-Tree: Agents beside Files on the open Duo, back to the session
   return [
-    ctx.viewMode === "agents"
-      ? item(BASE.back, { label: "Back to session" })
-      : item(BASE.back),
+    back(ctx, ctx.viewMode === "agents" ? "Back to session" : undefined),
     otherView(ctx, sep),
     changes(ctx),
     item(BASE.files, { selected: ctx.viewMode === "files" }),
@@ -793,13 +801,13 @@ export function columnFor(
     case "beside":
       if (wide && savedOrder("beside", ctx.order))
         return [
-          item(BASE.back),
+          back(ctx),
           ...arranged("beside", savedOrder("beside", ctx.order)!, ctx, true),
           item(BASE.more, sep),
         ];
       return wide
         ? [
-            item(BASE.back),
+            back(ctx),
             item(BASE.beside, {
               label: "Side by side",
               selected: true,
@@ -817,15 +825,17 @@ export function columnFor(
     case "settings":
       // Drilled into a section on the closed Duo (E-Display); list | detail
       // elsewhere keeps both up, so there's nothing to go back to
-      if (ctx.canGoBack && !wide)
-        return [item(BASE.back, { label: "Back to Settings" })];
+      if (ctx.canGoBack && !wide) return [back(ctx, "Back to Settings")];
       return [
-        item(BASE.closeSettings),
+        // Opened from Needs you, it goes back there
+        ctx.settingsFrom
+          ? back(ctx, "Back to Needs you")
+          : item(BASE.closeSettings),
         ...(ctx.native ? [item(BASE.server, sep)] : []),
       ];
     case "projects":
       return [
-        item(BASE.back),
+        back(ctx),
         item(BASE.newProject, { prominent: true, sep: true }),
         item(BASE.search, { label: "Find a project" }),
         item(BASE.sort),
@@ -834,19 +844,19 @@ export function columnFor(
       // N-Config: back | run a script, the file
       if (ctx.projectSettings)
         return [
-          item(BASE.back, { label: "Back" }),
+          back(ctx, "Back"),
           item(BASE.scripts, sep),
           item(BASE.viewConfig),
         ];
       return [
-        item(BASE.back, { label: "Back" }),
+        back(ctx, "Back"),
         item(BASE.new, { prominent: true, sep: true }),
         item(BASE.search, { label: "Find in project" }),
         item(BASE.projectSettings, sep),
       ];
     case "needs":
       return [
-        item(BASE.back),
+        back(ctx),
         item(BASE.notifSettings, sep),
         item(BASE.clearHistory),
       ];
@@ -857,7 +867,7 @@ export function columnFor(
         item(BASE.start, { prominent: true, sep: true }),
       ];
     case "search":
-      return [item(BASE.back)];
+      return [back(ctx)];
   }
 }
 

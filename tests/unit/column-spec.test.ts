@@ -638,3 +638,57 @@ test("More offers a session's agents while the column leaves them out", () => {
   assert.equal(it?.label, "Agents (2)");
   assert.equal(agentsMoreItem(322, 0, "chat")?.label, "Agents");
 });
+
+test("columnFor: back is named for where it goes", () => {
+  const label = (surface: Surface, mode: LayoutMode, ctx: ColumnContext) =>
+    columnFor(surface, mode, ctx).find((i) => i.id === "back")?.label;
+  // Without a target, the defaults
+  assert.equal(label("search", "duo-closed", CTX), "Back to Now");
+  assert.equal(
+    label("session", "duo-closed", { ...CTX, viewMode: "git" }),
+    "Back to session"
+  );
+  // With one, every column that leads with back says it
+  const ctx = { ...CTX, backLabel: "Back to agent-os" };
+  for (const [surface, mode] of [
+    ["session", "duo-closed"],
+    ["session", "duo-open"],
+    ["beside", "book"],
+    ["search", "duo-closed"],
+    ["needs", "duo-closed"],
+    ["projects", "duo-closed"],
+    ["project", "duo-open"],
+  ] as [Surface, LayoutMode][])
+    assert.equal(label(surface, mode, ctx), "Back to agent-os", surface);
+  assert.equal(
+    label("session", "duo-closed", {
+      ...ctx,
+      viewMode: "git",
+      backLabel: "Back to history",
+    }),
+    "Back to history"
+  );
+  // The keyboard up keeps it short; New is Cancel
+  assert.equal(
+    label("session", "duo-closed", { ...ctx, keyboardUp: true }),
+    "Back"
+  );
+  assert.equal(label("new", "duo-closed", ctx), "Cancel");
+});
+
+test("columnFor: Settings from Needs you goes back to it", () => {
+  const ctx = {
+    ...CTX,
+    settingsFrom: "needs" as const,
+    backLabel: "Back to Needs you",
+  };
+  const open = columnFor("settings", "duo-open", ctx);
+  assert.equal(fmt(open), "back | server");
+  assert.equal(open[0].label, "Back to Needs you");
+  const closed = columnFor("settings", "duo-closed", {
+    ...ctx,
+    canGoBack: true,
+  });
+  assert.equal(fmt(closed), "back");
+  assert.equal(closed[0].label, "Back to Needs you");
+});

@@ -22,6 +22,8 @@ import { focusStore } from "@/stores/focus";
 import { settingsPageStore } from "@/stores/settingsPage";
 import { workspacePageStore } from "@/stores/workspacePage";
 import { runningStore } from "@/stores/running";
+import { backStore } from "@/stores/back";
+import { backTarget } from "@/lib/nav-actions";
 import {
   currentSurface,
   surfaceStore,
@@ -52,6 +54,8 @@ interface ColumnSources {
   allCollapsed: boolean;
   agentDetail: boolean;
   projectSettings: boolean;
+  backLabel: string;
+  settingsFrom: "needs" | null;
 }
 
 function contextFrom(s: ColumnSources): ColumnContext {
@@ -77,7 +81,32 @@ function contextFrom(s: ColumnSources): ColumnContext {
     changesOpen: s.changesOpen,
     behind: s.behind,
     order: s.order,
+    backLabel: s.backLabel,
+    settingsFrom: s.settingsFrom ?? undefined,
   };
+}
+
+/**
+ * Back's label (backTarget), read again when anything it goes by changes:
+ * the snapshots only track what's read, and backTarget reads the stores
+ */
+export function useBackLabel(): string {
+  const back = useSnapshot(backStore);
+  const pages = useSnapshot(workspacePageStore);
+  const settings = useSnapshot(settingsPageStore);
+  const surface = useSnapshot(surfaceStore);
+  const nav = useSnapshot(mobileNavStore);
+  const { sessionId } = useSnapshot(runningStore);
+  const { open: newOpen } = useSnapshot(newSurfaceStore);
+  const { detailOpen } = useSnapshot(agentTreeStore);
+  const { mode } = useSnapshot(layoutStore);
+  void [back.pageLabel, back.viewLabel, back.origin, back.projectNames];
+  void [pages.page, pages.previous, sessionId, newOpen, detailOpen, mode];
+  void [settings.open, settings.detail, settings.returnTo];
+  void [surface.home, surface.behind, surface.searchOpen];
+  void [nav.viewMode, nav.conversationView, nav.inboxOpen, nav.homeTab];
+  void [nav.liveOpen, nav.changesOpen];
+  return backTarget().label;
 }
 
 /** The web's column, bar or tab bar: the items and what they were for */
@@ -89,7 +118,8 @@ export function useColumn(
   const { open: newOpen } = useSnapshot(newSurfaceStore);
   const { on: focus } = useSnapshot(focusStore);
   const { paneCount, behind } = useSnapshot(surfaceStore);
-  const { detail: settingsDetail } = useSnapshot(settingsPageStore);
+  const { detail: settingsDetail, returnTo } = useSnapshot(settingsPageStore);
+  const backLabel = useBackLabel();
   const { mode } = useSnapshot(layoutStore);
   const tree = useSnapshot(agentTreeStore);
   const { page } = useSnapshot(workspacePageStore);
@@ -118,6 +148,8 @@ export function useColumn(
     allCollapsed: tree.allCollapsed,
     agentDetail: tree.detailOpen,
     projectSettings: page?.kind === "projectSettings",
+    backLabel,
+    settingsFrom: returnTo,
   });
   return { surface, mode, items: columnFor(surface, mode, ctx) };
 }
@@ -167,6 +199,8 @@ export function nativeColumn(): {
       allCollapsed: agentTreeStore.allCollapsed,
       agentDetail: agentTreeStore.detailOpen,
       projectSettings: workspacePageStore.page?.kind === "projectSettings",
+      backLabel: backTarget().label,
+      settingsFrom: settingsPageStore.returnTo,
     })
   );
   const kind = columnKindFor(surface, mode);

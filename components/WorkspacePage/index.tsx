@@ -4,7 +4,7 @@ import { useEffect, useRef, type ComponentType } from "react";
 import { useSnapshot } from "valtio";
 import type { Session } from "@/lib/db";
 import type { ViewProps } from "@/components/views/types";
-import { backPage, workspacePageStore } from "@/stores/workspacePage";
+import { workspacePageStore } from "@/stores/workspacePage";
 import { cn } from "@/lib/utils";
 import { runNav } from "@/lib/nav-actions";
 import { PAGES, type PageProps } from "./pages";
@@ -34,8 +34,8 @@ export function WorkspacePage({
     if (kind) ref.current?.focus({ preventScroll: true });
   }, [kind]);
 
-  // Esc goes back, unless a dialog or sheet on top takes it, or something
-  // outside the page (the home's search) has focus
+  // Esc goes back as the column's back does, unless a dialog or sheet on
+  // top takes it, or something outside the page (the home's search) has focus
   useEffect(() => {
     if (!kind) return;
     const onKey = (e: KeyboardEvent) => {
@@ -45,7 +45,7 @@ export function WorkspacePage({
       if (active && active !== document.body && !ref.current?.contains(active))
         return;
       e.preventDefault();
-      backPage();
+      runNav("back");
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
