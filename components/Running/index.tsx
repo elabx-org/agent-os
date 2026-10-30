@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   ChevronLeft,
@@ -15,7 +14,6 @@ import {
 } from "lucide-react";
 import type { PageProps } from "@/components/WorkspacePage";
 import { GroupCard, GroupRow } from "@/components/a/GroupCard";
-import { confirmAction } from "@/components/ui/confirm";
 import { shortAge } from "@/components/MissionControl/now-summary";
 import {
   useSpreadFold,
@@ -23,30 +21,21 @@ import {
 } from "@/components/views/SessionSpread";
 import { useIsNative } from "@/hooks/useIsNative";
 import { useLayoutMode } from "@/hooks/useLayoutMode";
-import { fetchAsUser, refusalText } from "@/lib/client/user-fetch";
 import { nativeCaps } from "@/lib/native-bridge";
 import { registerPageBack, runNav } from "@/lib/nav-actions";
 import type { RunningServer } from "@/lib/running";
 import { cn } from "@/lib/utils";
 import { workspacePageStore } from "@/stores/workspacePage";
+import { useRunning, useStopServer } from "./data";
 
 const POLL_MS = 3000;
+
+/** Servers no session started: the user's own, the container's */
+const OTHER = "Other";
 
 /** The iframe's sandbox: the proxy's own CSP sandbox, never same-origin */
 const FRAME_SANDBOX =
   "allow-scripts allow-forms allow-popups allow-modals allow-downloads";
-
-function useRunning() {
-  return useQuery({
-    queryKey: ["running"],
-    queryFn: async (): Promise<RunningServer[]> => {
-      const res = await fetch("/api/running");
-      if (!res.ok) throw new Error("Couldn't list what's running");
-      return ((await res.json()) as { servers: RunningServer[] }).servers;
-    },
-    refetchInterval: POLL_MS,
-  });
-}
 
 /** The last folder of a path */
 function folderName(dir: string): string {
@@ -70,11 +59,12 @@ function startedLine(s: RunningServer): string {
  * page and the preview on the right, nothing across the fold.
  */
 export function RunningPage({ page, view }: PageProps<"running">) {
-  const { data: servers, isLoading, error } = useRunning();
+  const { data: servers, isLoading, error } = useRunning(POLL_MS);
   const ref = useRef<HTMLDivElement>(null);
   const pages = useSpreadPages(ref, useSpreadFold());
-  const [picked, setPicked] = useState<number | null>(null);
-  const [pushed, setPushed] = useState(false);
+  // A chat card's Open preview comes with its server picked
+  const [picked, setPicked] = useState<number | null>(page.port ?? null);
+  const [pushed, setPushed] = useState(page.port !== undefined);
   // The open Duo's preview on both pages, the list put away
   const [full, setFull] = useState(false);
 
@@ -86,6 +76,13 @@ export function RunningPage({ page, view }: PageProps<"running">) {
     : null;
   const current =
     list.find((s) => s.port === picked) ?? (pages ? list[0] : undefined);
+  // Grouped by the project of the session that started each (N-Ports)
+  const groupOf = (s: RunningServer) => {
+    const session = view.sessions.find((x) => x.id === s.sessionId);
+    if (!session) return OTHER;
+    const project = view.projects.find((p) => p.id === session.project_id);
+    return project && !project.is_uncategorized ? project.name : "Sessions";
+  };
 
   // Back off a pushed preview to the list, before leaving the page
   useEffect(() => {
@@ -120,6 +117,7 @@ export function RunningPage({ page, view }: PageProps<"running">) {
       failed={!!error}
       selected={pages ? current?.port : undefined}
       sessionName={sessionName}
+      groupOf={groupOf}
       onPick={pick}
     />
   );
@@ -173,6 +171,7 @@ function ServerList({
   selected,
   onPick,
   sessionName,
+  groupOf,
 }: {
   servers: RunningServer[];
   loading: boolean;
@@ -181,7 +180,18 @@ function ServerList({
   onPick: (s: RunningServer) => void;
   /** Filtered to one session: its name, and Show all */
   sessionName?: string | null;
+  groupOf: (s: RunningServer) => string;
 }) {
+  // In the list's order (what sessions started first), Other last
+  const groups: [string, RunningServer[]][] = [];
+  for (const s of servers) {
+    const name = groupOf(s);
+    const group = groups.find(([g]) => g === name);
+    if (group) group[1].push(s);
+    else groups.push([name, [s]]);
+  }
+  groups.sort(([a], [b]) => Number(a === OTHER) - Number(b === OTHER));
+  const fromSessions = servers.filter((s) => s.sessionId).length;
   const mode = useLayoutMode();
   const native = useIsNative();
   // Where no column holds back, the title does
@@ -205,6 +215,12 @@ function ServerList({
       )}
       <header className="flex shrink-0 flex-col">
         <h1 className="t-large">Running</h1>
+        {!sessionName && servers.length > 0 && (
+          <p className="text-muted-foreground mt-1 text-[14px]">
+            {servers.length} {servers.length === 1 ? "port" : "ports"}
+            {fromSessions > 0 && ` · ${fromSessions} from sessions`}
+          </p>
+        )}
         {sessionName && (
           <div className="text-muted-foreground mt-1 flex min-w-0 items-center gap-2 text-[14px]">
             <span className="min-w-0 flex-1 truncate">
@@ -227,30 +243,41 @@ function ServerList({
           Couldn&apos;t list what&apos;s running.
         </p>
       ) : servers.length ? (
-        <GroupCard aria-label="Servers">
-          {servers.map((s) => (
-            <GroupRow
-              key={s.port}
-              leading={
-                <span className="bg-primary/15 text-primary grid h-[30px] w-[30px] shrink-0 place-items-center rounded-lg">
-                  <MonitorPlay className="h-4 w-4" />
-                </span>
-              }
-              title={
-                <span className="flex min-w-0 items-baseline gap-2">
-                  <span className="font-mono">:{s.port}</span>
-                  <span className="text-muted-foreground truncate text-[13px]">
-                    {s.name}
-                  </span>
-                </span>
-              }
-              subtitle={startedLine(s)}
-              chevron={selected === undefined}
-              selected={selected === s.port}
-              onClick={() => onPick(s)}
-            />
+        <div className="flex flex-col gap-4" aria-label="Servers">
+          {groups.map(([name, list]) => (
+            <section key={name} className="flex flex-col gap-2">
+              {groups.length > 1 && (
+                <h2 className="text-muted-foreground px-1 text-[13px] font-semibold">
+                  {name}
+                </h2>
+              )}
+              <GroupCard aria-label={name}>
+                {list.map((s) => (
+                  <GroupRow
+                    key={s.port}
+                    leading={
+                      <span className="bg-primary/15 text-primary grid h-[30px] w-[30px] shrink-0 place-items-center rounded-lg">
+                        <MonitorPlay className="h-4 w-4" />
+                      </span>
+                    }
+                    title={
+                      <span className="flex min-w-0 items-baseline gap-2">
+                        <span className="font-mono">:{s.port}</span>
+                        <span className="text-muted-foreground truncate text-[13px]">
+                          {s.name}
+                        </span>
+                      </span>
+                    }
+                    subtitle={startedLine(s)}
+                    chevron={selected === undefined}
+                    selected={selected === s.port}
+                    onClick={() => onPick(s)}
+                  />
+                ))}
+              </GroupCard>
+            </section>
           ))}
-        </GroupCard>
+        </div>
       ) : (
         <Quiet loading={loading} filtered={!!sessionName} />
       )}
@@ -314,9 +341,8 @@ function Preview({
   expanded?: boolean;
   onExpand?: () => void;
 }) {
-  const queryClient = useQueryClient();
   const [reload, setReload] = useState(0);
-  const [stopping, setStopping] = useState(false);
+  const { stop: stopServer, stopping } = useStopServer();
   const absolute = () => new URL(server.url, window.location.href).toString();
 
   const copy = async () => {
@@ -325,35 +351,6 @@ function Preview({
       toast.success("Link copied");
     } catch {
       toast.error("Couldn't copy the link");
-    }
-  };
-
-  const stop = async () => {
-    if (!server.pid || !server.sessionId) return;
-    const ok = await confirmAction({
-      title: `Stop :${server.port}?`,
-      message: server.command || server.name,
-      confirmLabel: "Stop",
-      destructive: true,
-    });
-    if (!ok) return;
-    setStopping(true);
-    try {
-      const res = await fetchAsUser(`/api/running/${server.pid}`, {
-        method: "DELETE",
-      });
-      if (!res.ok) {
-        const body = (await res.json().catch(() => ({}))) as {
-          error?: string;
-          reason?: string;
-        };
-        toast.error(refusalText(body));
-        return;
-      }
-      toast.success(`Stopped :${server.port}`);
-      await queryClient.invalidateQueries({ queryKey: ["running"] });
-    } finally {
-      setStopping(false);
     }
   };
 
@@ -411,11 +408,11 @@ function Preview({
         {server.pid && server.sessionId && (
           <button
             type="button"
-            onClick={stop}
-            disabled={stopping}
+            onClick={() => stopServer(server)}
+            disabled={stopping === server.port}
             className="text-destructive active:bg-accent hover:bg-accent min-h-[44px] shrink-0 rounded-full px-4 text-[15px] font-medium disabled:opacity-50"
           >
-            {stopping ? "Stopping…" : "Stop"}
+            {stopping === server.port ? "Stopping…" : "Stop"}
           </button>
         )}
       </footer>
