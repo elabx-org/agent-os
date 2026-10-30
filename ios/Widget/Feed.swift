@@ -8,7 +8,7 @@ struct WidgetFeed: Codable {
         let project: String?
         /// AgentState: needs, work, idle, limited, error…
         let state: String
-        /// "Needs you · npm run build", "Working", "Done"
+        /// "Needs you · npm run build", "Working", "Idle"
         let line: String
         /// When it entered this state, ms since 1970
         let since: Double
@@ -95,9 +95,9 @@ extension WidgetFeed {
                 Session(id: "b", title: "Widgets for the iOS app", project: "agent-os", state: "work",
                         line: "Working", since: now - 30_000),
                 Session(id: "c", title: "Session 22", project: "feather-builder", state: "idle",
-                        line: "Done", since: now - 16 * 3_600_000),
+                        line: "Idle", since: now - 16 * 3_600_000),
                 Session(id: "d", title: "Session 21", project: "ios-cert-forge", state: "idle",
-                        line: "Done", since: now - 17 * 3_600_000),
+                        line: "Idle", since: now - 17 * 3_600_000),
             ],
             usage: Usage(fiveHour: Window(percent: 12, resetsAt: nil),
                          week: Window(percent: 66, resetsAt: nil))

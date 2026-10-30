@@ -29,7 +29,7 @@ export interface WidgetSession {
   title: string;
   project: string | null;
   state: AgentState;
-  /** "Needs you · npm run build", "Working", "Done" */
+  /** "Needs you · npm run build", "Working", "Idle" */
   line: string;
   /** When it entered this state (ms) */
   since: number;
@@ -81,7 +81,8 @@ export async function GET(request: NextRequest) {
   const db = getDb();
   const rows = db
     .prepare(
-      `SELECT s.*, p.name AS project_name FROM sessions s
+      `SELECT s.*, CASE WHEN p.is_uncategorized THEN NULL ELSE p.name END
+         AS project_name FROM sessions s
        LEFT JOIN projects p ON p.id = s.project_id
        WHERE s.paused_at IS NULL`
     )
@@ -115,7 +116,7 @@ export async function GET(request: NextRequest) {
           ? ((await getSessionTitle(tmuxName)) ?? row.name)
           : row.name;
       const detail = state === "needs" ? await asking(tmuxName) : null;
-      const word = state === "idle" ? STATE_WORD.done : STATE_WORD[state];
+      const word = STATE_WORD[state];
       return {
         id: row.id,
         title,
