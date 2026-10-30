@@ -599,6 +599,8 @@ function HomeContent() {
   // link can land before the start state below is chosen, so note it
   const linkedSession = useRef(false);
   useSessionLinks(sessions, (session) => {
+    // A link that loaded the page can come before the first terminal
+    if (!getTerminalWithFallback()) return false;
     linkedSession.current = true;
     attachToSession(session);
     if (isMobile) setSidebarOpen(false);

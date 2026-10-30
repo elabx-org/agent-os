@@ -11,9 +11,11 @@ import type { Session } from "@/lib/db";
  */
 export function useSessionLinks(
   sessions: Session[],
-  open: (session: Session) => void
+  /** false: not ready yet (no terminal to open it in), try again shortly */
+  open: (session: Session) => boolean | void
 ) {
   const pending = useRef<string | null>(null);
+  const tries = useRef(0);
   const openRef = useRef(open);
   openRef.current = open;
 
@@ -22,8 +24,14 @@ export function useSessionLinks(
     if (!id) return;
     const session = list.find((s) => s.id === id);
     if (!session) return;
+    if (openRef.current(session) === false) {
+      // Up to ~10s for the first terminal to mount
+      if ((tries.current += 1) <= 40)
+        setTimeout(() => tryOpen.current(sessionsRef.current), 250);
+      return;
+    }
     pending.current = null;
-    openRef.current(session);
+    tries.current = 0;
   });
   const sessionsRef = useRef(sessions);
   sessionsRef.current = sessions;
