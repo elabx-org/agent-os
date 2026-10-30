@@ -32,8 +32,11 @@ interface ComposerProps {
   onChange: (value: string) => void;
   /** The session typed into: its folder and agent drive the pickers */
   sessionId?: string | null;
-  /** Called with the text to send; empty text means "press Enter" */
-  onSend: (text: string) => void;
+  /** Called with the text to send; empty text means "press Enter". A
+      rejection: not sent, the draft stays */
+  onSend: (text: string) => void | Promise<void>;
+  /** ↑ ↓ typed in the box: true when they went to the terminal */
+  onArrow?: (up: boolean) => boolean;
   /** Hand the keyboard to the terminal (Claude Code's / and @ pickers) */
   onTypeInTerminal: () => void;
   /** Scroll the terminal back to the user's last message (Claude) */
@@ -78,6 +81,7 @@ export function Composer({
   onChange,
   sessionId,
   onSend,
+  onArrow,
   onTypeInTerminal,
   onLastMessage,
   onPhoto,
@@ -108,6 +112,7 @@ export function Composer({
     cwd: session?.working_directory,
     claude: session?.agent_type === "claude",
     active,
+    onArrow,
   });
   // Claude's state: the queue, rewind and the box's keys follow it
   const live = useClaudeLive({
@@ -133,7 +138,7 @@ export function Composer({
   const sendDirect = useCallback(
     async (text: string, options?: DirectSendOptions) => {
       if (!options?.sessions?.length || !sessionId || !text.trim()) {
-        onSend(text);
+        await onSend(text);
         return;
       }
       const res = await fetchAsUser(`/api/sessions/${sessionId}/send-keys`, {
@@ -184,7 +189,7 @@ export function Composer({
           queue={queue}
           onSendDirect={sendDirect}
           // Nothing typed: Enter, as the terminal's own key
-          onEmptySend={() => onSend("")}
+          onEmptySend={() => void onSend("")}
           placeholder="Type into the terminal"
           live={live}
           // The terminal draws Claude's mode; history is in the +

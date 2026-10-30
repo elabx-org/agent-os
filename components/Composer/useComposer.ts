@@ -92,6 +92,9 @@ interface UseComposerOptions {
    * composer each; only the shown one takes search's slash command
    */
   active?: boolean;
+  /** ↑ (true) or ↓ on the box's first or last line, before its own
+      history: true when taken (the terminal's, for Claude's box) */
+  onArrow?: (up: boolean) => boolean;
 }
 
 const pastesKey = (id: string) => `agentos:pastes:${id}`;
@@ -197,6 +200,56 @@ function rankFiles(files: FileSuggestion[], query: string): FileSuggestion[] {
     .map((x) => x.f);
 }
 
+/**
+ * The caret is on the textarea's first (up) or last row as drawn: soft
+ * wrapped rows count. Measured on a hidden copy styled like the textarea.
+ */
+function onEdgeRow(el: HTMLTextAreaElement, up: boolean) {
+  const at = el.selectionStart;
+  const value = el.value;
+  if (up ? value.slice(0, at).includes("\n") : value.slice(at).includes("\n"))
+    return false;
+  const style = getComputedStyle(el);
+  const copy = document.createElement("div");
+  for (const prop of [
+    "paddingLeft",
+    "paddingRight",
+    "fontFamily",
+    "fontSize",
+    "fontWeight",
+    "fontStyle",
+    "letterSpacing",
+    "lineHeight",
+    "textTransform",
+    "wordSpacing",
+    "tabSize",
+    "overflowWrap",
+    "wordBreak",
+  ] as const)
+    copy.style[prop] = style[prop];
+  // The text's own width: inside the border and any scrollbar
+  copy.style.boxSizing = "border-box";
+  copy.style.width = `${el.clientWidth}px`;
+  copy.style.position = "absolute";
+  copy.style.visibility = "hidden";
+  copy.style.left = "-9999px";
+  copy.style.top = "0";
+  copy.style.whiteSpace = "pre-wrap";
+  const caret = document.createElement("span");
+  caret.textContent = "\u200b";
+  copy.append(value.slice(0, at), caret, value.slice(at) || "\u200b");
+  document.body.append(copy);
+  try {
+    const row =
+      parseFloat(style.lineHeight) || parseFloat(style.fontSize) * 1.2 || 20;
+    return up
+      ? caret.offsetTop < row / 2
+      : caret.offsetTop + row * 1.5 > copy.scrollHeight;
+  } finally {
+    copy.remove();
+  }
+}
+
 /** The pill the caret landed inside, if any */
 const chipAt = (chips: Chip[], at: number) =>
   chips.find((c) => c.start < at && at < c.end) ?? null;
@@ -214,8 +267,11 @@ export function useComposer({
   cwd,
   claude = true,
   active = true,
+  onArrow,
 }: UseComposerOptions) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const onArrowRef = useRef(onArrow);
+  onArrowRef.current = onArrow;
 
   // Long pastes, so they can show as pills; the draft holds their text
   const [pastes, setPastesState] = useState<Paste[]>([]);
@@ -762,6 +818,22 @@ export function useComposer({
       if (e.nativeEvent.isComposing) return false;
       const el = e.currentTarget;
       const plain = !e.shiftKey && !e.altKey && !e.metaKey && !e.ctrlKey;
+
+      // ↑ ↓ off the box's first or last row: the terminal's when it takes
+      // them (Claude's history, for its mirrored box), before the pickers
+      // (a recalled "/model" isn't a command being typed)
+      if (
+        plain &&
+        (e.key === "ArrowUp" || e.key === "ArrowDown") &&
+        onArrowRef.current &&
+        el.selectionStart === el.selectionEnd
+      ) {
+        const up = e.key === "ArrowUp";
+        if (onEdgeRow(el, up) && onArrowRef.current(up)) {
+          e.preventDefault();
+          return true;
+        }
+      }
 
       if (pickerToken && e.key === "Escape") {
         e.preventDefault();

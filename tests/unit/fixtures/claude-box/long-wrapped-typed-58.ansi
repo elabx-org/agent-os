@@ -1,0 +1,40 @@
+
+[91m ▐[40m▛███▛█[39m[49m   [1mClaude Code[0m [2m[37mv2.1.312[0m
+[91m▝▜[40m█████[49m█▀[39m  [2m[37mHaiku 5.5 · Claude Max[0m
+[91m ▝▝   ▝▝ [39m  [2m[37m~/…/b4586bae/tmp/mirror-lab/scratch/proj[0m
+
+[91m▎[39m Your Max plan includes $200 a month in API credits to
+[91m▎[39m power your apps and agents. Claim them at
+[91m▎[39m [94m]8;id=11prv8b;https://clau.de/api-credits\https://clau.de/api-credits[39m]8;;\
+
+[37m[100m❯ [97msay hi[39m
+
+[97m[49m●[39m Hi! What can I help you with in [94m/config/.claude/jobs/b45
+[39m  [94m86bae/tmp/mirror-lab/scratch/proj[39m?
+
+[2m[37m✻[0m [2m[37mWorked for 2s · done 3:56 PM[0m
+
+[37m[100m❯ [97mreply ok[39m
+  [97msecond line here[39m
+  [97mthird[39m
+
+[97m[49m●[39m ok
+  second line here
+  third
+
+[2m[37m✻[0m [2m[37mBrewed for 1s · done 3:56 PM[0m
+
+
+
+
+
+
+
+                  [92m✔ Update installed · /restart to apply[39m
+[37m─────────────────── Agentos package on code server image ─
+[39m❯ reply with only the word yes, this message is
+  deliberately long so that it wraps across several rows
+  of the narrow box ok https://example.com/a/very/long/
+  path/that/does/not/fit/on/one/row/at/all/xyz end
+[37m──────────────────────────────────────────────────────────
+[39m  [93m⏵⏵ auto mode on[2m[37m (shift+tab to cycle)[0m

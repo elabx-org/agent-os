@@ -39,7 +39,13 @@ function writeCache(id: string, draft: CachedDraft) {
  * a change from another device is taken only while nothing typed here is
  * waiting to be saved. Without a session it's plain state.
  */
-export function useSessionDraft(sessionId: string | null | undefined) {
+export function useSessionDraft(
+  sessionId: string | null | undefined,
+  /** Text another device saved, as it's taken here */
+  onRemote?: (text: string) => void
+) {
+  const onRemoteRef = useRef(onRemote);
+  onRemoteRef.current = onRemote;
   const [text, setTextState] = useState("");
   const textRef = useRef("");
   const serverAtRef = useRef(0);
@@ -117,6 +123,7 @@ export function useSessionDraft(sessionId: string | null | undefined) {
       if (idRef.current !== id || pendingRef.current) return;
       if (remote.updatedAt <= serverAtRef.current) return;
       serverAtRef.current = remote.updatedAt;
+      onRemoteRef.current?.(remote.text);
       apply(remote.text);
       writeCache(id, {
         text: remote.text,
