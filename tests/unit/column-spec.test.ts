@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  agentsMoreItem,
   columnFor,
   hiddenSlots,
   moreItems,
@@ -627,4 +628,12 @@ test("a session behind Now: back to it leads, closed and on tabletop", () => {
       ?.id,
     "new"
   );
+});
+
+test("More offers a session's agents while the column leaves them out", () => {
+  assert.equal(agentsMoreItem(0, "terminal"), null);
+  assert.equal(agentsMoreItem(3, "agents"), null);
+  const it = agentsMoreItem(3, "chat");
+  assert.equal(it?.id, "agents");
+  assert.equal(it?.label, "Agents (3)");
 });

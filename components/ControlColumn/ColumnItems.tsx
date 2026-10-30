@@ -7,6 +7,7 @@ import { haptic } from "@/lib/haptics";
 import {
   columnKindFor,
   moreItems,
+  agentsMoreItem,
   type ColumnItem as Item,
   type ColumnOrder,
 } from "@/lib/column-spec";
@@ -136,7 +137,7 @@ function MoreMenu({ shown, ...props }: MoreProps) {
   }, []);
   const surface = useSurface();
   const mode = useLayoutMode();
-  const { needsYou, viewMode } = useSnapshot(mobileNavStore);
+  const { needsYou, viewMode, agentCount } = useSnapshot(mobileNavStore);
   const { on: focus } = useSnapshot(focusStore);
   const { actions: git } = useSnapshot(gitMenuStore);
   const { offer: movable } = useSnapshot(moveSheetStore);
@@ -148,6 +149,7 @@ function MoreMenu({ shown, ...props }: MoreProps) {
   // What the person took out of this column; the menu already lists some
   const { order } = useSnapshot(columnOrderStore);
   const kind = columnKindFor(surface, mode);
+  const agentsMore = inSession ? agentsMoreItem(agentCount, viewMode) : null;
   const takenOut = kind
     ? moreItems(kind, order as ColumnOrder, viewMode).filter(
         (it) => !LISTED.includes(it.id) && !shown.has(it.id)
@@ -224,6 +226,11 @@ function MoreMenu({ shown, ...props }: MoreProps) {
             {it.label}
           </DropdownMenuItem>
         ))}
+        {agentsMore && !has("agents") && (
+          <DropdownMenuItem onSelect={go("agents")}>
+            {agentsMore.label}
+          </DropdownMenuItem>
+        )}
         {running && (
           <DropdownMenuItem onSelect={go("running")}>Running</DropdownMenuItem>
         )}

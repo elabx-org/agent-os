@@ -7,6 +7,7 @@ import {
   columnKindFor,
   moreItems,
   RUNNING_ITEM,
+  agentsMoreItem,
   type ColumnContext,
   type ColumnItem,
   type ColumnOrder,
@@ -169,6 +170,10 @@ export function nativeColumn(): {
     })
   );
   const kind = columnKindFor(surface, mode);
+  const agentsMore =
+    surface === "session" || surface === "beside"
+      ? agentsMoreItem(mobileNavStore.agentCount, mobileNavStore.viewMode)
+      : null;
   const column = PAGE_BARS.includes(mode)
     ? []
     : items.map(({ icon: _icon, ...rest }) => rest);
@@ -182,6 +187,7 @@ export function nativeColumn(): {
     more: kind
       ? [
           ...moreItems(kind, columnOrderStore.order, mobileNavStore.viewMode),
+          ...(agentsMore ? [agentsMore] : []),
           ...(runningStore.enabled ? [RUNNING_ITEM] : []),
         ]
           .filter((it) => !items.some((shown) => shown.id === it.id))

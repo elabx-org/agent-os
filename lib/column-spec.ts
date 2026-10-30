@@ -354,6 +354,18 @@ const BASE = {
 /** More's Running (M16), while Labs has it on */
 export const RUNNING_ITEM: Base = BASE.running;
 
+/**
+ * More's Agents: the closed column and an arranged one leave the item out,
+ * so a session's agents tree stays reachable from More
+ */
+export function agentsMoreItem(
+  agents: number,
+  viewMode: ColumnContext["viewMode"]
+): Base | null {
+  if (agents <= 0 || viewMode === "agents") return null;
+  return { ...BASE.agents, label: `Agents (${agents})` };
+}
+
 function item(base: Base, extra: Partial<ColumnItem> = {}): ColumnItem {
   const out: ColumnItem = { ...base, ...extra };
   // Only what's set: the app reads a missing key as off
