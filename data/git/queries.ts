@@ -46,14 +46,26 @@ export function useGitStatus(
   options?: { enabled?: boolean }
 ) {
   const enabled = !!workingDir && (options?.enabled ?? true);
-  // Every view of a folder (badge, rail, panel, drawer) on one 15s timer
-  useSharedPoll(gitKeys.status(workingDir), 15000, enabled);
-  return useQuery({
+  const query = useQuery({
     queryKey: gitKeys.status(workingDir),
     queryFn: () => fetchGitStatus(workingDir),
     staleTime: 10000, // Consider fresh for 10s
     enabled,
+    // A folder that isn't a repository won't become one by asking again
+    retry: (count, error) => !isNotRepo(error) && count < 3,
   });
+  // Every view of a folder (badge, rail, panel, drawer) on one 15s timer;
+  // none for a folder that isn't a repository
+  useSharedPoll(
+    gitKeys.status(workingDir),
+    15000,
+    enabled && !isNotRepo(query.error)
+  );
+  return query;
+}
+
+function isNotRepo(error: unknown): boolean {
+  return error instanceof Error && error.message === "Not a git repository";
 }
 
 // --- PR Status ---
