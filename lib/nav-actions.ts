@@ -76,6 +76,8 @@ export const NAV_ACTIONS = [
   "newFile",
   "upload",
   "running",
+  "settle",
+  "copyId",
 ] as const;
 
 /**
@@ -157,6 +159,10 @@ interface NavHandlers {
   /** E-Files' column: New file, Upload (the files view registers them) */
   newFile: () => void;
   uploadFile: () => void;
+  /** More's Settle and Copy session ID: the focused session's title bar
+      registers them */
+  settleSession: () => void;
+  copySessionId: () => void;
 }
 
 /**
@@ -232,6 +238,8 @@ export const navStore: NavHandlers = {
   newPullRequest: () => {},
   newFile: () => {},
   uploadFile: () => {},
+  settleSession: () => {},
+  copySessionId: () => {},
 };
 
 /**
@@ -322,6 +330,8 @@ function surfaceName(surface: Surface): string {
       return "New session";
     case "settings":
       return "Settings";
+    case "running":
+      return "Running";
     case "now":
     case "search":
       return "Now";
@@ -551,6 +561,8 @@ export const NAV_ROUTES: Record<NavAction, (leftPage: boolean) => void> = {
   newPr: () => navStore.newPullRequest(),
   newFile: () => navStore.newFile(),
   upload: () => navStore.uploadFile(),
+  settle: () => navStore.settleSession(),
+  copyId: () => navStore.copySessionId(),
   // M16, behind Labs: what sessions left running, with a preview
   // From a session, what it started; elsewhere everything
   running: () => {

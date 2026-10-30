@@ -4,8 +4,10 @@ import {
   agentsMoreItem,
   columnFor,
   hiddenSlots,
+  moreExtras,
   moreItems,
   savedOrder,
+  type MoreSources,
   type ColumnContext,
   type ColumnOrder,
   type ColumnItem,
@@ -43,23 +45,12 @@ const homeBeside = (mode: LayoutMode) =>
 // Every surface in every posture, as the mocks draw them
 const TABLE: [Surface, LayoutMode, string][] = [
   ["now", "phone", "now(on) inbox[2a] projects settings | new*"],
-  ["now", "duo-closed", "new* inbox(on)[2a] projects search | more"],
-  [
-    "now",
-    "duo-open",
-    "new* inbox[2a] | terminal git[3n] files beside | search more",
-  ],
-  ["now", "tabletop", "new* inbox(on)[2a] projects search | more"],
-  [
-    "now",
-    "book",
-    "new* inbox[2a] | terminal git[3n] files beside | search more",
-  ],
-  [
-    "now",
-    "desktop",
-    "new* inbox[2a] | terminal git[3n] files beside | search more",
-  ],
+  ["now", "duo-closed", "new* inbox[2a] projects search | more"],
+  // No session behind it: a bare shell on the right gets no session items
+  ["now", "duo-open", "new* inbox[2a] projects search | more"],
+  ["now", "tabletop", "new* inbox[2a] projects search | more"],
+  ["now", "book", "new* inbox[2a] projects search | more"],
+  ["now", "desktop", "new* inbox[2a] projects search | more"],
   ["session", "phone", "chat(on) git[3n] files live | inbox[2a] more"],
   ["session", "duo-closed", "back | terminal git[3n] files live | more"],
   ["session", "duo-open", "back | terminal git[3n] files live | more"],
@@ -73,23 +64,23 @@ const TABLE: [Surface, LayoutMode, string][] = [
   ["beside", "book", "back | beside(on) swap live | more"],
   ["beside", "desktop", "back | beside(on) swap live | more"],
   ["project", "phone", "now inbox[2a] projects(on) settings | new*"],
-  ["project", "duo-closed", "back | new* search | projectSettings"],
-  ["project", "duo-open", "back | new* search | projectSettings"],
-  ["project", "tabletop", "back | new* search | projectSettings"],
-  ["project", "book", "back | new* search | projectSettings"],
-  ["project", "desktop", "back | new* search | projectSettings"],
+  ["project", "duo-closed", "back | new* search | projectSettings more"],
+  ["project", "duo-open", "back | new* search | projectSettings more"],
+  ["project", "tabletop", "back | new* search | projectSettings more"],
+  ["project", "book", "back | new* search | projectSettings more"],
+  ["project", "desktop", "back | new* search | projectSettings more"],
   ["projects", "phone", "now inbox[2a] projects(on) settings | new*"],
-  ["projects", "duo-closed", "back | newProject* search sort"],
-  ["projects", "duo-open", "back | newProject* search sort"],
-  ["projects", "tabletop", "back | newProject* search sort"],
-  ["projects", "book", "back | newProject* search sort"],
-  ["projects", "desktop", "back | newProject* search sort"],
+  ["projects", "duo-closed", "back | newProject* search sort | more"],
+  ["projects", "duo-open", "back | newProject* search sort | more"],
+  ["projects", "tabletop", "back | newProject* search sort | more"],
+  ["projects", "book", "back | newProject* search sort | more"],
+  ["projects", "desktop", "back | newProject* search sort | more"],
   ["needs", "phone", "now inbox(on)[2a] projects settings | new*"],
-  ["needs", "duo-closed", "back | notifSettings clearHistory"],
-  ["needs", "duo-open", "back | notifSettings clearHistory"],
-  ["needs", "tabletop", "back | notifSettings clearHistory"],
-  ["needs", "book", "back | notifSettings clearHistory"],
-  ["needs", "desktop", "back | notifSettings clearHistory"],
+  ["needs", "duo-closed", "back | notifSettings clearHistory | more"],
+  ["needs", "duo-open", "back | notifSettings clearHistory | more"],
+  ["needs", "tabletop", "back | notifSettings clearHistory | more"],
+  ["needs", "book", "back | notifSettings clearHistory | more"],
+  ["needs", "desktop", "back | notifSettings clearHistory | more"],
   ["settings", "phone", "now inbox[2a] projects settings(on) | new*"],
   ["settings", "duo-closed", "closeSettings | server"],
   ["settings", "duo-open", "closeSettings | server"],
@@ -97,17 +88,23 @@ const TABLE: [Surface, LayoutMode, string][] = [
   ["settings", "book", "closeSettings | server"],
   ["settings", "desktop", "closeSettings | server"],
   ["new", "phone", "now inbox[2a] projects settings | new*"],
-  ["new", "duo-closed", "back | start*"],
-  ["new", "duo-open", "back | start*"],
-  ["new", "tabletop", "back | start*"],
-  ["new", "book", "back | start*"],
-  ["new", "desktop", "back | start*"],
+  ["new", "duo-closed", "back | start* | more"],
+  ["new", "duo-open", "back | start* | more"],
+  ["new", "tabletop", "back | start* | more"],
+  ["new", "book", "back | start* | more"],
+  ["new", "desktop", "back | start* | more"],
   ["search", "phone", "now inbox[2a] projects settings | new*"],
-  ["search", "duo-closed", "back"],
-  ["search", "duo-open", "back"],
-  ["search", "tabletop", "back"],
-  ["search", "book", "back"],
-  ["search", "desktop", "back"],
+  ["search", "duo-closed", "back | more"],
+  ["search", "duo-open", "back | more"],
+  ["search", "tabletop", "back | more"],
+  ["search", "book", "back | more"],
+  ["search", "desktop", "back | more"],
+  ["running", "phone", "now inbox[2a] projects settings | new*"],
+  ["running", "duo-closed", "back | more"],
+  ["running", "duo-open", "back | more"],
+  ["running", "tabletop", "back | more"],
+  ["running", "book", "back | more"],
+  ["running", "desktop", "back | more"],
 ];
 
 test("columnFor: every surface in every posture", () => {
@@ -211,12 +208,17 @@ test("columnFor: keyboard up compacts the closed session column (Closed-Terminal
   );
 });
 
-test("columnFor: working, the closed column ends with Stop (N-Queue)", () => {
+test("columnFor: working, Stop stands before More on the closed Duo (N-Queue)", () => {
   const ctx = { ...CTX, working: true };
   const items = columnFor("session", "duo-closed", ctx);
-  assert.equal(fmt(items), "back | terminal git[3n] live | stop");
-  assert.equal(items.at(-1)?.danger, true);
-  assert.equal(items.at(-1)?.symbol, "stop.fill");
+  assert.equal(fmt(items), "back | terminal git[3n] live | stop more");
+  assert.equal(items.at(-2)?.danger, true);
+  assert.equal(items.at(-2)?.symbol, "stop.fill");
+  // An arranged column keeps More too
+  assert.equal(
+    fmt(columnFor("session", "duo-closed", { ...ctx, order: ORDER })),
+    "back | projects inbox[2a] live terminal git[3n] | stop more"
+  );
   // Elsewhere the column keeps More
   assert.equal(
     fmt(columnFor("session", "duo-open", ctx)),
@@ -364,17 +366,31 @@ test("columnFor: labels, symbols and icons as the mocks", () => {
   );
   assert.deepEqual(
     columnFor("projects", "duo-closed", CTX).map((i) => i.label),
-    ["Back to Now", "New project", "Find a project", "Edit order and groups"]
+    [
+      "Back to Now",
+      "New project",
+      "Find a project",
+      "Edit order and groups",
+      "More",
+    ]
   );
+  // Project actions has its own symbol, More the ⋯
   assert.deepEqual(
-    columnFor("project", "duo-closed", CTX).map((i) => i.label),
-    ["Back", "New session", "Find in project", "Project actions"]
+    columnFor("project", "duo-closed", CTX).map((i) => [i.label, i.symbol]),
+    [
+      ["Back", "chevron.left"],
+      ["New session", "plus"],
+      ["Find in project", "magnifyingglass"],
+      ["Project actions", "folder.badge.gearshape"],
+      ["More", "ellipsis"],
+    ]
   );
   assert.deepEqual(
     columnFor("new", "duo-closed", CTX).map((i) => [i.label, i.symbol]),
     [
       ["Cancel", "xmark"],
       ["Start", "checkmark"],
+      ["More", "ellipsis"],
     ]
   );
   assert.equal(columnFor("beside", "duo-open", CTX)[1].label, "Side by side");
@@ -418,8 +434,9 @@ const ARRANGED: [Surface, LayoutMode, Partial<ColumnContext>, string][] = [
   [
     "session",
     "duo-closed",
+    // The keyboard up keeps the view switch and Changes, whatever the order
     { keyboardUp: true },
-    "back | projects inbox[2a] more",
+    "back | terminal git[3n] more",
   ],
   [
     "session",
@@ -429,7 +446,7 @@ const ARRANGED: [Surface, LayoutMode, Partial<ColumnContext>, string][] = [
   ],
   ["session", "phone", {}, "projects inbox[2a] live chat(on) git[3n] | more"],
   ["beside", "duo-open", {}, "back | swap | more"],
-  ["now", "duo-closed", {}, "inbox(on)[2a] new* | more"],
+  ["now", "duo-closed", {}, "inbox[2a] new* | more"],
 ];
 
 for (const [surface, mode, extra, want] of ARRANGED)
@@ -591,11 +608,11 @@ test("columnFor: Scripts sheet and project settings (N-Scripts, N-Config)", () =
   // The open Duo and desktop show it as a dialog: the column stays
   assert.equal(
     fmt(columnFor("project", "desktop", scripts)),
-    "back | new* search | projectSettings"
+    "back | new* search | projectSettings more"
   );
   for (const mode of ["duo-closed", "duo-open", "desktop"] as LayoutMode[]) {
     const items = columnFor("project", mode, { ...CTX, projectSettings: true });
-    assert.equal(fmt(items), "back | scripts viewConfig");
+    assert.equal(fmt(items), "back | scripts viewConfig | more");
     for (const i of items)
       assert.notEqual(columnIcon(i.icon), Circle, `${i.id}: ${i.icon}`);
   }
@@ -621,13 +638,72 @@ test("a session behind Now: back to it leads, closed and on tabletop", () => {
   for (const mode of ["duo-closed", "tabletop"] as LayoutMode[])
     assert.equal(
       fmt(columnFor("now", mode, { ...CTX, viewMode: null, behind: true })),
-      `resume | new* inbox${mode === "duo-closed" || mode === "tabletop" ? "(on)" : ""}[2a] projects search | more`
+      "resume | new* inbox[2a] projects search | more"
     );
   assert.equal(
     columnFor("now", "duo-open", { ...CTX, viewMode: null, behind: true })[0]
       ?.id,
     "new"
   );
+});
+
+test("Open-Now beside a session keeps Projects; Needs you is never on (24, 10)", () => {
+  const ctx = { ...CTX, behind: true };
+  for (const mode of ["duo-open", "book", "desktop"] as LayoutMode[])
+    assert.equal(
+      fmt(columnFor("now", mode, ctx)),
+      "resume | new* inbox[2a] projects | terminal git[3n] files beside | search more"
+    );
+  for (const mode of ["duo-closed", "tabletop", "duo-open"] as LayoutMode[])
+    for (const it of columnFor("now", mode, { ...CTX, viewMode: null }))
+      assert.ok(!it.selected, `${mode}: ${it.id}`);
+});
+
+test("More never offers the view showing (23)", () => {
+  const order: ColumnOrder = { session: ["view", "git", "live"] };
+  assert.deepEqual(
+    moreItems("session", order, "chat").map((i) => i.id),
+    ["files", "inbox", "new", "search", "beside", "projects"]
+  );
+  assert.deepEqual(
+    moreItems("session", order, "files").map((i) => i.id),
+    ["inbox", "new", "search", "beside", "projects"]
+  );
+});
+
+test("moreExtras: the other view, the session's actions, Running (21, DPD-13)", () => {
+  const session = { scripts: true, settle: true, copyId: true };
+  const ids = (src: Partial<MoreSources>) =>
+    moreExtras({
+      surface: "session",
+      viewMode: "chat",
+      shown: [],
+      running: true,
+      session,
+      ...src,
+    }).map((i) => i.id);
+  assert.deepEqual(ids({}), ["scripts", "settle", "copyId", "running"]);
+  // Files with the bar's Chat: Terminal too
+  assert.deepEqual(ids({ viewMode: "files", shown: ["chat", "files"] }), [
+    "terminal",
+    "scripts",
+    "settle",
+    "copyId",
+    "running",
+  ]);
+  // The closed Files column shows neither
+  assert.deepEqual(ids({ viewMode: "files", shown: ["back"] }).slice(0, 2), [
+    "chat",
+    "terminal",
+  ]);
+  assert.deepEqual(
+    ids({ session: { scripts: false, settle: false, copyId: true } }),
+    ["copyId", "running"]
+  );
+  // Off a session only Running, and never on Running itself
+  assert.deepEqual(ids({ surface: "projects", viewMode: null }), ["running"]);
+  assert.deepEqual(ids({ surface: "running", viewMode: null }), []);
+  assert.deepEqual(ids({ running: false, surface: "now" }), []);
 });
 
 test("More offers a session's agents while the column leaves them out", () => {

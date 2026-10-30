@@ -7,6 +7,7 @@ import { haptic } from "@/lib/haptics";
 import {
   columnKindFor,
   moreItems,
+  moreExtras,
   agentsMoreItem,
   type ColumnItem as Item,
   type ColumnOrder,
@@ -20,6 +21,7 @@ import { focusStore } from "@/stores/focus";
 import { gitMenuStore } from "@/stores/gitMenu";
 import { moveSheetStore, openMoveSheet } from "@/stores/moveSheet";
 import { runningStore } from "@/stores/running";
+import { sessionActionsStore } from "@/stores/sessionActions";
 import { useSurface } from "@/stores/surface";
 import {
   DropdownMenu,
@@ -143,6 +145,7 @@ function MoreMenu({ shown, ...props }: MoreProps) {
   const { actions: git } = useSnapshot(gitMenuStore);
   const { offer: movable } = useSnapshot(moveSheetStore);
   const { enabled: running } = useSnapshot(runningStore);
+  const actions = useSnapshot(sessionActionsStore);
   const inSession = surface === "session" || surface === "beside";
   const wide = mode === "duo-open" || mode === "book" || mode === "desktop";
   const go = (action: NavAction) => () => runNav(action);
@@ -153,11 +156,28 @@ function MoreMenu({ shown, ...props }: MoreProps) {
   const agentsMore = inSession
     ? agentsMoreItem(agentCount, agentLive, viewMode)
     : null;
+  // A session's column has no Find of its own (M11): the menu lists it once
+  const ownFind = inSession && !has("search", "find");
   const takenOut = kind
     ? moreItems(kind, order as ColumnOrder, viewMode).filter(
-        (it) => !LISTED.includes(it.id) && !shown.has(it.id)
+        (it) =>
+          !LISTED.includes(it.id) &&
+          !shown.has(it.id) &&
+          !(ownFind && it.id === "search")
       )
     : [];
+  // The other view from Changes or Files, the session's ⋯, Running
+  const extras = moreExtras({
+    surface,
+    viewMode,
+    shown: [...shown],
+    running,
+    session: {
+      scripts: actions.scripts,
+      settle: actions.settle,
+      copyId: !!actions.sessionId,
+    },
+  });
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger asChild>
@@ -166,7 +186,12 @@ function MoreMenu({ shown, ...props }: MoreProps) {
       <DropdownMenuContent
         side={props.hint === "left" ? "left" : "top"}
         align={props.hint === "left" ? "start" : "center"}
-        className="w-56"
+        // Rows a finger can hit off the desktop (44pt)
+        className={cn(
+          "w-56",
+          mode !== "desktop" &&
+            "[&_[role^=menuitem]]:min-h-11 [&_[role^=menuitem]]:text-base"
+        )}
       >
         {git && (
           <>
@@ -206,17 +231,18 @@ function MoreMenu({ shown, ...props }: MoreProps) {
             Live activity
           </DropdownMenuItem>
         )}
-        {inSession && (
-          <DropdownMenuItem onSelect={go("scripts")}>Scripts</DropdownMenuItem>
-        )}
+        {extras.map((it) => (
+          <DropdownMenuItem key={it.id} onSelect={go(it.id)}>
+            {it.label}
+          </DropdownMenuItem>
+        ))}
         {/* Over a session, or beside Now on a wide screen */}
         {movable && (inSession || (surface === "now" && wide)) && (
           <DropdownMenuItem onSelect={() => openMoveSheet(movable)}>
             Move to a worktree
           </DropdownMenuItem>
         )}
-        {/* A session's column has no Find of its own (M11) */}
-        {inSession && !has("search", "find") && (
+        {ownFind && (
           <DropdownMenuItem onSelect={go("search")}>Find</DropdownMenuItem>
         )}
         {inSession && wide && surface !== "beside" && !has("beside") && (
@@ -234,10 +260,7 @@ function MoreMenu({ shown, ...props }: MoreProps) {
             {agentsMore.label}
           </DropdownMenuItem>
         )}
-        {running && (
-          <DropdownMenuItem onSelect={go("running")}>Running</DropdownMenuItem>
-        )}
-        {!has("projects") && (
+        {!has("projects") && surface !== "projects" && (
           <DropdownMenuItem onSelect={go("projects")}>
             Projects
           </DropdownMenuItem>

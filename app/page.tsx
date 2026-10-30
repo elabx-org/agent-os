@@ -58,7 +58,7 @@ import { DesktopView } from "@/components/views/DesktopView";
 import { MobileView } from "@/components/views/MobileView";
 import { getPendingPrompt, clearPendingPrompt } from "@/stores/initialPrompt";
 import { closeSettings } from "@/stores/settingsPage";
-import { closePage } from "@/stores/workspacePage";
+import { closePage, workspacePageStore } from "@/stores/workspacePage";
 import { besideStore, setPaneLaunch } from "@/stores/beside";
 import { closeNew, newSurfaceStore, openNew } from "@/stores/newSurface";
 import { mobileNavActions, mobileNavStore } from "@/stores/mobileNav";
@@ -540,7 +540,13 @@ function HomeContent() {
             ? setSidebarOpen(true)
             : setSidebarOpen((open) => !open),
         openFind: () => setShowQuickSwitcher(true),
-        openNewSession: () => openNew(),
+        // On a project page, in that project (as the page's own + does)
+        openNewSession: () => {
+          const page = workspacePageStore.page;
+          if (page?.kind === "project")
+            openNew({ projectId: page.projectId, runAs: "session" });
+          else openNew();
+        },
         // Now, never toggled: what covers the home closes
         openNow: () => {
           closePage();

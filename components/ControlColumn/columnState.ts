@@ -6,7 +6,7 @@ import {
   columnFor,
   columnKindFor,
   moreItems,
-  RUNNING_ITEM,
+  moreExtras,
   agentsMoreItem,
   type ColumnContext,
   type ColumnItem,
@@ -22,6 +22,7 @@ import { focusStore } from "@/stores/focus";
 import { settingsPageStore } from "@/stores/settingsPage";
 import { workspacePageStore } from "@/stores/workspacePage";
 import { runningStore } from "@/stores/running";
+import { sessionActionsStore } from "@/stores/sessionActions";
 import { backStore } from "@/stores/back";
 import { backTarget } from "@/lib/nav-actions";
 import {
@@ -222,14 +223,26 @@ export function nativeColumn(): {
     liveOpen: mobileNavStore.liveOpen,
     wide: WIDE.includes(mode),
     // What the column shows already isn't offered again
-    more: kind
-      ? [
-          ...moreItems(kind, columnOrderStore.order, mobileNavStore.viewMode),
-          ...(agentsMore ? [agentsMore] : []),
-          ...(runningStore.enabled ? [RUNNING_ITEM] : []),
-        ]
-          .filter((it) => !items.some((shown) => shown.id === it.id))
-          .map(({ icon: _icon, ...rest }) => rest)
-      : [],
+    more: [
+      ...(kind
+        ? moreItems(kind, columnOrderStore.order, mobileNavStore.viewMode)
+        : []),
+      ...(agentsMore ? [agentsMore] : []),
+      ...moreExtras({
+        surface,
+        viewMode: mobileNavStore.viewMode,
+        shown: items.map((it) => it.id),
+        running: runningStore.enabled,
+        session: {
+          scripts: sessionActionsStore.scripts,
+          settle: sessionActionsStore.settle,
+          // Not from the app's menu: a nav message isn't a tap, so WebKit
+          // won't let the page write the clipboard (the web's More can)
+          copyId: false,
+        },
+      }),
+    ]
+      .filter((it) => !items.some((shown) => shown.id === it.id))
+      .map(({ icon: _icon, ...rest }) => rest),
   };
 }

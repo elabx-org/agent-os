@@ -21,6 +21,7 @@ import { runningStore } from "@/stores/running";
 import { backStore } from "@/stores/back";
 import { newSurfaceStore } from "@/stores/newSurface";
 import { surfaceStore } from "@/stores/surface";
+import { sessionActionsStore } from "@/stores/sessionActions";
 import { layoutStore } from "@/hooks/useLayoutMode";
 import { nativeColumn } from "@/components/ControlColumn/columnState";
 import { startClientLog } from "@/lib/client-log";
@@ -149,6 +150,8 @@ export function useNativeBridge({ waitingCount }: NativeBridgeOptions) {
             subscribeKey(runningStore, "sessionId", report),
             subscribeKey(layoutStore, "mode", report),
             subscribe(columnOrderStore, report),
+            // More's Scripts, Settle and Copy session ID
+            subscribe(sessionActionsStore, report),
           ]
         : []),
     ];

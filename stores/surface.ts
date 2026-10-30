@@ -19,7 +19,8 @@ export type Surface =
   | "needs"
   | "settings"
   | "new"
-  | "search";
+  | "search"
+  | "running";
 
 /** What the surface is derived from */
 export interface SurfaceInputs {
@@ -39,8 +40,8 @@ export interface SurfaceInputs {
 const SIDE_BY_SIDE: LayoutMode[] = ["duo-open", "book", "desktop"];
 
 /**
- * The topmost layer wins: Settings, Find, New, a project, Projects, Needs
- * you, the home, then the panes
+ * The topmost layer wins: Settings, Find, New, a project, Running,
+ * Projects, Needs you, the home, then the panes
  */
 export function surfaceFor(inputs: SurfaceInputs): Surface {
   const { page } = inputs;
@@ -48,6 +49,7 @@ export function surfaceFor(inputs: SurfaceInputs): Surface {
   if (inputs.searchOpen) return "search";
   if (inputs.newOpen || page === "new") return "new";
   if (page === "project" || page === "projectSettings") return "project";
+  if (page === "running") return "running";
   if (page === "projects") return "projects";
   if (page === "inbox" || inputs.inboxOpen) return "needs";
   if (inputs.homeOpen && !page) return "now";
@@ -80,8 +82,11 @@ export const surfaceStore = proxy<{
  * the phone's tab bar keeps Projects as a tab of its own
  */
 export function setHome(open: boolean): void {
+  // Only when it closes: a view's cleanup before the home opens says false
+  // too, and Projects picked from a session has just set its tab
+  if (!open && surfaceStore.home && layoutStore.mode !== "phone")
+    mobileNavStore.homeTab = "now";
   surfaceStore.home = open;
-  if (!open && layoutStore.mode !== "phone") mobileNavStore.homeTab = "now";
 }
 
 /** Called once from app/page.tsx with its own state */

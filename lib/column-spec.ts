@@ -289,8 +289,8 @@ const BASE = {
   },
   projectSettings: {
     id: "projectSettings",
-    symbol: "ellipsis",
-    icon: "Ellipsis",
+    symbol: "folder.badge.gearshape",
+    icon: "FolderCog",
     label: "Project actions",
   },
   agents: {
@@ -353,10 +353,19 @@ const BASE = {
     icon: "Upload",
     label: "Upload",
   },
+  settle: {
+    id: "settle",
+    symbol: "checkmark.circle",
+    icon: "CircleCheck",
+    label: "Settle",
+  },
+  copyId: {
+    id: "copyId",
+    symbol: "doc.on.doc",
+    icon: "Copy",
+    label: "Copy session ID",
+  },
 } satisfies Record<string, Base & { id: NavAction }>;
-
-/** More's Running (M16), while Labs has it on */
-export const RUNNING_ITEM: Base = BASE.running;
 
 /**
  * More's Agents: the closed column and an arranged one leave the item out,
@@ -540,9 +549,7 @@ function slotItem(
     case "live":
       return item(BASE.live, { selected: ctx.liveOpen });
     case "inbox":
-      return kind === "now"
-        ? inbox(ctx, { selected: !ctx.focus && ctx.needsYou > 0 })
-        : inbox(ctx);
+      return inbox(ctx);
     case "new":
       return item(BASE.new, { prominent: true });
     case "search":
@@ -557,6 +564,14 @@ function slotItem(
       return item(BASE.projects);
   }
 }
+
+/** The slot a view is: More never offers the view showing */
+const VIEW_SLOT: Partial<
+  Record<NonNullable<ColumnContext["viewMode"]>, ColumnSlot>
+> = {
+  git: "git",
+  files: "files",
+};
 
 /** What the column leaves out, as items for More (most menus skip ones they already list) */
 export function moreItems(
@@ -573,15 +588,52 @@ export function moreItems(
     paneCount: 1,
     canGoBack: false,
   };
-  return hiddenSlots(kind, order).map((slot) => {
-    const {
-      sep: _sep,
-      selected: _selected,
-      prominent: _prominent,
-      ...rest
-    } = slotItem(slot, kind, ctx);
-    return rest;
-  });
+  const current = viewMode ? VIEW_SLOT[viewMode] : undefined;
+  return hiddenSlots(kind, order)
+    .filter((slot) => slot !== current)
+    .map((slot) => {
+      const {
+        sep: _sep,
+        selected: _selected,
+        prominent: _prominent,
+        ...rest
+      } = slotItem(slot, kind, ctx);
+      return rest;
+    });
+}
+
+/** What More adds to what the column leaves out, where it shows */
+export interface MoreSources {
+  surface: Surface;
+  viewMode: ColumnContext["viewMode"];
+  /** What the column (or bar) shows already */
+  shown: NavAction[];
+  /** Labs' Running is on */
+  running: boolean;
+  /** The focused session's ⋯ (stores/sessionActions.ts) */
+  session: { scripts: boolean; settle: boolean; copyId: boolean };
+}
+
+/**
+ * The conversation view the column can't reach from Changes or Files, the
+ * focused session's own actions (its header's ⋯ is often hidden), and
+ * Running unless it's the page showing; for the web's More and the app's
+ */
+export function moreExtras(src: MoreSources): Base[] {
+  const inSession = src.surface === "session" || src.surface === "beside";
+  const out: Base[] = [];
+  const conversation = src.viewMode === "chat" || src.viewMode === "terminal";
+  if (inSession && src.viewMode && !conversation) {
+    if (!src.shown.includes("chat")) out.push(BASE.chat);
+    if (!src.shown.includes("terminal")) out.push(BASE.terminal);
+  }
+  if (inSession) {
+    if (src.session.scripts) out.push({ ...BASE.scripts, label: "Scripts" });
+    if (src.session.settle) out.push(BASE.settle);
+    if (src.session.copyId) out.push(BASE.copyId);
+  }
+  if (src.running && src.surface !== "running") out.push(BASE.running);
+  return out.filter((it) => !src.shown.includes(it.id));
 }
 
 /** The arranged slots between the pinned ends, the first one set apart from back */
@@ -608,36 +660,32 @@ function sessionColumn(
     if (own) return own;
     if (ctx.viewMode === "agents") return agentsColumn(ctx);
   }
-  const own = savedOrder("session", ctx.order);
-  if (own) {
-    // The keyboard up keeps the first two; while it works Stop takes More's place
-    const slots = compact ? own.slice(0, 2) : own;
-    const last =
-      closed && ctx.working && !compact
-        ? item(BASE.stop, { danger: true, ...sep })
-        : item(BASE.more, compact ? {} : sep);
-    return [
-      compact ? item(BASE.back, { label: "Back" }) : back(ctx),
-      ...arranged("session", slots, ctx, true),
-      last,
-    ];
-  }
   if (compact)
-    // Closed-Terminal, keyboard up: what fits above it
+    // Closed-Terminal, keyboard up: what fits above it, whatever the saved
+    // order, so the other view and Changes stay a tap away
     return [
       item(BASE.back, { label: "Back" }),
       otherView(ctx, sep),
       changes(ctx),
       item(BASE.more),
     ];
+  const own = savedOrder("session", ctx.order);
+  // N-Queue: while it works, Stop stands before More (never in its place)
+  const end = [
+    ...(closed && ctx.working
+      ? [item(BASE.stop, { danger: true, ...sep })]
+      : []),
+    item(BASE.more, closed && ctx.working ? {} : sep),
+  ];
+  if (own) return [back(ctx), ...arranged("session", own, ctx, true), ...end];
   if (closed && ctx.working)
-    // N-Queue: while it works, Stop takes More's place
+    // Files makes room for Stop
     return [
       back(ctx),
       otherView(ctx, sep),
       changes(ctx),
       item(BASE.live, { selected: ctx.liveOpen }),
-      item(BASE.stop, { danger: true, ...sep }),
+      ...end,
     ];
   // O-Tree: Agents beside Files on the open Duo, back to the session
   return [
@@ -710,8 +758,8 @@ function nowColumn(ctx: ColumnContext): ColumnItem[] {
     ? arranged("now", own, ctx, false)
     : [
         item(BASE.new, { prominent: true }),
-        // No Now item here: what needs you leads the page, so it's the one on
-        inbox(ctx, { selected: !ctx.focus && ctx.needsYou > 0 }),
+        // Only its count: it opens a page of its own, which isn't this one
+        inbox(ctx),
         item(BASE.projects),
         item(BASE.search),
       ];
@@ -726,13 +774,17 @@ function nowColumn(ctx: ColumnContext): ColumnItem[] {
   ];
 }
 
-/** Open-Now: New, Needs you | the other view, Changes, Files, Open beside | Find, More */
+/**
+ * Open-Now: New, Needs you, Projects | the other view, Changes, Files, Open
+ * beside | Find, More
+ */
 function nowWithSession(ctx: ColumnContext): ColumnItem[] {
   return [
     // Now beside the session: ‹ puts it away, the session takes both pages
-    ...(ctx.behind ? [item(BASE.resume)] : []),
-    item(BASE.new, { prominent: true }),
+    item(BASE.resume),
+    item(BASE.new, { prominent: true, sep: true }),
     inbox(ctx),
+    item(BASE.projects),
     otherView(ctx, sep),
     changes(ctx),
     item(BASE.files, { selected: ctx.viewMode === "files" }),
@@ -789,7 +841,8 @@ export function columnFor(
 
   switch (surface) {
     case "now":
-      if (wide && ctx.viewMode) return nowWithSession(ctx);
+      // A session's views only beside a session, not a bare shell
+      if (wide && ctx.viewMode && ctx.behind) return nowWithSession(ctx);
       // Wide, Now is a page beside the session: nothing to go back to
       return nowColumn(wide ? { ...ctx, behind: false } : ctx);
     case "session":
@@ -839,6 +892,7 @@ export function columnFor(
         item(BASE.newProject, { prominent: true, sep: true }),
         item(BASE.search, { label: "Find a project" }),
         item(BASE.sort),
+        item(BASE.more, sep),
       ];
     case "project":
       // N-Config: back | run a script, the file
@@ -847,27 +901,35 @@ export function columnFor(
           back(ctx, "Back"),
           item(BASE.scripts, sep),
           item(BASE.viewConfig),
+          item(BASE.more, sep),
         ];
       return [
         back(ctx, "Back"),
         item(BASE.new, { prominent: true, sep: true }),
         item(BASE.search, { label: "Find in project" }),
         item(BASE.projectSettings, sep),
+        item(BASE.more),
       ];
     case "needs":
       return [
         back(ctx),
         item(BASE.notifSettings, sep),
         item(BASE.clearHistory),
+        item(BASE.more, sep),
       ];
     case "new":
       // E-New: Cancel | Start (the form registers startNew)
       return [
         item(BASE.back, { symbol: "xmark", icon: "X", label: "Cancel" }),
         item(BASE.start, { prominent: true, sep: true }),
+        item(BASE.more, sep),
       ];
     case "search":
-      return [back(ctx)];
+      return [back(ctx), item(BASE.more, sep)];
+    case "running":
+      // Its own page, not the session's: back (to the session it was
+      // opened from) | More (the list has Show all itself)
+      return [back(ctx), item(BASE.more, sep)];
   }
 }
 

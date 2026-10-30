@@ -225,7 +225,8 @@ struct ColumnMoreMenu: View {
             ForEach(model.more.filter { !Self.listed.contains($0.id) && !shown.contains($0.id) }, id: \.id) { entry in
                 Button(entry.label, systemImage: entry.symbolName) { model.nav(entry.id) }
             }
-            if !shown.contains("projects") {
+            // Never the screen it's on
+            if !shown.contains("projects") && model.surface != "projects" {
                 Button("Projects", systemImage: "folder") { model.nav("projects") }
             }
             if !shown.contains("settings") {
