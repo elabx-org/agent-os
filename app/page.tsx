@@ -41,7 +41,13 @@ import { usePresence } from "@/hooks/usePresence";
 import { useFoldPosture } from "@/hooks/useFoldPosture";
 import { useViewShortcuts } from "@/hooks/useViewShortcuts";
 import { useLayoutModeSource } from "@/hooks/useLayoutMode";
-import { surfaceStore, useSurfaceSource } from "@/stores/surface";
+import {
+  homeAfterSwitch,
+  lastPageUsed,
+  notePageUsed,
+  surfaceStore,
+  useSurfaceSource,
+} from "@/stores/surface";
 import { useSessions } from "@/hooks/useSessions";
 import { useProjects } from "@/hooks/useProjects";
 import { useDevServersManager } from "@/hooks/useDevServersManager";
@@ -80,6 +86,12 @@ import { useFreshSessionCleanup } from "@/hooks/useFreshSessionCleanup";
 import { OPEN_SESSION_EVENT, type OpenSessionDetail } from "@/lib/bg-send";
 import { EdgeBack } from "@/components/EdgeBack";
 import { keepPlace, restorePlace, takePlace } from "@/stores/place";
+
+/** A workspace page on the open Duo's right page (not one across both) */
+const pageBeside = () => {
+  const kind = workspacePageStore.page?.kind;
+  return !!kind && kind !== "inbox" && kind !== "running";
+};
 
 function HomeContent() {
   // UI State
@@ -655,6 +667,9 @@ function HomeContent() {
   // shows) start on the home unless a session is up. A reload of the tab
   // starts where it was (stores/place), unless a link opened a session
   const started = useRef(false);
+  const wasNarrow = useRef(false);
+  const phoneHome = useRef<{ home: boolean; sessionId: string | null }>(null);
+  const homeForPage = useRef(false);
   useEffect(() => {
     if (!isHydrated) return;
     const onSession = !!focusedActiveTab?.sessionId || linkedSession.current;
@@ -663,6 +678,7 @@ function HomeContent() {
     const narrow = isMobile || isNative();
     if (!started.current) {
       started.current = true;
+      wasNarrow.current = narrow;
       const place = takePlace();
       if (place && !linked) {
         restorePlace(place);
@@ -675,10 +691,33 @@ function HomeContent() {
       keepPlace();
       return;
     }
-    // Folding, unfolding or turning keeps what showed: Now stays Now, a
-    // session its session. Only with nothing behind is it the home
-    if (narrow && !onSession) setSidebarOpen(true);
+    // Folding, unfolding or turning keeps what showed (stores/surface)
+    const sessionId = focusedActiveTab?.sessionId ?? null;
+    if (!narrow && wasNarrow.current)
+      phoneHome.current = { home: sidebarOpen, sessionId };
+    const next = homeAfterSwitch({
+      narrow,
+      wasNarrow: wasNarrow.current,
+      onePage: isMobile,
+      onSession,
+      sessionId,
+      home: sidebarOpen,
+      focus: focusStore.on,
+      before: phoneHome.current,
+      pageBeside: pageBeside(),
+      homeForPage: homeForPage.current,
+      lastPage: lastPageUsed(),
+    });
+    wasNarrow.current = narrow;
+    homeForPage.current = next.homeForPage;
+    setSidebarOpen(next.home);
   }, [isMobile, isHydrated]);
+  // Now opened by hand is the page in use; closed, it no longer only sits
+  // beside a page
+  useEffect(() => {
+    if (sidebarOpen && !homeForPage.current) notePageUsed("home");
+    if (!sidebarOpen) homeForPage.current = false;
+  }, [sidebarOpen]);
 
   useViewShortcuts();
 

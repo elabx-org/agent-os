@@ -10,6 +10,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type PointerEvent,
   type ReactNode,
   type RefObject,
 } from "react";
@@ -27,7 +28,7 @@ import { useIsNative } from "@/hooks/useIsNative";
 import { FOLD_CLEAR, useHinge } from "@/hooks/useHinge";
 import { useLayoutMode } from "@/hooks/useLayoutMode";
 import { registerNavHandlers, runNav } from "@/lib/nav-actions";
-import { dropHome, setHome } from "@/stores/surface";
+import { dropHome, notePageUsed, setHome } from "@/stores/surface";
 import { isNative, nativeCaps } from "@/lib/native-bridge";
 import { postureStore } from "@/stores/posture";
 import { resetSwap, toggleSwap } from "@/stores/paneOrder";
@@ -349,6 +350,22 @@ export function SessionSpread({
   useEffect(() => setHome(homeWanted), [homeWanted]);
   useEffect(() => dropHome, []);
 
+  // Which page was used last, for a fold to one page: a tap on either, or
+  // a view picked for the session
+  const homeRef = useRef<HTMLDivElement>(null);
+  const notePage = (e: PointerEvent) => {
+    if (pages && homeOpen)
+      notePageUsed(
+        homeRef.current?.contains(e.target as Node) ? "home" : "session"
+      );
+  };
+  const shownMode = useRef(viewMode);
+  useEffect(() => {
+    if (shownMode.current === viewMode) return;
+    shownMode.current = viewMode;
+    notePageUsed("session");
+  }, [viewMode]);
+
   // Two on the pages trade sides in place (CSS order, nothing remounts);
   // elsewhere the split itself swaps
   useEffect(
@@ -432,9 +449,13 @@ export function SessionSpread({
         : undefined;
 
   return (
-    <div className="relative flex min-h-0 min-w-0 flex-1">
+    <div
+      className="relative flex min-h-0 min-w-0 flex-1"
+      onPointerDownCapture={notePage}
+    >
       {/* The home: a sidebar on the web, the left page on the open Duo */}
       <div
+        ref={homeRef}
         className={cn(
           "kb-compact-hide bg-sidebar-background relative flex-shrink-0 overflow-hidden transition-all duration-200",
           !homeWidth && "shadow-xl shadow-black/10 dark:shadow-black/30",

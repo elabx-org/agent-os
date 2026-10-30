@@ -97,6 +97,72 @@ export function dropHome(): void {
   surfaceStore.home = false;
 }
 
+/**
+ * On the open Duo's two pages, the one used last: Now on the left or the
+ * session (and what it has open) on the right. Folding to one page shows it
+ */
+let pageUsed: "home" | "session" = "home";
+
+export function notePageUsed(page: "home" | "session"): void {
+  pageUsed = page;
+}
+
+export function lastPageUsed(): "home" | "session" {
+  return pageUsed;
+}
+
+/** What a layout switch (a fold, an unfold or a turn) decides from */
+export interface SwitchInputs {
+  /** The home is Now (a phone, the app), not the web's sidebar */
+  narrow: boolean;
+  /** It was before the switch */
+  wasNarrow: boolean;
+  /** One page now: the phone layout (the closed Duo, tabletop) */
+  onePage: boolean;
+  /** A session is behind the home */
+  onSession: boolean;
+  sessionId: string | null;
+  /** Now (or the sidebar) is up */
+  home: boolean;
+  focus: boolean;
+  /** What the phone showed before it turned to the wide layout */
+  before: { home: boolean; sessionId: string | null } | null;
+  /** A workspace page takes the right page (not one across both) */
+  pageBeside: boolean;
+  /** Now was opened by the unfold only to sit beside that page */
+  homeForPage: boolean;
+  lastPage: "home" | "session";
+}
+
+/**
+ * The home after a switch: what showed stays (Now stays Now, a session its
+ * session), the web's sidebar is its own thing, an unfold fills the left
+ * page beside a page with Now, and a fold to one page shows the page used
+ */
+export function homeAfterSwitch(i: SwitchInputs): {
+  home: boolean;
+  homeForPage: boolean;
+} {
+  // To the web's wide layout: its sidebar, as at start
+  if (!i.narrow) return { home: !i.focus, homeForPage: false };
+  if (!i.onSession) return { home: true, homeForPage: false };
+  // Back from it: Now if the phone showed it on this session before
+  if (!i.wasNarrow)
+    return {
+      home: !!i.before?.home && i.before.sessionId === i.sessionId,
+      homeForPage: false,
+    };
+  if (!i.onePage) {
+    // Unfolded: a page on the right, Now on the left
+    if (i.pageBeside && !i.home) return { home: true, homeForPage: true };
+    return { home: i.home, homeForPage: false };
+  }
+  // Folded to one page: the session if it was used last, or if Now only
+  // came to sit beside a page that is still open
+  const session = (i.homeForPage && i.pageBeside) || i.lastPage === "session";
+  return { home: i.home && !session, homeForPage: false };
+}
+
 /** Called once from app/page.tsx with its own state */
 export function useSurfaceSource(inputs: {
   paneCount: number;
