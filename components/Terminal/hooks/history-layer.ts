@@ -34,8 +34,6 @@ export interface HistoryLayerConfig {
   term: XTerm;
   /** Runs a shell command over the terminal's socket; its whole stdout */
   exec: (command: string) => Promise<string | null>;
-  /** Shown or hidden: the page's "scroll to bottom" follows it */
-  onOpenChange?: (open: boolean) => void;
   /** A finger held still on the history (opens select mode) */
   onLongPressRef?: { current: (() => void) | undefined };
 }
@@ -83,7 +81,7 @@ function injectStyle() {
  * goes away at the bottom or when anything is typed.
  */
 export function createHistoryLayer(config: HistoryLayerConfig): HistoryLayer {
-  const { term, exec, onOpenChange, onLongPressRef } = config;
+  const { term, exec, onLongPressRef } = config;
   injectStyle();
 
   let el: HTMLDivElement | null = null;
@@ -387,7 +385,6 @@ export function createHistoryLayer(config: HistoryLayerConfig): HistoryLayer {
       tmuxScrolled = parsed.header.scrolled > 0;
       el.style.display = "block";
       isOpen = true;
-      onOpenChange?.(true);
       el.scrollTop = maxScroll() - parsed.header.scrolled * rowPx;
       // What the finger did while the rows were on their way
       if (queued) {
@@ -422,7 +419,6 @@ export function createHistoryLayer(config: HistoryLayerConfig): HistoryLayer {
     }
     blocks = [];
     filled = new Set();
-    onOpenChange?.(false);
     // tmux was scrolled back when this opened; it's at the bottom now
     if (tmuxScrolled) {
       tmuxScrolled = false;

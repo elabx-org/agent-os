@@ -41,10 +41,8 @@ export function useTerminalConnection({
   onLongPress,
 }: UseTerminalConnectionProps): UseTerminalConnectionReturn {
   const [connected, setConnected] = useState(false);
-  const [xtermAtBottom, setIsAtBottom] = useState(true);
-  // The history layer covers the live terminal (touch-scroll.ts)
-  const [historyOpen, setHistoryOpen] = useState(false);
-  const isAtBottom = xtermAtBottom && !historyOpen;
+  const [isAtBottom, setIsAtBottom] = useState(true);
+  // The history a swipe back opens over the live terminal (touch-scroll.ts)
   const historyRef = useRef<HistoryLayer | null>(null);
   // Rows the history was scrolled up when a long press opened select mode
   const historyOffsetRef = useRef<number | null>(null);
@@ -323,7 +321,6 @@ export function useTerminalConnection({
       const history = createHistoryLayer({
         term,
         exec: execRawViaWs,
-        onOpenChange: setHistoryOpen,
         onLongPressRef: longPressRef,
       });
       historyRef.current = history;
@@ -348,7 +345,6 @@ export function useTerminalConnection({
         typed.dispose();
         history.dispose();
         if (historyRef.current === history) historyRef.current = null;
-        setHistoryOpen(false);
       };
 
       // Setup WebSocket
