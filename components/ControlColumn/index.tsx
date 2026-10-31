@@ -24,7 +24,7 @@ interface ControlColumnProps {
   /**
    * column: a vertical capsule, placed by the parent (or by sideRailWidth);
    * hbar: the tabletop's centred bar (HBar); tabs: the phone's tab bar and
-   * New button (TabBar), none inside a session
+   * New button (TabBar), the tabletop's bar inside a session
    */
   variant: "column" | "hbar" | "tabs";
   /**
@@ -51,11 +51,14 @@ export function ControlColumn({
 
 /**
  * A phone: the tab bar over the home and its pages. Inside a session the
- * composer takes its place (E-iPhone); the header has back and the views
+ * bar of views under the composer, as on a table (Fold-Chat): the header
+ * has only back, Focus and ⋯, so Chat, Find and Running are reached here
  */
 function PhoneBar({ className }: { className?: string }) {
   const surface = useSurface();
-  return surface === "session" || surface === "beside" ? null : (
+  return surface === "session" || surface === "beside" ? (
+    <HBar className={className} />
+  ) : (
     <TabBar className={className} />
   );
 }

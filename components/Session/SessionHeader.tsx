@@ -377,6 +377,13 @@ export function DesktopHeader({
           className="text-[13px]"
         />
       </div>
+      {/* A narrow bar keeps Chat | Terminal (Changes is the ⋯'s drawer) */}
+      <ViewSeg
+        viewMode={viewMode}
+        onViewModeChange={onViewModeChange}
+        className="bg-card @min-[640px]/bar:hidden"
+        views={CHAT_TERMINAL}
+      />
       <ViewSeg
         // `workers` is the agents view too
         viewMode={agentsView ? "agents" : viewMode}

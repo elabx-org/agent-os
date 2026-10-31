@@ -762,7 +762,10 @@ function sessionBar(ctx: ColumnContext): ColumnItem[] {
   ];
 }
 
-/** E-iPhone: Now · Needs you · Projects · Settings, then the New circle */
+/**
+ * E-iPhone: Now · Needs you · Projects · Find · Settings, then the New
+ * circle (Find as in Main's column: a phone has no sidebar to hold it)
+ */
 function tabs(surface: Surface, ctx: ColumnContext): ColumnItem[] {
   return [
     item(BASE.now, { selected: surface === "now" }),
@@ -770,6 +773,7 @@ function tabs(surface: Surface, ctx: ColumnContext): ColumnItem[] {
     item(BASE.projects, {
       selected: surface === "projects" || surface === "project",
     }),
+    item(BASE.search, { selected: surface === "search" }),
     item(BASE.settings, { selected: surface === "settings" }),
     item(BASE.new, { prominent: true, sep: true }),
   ];
@@ -850,7 +854,7 @@ export function columnFor(
   const wide = WIDE.includes(mode);
   const inSession = surface === "session" || surface === "beside";
   // The phone's tab bar holds the home's places; in a session the phone
-  // gets the tabletop's bar of views
+  // gets the tabletop's bar of views (ControlColumn's PhoneBar draws it)
   // N-Scripts over a project page too (over a session, sessionColumn has it)
   if (mode === "duo-closed" && !inSession && ctx.sheet === "scripts")
     return scriptsColumn();

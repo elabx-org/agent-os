@@ -31,10 +31,13 @@ export function HBar({ className }: { className?: string }) {
       )}
       style={{ paddingBottom: BOTTOM }}
     >
+      {/* A phone's session gets it too: an iPad split to 320 scrolls it
+          rather than push items off the side (the hover hints need room
+          above it otherwise) */}
       <nav
         aria-label="Main"
         data-control-column
-        className="glass flex items-center gap-0.5 rounded-[30px] p-[5px]"
+        className="glass flex max-w-full items-center gap-0.5 rounded-[30px] p-[5px] max-[359px]:overflow-x-auto"
       >
         <ColumnItems items={items} orientation="horizontal" />
       </nav>

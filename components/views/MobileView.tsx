@@ -19,7 +19,8 @@ import { useRunningFlag } from "@/hooks/useRunningFlag";
 import { useSideRail } from "@/hooks/useSideRail";
 import { useLayoutMode } from "@/hooks/useLayoutMode";
 import { isNative, nativeCaps } from "@/lib/native-bridge";
-import { dropHome, setHome } from "@/stores/surface";
+import { dropHome, setHome, surfaceStore } from "@/stores/surface";
+import { runNav } from "@/lib/nav-actions";
 import { loadDuoPreview } from "@/stores/duoPreview";
 import { cn } from "@/lib/utils";
 import { WorkspacePage } from "@/components/WorkspacePage";
@@ -85,6 +86,7 @@ export function MobileView(props: ViewProps) {
 
   const { page } = useSnapshot(workspacePageStore);
   const pageOpen = !!page;
+  const { behind } = useSnapshot(surfaceStore);
   // Needs you is a page here, over the home like the others
   useNeedsYouPage(true);
   useRunningFlag();
@@ -196,7 +198,11 @@ export function MobileView(props: ViewProps) {
               setSidebarOpen(false);
             }}
             // New and the way back are in the column, the bar or the
-            // iOS app's own bar
+            // iOS app's own bar; the phone's tab bar has no way back to
+            // the session left under Now, so the page has it
+            onClose={
+              bar === "tabs" && behind ? () => runNav("resume") : undefined
+            }
             projectsView={projectList}
           />
         </div>

@@ -16,8 +16,9 @@ const TAB_BAR_HEIGHT = 72;
 
 /**
  * A regular iPhone in Safari (E-iPhone): a glass capsule of Now · Needs you
- * · Projects · Settings (64px, radius 32) and a separate 64px New button.
- * Hidden while the keyboard is up; sets --control-bar-h for the layers above.
+ * · Projects · Find · Settings (64px, radius 32) and a separate 64px New
+ * button. Hidden while the keyboard is up; sets --control-bar-h for the
+ * layers above.
  */
 export function TabBar({ className }: { className?: string }) {
   const native = useIsNative();
@@ -63,7 +64,10 @@ export function TabBar({ className }: { className?: string }) {
               )}
             >
               <Icon aria-hidden className="h-5 w-5" strokeWidth={1.9} />
-              <span className="max-w-full truncate">{tab.label}</span>
+              {/* Five don't fit their names in an iPad split to 320 */}
+              <span className="max-w-full truncate max-[359px]:sr-only">
+                {tab.label}
+              </span>
               {!!tab.badge && (
                 <ItemBadge
                   count={tab.badge}

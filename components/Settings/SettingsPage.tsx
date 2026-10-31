@@ -165,6 +165,9 @@ function SettingsLayer(props: NotificationsSectionProps) {
   const split = SPLIT.includes(layout);
   // Only ever mounted in the browser, so no hydration to match
   const native = isNative();
+  // The touch key bar shows on any touch screen, the desktop layout's too
+  // (an iPad, an iPhone on its side), so its settings do
+  const touch = window.matchMedia("(pointer: coarse)").matches;
   // The column draws close/back and Server: the web column on the closed
   // Duo in Safari, the app's own once it takes the column spec. Otherwise
   // the page has its own.
@@ -239,7 +242,7 @@ function SettingsLayer(props: NotificationsSectionProps) {
   const rows: SettingsSection[] = [
     "notifications",
     "display",
-    ...(layout !== "desktop" || native ? (["keys"] as const) : []),
+    ...(layout !== "desktop" || native || touch ? (["keys"] as const) : []),
     "column",
     ...(native ? (["duo"] as const) : []),
     "claude",
