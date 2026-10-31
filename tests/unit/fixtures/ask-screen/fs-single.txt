@@ -1,0 +1,40 @@
+
+ ▐▛███▛█   Claude Code v2.1.316
+▝▜██████▀  Haiku 5.5 · Claude Ultra
+ ▝▝   ▝▝   /tmp/asklab-fs
+
+
+❯ Use the AskUserQuestion tool once: ask "Which colour?" header
+  "Colour", options Red, Green, Blue, each with a short
+  description. Nothing else.
+──────────────────────────────────────────────────────────────────
+ ☐ Colour
+
+Which colour?
+
+❯ 1. Red
+     A warm, bold red.
+  2. Green
+     A natural, calm green.
+  3. Blue
+     A cool, clear blue.
+  4. Type something.
+──────────────────────────────────────────────────────────────────
+  5. Chat about this
+
+Enter to select · ↑/↓ to navigate · Esc to cancel
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+─────────────────────────── Agentos package on code server image ─

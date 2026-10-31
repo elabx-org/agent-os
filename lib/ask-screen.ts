@@ -14,6 +14,10 @@
  *        Submit                              it; Enter on Submit moves on
  *
  *   Review your answers … ❯ 1. Submit answers   after the last question
+ *
+ * Full screen ("tui": "fullscreen") draws a long question with a "│ " bar,
+ * and a question taller than the pane loses its tab row (and the start of
+ * the question) off the top.
  */
 
 export interface AskRow {
@@ -32,6 +36,8 @@ export type AskScreen =
       rows: AskRow[];
       /** Where the ❯ is: a row's number, "submit" or null */
       cursor: number | "submit" | null;
+      /** The tab row is off the top: the question may be its end only */
+      partial?: boolean;
     }
   | { kind: "review"; cursor: number | null };
 
@@ -39,6 +45,37 @@ const TABS = /^\s*(←\s+)?[☐☒✔]\s+\S/;
 const ROW = /^(❯|\s)\s(\d+)\.\s(?:\[(.)\]\s)?(.*)$/;
 const SUBMIT = /^(❯|\s)\s+Submit\s*$/;
 const RULE = /^\s*─{10,}/;
+const FOOTER = /Enter to (select|confirm)|Esc to cancel/;
+// Full screen's bar beside a long question
+const BAR = /^\s*│\s?/;
+
+/**
+ * Where a question taller than the pane starts, its tab row gone: the lines
+ * above its first row up to a gap or rule, or the top
+ */
+function headlessStart(lines: string[]): number {
+  let footer = -1;
+  for (let i = lines.length - 1; i >= 0; i--) {
+    if (FOOTER.test(lines[i])) {
+      footer = i;
+      break;
+    }
+  }
+  if (footer < 0) return -1;
+  let first = -1;
+  for (let i = footer; i >= 0; i--) {
+    const row = ROW.exec(lines[i]);
+    if (row && row[2] === "1") {
+      first = i;
+      break;
+    }
+  }
+  if (first < 0) return -1;
+  let i = first - 1;
+  while (i >= 0 && !lines[i].trim()) i--;
+  while (i >= 0 && lines[i].trim() && !RULE.test(lines[i])) i--;
+  return i + 1;
+}
 
 /** The question screen at the bottom of the pane, or null when there's none */
 export function parseAskScreen(lines: string[]): AskScreen | null {
@@ -49,8 +86,12 @@ export function parseAskScreen(lines: string[]): AskScreen | null {
       break;
     }
   }
-  if (tabs < 0) return null;
-  const body = lines.slice(tabs + 1);
+  const partial = tabs < 0;
+  const start = partial ? headlessStart(lines) : tabs + 1;
+  if (start < 0) return null;
+  // Cut at the top only when nothing above it says where it starts
+  const cut = partial && (start === 0 || !RULE.test(lines[start - 1] ?? ""));
+  const body = lines.slice(start);
   // The review has no footer; its Submit row says it's still open
   if (
     body.some((l) => /^\s*Review your answers/.test(l)) &&
@@ -61,8 +102,7 @@ export function parseAskScreen(lines: string[]): AskScreen | null {
     return { kind: "review", cursor: n ? Number(n) : null };
   }
   // A question has to still be open: its own footer below it
-  if (!body.some((l) => /Enter to (select|confirm)|Esc to cancel/.test(l)))
-    return null;
+  if (!body.some((l) => FOOTER.test(l))) return null;
 
   const question: string[] = [];
   const rows: AskRow[] = [];
@@ -88,7 +128,8 @@ export function parseAskScreen(lines: string[]): AskScreen | null {
       continue;
     }
     // The question sits above the first row; descriptions sit under rows
-    if (!rows.length && line.trim()) question.push(line.trim());
+    if (!rows.length && line.trim())
+      question.push(line.replace(BAR, "").trim());
   }
   if (!rows.length) return null;
   return {
@@ -97,6 +138,7 @@ export function parseAskScreen(lines: string[]): AskScreen | null {
     multi,
     rows,
     cursor,
+    ...(cut ? { partial: true } : {}),
   };
 }
 
@@ -104,7 +146,10 @@ export function parseAskScreen(lines: string[]): AskScreen | null {
 export function isQuestion(screen: AskScreen | null, question: string) {
   if (screen?.kind !== "question") return false;
   const norm = (t: string) => t.replace(/\s+/g, " ").trim().toLowerCase();
-  return norm(screen.question) === norm(question);
+  const shown = norm(screen.question);
+  // Its start off the top: the end that shows has to match
+  if (screen.partial) return shown.length > 0 && norm(question).endsWith(shown);
+  return shown === norm(question);
 }
 
 export interface AskAnswer {
