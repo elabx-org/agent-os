@@ -7,6 +7,7 @@
 
 import type { AskQuestion, ChatItem } from "@/lib/claude-transcript";
 import type { PermissionPrompt, PromptOption } from "@/lib/permission-prompt";
+import { messageChoices, type MessageChoices } from "@/lib/message-choices";
 
 export type ReplyContextKind = "ask" | "permission" | "message" | "working";
 
@@ -36,6 +37,8 @@ export interface ReplyContext {
   questions?: AskQuestion[];
   /** Claude's question screen is up now (server, lib/session-reply-context) */
   onScreen?: boolean;
+  /** Replies to a question asked in plain text, as taps */
+  choices?: MessageChoices;
   /** The chat item to jump to */
   sourceId: string | null;
   toolName?: string;
@@ -167,6 +170,7 @@ export function lastTurnContext(items: ChatItem[]): ReplyContext | null {
       excerpt: leadUp(lastText.text, question),
       text,
       options: [],
+      choices: messageChoices(lastText.text) ?? undefined,
       sourceId: lastText.id,
       ts: lastText.ts || null,
     };
