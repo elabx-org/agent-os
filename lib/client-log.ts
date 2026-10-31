@@ -30,6 +30,14 @@ function describe(target: EventTarget | null): string {
   return bits.join(" ");
 }
 
+// The running log's line adder, for clientLog
+let addLine: ((what: string) => void) | null = null;
+
+/** A line in the app's client log, when it runs (the iOS app); else nothing */
+export function clientLog(what: string) {
+  addLine?.(what);
+}
+
 export function startClientLog(): () => void {
   let queue: string[] = [];
   const add = (what: string) => {
@@ -37,6 +45,7 @@ export function startClientLog(): () => void {
       `${new Date().toISOString()} ${window.innerWidth}x${window.innerHeight} ${what} | active: ${describe(document.activeElement)}`
     );
   };
+  addLine = add;
   const flush = () => {
     if (!queue.length) return;
     const lines = queue;
@@ -79,6 +88,7 @@ export function startClientLog(): () => void {
       );
   };
   const onError = (e: ErrorEvent) => add(`error ${e.message}`);
+  const onVisibility = () => add(`visibility ${document.visibilityState}`);
 
   add(`start app ${window.agentosNative?.version ?? "web"}`);
   document.addEventListener("touchstart", onTouch, true);
@@ -89,11 +99,14 @@ export function startClientLog(): () => void {
   document.addEventListener("focusout", onFocusOut);
   window.addEventListener(NATIVE_EVENT, onNative);
   window.addEventListener("error", onError);
+  document.addEventListener("visibilitychange", onVisibility);
   const timer = setInterval(flush, FLUSH_MS);
 
   return () => {
     flush();
     clearInterval(timer);
+    if (addLine === add) addLine = null;
+    document.removeEventListener("visibilitychange", onVisibility);
     document.removeEventListener("touchstart", onTouch, true);
     document.removeEventListener("touchend", onTouchEnd);
     document.removeEventListener("touchcancel", onTouchCancel, true);
