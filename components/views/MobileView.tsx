@@ -21,6 +21,7 @@ import { useLayoutMode } from "@/hooks/useLayoutMode";
 import { isNative, nativeCaps } from "@/lib/native-bridge";
 import { dropHome, setHome, surfaceStore } from "@/stores/surface";
 import { runNav } from "@/lib/nav-actions";
+import { runningStore } from "@/stores/running";
 import { loadDuoPreview } from "@/stores/duoPreview";
 import { cn } from "@/lib/utils";
 import { WorkspacePage } from "@/components/WorkspacePage";
@@ -87,6 +88,7 @@ export function MobileView(props: ViewProps) {
   const { page } = useSnapshot(workspacePageStore);
   const pageOpen = !!page;
   const { behind } = useSnapshot(surfaceStore);
+  const { enabled: running } = useSnapshot(runningStore);
   // Needs you is a page here, over the home like the others
   useNeedsYouPage(true);
   useRunningFlag();
@@ -202,6 +204,10 @@ export function MobileView(props: ViewProps) {
             // the session left under Now, so the page has it
             onClose={
               bar === "tabs" && behind ? () => runNav("resume") : undefined
+            }
+            // Nor anywhere for Labs' Running but a session's bar
+            onRunning={
+              bar === "tabs" && running ? () => runNav("running") : undefined
             }
             projectsView={projectList}
           />

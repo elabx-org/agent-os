@@ -6,6 +6,7 @@ import {
   hiddenSlots,
   moreExtras,
   moreItems,
+  phoneBar,
   savedOrder,
   type MoreSources,
   type ColumnContext,
@@ -838,4 +839,16 @@ test("one page has no Open beside, in More or an arranged column (DPDV-N1)", () 
     fmt(columnFor("session", "duo-open", { ...CTX, order })),
     "back | terminal beside git[3n] | more"
   );
+});
+
+test("a phone on its side has no bar under a session", () => {
+  assert.equal(phoneBar("session", false), "session");
+  assert.equal(phoneBar("beside", false), "session");
+  assert.equal(phoneBar("session", true), null);
+  assert.equal(phoneBar("beside", true), null);
+  // The home and its pages keep the tab bar: Find, New and the rest
+  for (const surface of ["now", "search", "projects", "settings"] as const) {
+    assert.equal(phoneBar(surface, false), "tabs");
+    assert.equal(phoneBar(surface, true), "tabs");
+  }
 });

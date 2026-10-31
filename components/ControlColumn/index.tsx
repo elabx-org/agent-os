@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { useIsNative } from "@/hooks/useIsNative";
 import { useSurface } from "@/stores/surface";
+import { useShortScreen } from "@/hooks/useShortScreen";
+import { phoneBar } from "@/lib/column-spec";
 import { ColumnItems } from "./ColumnItems";
 import { useColumn } from "./columnState";
 import { useKeyboardUp } from "./useKeyboardUp";
@@ -52,15 +54,14 @@ export function ControlColumn({
 /**
  * A phone: the tab bar over the home and its pages. Inside a session the
  * bar of views under the composer, as on a table (Fold-Chat): the header
- * has only back, Focus and ⋯, so Chat, Find and Running are reached here
+ * has only back, Focus and ⋯, so Chat, Find and Running are reached here.
+ * On its side the header takes them instead (SessionTitleBar)
  */
 function PhoneBar({ className }: { className?: string }) {
   const surface = useSurface();
-  return surface === "session" || surface === "beside" ? (
-    <HBar className={className} />
-  ) : (
-    <TabBar className={className} />
-  );
+  const bar = phoneBar(surface, useShortScreen());
+  if (bar === "tabs") return <TabBar className={className} />;
+  return bar === "session" ? <HBar className={className} /> : null;
 }
 
 function Column({

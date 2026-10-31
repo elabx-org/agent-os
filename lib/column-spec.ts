@@ -837,6 +837,25 @@ export function columnKindFor(
   return null;
 }
 
+/**
+ * A phone on its side (667x375): the bar of views under the composer and
+ * the key bar would leave the terminal two lines
+ */
+export const SHORT_SCREEN = "(max-height: 500px)";
+
+/**
+ * What a phone draws at the bottom: the tab bar over the home and its pages,
+ * the bar of views in a session; none in a session on a short screen, where
+ * the header has Chat | Terminal and its ⋯ the rest
+ */
+export function phoneBar(
+  surface: Surface,
+  short: boolean
+): "tabs" | "session" | null {
+  if (surface !== "session" && surface !== "beside") return "tabs";
+  return short ? null : "session";
+}
+
 /** Layouts with room for two pages: More offers Open beside */
 export const WIDE: LayoutMode[] = ["duo-open", "book", "desktop"];
 
