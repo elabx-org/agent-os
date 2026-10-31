@@ -49,6 +49,8 @@ export interface ClaudeState {
     at: number;
   } | null;
   updatedAt: string | null;
+  /** From the transcript when there is no status line (see the route) */
+  transcriptModel: { id: string; display_name: string | null } | null;
 }
 
 export const EMPTY_CLAUDE_STATE: ClaudeState = {
@@ -60,6 +62,7 @@ export const EMPTY_CLAUDE_STATE: ClaudeState = {
   pendingPermission: null,
   notification: null,
   updatedAt: null,
+  transcriptModel: null,
 };
 
 const SESSION_ID = /^[\w-]+$/;
@@ -335,5 +338,6 @@ export function readClaudeState(sessionId: string): ClaudeState {
         }
       : null,
     updatedAt: updated ? new Date(updated).toISOString() : null,
+    transcriptModel: null,
   };
 }

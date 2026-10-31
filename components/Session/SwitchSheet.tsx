@@ -161,12 +161,12 @@ function SwitchBody({
   const source = session.agent_type || "claude";
   const sourceName = agentName(source);
   const claude = source === "claude";
-  const { status } = useClaudeState(session.id, claude);
+  const { status, transcriptModel } = useClaudeState(session.id, claude);
   const { preview, switchModel, handOff } = useHandoff(session, true);
   const { data: cli } = useCliStatus();
 
   const current = claude
-    ? currentModel(status?.model, session.model)
+    ? currentModel(status?.model ?? transcriptModel, session.model)
     : { alias: null, label: null };
   const runningEffort = claude
     ? currentEffort(status?.effort?.level, session.effort)

@@ -21,9 +21,9 @@ export function canSwitch(session: Session | null | undefined): boolean {
 export function useModelLabel(session: Session): string {
   const type = session.agent_type || "claude";
   const claude = type === "claude";
-  const { status } = useClaudeState(session.id, claude);
+  const { status, transcriptModel } = useClaudeState(session.id, claude);
   const model = claude
-    ? currentModel(status?.model, session.model).label
+    ? currentModel(status?.model ?? transcriptModel, session.model).label
     : session.model || null;
   return [agentName(type), model].filter(Boolean).join(" · ");
 }

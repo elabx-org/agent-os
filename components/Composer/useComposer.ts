@@ -380,15 +380,49 @@ export function useComposer({
     });
   }, []);
 
+  // Pictures just added, however they came (the +, the picker, the app's
+  // photo key): the caret goes after the last one, a space apart, so what's
+  // typed next doesn't run into its pill. Their paths came in raw, so the
+  // caret the insert placed by their length ended inside or at the end of
+  // the pills
+  const setDisplayRef = useRef<
+    (next: string, at?: number, withChips?: Chip[]) => void
+  >(() => {});
+  const afterNewPictures = (before: Chip[], now: Chip[], shownText: string) => {
+    const added = now.filter(
+      (c) =>
+        c.kind === "image" &&
+        !before.some((p) => p.kind === "image" && p.text === c.text)
+    );
+    const last = added.at(-1);
+    if (!last) return;
+    if (/\s/.test(shownText[last.end] ?? "")) {
+      placeCaret(last.end + 1);
+      return;
+    }
+    setDisplayRef.current(
+      `${shownText.slice(0, last.end)} ${shownText.slice(last.end)}`,
+      last.end + 1,
+      now
+    );
+  };
+
   // A pill that grows (an image's size arriving) moves the text after it:
   // the caret keeps its place in the text instead of jumping to the end
   const caretRef = useRef(caret);
   caretRef.current = caret;
-  const shown = useRef({ display, chips });
+  const shown = useRef({ display, chips, sessionId });
   useLayoutEffect(() => {
     const prev = shown.current;
-    shown.current = { display, chips };
-    if (prev.display === display || prev.chips.length !== chips.length) return;
+    shown.current = { display, chips, sessionId };
+    if (prev.display === display) return;
+    // Another session's draft: its pictures were there already
+    if (prev.sessionId !== sessionId) return;
+    if (chips.length > prev.chips.length) {
+      afterNewPictures(prev.chips, chips, display);
+      return;
+    }
+    if (prev.chips.length !== chips.length) return;
     const el = textareaRef.current;
     if (!el || document.activeElement !== el) return;
     if (prev.chips.some((c, i) => c.text !== chips[i].text)) return;
@@ -405,7 +439,7 @@ export function useComposer({
     at += shift;
     el.setSelectionRange(at, at);
     setCaret(at);
-  }, [display, chips]);
+  }, [display, chips, sessionId]);
 
   /** Replace the shown text; the draft gets it with the pills expanded */
   const setDisplay = useCallback(
@@ -416,6 +450,7 @@ export function useComposer({
     },
     [onChange, placeCaret]
   );
+  setDisplayRef.current = setDisplay;
 
   // Search's slash command (M11): first in the box, focused after it
   useSearchAction(sessionId ?? "", "slash", claude && active, (r) => {
