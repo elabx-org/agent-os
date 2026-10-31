@@ -301,6 +301,9 @@ final class KeyboardBar: UIInputView {
     private var splitOverflows = false
     /// What build() added, so a rebuild leaves UIInputView's own views alone
     private var built: [UIView] = []
+    /// The system Paste controls in the row: they draw nothing while the
+    /// clipboard has no text, which left a blank key at the row's start
+    private var pasteControls: [UIPasteControl] = []
     /// Pins the split groups clear of the hinge (±20 pt)
     private var leftEnd: NSLayoutConstraint?
     private var rightStart: NSLayoutConstraint?
@@ -326,6 +329,25 @@ final class KeyboardBar: UIInputView {
         // The system Paste button pastes into this view without the "Allow Paste" prompt
         pasteConfiguration = UIPasteConfiguration(acceptableTypeIdentifiers: [UTType.plainText.identifier])
         build()
+        // Copied elsewhere and back: Paste shows when there's text to paste
+        for name in [UIPasteboard.changedNotification, UIApplication.didBecomeActiveNotification] {
+            NotificationCenter.default.addObserver(
+                self, selector: #selector(showPasteIfText), name: name, object: nil
+            )
+        }
+    }
+
+    /// Paste only with text on the clipboard (asking doesn't prompt), and its
+    /// group with it when it stands alone, so no gap is left in its place
+    @objc private func showPasteIfText() {
+        let hidden = !UIPasteboard.general.hasStrings
+        for control in pasteControls {
+            control.isHidden = hidden
+            if let group = control.superview as? UIStackView,
+               group.arrangedSubviews.allSatisfy({ $0 is UIPasteControl }) {
+                group.isHidden = hidden
+            }
+        }
     }
 
     @available(*, unavailable)
@@ -340,6 +362,7 @@ final class KeyboardBar: UIInputView {
         // Collapsed, it leaves with the keyboard still up: the keyboard's
         // notifications report instead (AgentWebView)
         if !collapsed { onVisibilityChange?(window != nil) }
+        if window != nil { showPasteIfText() }
         setNeedsLayout()
     }
 
@@ -376,6 +399,7 @@ final class KeyboardBar: UIInputView {
         repeatTimer = nil
         built.forEach { $0.removeFromSuperview() }
         built = []
+        pasteControls = []
         leftEnd = nil
         rightStart = nil
 
@@ -490,6 +514,7 @@ final class KeyboardBar: UIInputView {
             ])
         }
         built.forEach { $0.isHidden = collapsed }
+        showPasteIfText()
     }
 
     /// Groups side by side, set apart from each other
@@ -510,7 +535,7 @@ final class KeyboardBar: UIInputView {
             return row
         }
         let stack = UIStackView(arrangedSubviews: rows)
-        stack.spacing = compact ? 7 : 16
+        stack.spacing = compact ? 5 : 16
         return stack
     }
 
@@ -557,6 +582,7 @@ final class KeyboardBar: UIInputView {
             paste.baseForegroundColor = .label
             let control = UIPasteControl(configuration: paste)
             control.target = self
+            pasteControls.append(control)
             control.widthAnchor.constraint(equalToConstant: compact ? 40 : 44).isActive = true
             return control
         case .tool(let tool):
@@ -569,7 +595,7 @@ final class KeyboardBar: UIInputView {
     private func button(_ key: Key, compact: Bool) -> UIButton {
         var config = UIButton.Configuration.gray()
         config.cornerStyle = .medium
-        let inset: CGFloat = compact ? 4 : 10
+        let inset: CGFloat = compact ? 6 : 10
         config.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: inset, bottom: 0, trailing: inset)
         if let symbol = key.symbol {
             config.image = UIImage(systemName: symbol)
@@ -601,7 +627,9 @@ final class KeyboardBar: UIInputView {
             button.accessibilityHint = "Flick up for \(flick.title)"
             addFlick(flick, to: button)
         }
-        button.widthAnchor.constraint(greaterThanOrEqualToConstant: compact ? 28 : 44).isActive = true
+        // Closed, no narrower than 36 pt: the keyboard's letters below are 39,
+        // and 28 pt keys looked pinched beside them; the row scrolls instead
+        button.widthAnchor.constraint(greaterThanOrEqualToConstant: compact ? 36 : 44).isActive = true
         if !key.menu.isEmpty {
             // Held: the rarer keys; a tap still sends the key itself
             button.menu = UIMenu(children: key.menu.map { title, sequence in
