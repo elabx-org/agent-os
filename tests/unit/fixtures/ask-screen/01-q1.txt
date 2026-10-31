@@ -1,0 +1,40 @@
+
+ ▐▛███▛█   Claude Code v2.1.314
+▝▜██████▀  Haiku 5.5 · Claude Ultra
+ ▝▝   ▝▝   ~/.claude/jobs/b4586bae/tmp/asklab/work
+
+
+❯ Use the AskUserQuestion tool once with exactly two questions: first 'Where
+  should the cache live?' (header Storage, single choice: SQLite table / In
+  memory / JSON file, each with a short description); second 'Which checks
+  should I run?' (header Checks, multiSelect true: Unit tests / Typecheck /
+  Mirror e2e / iOS compile). Do nothing else.
+────────────────────────────────────────────────────────────────────────────────
+←  ☐ Storage  ☐ Checks  ✔ Submit  →
+
+Where should the cache live?
+
+❯ 1. SQLite table
+     Persist the cache in a table in a SQLite database, so it survives restarts.
+  2. In memory
+     Keep the cache in process memory. Fast, but lost when the process exits.
+  3. JSON file
+     Write the cache to a JSON file on disk. Simple and readable, but slower for
+     larger data.
+  4. Type something.
+────────────────────────────────────────────────────────────────────────────────
+  5. Chat about this
+
+Enter to select · Tab/Arrow keys to navigate · Esc to cancel
+
+
+
+
+
+
+
+
+
+
+
+───────────────────────────────────────── ask lab ──────────────────────────── ─
