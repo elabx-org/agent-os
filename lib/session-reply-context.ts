@@ -1,5 +1,8 @@
 import fs from "fs";
+import { execFile } from "child_process";
+import { promisify } from "util";
 import type { Session } from "@/lib/db";
+import { parseAskScreen } from "@/lib/ask-screen";
 import { findTranscript, readTranscriptTail } from "@/lib/claude-transcript";
 import { lastTurnContext, type ReplyContext } from "@/lib/reply-context";
 
@@ -42,5 +45,24 @@ export async function sessionReplyContext(
     session.tmux_name || `claude-${session.id}`
   );
   if (!found?.file) return null;
-  return readContext(found.file, found.cwd);
+  const context = readContext(found.file, found.cwd);
+  if (context?.kind !== "ask" || !context.questions?.length) return context;
+  // Whether Claude's question screen is up now: the answer card's cue
+  return { ...context, onScreen: await askOnScreen(session) };
+}
+
+const execFileAsync = promisify(execFile);
+
+async function askOnScreen(session: Session): Promise<boolean> {
+  try {
+    const { stdout } = await execFileAsync("tmux", [
+      "capture-pane",
+      "-p",
+      "-t",
+      session.tmux_name || `claude-${session.id}`,
+    ]);
+    return parseAskScreen(stdout.split("\n")) !== null;
+  } catch {
+    return false;
+  }
 }

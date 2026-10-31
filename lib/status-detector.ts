@@ -17,6 +17,7 @@
 import { exec } from "child_process";
 import { promisify } from "util";
 import { parsePermissionPrompt } from "./permission-prompt";
+import { parseAskScreen } from "./ask-screen";
 
 const execAsync = promisify(exec);
 
@@ -199,7 +200,10 @@ export function checkWaitingPatterns(content: string): boolean {
   if (WAITING_PATTERNS.some((p) => p.test(recentLines))) return true;
   // Claude Code's selection prompts put the question well above the last
   // five lines; the parser finds the whole block (width only affects wrapping)
-  return parsePermissionPrompt(lines, 1000) !== null;
+  if (parsePermissionPrompt(lines, 1000) !== null) return true;
+  // AskUserQuestion's screen: its footer can sit above blank rows and the
+  // session label, past what the prompt parser reads
+  return parseAskScreen(lines) !== null;
 }
 
 class SessionStatusDetector {

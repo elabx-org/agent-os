@@ -1,0 +1,40 @@
+  should the cache live?' (header Storage, single choice: SQLite table / In
+  memory / JSON file, each with a short description); second 'Which checks
+  should I run?' (header Checks, multiSelect true: Unit tests / Typecheck /
+  Mirror e2e / iOS compile). Do nothing else.
+
+● User answered Claude's questions:
+  ⎿  · Where should the cache live? → In memory
+     · Which checks should I run? → Unit tests, Mirror e2e
+
+● Your answers:
+
+  - Cache location: In memory
+  - Checks to run: Unit tests, Mirror e2e
+
+  I haven't done anything else yet. Tell me when you want me to start.
+
+✻ Brewed for 6s · done 3:26 AM
+
+❯ Same AskUserQuestion again, exactly the same two questions. Do nothing else.
+────────────────────────────────────────────────────────────────────────────────
+←  ☒ Storage  ☒ Checks  ✔ Submit  →
+
+Which checks should I run?
+
+  1. [ ] Unit tests
+         Run the unit test suite.
+  2. [✔] Typecheck
+         Run the type checker over the code.
+  3. [ ] Mirror e2e
+         Run the mirror end-to-end tests.
+  4. [ ] iOS compile
+         Build the iOS target to confirm it compiles.
+❯ 5. [✔] lint
+     Submit
+────────────────────────────────────────────────────────────────────────────────
+  6. Chat about this
+
+Enter to select · Tab/Arrow keys to navigate · ctrl+g to edit in nano · Esc to
+cancel
+───────────────────────────────────────── ask lab ──────────────────────────── ─

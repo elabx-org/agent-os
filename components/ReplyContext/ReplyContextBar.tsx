@@ -9,8 +9,12 @@ import {
   type RefObject,
 } from "react";
 import { useSnapshot } from "valtio";
+import { useQuery } from "@tanstack/react-query";
 import { useReplyContext } from "@/hooks/useReplyContext";
+import { statusKeys } from "@/data/sessions/keys";
+import type { SessionStatus } from "@/components/views/types";
 import type { ComposerEngine } from "@/components/Composer";
+import { AskCard } from "./AskCard";
 import { ContextCard } from "./ContextCard";
 import { QuoteChips } from "./QuoteChips";
 import { ReplySheet } from "./ReplySheet";
@@ -50,7 +54,20 @@ export function ReplyContextBar({
 }: ReplyContextBarProps) {
   const typing = useTypingReply(composer.focused);
   const [sheetOpen, setSheetOpen] = useState(false);
-  const context = useReplyContext(sessionId, typing || sheetOpen);
+  // The app's status poll says when Claude waits on you: then a question
+  // shows as the answer card without typing first
+  const { data: statuses } = useQuery<{
+    statuses: Record<string, SessionStatus>;
+  }>({ queryKey: statusKeys.all, enabled: false });
+  const waiting =
+    !!sessionId && statuses?.statuses[sessionId]?.status === "waiting";
+  const context = useReplyContext(sessionId, typing || sheetOpen || waiting);
+  // Claude's question on screen, with all its questions known
+  const asking =
+    !!sessionId &&
+    context?.kind === "ask" &&
+    !!context.questions?.length &&
+    !!context.onScreen;
   const elsewhere = useContextShownElsewhere(sessionId);
   const { dismissed } = useSnapshot(replyContextStore);
 
@@ -59,6 +76,7 @@ export function ReplyContextBar({
     ? `${context.kind}:${context.sourceId ?? ""}:${context.ts ?? ""}`
     : "";
   const showCard =
+    !asking &&
     typing &&
     !!context &&
     !!sessionId &&
@@ -97,6 +115,22 @@ export function ReplyContextBar({
     setCollapsed(lines > COLLAPSE_LINES || short);
   }, [showCard, display, bounds, textareaRef]);
 
+  // The answer card covers the view above the composer, up to its top
+  const [askRoom, setAskRoom] = useState<number | undefined>(undefined);
+  useLayoutEffect(() => {
+    const anchor = anchorRef.current;
+    if (!asking || !anchor) return;
+    const measure = () =>
+      setAskRoom(Math.max(160, roomAbove(anchor, bounds?.current) - 8));
+    measure();
+    window.addEventListener("resize", measure);
+    window.visualViewport?.addEventListener("resize", measure);
+    return () => {
+      window.removeEventListener("resize", measure);
+      window.visualViewport?.removeEventListener("resize", measure);
+    };
+  }, [asking, bounds]);
+
   const closeSheet = useCallback(() => setSheetOpen(false), []);
   const focusDraft = useCallback(() => {
     setSheetOpen(false);
@@ -128,6 +162,20 @@ export function ReplyContextBar({
           onJump={jump}
           onOther={focusDraft}
         />
+      )}
+      {asking && context.questions && (
+        // Over the terminal, not above it in the flow: squeezing the pane
+        // would make Claude redraw its question into a row or two
+        <div
+          className="absolute inset-x-0 bottom-full z-20"
+          style={{ maxHeight: askRoom }}
+        >
+          <AskCard
+            sessionId={sessionId}
+            questions={context.questions}
+            maxHeight={askRoom}
+          />
+        </div>
       )}
       {showCard && (
         <ContextCard

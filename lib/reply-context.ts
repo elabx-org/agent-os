@@ -5,7 +5,7 @@
  * the same in Terminal and Chat. Pure: shared by the server and the client.
  */
 
-import type { ChatItem } from "@/lib/claude-transcript";
+import type { AskQuestion, ChatItem } from "@/lib/claude-transcript";
 import type { PermissionPrompt, PromptOption } from "@/lib/permission-prompt";
 
 export type ReplyContextKind = "ask" | "permission" | "message" | "working";
@@ -32,6 +32,10 @@ export interface ReplyContext {
   text: string;
   /** Answer chips for an AskUserQuestion or a permission prompt */
   options: ReplyContextOption[];
+  /** Every question of a pending AskUserQuestion, for the answer card */
+  questions?: AskQuestion[];
+  /** Claude's question screen is up now (server, lib/session-reply-context) */
+  onScreen?: boolean;
   /** The chat item to jump to */
   sourceId: string | null;
   toolName?: string;
@@ -149,6 +153,7 @@ export function lastTurnContext(items: ChatItem[]): ReplyContext | null {
       toolName: "AskUserQuestion",
       ts: lastTool.ts || null,
       pendingTool,
+      questions: lastTool.asks,
     };
   }
 

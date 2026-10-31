@@ -51,7 +51,8 @@ export function AnswerChips({
     if (!error) onAnswered?.();
   }, [answering, error, onAnswered, queryClient, sessionId]);
 
-  if (!context.options.length) return null;
+  // A question with all its parts known is answered in AskCard
+  if (!context.options.length || context.questions?.length) return null;
 
   return (
     <div className={cn("flex flex-col gap-1.5", className)}>

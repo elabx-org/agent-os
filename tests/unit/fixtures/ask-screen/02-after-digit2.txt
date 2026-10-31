@@ -1,0 +1,40 @@
+
+ ▐▛███▛█   Claude Code v2.1.314
+▝▜██████▀  Haiku 5.5 · Claude Ultra
+ ▝▝   ▝▝   ~/.claude/jobs/b4586bae/tmp/asklab/work
+
+
+❯ Use the AskUserQuestion tool once with exactly two questions: first 'Where
+  should the cache live?' (header Storage, single choice: SQLite table / In
+  memory / JSON file, each with a short description); second 'Which checks
+  should I run?' (header Checks, multiSelect true: Unit tests / Typecheck /
+  Mirror e2e / iOS compile). Do nothing else.
+────────────────────────────────────────────────────────────────────────────────
+←  ☒ Storage  ☐ Checks  ✔ Submit  →
+
+Which checks should I run?
+
+❯ 1. [ ] Unit tests
+         Run the unit test suite.
+  2. [ ] Typecheck
+         Run the type checker over the code.
+  3. [ ] Mirror e2e
+         Run the mirror end-to-end tests.
+  4. [ ] iOS compile
+         Build the iOS target to confirm it compiles.
+  5. [ ] Type something
+     Submit
+────────────────────────────────────────────────────────────────────────────────
+  6. Chat about this
+
+Enter to select · Tab/Arrow keys to navigate · Esc to cancel
+
+
+
+
+
+
+
+
+
+───────────────────────────────────────── ask lab ──────────────────────────── ─

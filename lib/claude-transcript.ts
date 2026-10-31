@@ -36,6 +36,8 @@ export type ChatItem =
       ts: string;
       /** An AskUserQuestion's first question, for replying with context */
       ask?: AskQuestion;
+      /** All of an AskUserQuestion's questions, for the answer card */
+      asks?: AskQuestion[];
       /** A plan tool's input (TodoWrite, TaskCreate, TaskUpdate): lib/claude-plan */
       input?: unknown;
     }
@@ -57,6 +59,8 @@ export interface AskQuestion {
   question: string;
   header?: string;
   options: { label: string; description?: string }[];
+  /** Several may be picked */
+  multiSelect?: boolean;
 }
 
 export interface TranscriptChunk {
@@ -360,6 +364,7 @@ function toItems(entry: any, cwd: string, subagent = false): ChatItem[] {
           ts,
           ...(part.name === "AskUserQuestion" && {
             ask: askQuestion(part.input),
+            asks: askQuestions(part.input),
           }),
           ...(PLAN_TOOLS.has(part.name) && { input: part.input }),
         });
@@ -372,7 +377,18 @@ function toItems(entry: any, cwd: string, subagent = false): ChatItem[] {
 
 /** The first of an AskUserQuestion's questions (the one on screen first) */
 function askQuestion(input: any): AskQuestion | undefined {
-  const q = Array.isArray(input?.questions) ? input.questions[0] : null;
+  return askQuestions(input)?.[0];
+}
+
+/** Every question an AskUserQuestion asks, in order */
+function askQuestions(input: any): AskQuestion[] | undefined {
+  const all = (Array.isArray(input?.questions) ? input.questions : [])
+    .map(oneQuestion)
+    .filter(Boolean) as AskQuestion[];
+  return all.length ? all : undefined;
+}
+
+function oneQuestion(q: any): AskQuestion | undefined {
   if (!q || typeof q.question !== "string") return undefined;
   return {
     question: q.question,
@@ -384,6 +400,7 @@ function askQuestion(input: any): AskQuestion | undefined {
         description:
           typeof o.description === "string" ? o.description : undefined,
       })),
+    multiSelect: q.multiSelect === true,
   };
 }
 

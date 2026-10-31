@@ -898,7 +898,7 @@ export function ChatView({
                 style={{ width: controlPages.gutter }}
               />
               <div className="flex min-w-0 flex-1 items-center gap-2 pb-1.5">
-                {!!ask?.options.length && (
+                {!!ask?.options.length && !ask.questions?.length && (
                   <>
                     <span className="text-muted-foreground shrink-0 text-xs">
                       Claude asks
