@@ -45,4 +45,5 @@ const NONE: ClaudeState = {
   pendingPermission: null,
   notification: null,
   updatedAt: null,
+  transcriptModel: null,
 };

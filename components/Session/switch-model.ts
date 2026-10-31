@@ -44,7 +44,7 @@ export function modelDisplayName(
 
 /** The model a session runs: Claude's status line first, else sessions.model */
 export function currentModel(
-  statusModel: { id?: string; display_name?: string } | null | undefined,
+  statusModel: { id?: string; display_name?: string | null } | null | undefined,
   sessionModel: string | null | undefined
 ): { alias: ClaudeModelAlias | null; label: string | null } {
   const shown = modelDisplayName(statusModel?.display_name);
