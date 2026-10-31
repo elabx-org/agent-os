@@ -36,6 +36,8 @@ export interface UseTerminalConnectionReturn {
   sendCommand: (command: string) => void;
   sendShellCommand: (command: string, leave?: boolean) => Promise<boolean>;
   execViaWs: (command: string) => Promise<string>;
+  /** Rows the touch history was scrolled up when select mode opened */
+  historyOffsetRef: RefObject<number | null>;
   focus: () => void;
   getScrollState: () => TerminalScrollState | null;
   restoreScrollState: (state: TerminalScrollState) => void;

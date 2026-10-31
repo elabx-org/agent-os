@@ -17,6 +17,8 @@ import {
   updateTerminalTheme,
 } from "./terminal-init";
 import { setupTouchScroll } from "./touch-scroll";
+import { createHistoryLayer, type HistoryLayer } from "./history-layer";
+import { setupWheel } from "./wheel";
 import { createWebSocketConnection } from "./websocket-connection";
 import { setupResizeHandlers } from "./resize-handlers";
 import { remeasureWhenFontsReady, terminalFontReady } from "../font-ready";
@@ -40,6 +42,10 @@ export function useTerminalConnection({
 }: UseTerminalConnectionProps): UseTerminalConnectionReturn {
   const [connected, setConnected] = useState(false);
   const [isAtBottom, setIsAtBottom] = useState(true);
+  // The history a swipe back opens over the live terminal (touch-scroll.ts)
+  const historyRef = useRef<HistoryLayer | null>(null);
+  // Rows the history was scrolled up when a long press opened select mode
+  const historyOffsetRef = useRef<number | null>(null);
   const [connectionState, setConnectionState] = useState<
     "connecting" | "connected" | "disconnected" | "reconnecting"
   >("connecting");
@@ -67,12 +73,21 @@ export function useTerminalConnection({
   themeRef.current = theme;
   const onLongPressRef = useRef(onLongPress);
   onLongPressRef.current = onLongPress;
+  // Select mode opens where the history was being read
+  const longPressRef = useRef<(() => void) | undefined>(undefined);
+  longPressRef.current = onLongPress
+    ? () => {
+        historyOffsetRef.current = historyRef.current?.rowsFromBottom() ?? null;
+        historyRef.current?.close();
+        onLongPressRef.current?.();
+      }
+    : undefined;
 
   // Simple callbacks
-  const scrollToBottom = useCallback(
-    () => xtermRef.current?.scrollToBottom(),
-    []
-  );
+  const scrollToBottom = useCallback(() => {
+    historyRef.current?.close();
+    xtermRef.current?.scrollToBottom();
+  }, []);
 
   const copySelection = useCallback(() => {
     const selection = xtermRef.current?.getSelection();
@@ -83,19 +98,23 @@ export function useTerminalConnection({
     return false;
   }, []);
 
+  // Typing goes to the live terminal: back to it
   const sendInput = useCallback((data: string) => {
+    historyRef.current?.close();
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ type: "input", data }));
     }
   }, []);
 
   const sendPaste = useCallback((data: string) => {
+    historyRef.current?.close();
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ type: "paste", data }));
     }
   }, []);
 
   const sendCommand = useCallback((command: string) => {
+    historyRef.current?.close();
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ type: "command", data: command }));
     }
@@ -105,6 +124,8 @@ export function useTerminalConnection({
   // prompt (leave: first out of tmux). False when it didn't
   const sendShellCommand = useCallback(
     (command: string, leave = false): Promise<boolean> => {
+      // Another session in this terminal: not this one's history
+      historyRef.current?.close();
       return new Promise((resolve) => {
         const ws = wsRef.current;
         if (!ws || ws.readyState !== WebSocket.OPEN) {
@@ -137,35 +158,47 @@ export function useTerminalConnection({
     []
   );
 
-  // Execute a command via WebSocket (bypasses /api/exec which may be blocked by reverse proxy)
-  const execViaWs = useCallback((command: string): Promise<string> => {
-    return new Promise((resolve) => {
-      const ws = wsRef.current;
-      if (!ws || ws.readyState !== WebSocket.OPEN) {
-        resolve("");
-        return;
-      }
-      const id = Math.random().toString(36).slice(2);
-      const timeout = setTimeout(() => {
-        ws.removeEventListener("message", handler);
-        resolve("");
-      }, 3000);
-      const handler = (event: MessageEvent) => {
-        try {
-          const msg = JSON.parse(event.data);
-          if (msg.type === "exec-result" && msg.id === id) {
-            clearTimeout(timeout);
-            ws.removeEventListener("message", handler);
-            resolve((msg.stdout || "").trim());
-          }
-        } catch {
-          /* ignore */
+  // Execute a command via WebSocket (bypasses /api/exec which may be blocked
+  // by reverse proxy): its whole stdout, null without a socket or answer
+  const execRawViaWs = useCallback(
+    (command: string): Promise<string | null> => {
+      return new Promise((resolve) => {
+        const ws = wsRef.current;
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
+          resolve(null);
+          return;
         }
-      };
-      ws.addEventListener("message", handler);
-      ws.send(JSON.stringify({ type: "exec", command, id }));
-    });
-  }, []);
+        const id = Math.random().toString(36).slice(2);
+        const timeout = setTimeout(() => {
+          ws.removeEventListener("message", handler);
+          resolve(null);
+        }, 3000);
+        const handler = (event: MessageEvent) => {
+          // Only an exec result can be this one's
+          if (typeof event.data !== "string" || !event.data.includes(id))
+            return;
+          try {
+            const msg = JSON.parse(event.data);
+            if (msg.type === "exec-result" && msg.id === id) {
+              clearTimeout(timeout);
+              ws.removeEventListener("message", handler);
+              resolve(msg.stdout || "");
+            }
+          } catch {
+            /* ignore */
+          }
+        };
+        ws.addEventListener("message", handler);
+        ws.send(JSON.stringify({ type: "exec", command, id }));
+      });
+    },
+    []
+  );
+  const execViaWs = useCallback(
+    async (command: string): Promise<string> =>
+      ((await execRawViaWs(command)) ?? "").trim(),
+    [execRawViaWs]
+  );
 
   const focus = useCallback(() => xtermRef.current?.focus(), []);
 
@@ -284,13 +317,35 @@ export function useTerminalConnection({
         setIsAtBottom(buffer.viewportY >= buffer.baseY);
       });
 
+      // The history a swipe back opens, scrolled on the device
+      const history = createHistoryLayer({
+        term,
+        exec: execRawViaWs,
+        onLongPressRef: longPressRef,
+      });
+      historyRef.current = history;
+      // Typed into the terminal (keyboard, keys): back to the live screen
+      // (not mouse or focus reports xterm sends for tmux)
+      const typed = term.onData((data) => {
+        if (!/^\x1b\[(<|M|I$|O$)/.test(data)) history.close();
+      });
+
       // Setup touch scroll
-      cleanupTouchScroll = setupTouchScroll({
+      const cleanupTouch = setupTouchScroll({
         term,
         selectModeRef,
         wsRef,
-        onLongPressRef,
+        onLongPressRef: longPressRef,
+        history,
       });
+      const cleanupWheel = setupWheel(term, wsRef);
+      cleanupTouchScroll = () => {
+        cleanupTouch();
+        cleanupWheel();
+        typed.dispose();
+        history.dispose();
+        if (historyRef.current === history) historyRef.current = null;
+      };
 
       // Setup WebSocket
       const wsManager = createWebSocketConnection(
@@ -452,6 +507,7 @@ export function useTerminalConnection({
     sendCommand,
     sendShellCommand,
     execViaWs,
+    historyOffsetRef,
     focus,
     getScrollState,
     restoreScrollState,

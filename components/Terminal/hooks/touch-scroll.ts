@@ -2,6 +2,8 @@
 
 import type { Terminal as XTerm } from "@xterm/xterm";
 import type { RefObject } from "react";
+import { coast, MIN_VELOCITY } from "@/lib/terminal-history";
+import type { HistoryLayer } from "./history-layer";
 
 interface TouchScrollConfig {
   term: XTerm;
@@ -9,6 +11,8 @@ interface TouchScrollConfig {
   wsRef: RefObject<WebSocket | null>;
   /** A finger held still on the terminal (opens select mode to copy) */
   onLongPressRef?: RefObject<(() => void) | undefined>;
+  /** The history, scrolled on the device: a swipe back opens it */
+  history?: HistoryLayer;
 }
 
 const LONG_PRESS_MS = 500;
@@ -19,19 +23,19 @@ const SLOP_PX = 10;
 const VELOCITY_WINDOW_MS = 100;
 // A finger that stopped before lifting shouldn't coast
 const STILL_BEFORE_LIFT_MS = 60;
-// Momentum decays per millisecond, like iOS scroll views (frame-rate
-// independent, so a 120Hz screen coasts as far as a 60Hz one)
-const DECELERATION = 0.997;
-// px/ms: below this a flick doesn't coast, and coasting stops
-const MIN_VELOCITY = 0.05;
 // Wheel events per frame, so a hard flick can't flood the socket
 const MAX_STEPS_PER_FRAME = 20;
+// After a swipe found no history to show, swipes scroll tmux this long
+const HISTORY_RETRY_MS = 5000;
 
-// The scrollback is tmux's (copy mode), not xterm's, so it can't scroll
-// natively: the finger's travel becomes mouse-wheel events for tmux, one per
-// half row as before, and a flick keeps sending them while it decays.
+// The scrollback is tmux's, not xterm's. A swipe back through it opens the
+// history layer (history-layer.ts), which the device scrolls itself. Where
+// there's none to show (a full-screen or mouse app) or going forward, the
+// finger's travel becomes mouse-wheel events for tmux or the app: one per
+// row of travel (tmux scrolls a row per event, lib/init-script.ts), sent at
+// most once a frame, and a flick keeps sending them while it decays.
 export function setupTouchScroll(config: TouchScrollConfig): () => void {
-  const { term, selectModeRef, wsRef, onLongPressRef } = config;
+  const { term, selectModeRef, wsRef, onLongPressRef, history } = config;
 
   if (!term.element) return () => {};
 
@@ -57,9 +61,9 @@ export function setupTouchScroll(config: TouchScrollConfig): () => void {
       (canvas as HTMLElement).style.touchAction = "none";
     });
 
-    // Pixels of finger travel per wheel event
+    // Pixels of finger travel per wheel event: a row
     const stepPx = () =>
-      (term.element ? term.element.offsetHeight / term.rows : 16) * 0.5;
+      xtermScreen.offsetHeight > 0 ? xtermScreen.offsetHeight / term.rows : 16;
 
     // SGR mouse wheel at 1;1, batched into one message: 64 wheel up, 65 wheel down
     // (positive steps: finger moving down, i.e. back through history)
@@ -81,8 +85,16 @@ export function setupTouchScroll(config: TouchScrollConfig): () => void {
     let start: { x: number; y: number } | null = null;
     let lastY = 0;
     let vertical: boolean | null = null;
+    // This swipe moves the history layer, not tmux
+    let toHistory = false;
+    let historyFailedAt = -Infinity;
+    // The swipe opening the history, until its rows come
+    let historySwipe: { travel: number } | null = null;
     // Finger travel not yet sent as a wheel event
     let pending = 0;
+    // Wheel steps waiting for the next frame
+    let queuedSteps = 0;
+    let flushRaf: number | null = null;
     let samples: { t: number; y: number }[] = [];
 
     let momentumRaf: number | null = null;
@@ -96,9 +108,21 @@ export function setupTouchScroll(config: TouchScrollConfig): () => void {
       if (momentumRaf !== null) cancelAnimationFrame(momentumRaf);
       momentumRaf = null;
     };
+    // Wheel events go out once a frame, however many touch moves came in
+    const flush = () => {
+      flushRaf = null;
+      const steps = queuedSteps;
+      queuedSteps = 0;
+      if (steps !== 0) sendWheel(steps);
+    };
+    const queueWheel = (steps: number) => {
+      queuedSteps += steps;
+      if (flushRaf === null) flushRaf = requestAnimationFrame(flush);
+    };
     const endTouch = () => {
       start = null;
       vertical = null;
+      toHistory = false;
       samples = [];
     };
 
@@ -122,9 +146,9 @@ export function setupTouchScroll(config: TouchScrollConfig): () => void {
         const dt = Math.min(Math.max(time - lastTime, 0), 64);
         lastTime = time;
         // Distance covered while decaying over dt: the integral of v·d^t
-        const decay = Math.pow(DECELERATION, dt);
-        carry += (v * (decay - 1)) / Math.log(DECELERATION);
-        v *= decay;
+        const glide = coast(v, dt);
+        carry += glide.distance;
+        v = glide.v;
         const step = stepPx();
         const steps = Math.trunc(carry / step);
         if (steps !== 0) {
@@ -140,6 +164,7 @@ export function setupTouchScroll(config: TouchScrollConfig): () => void {
     const handleTouchStart = (e: TouchEvent) => {
       // Any touch catches a coasting scroll, as on iOS
       stopMomentum();
+      queuedSteps = 0;
       cancelLongPress();
       if (selectModeRef.current || e.touches.length !== 1) {
         endTouch();
@@ -171,6 +196,33 @@ export function setupTouchScroll(config: TouchScrollConfig): () => void {
         vertical = dy >= dx;
         // Start from here, so the slop isn't a jump
         lastY = touch.clientY;
+        // Back through history (finger down): the device scrolls it.
+        // Opening fetches the rows; the travel until then is applied when
+        // they come. With none to show, tmux scrolls (and for a while
+        // after, so a full-screen app isn't asked every swipe)
+        if (
+          vertical &&
+          history &&
+          (history.isOpen ||
+            (touch.clientY > start.y &&
+              performance.now() - historyFailedAt > HISTORY_RETRY_MS))
+        ) {
+          toHistory = true;
+          const swipe = { travel: 0 };
+          historySwipe = swipe;
+          void history.open().then((result) => {
+            if (result === "shown") return;
+            if (result === "none") historyFailedAt = performance.now();
+            // The travel so far goes to tmux or the app instead, and the
+            // rest of this swipe too
+            if (historySwipe === swipe) {
+              historySwipe = null;
+              if (start) toHistory = false;
+            }
+            const steps = Math.trunc(swipe.travel / stepPx());
+            if (steps !== 0) queueWheel(steps);
+          });
+        }
       }
       // Horizontal swipes are the parent's (session switching)
       if (!vertical) return;
@@ -183,13 +235,20 @@ export function setupTouchScroll(config: TouchScrollConfig): () => void {
       while (samples.length > 2 && now - samples[0].t > VELOCITY_WINDOW_MS)
         samples.shift();
 
+      if (toHistory) {
+        if (historySwipe) historySwipe.travel += touch.clientY - lastY;
+        history?.drag(touch.clientY - lastY);
+        lastY = touch.clientY;
+        return;
+      }
+
       pending += touch.clientY - lastY;
       lastY = touch.clientY;
       const step = stepPx();
       const steps = Math.trunc(pending / step);
       if (steps !== 0) {
         pending -= steps * step;
-        sendWheel(steps);
+        queueWheel(steps);
       }
     };
 
@@ -197,7 +256,9 @@ export function setupTouchScroll(config: TouchScrollConfig): () => void {
       cancelLongPress();
       if (vertical) {
         const velocity = releaseVelocity();
-        if (Math.abs(velocity) >= MIN_VELOCITY * 3) startMomentum(velocity);
+        if (toHistory) history?.fling(velocity);
+        else if (Math.abs(velocity) >= MIN_VELOCITY * 3)
+          startMomentum(velocity);
       }
       endTouch();
     };
@@ -205,6 +266,7 @@ export function setupTouchScroll(config: TouchScrollConfig): () => void {
     const handleTouchCancel = () => {
       cancelLongPress();
       stopMomentum();
+      if (toHistory) history?.fling(0);
       endTouch();
     };
 
@@ -220,6 +282,7 @@ export function setupTouchScroll(config: TouchScrollConfig): () => void {
     cleanupInner = () => {
       cancelLongPress();
       stopMomentum();
+      if (flushRaf !== null) cancelAnimationFrame(flushRaf);
       xtermScreen.removeEventListener("touchstart", handleTouchStart);
       xtermScreen.removeEventListener("touchmove", handleTouchMove);
       xtermScreen.removeEventListener("touchend", handleTouchEnd);

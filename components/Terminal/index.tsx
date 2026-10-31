@@ -238,6 +238,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
       sendCommand,
       sendShellCommand,
       execViaWs,
+      historyOffsetRef,
       focus,
       getScrollState,
       restoreScrollState,
@@ -1365,7 +1366,11 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
         const scrolled = output.match(/^scrolled:(\d*)\n/);
         const text = scrolled ? output.slice(scrolled[0].length) : output;
         if (text.trim().length > 0) {
-          selectScrolledRef.current = Number(scrolled?.[1]) || 0;
+          // Or the touch history's, which a long press on it closed
+          const fromHistory = historyOffsetRef.current;
+          historyOffsetRef.current = null;
+          selectScrolledRef.current =
+            fromHistory ?? (Number(scrolled?.[1]) || 0);
           setTerminalText(
             joinWrappedUrls(
               text.replace(/\n+$/, ""),
@@ -1393,7 +1398,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
       };
 
       fetchTmuxBuffer();
-    }, [selectMode, xtermRef]);
+    }, [selectMode, xtermRef, historyOffsetRef]);
 
     // Select mode's "Reply to this": the copy view's selection, quoted over
     // the composer. Taken on press too, as the tap can clear the selection.
