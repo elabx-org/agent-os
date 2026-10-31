@@ -1,6 +1,7 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
+import { getFlag } from "./flags";
 
 /*
  * Claude Code's own view of a session, recorded as it runs: every Claude
@@ -195,18 +196,20 @@ export function withClaudeState(
   sessionId: string,
   settings: { hooks?: Record<string, HookGroup[]> }
 ): object {
+  // Claude's view, whatever its own settings say (Labs: Claude full screen)
+  const tui = getFlag("claudeFullscreen") ? "fullscreen" : "default";
   let state: ReturnType<typeof claudeStateSettings>;
   try {
     state = claudeStateSettings(sessionId);
   } catch (error) {
     console.error("Claude state capture unavailable:", error);
-    return settings;
+    return { ...settings, tui };
   }
   const hooks = { ...state.hooks };
   for (const [event, groups] of Object.entries(settings.hooks ?? {})) {
     hooks[event] = [...(hooks[event] ?? []), ...groups];
   }
-  return { ...settings, statusLine: state.statusLine, hooks };
+  return { ...settings, tui, statusLine: state.statusLine, hooks };
 }
 
 /** Writes settings with only the state capture, for sessions without a project */

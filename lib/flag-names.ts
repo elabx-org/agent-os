@@ -17,6 +17,7 @@ export const FLAG_NAMES = [
   "portProxy",
   "bgSendCleanup",
   "running",
+  "claudeFullscreen",
 ] as const;
 
 export type FlagName = (typeof FLAG_NAMES)[number];
@@ -53,6 +54,10 @@ export const FLAG_DEFAULTS: Flags = {
   bgSendCleanup: true,
   // M16: the Running view, off until it settles
   running: false,
+  // Claude's own full-screen view keeps its history to itself, so a swipe
+  // back is a round trip per row; normal mode leaves it to tmux, scrolled
+  // on the device
+  claudeFullscreen: false,
 };
 
 export const FLAGS_PREFERENCE_KEY = "flags";
@@ -140,6 +145,10 @@ export const FLAG_LABELS: Record<FlagName, { label: string; hint: string }> = {
   running: {
     label: "Running",
     hint: "Lists the dev servers sessions started, with a live preview through the port proxy",
+  },
+  claudeFullscreen: {
+    label: "Claude full screen",
+    hint: "Claude's own full-screen view, with its pinned prompt. Off scrolls smoothly on touch. Sessions started or restarted after",
   },
 };
 
