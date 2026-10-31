@@ -1,0 +1,20 @@
+│ Should AgentOS start Claude in normal mode so swiping scrolls
+│ smoothly on the phone?
+
+❯ 1. Yes, use normal mode
+     AgentOS starts every new Claude session in normal mode.
+     Swiping then scrolls locally on the phone, so it should feel
+     smooth.
+  2. No, keep full-screen
+     AgentOS keeps starting Claude in full-screen mode as it does
+     now. Scrolling on the phone will still go through the server
+     and may feel laggy.
+  3. Ask me each time
+     AgentOS asks which mode to use whenever it starts a new
+     session. You can choose normal or full-screen case by case.
+  4. Type something.
+──────────────────────────────────────────────────────────────────
+  5. Chat about this
+
+Enter to select · ↑/↓ to navigate · Esc to cancel
+─────────────────────────── Agentos package on code server image ─

@@ -250,3 +250,55 @@ test("an unanswered question is refused up front", async () => {
   await assert.rejects(answerAsk(claude, [STORAGE], [{ picks: [] }]), AskError);
   assert.deepEqual(claude.log, []);
 });
+
+const LONG =
+  "Your Claude sessions run in full-screen mode, which my scroll fix cannot help because every swipe goes to the server and back. Should AgentOS start Claude in normal mode so swiping scrolls smoothly on the phone?";
+
+test("full screen: a long question's bar is not part of it", () => {
+  const s = fixture("fs-tall");
+  assert.equal(s?.kind, "question");
+  if (s?.kind !== "question") return;
+  assert.equal(s.question, LONG);
+  assert.equal(s.partial, undefined);
+  assert.deepEqual(
+    s.rows.map((r) => r.label),
+    [
+      "Yes, use normal mode",
+      "No, keep full-screen",
+      "Ask me each time",
+      "Type something.",
+    ]
+  );
+  assert.ok(isQuestion(s, LONG));
+});
+
+test("full screen: a question taller than the pane, its top cut off", () => {
+  const s = fixture("fs-cut");
+  assert.equal(s?.kind, "question");
+  if (s?.kind !== "question") return;
+  assert.equal(s.partial, true);
+  assert.equal(
+    s.question,
+    "Should AgentOS start Claude in normal mode so swiping scrolls smoothly on the phone?"
+  );
+  assert.equal(s.cursor, 1);
+  assert.equal(s.rows.length, 4);
+  // Its end matches the question; another question's doesn't
+  assert.ok(isQuestion(s, LONG));
+  assert.ok(!isQuestion(s, "Which colour?"));
+});
+
+test("full screen: a short question parses as before", () => {
+  const s = fixture("fs-single");
+  assert.equal(s?.kind, "question");
+  if (s?.kind !== "question") return;
+  assert.equal(s.question, "Which colour?");
+  assert.deepEqual(
+    s.rows.map((r) => r.label),
+    ["Red", "Green", "Blue", "Type something."]
+  );
+});
+
+test("no footer, no question, even without a tab row", () => {
+  assert.equal(parseAskScreen(["❯ 1. Red", "  2. Blue", ""]), null);
+});
