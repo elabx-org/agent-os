@@ -70,6 +70,10 @@ export interface ColumnContext {
   behind?: boolean;
   /** The person's own order (Settings → Control column); none keeps the default */
   order?: ColumnOrder;
+  /** Where back goes, as lib/nav-actions.ts backTarget() names it */
+  backLabel?: string;
+  /** Settings opened from Needs you: it closes back to it */
+  settingsFrom?: "needs";
 }
 
 /**
@@ -285,8 +289,8 @@ const BASE = {
   },
   projectSettings: {
     id: "projectSettings",
-    symbol: "ellipsis",
-    icon: "Ellipsis",
+    symbol: "folder.badge.gearshape",
+    icon: "FolderCog",
     label: "Project actions",
   },
   agents: {
@@ -349,10 +353,19 @@ const BASE = {
     icon: "Upload",
     label: "Upload",
   },
+  settle: {
+    id: "settle",
+    symbol: "checkmark.circle",
+    icon: "CircleCheck",
+    label: "Settle",
+  },
+  copyId: {
+    id: "copyId",
+    symbol: "doc.on.doc",
+    icon: "Copy",
+    label: "Copy session ID",
+  },
 } satisfies Record<string, Base & { id: NavAction }>;
-
-/** More's Running (M16), while Labs has it on */
-export const RUNNING_ITEM: Base = BASE.running;
 
 /**
  * More's Agents: the closed column and an arranged one leave the item out,
@@ -378,6 +391,12 @@ function item(base: Base, extra: Partial<ColumnItem> = {}): ColumnItem {
 }
 
 const sep = { sep: true } as const;
+
+/** Back, named for where it goes; the fallback where nothing says */
+function back(ctx: ColumnContext, fallback?: string): ColumnItem {
+  const label = ctx.backLabel ?? fallback;
+  return item(BASE.back, label ? { label } : {});
+}
 
 /** Needs you, with its amber count (Focus keeps the column quiet) */
 function inbox(ctx: ColumnContext, extra: Partial<ColumnItem> = {}) {
@@ -491,12 +510,12 @@ function scriptsColumn(): ColumnItem[] {
  * E-Files' New file, Upload | More (the keyboard up keeps the first two)
  */
 function viewColumn(ctx: ColumnContext): ColumnItem[] | null {
-  const back = item(BASE.back, { label: "Back to session" });
+  const backItem = back(ctx, "Back to session");
   if (ctx.viewMode === "git")
     return ctx.keyboardUp
-      ? [back, item(BASE.pull, sep), item(BASE.push), item(BASE.more)]
+      ? [backItem, item(BASE.pull, sep), item(BASE.push), item(BASE.more)]
       : [
-          back,
+          backItem,
           item(BASE.pull, sep),
           item(BASE.push),
           item(BASE.newPr),
@@ -504,9 +523,9 @@ function viewColumn(ctx: ColumnContext): ColumnItem[] | null {
         ];
   if (ctx.viewMode === "files")
     return ctx.keyboardUp
-      ? [back, item(BASE.newFile, sep), item(BASE.upload), item(BASE.more)]
+      ? [backItem, item(BASE.newFile, sep), item(BASE.upload), item(BASE.more)]
       : [
-          back,
+          backItem,
           item(BASE.newFile, sep),
           item(BASE.upload),
           item(BASE.more, sep),
@@ -530,9 +549,7 @@ function slotItem(
     case "live":
       return item(BASE.live, { selected: ctx.liveOpen });
     case "inbox":
-      return kind === "now"
-        ? inbox(ctx, { selected: !ctx.focus && ctx.needsYou > 0 })
-        : inbox(ctx);
+      return inbox(ctx);
     case "new":
       return item(BASE.new, { prominent: true });
     case "search":
@@ -548,11 +565,37 @@ function slotItem(
   }
 }
 
-/** What the column leaves out, as items for More (most menus skip ones they already list) */
+/** The slot a view is: More never offers the view showing */
+const VIEW_SLOT: Partial<
+  Record<NonNullable<ColumnContext["viewMode"]>, ColumnSlot>
+> = {
+  git: "git",
+  files: "files",
+};
+
+/** What the closed Duo's session column keeps with the keyboard up (sessionColumn) */
+const KEYBOARD_SLOTS: ColumnSlot[] = ["view", "git"];
+
+/** Slots for two sessions side by side: one page has no room for them */
+const BESIDE_SLOTS: ColumnSlot[] = ["beside", "swap"];
+
+/** A saved order as one page shows it */
+function onePage(slots: ColumnSlot[]): ColumnSlot[] {
+  return slots.filter((slot) => !BESIDE_SLOTS.includes(slot));
+}
+
+/**
+ * What the column leaves out, as items for More (most menus skip ones they
+ * already list). With the keyboard up the closed Duo's session column is
+ * cut to KEYBOARD_SLOTS whatever the saved order, so More has the rest. On
+ * one page (not `wide`) there's no Open beside
+ */
 export function moreItems(
   kind: ColumnKind,
   order: ColumnOrder | undefined,
-  viewMode: ColumnContext["viewMode"] = null
+  viewMode: ColumnContext["viewMode"] = null,
+  keyboardUp = false,
+  wide = true
 ): ColumnItem[] {
   const ctx: ColumnContext = {
     viewMode,
@@ -563,15 +606,55 @@ export function moreItems(
     paneCount: 1,
     canGoBack: false,
   };
-  return hiddenSlots(kind, order).map((slot) => {
-    const {
-      sep: _sep,
-      selected: _selected,
-      prominent: _prominent,
-      ...rest
-    } = slotItem(slot, kind, ctx);
-    return rest;
-  });
+  const current = viewMode ? VIEW_SLOT[viewMode] : undefined;
+  const hidden = keyboardUp
+    ? COLUMN_CHOICES[kind].filter((slot) => !KEYBOARD_SLOTS.includes(slot))
+    : hiddenSlots(kind, order);
+  return (wide ? hidden : onePage(hidden))
+    .filter((slot) => slot !== current)
+    .map((slot) => {
+      const {
+        sep: _sep,
+        selected: _selected,
+        prominent: _prominent,
+        ...rest
+      } = slotItem(slot, kind, ctx);
+      return rest;
+    });
+}
+
+/** What More adds to what the column leaves out, where it shows */
+export interface MoreSources {
+  surface: Surface;
+  viewMode: ColumnContext["viewMode"];
+  /** What the column (or bar) shows already */
+  shown: NavAction[];
+  /** Labs' Running is on */
+  running: boolean;
+  /** The focused session's ⋯ (stores/sessionActions.ts) */
+  session: { scripts: boolean; settle: boolean; copyId: boolean };
+}
+
+/**
+ * The conversation view the column can't reach from Changes or Files, the
+ * focused session's own actions (its header's ⋯ is often hidden), and
+ * Running unless it's the page showing; for the web's More and the app's
+ */
+export function moreExtras(src: MoreSources): Base[] {
+  const inSession = src.surface === "session" || src.surface === "beside";
+  const out: Base[] = [];
+  const conversation = src.viewMode === "chat" || src.viewMode === "terminal";
+  if (inSession && src.viewMode && !conversation) {
+    if (!src.shown.includes("chat")) out.push(BASE.chat);
+    if (!src.shown.includes("terminal")) out.push(BASE.terminal);
+  }
+  if (inSession) {
+    if (src.session.scripts) out.push({ ...BASE.scripts, label: "Scripts" });
+    if (src.session.settle) out.push(BASE.settle);
+    if (src.session.copyId) out.push(BASE.copyId);
+  }
+  if (src.running && src.surface !== "running") out.push(BASE.running);
+  return out.filter((it) => !src.shown.includes(it.id));
 }
 
 /** The arranged slots between the pinned ends, the first one set apart from back */
@@ -598,42 +681,42 @@ function sessionColumn(
     if (own) return own;
     if (ctx.viewMode === "agents") return agentsColumn(ctx);
   }
-  const own = savedOrder("session", ctx.order);
-  if (own) {
-    // The keyboard up keeps the first two; while it works Stop takes More's place
-    const slots = compact ? own.slice(0, 2) : own;
-    const last =
-      closed && ctx.working && !compact
-        ? item(BASE.stop, { danger: true, ...sep })
-        : item(BASE.more, compact ? {} : sep);
-    return [
-      item(BASE.back, compact ? { label: "Back" } : {}),
-      ...arranged("session", slots, ctx, true),
-      last,
-    ];
-  }
   if (compact)
-    // Closed-Terminal, keyboard up: what fits above it
+    // Closed-Terminal, keyboard up: what fits above it, whatever the saved
+    // order, so the other view and Changes stay a tap away
     return [
       item(BASE.back, { label: "Back" }),
       otherView(ctx, sep),
       changes(ctx),
       item(BASE.more),
     ];
+  const saved = savedOrder("session", ctx.order);
+  const own = saved && closed ? onePage(saved) : saved;
+  // N-Queue: while it works, Stop stands before More (never in its place)
+  const end = [
+    ...(closed && ctx.working
+      ? [item(BASE.stop, { danger: true, ...sep })]
+      : []),
+    item(BASE.more, closed && ctx.working ? {} : sep),
+  ];
+  if (own) {
+    // Changes or Files left out of it still shows, picked, while it's up
+    const current = ctx.viewMode ? VIEW_SLOT[ctx.viewMode] : undefined;
+    const slots = current && !own.includes(current) ? [...own, current] : own;
+    return [back(ctx), ...arranged("session", slots, ctx, true), ...end];
+  }
   if (closed && ctx.working)
-    // N-Queue: while it works, Stop takes More's place
+    // Files makes room for Stop
     return [
-      item(BASE.back),
+      back(ctx),
       otherView(ctx, sep),
       changes(ctx),
       item(BASE.live, { selected: ctx.liveOpen }),
-      item(BASE.stop, { danger: true, ...sep }),
+      ...end,
     ];
   // O-Tree: Agents beside Files on the open Duo, back to the session
   return [
-    ctx.viewMode === "agents"
-      ? item(BASE.back, { label: "Back to session" })
-      : item(BASE.back),
+    back(ctx, ctx.viewMode === "agents" ? "Back to session" : undefined),
     otherView(ctx, sep),
     changes(ctx),
     item(BASE.files, { selected: ctx.viewMode === "files" }),
@@ -645,7 +728,8 @@ function sessionColumn(
 
 /** Fold-Chat / Fold-Terminal: the view showing, Changes, Files, Agents, Live | Needs you, More */
 function sessionBar(ctx: ColumnContext): ColumnItem[] {
-  const own = savedOrder("session", ctx.order);
+  const saved = savedOrder("session", ctx.order);
+  const own = saved && onePage(saved);
   if (own) {
     // The bar has no back: the view showing stands where "view" was put
     const shown = own.map((slot) =>
@@ -678,7 +762,10 @@ function sessionBar(ctx: ColumnContext): ColumnItem[] {
   ];
 }
 
-/** E-iPhone: Now · Needs you · Projects · Settings, then the New circle */
+/**
+ * E-iPhone: Now · Needs you · Projects · Find · Settings, then the New
+ * circle (Find as in Main's column: a phone has no sidebar to hold it)
+ */
 function tabs(surface: Surface, ctx: ColumnContext): ColumnItem[] {
   return [
     item(BASE.now, { selected: surface === "now" }),
@@ -686,6 +773,7 @@ function tabs(surface: Surface, ctx: ColumnContext): ColumnItem[] {
     item(BASE.projects, {
       selected: surface === "projects" || surface === "project",
     }),
+    item(BASE.search, { selected: surface === "search" }),
     item(BASE.settings, { selected: surface === "settings" }),
     item(BASE.new, { prominent: true, sep: true }),
   ];
@@ -702,8 +790,8 @@ function nowColumn(ctx: ColumnContext): ColumnItem[] {
     ? arranged("now", own, ctx, false)
     : [
         item(BASE.new, { prominent: true }),
-        // No Now item here: what needs you leads the page, so it's the one on
-        inbox(ctx, { selected: !ctx.focus && ctx.needsYou > 0 }),
+        // Only its count: it opens a page of its own, which isn't this one
+        inbox(ctx),
         item(BASE.projects),
         item(BASE.search),
       ];
@@ -718,13 +806,17 @@ function nowColumn(ctx: ColumnContext): ColumnItem[] {
   ];
 }
 
-/** Open-Now: New, Needs you | the other view, Changes, Files, Open beside | Find, More */
+/**
+ * Open-Now: New, Needs you, Projects | the other view, Changes, Files, Open
+ * beside | Find, More
+ */
 function nowWithSession(ctx: ColumnContext): ColumnItem[] {
   return [
     // Now beside the session: ‹ puts it away, the session takes both pages
-    ...(ctx.behind ? [item(BASE.resume)] : []),
-    item(BASE.new, { prominent: true }),
+    item(BASE.resume),
+    item(BASE.new, { prominent: true, sep: true }),
     inbox(ctx),
+    item(BASE.projects),
     otherView(ctx, sep),
     changes(ctx),
     item(BASE.files, { selected: ctx.viewMode === "files" }),
@@ -745,6 +837,25 @@ export function columnKindFor(
   return null;
 }
 
+/**
+ * A phone on its side (667x375): the bar of views under the composer and
+ * the key bar would leave the terminal two lines
+ */
+export const SHORT_SCREEN = "(max-height: 500px)";
+
+/**
+ * What a phone draws at the bottom: the tab bar over the home and its pages,
+ * the bar of views in a session; none in a session on a short screen, where
+ * the header has Chat | Terminal and its ⋯ the rest
+ */
+export function phoneBar(
+  surface: Surface,
+  short: boolean
+): "tabs" | "session" | null {
+  if (surface !== "session" && surface !== "beside") return "tabs";
+  return short ? null : "session";
+}
+
 /** Layouts with room for two pages: More offers Open beside */
 export const WIDE: LayoutMode[] = ["duo-open", "book", "desktop"];
 
@@ -762,7 +873,7 @@ export function columnFor(
   const wide = WIDE.includes(mode);
   const inSession = surface === "session" || surface === "beside";
   // The phone's tab bar holds the home's places; in a session the phone
-  // gets the tabletop's bar of views
+  // gets the tabletop's bar of views (ControlColumn's PhoneBar draws it)
   // N-Scripts over a project page too (over a session, sessionColumn has it)
   if (mode === "duo-closed" && !inSession && ctx.sheet === "scripts")
     return scriptsColumn();
@@ -781,7 +892,8 @@ export function columnFor(
 
   switch (surface) {
     case "now":
-      if (wide && ctx.viewMode) return nowWithSession(ctx);
+      // A session's views only beside a session, not a bare shell
+      if (wide && ctx.viewMode && ctx.behind) return nowWithSession(ctx);
       // Wide, Now is a page beside the session: nothing to go back to
       return nowColumn(wide ? { ...ctx, behind: false } : ctx);
     case "session":
@@ -793,13 +905,13 @@ export function columnFor(
     case "beside":
       if (wide && savedOrder("beside", ctx.order))
         return [
-          item(BASE.back),
+          back(ctx),
           ...arranged("beside", savedOrder("beside", ctx.order)!, ctx, true),
           item(BASE.more, sep),
         ];
       return wide
         ? [
-            item(BASE.back),
+            back(ctx),
             item(BASE.beside, {
               label: "Side by side",
               selected: true,
@@ -817,47 +929,58 @@ export function columnFor(
     case "settings":
       // Drilled into a section on the closed Duo (E-Display); list | detail
       // elsewhere keeps both up, so there's nothing to go back to
-      if (ctx.canGoBack && !wide)
-        return [item(BASE.back, { label: "Back to Settings" })];
+      if (ctx.canGoBack && !wide) return [back(ctx, "Back to Settings")];
       return [
-        item(BASE.closeSettings),
+        // Opened from Needs you, it goes back there
+        ctx.settingsFrom
+          ? back(ctx, "Back to Needs you")
+          : item(BASE.closeSettings),
         ...(ctx.native ? [item(BASE.server, sep)] : []),
       ];
     case "projects":
       return [
-        item(BASE.back),
+        back(ctx),
         item(BASE.newProject, { prominent: true, sep: true }),
         item(BASE.search, { label: "Find a project" }),
         item(BASE.sort),
+        item(BASE.more, sep),
       ];
     case "project":
       // N-Config: back | run a script, the file
       if (ctx.projectSettings)
         return [
-          item(BASE.back, { label: "Back" }),
+          back(ctx, "Back"),
           item(BASE.scripts, sep),
           item(BASE.viewConfig),
+          item(BASE.more, sep),
         ];
       return [
-        item(BASE.back, { label: "Back" }),
+        back(ctx, "Back"),
         item(BASE.new, { prominent: true, sep: true }),
         item(BASE.search, { label: "Find in project" }),
         item(BASE.projectSettings, sep),
+        item(BASE.more),
       ];
     case "needs":
       return [
-        item(BASE.back),
+        back(ctx),
         item(BASE.notifSettings, sep),
         item(BASE.clearHistory),
+        item(BASE.more, sep),
       ];
     case "new":
       // E-New: Cancel | Start (the form registers startNew)
       return [
         item(BASE.back, { symbol: "xmark", icon: "X", label: "Cancel" }),
         item(BASE.start, { prominent: true, sep: true }),
+        item(BASE.more, sep),
       ];
     case "search":
-      return [item(BASE.back)];
+      return [back(ctx), item(BASE.more, sep)];
+    case "running":
+      // Its own page, not the session's: back (to the session it was
+      // opened from) | More (the list has Show all itself)
+      return [back(ctx), item(BASE.more, sep)];
   }
 }
 

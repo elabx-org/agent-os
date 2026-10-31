@@ -39,11 +39,17 @@ export interface LayoutInputs {
 export const MIN_SIDE_RAIL = 56;
 /** Below this the web lays out for a phone (useViewport's breakpoint) */
 const PHONE_MAX_WIDTH = 768;
+/**
+ * The open Duo's inner display is 951 wide lying flat; the closed one
+ * held sideways is 678, so a Duo that wide or wider is open
+ */
+export const OPEN_DUO_MIN_WIDTH = 900;
 
 /**
  * The open Duo's inner display lying flat (about 951x669), as useHinge
- * tells it: the app's own word when it gives one, else the size, and only
- * on a touch screen so a desktop window of that size stays a desktop
+ * tells it: the app's own word when it gives one (and wide enough not to
+ * be the closed Duo on its side), else the size, and only on a touch
+ * screen so a desktop window of that size stays a desktop
  */
 export function isOpenDuoSize(
   width: number,
@@ -52,9 +58,13 @@ export function isOpenDuoSize(
   duo: boolean | undefined
 ): boolean {
   if (width <= height) return false;
-  if (duo !== undefined) return duo;
+  if (duo !== undefined) return duo && width >= OPEN_DUO_MIN_WIDTH;
   return (
-    touch && width >= 900 && width <= 1000 && height >= 600 && height <= 720
+    touch &&
+    width >= OPEN_DUO_MIN_WIDTH &&
+    width <= 1000 &&
+    height >= 600 &&
+    height <= 720
   );
 }
 
@@ -79,10 +89,11 @@ export function throughKeyboard(
 
 /**
  * The closed Duo inside an app build that doesn't say it is one: the outer
- * display is far squarer (about 466x678) than a regular iPhone (390x844)
+ * display (about 466x678) is far squarer than a regular iPhone (390x844
+ * to 440x956), and narrower than an iPad (744 wide, or a 507 or 694 split)
  */
-function closedDuoGuess(width: number, height: number): boolean {
-  return width < PHONE_MAX_WIDTH && width < height && width / height > 0.6;
+export function closedDuoGuess(width: number, height: number): boolean {
+  return width >= 450 && width <= 490 && width < height && width / height > 0.6;
 }
 
 export function layoutModeFor(inputs: LayoutInputs): LayoutMode {
@@ -91,10 +102,9 @@ export function layoutModeFor(inputs: LayoutInputs): LayoutMode {
   if (inputs.openDuo) return "duo-open";
   if (inputs.sideRail >= MIN_SIDE_RAIL) return "duo-closed";
   if (inputs.native && width < PHONE_MAX_WIDTH) {
+    // A Duo this narrow is closed, upright or on its side
     const closedDuo =
-      inputs.duo !== undefined
-        ? inputs.duo && width < height
-        : closedDuoGuess(width, height);
+      inputs.duo !== undefined ? inputs.duo : closedDuoGuess(width, height);
     return closedDuo ? "duo-closed" : "phone";
   }
   return width < PHONE_MAX_WIDTH ? "phone" : "desktop";

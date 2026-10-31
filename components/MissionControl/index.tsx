@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, type ReactNode } from "react";
-import { ChevronLeft, Plus } from "lucide-react";
+import { ChevronLeft, MonitorPlay, Plus } from "lucide-react";
 import { FoldSplit } from "@/components/FoldSplit";
 import { AppLogo } from "@/components/SessionList/SessionListHeader";
 import { InboxItem } from "@/components/Inbox";
@@ -69,8 +69,13 @@ interface MissionControlProps {
   /** The open session, highlighted where it's listed */
   selectedId?: string;
   onOpenSession: (session: Session) => void;
-  /** Back to the session underneath, where nothing else leads there */
+  /**
+   * Back to the session underneath (activeSessionId), where nothing else
+   * leads there
+   */
   onClose?: () => void;
+  /** Labs' Running, where no column or sidebar lists it (a phone's tabs) */
+  onRunning?: () => void;
   /** Projects, the column's item: the session list until M1b's page */
   projectsView?: ReactNode;
 }
@@ -88,6 +93,7 @@ export function MissionControl({
   selectedId = activeSessionId,
   onOpenSession,
   onClose,
+  onRunning,
   projectsView,
 }: MissionControlProps) {
   const mode = useLayoutMode();
@@ -99,6 +105,11 @@ export function MissionControl({
     (session) => displayTitle(session, now.titles).title
   );
   const first = now.waiting[0];
+  // The way back names where it goes, not just a chevron on a root page
+  const behind = onClose
+    ? sessions.find((s) => s.id === activeSessionId)
+    : undefined;
+  const behindTitle = behind ? displayTitle(behind, now.titles).title : null;
   // The needs count is useNeedsYou's, as on the column badge
   const counts = {
     needs: now.needsCount,
@@ -141,15 +152,32 @@ export function MissionControl({
       }
     >
       <div className="flex flex-col gap-3.5">
-        {onClose && (
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Back to the session"
-            className="text-muted-foreground active:bg-accent -mb-2 -ml-2 flex h-11 w-11 items-center justify-center rounded-full"
-          >
-            <ChevronLeft className="h-5 w-5" />
-          </button>
+        {(onClose || onRunning) && (
+          <div className="-mb-2 flex min-w-0 items-center gap-2">
+            {onClose && (
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label={
+                  behindTitle ? `Back to ${behindTitle}` : "Back to the session"
+                }
+                className="text-primary active:bg-accent -ml-2 flex h-11 min-w-0 items-center gap-0.5 rounded-full pr-3 pl-1 text-[15px] font-medium"
+              >
+                <ChevronLeft aria-hidden className="h-5 w-5 shrink-0" />
+                <span className="truncate">{behindTitle ?? "Session"}</span>
+              </button>
+            )}
+            {onRunning && (
+              <button
+                type="button"
+                onClick={onRunning}
+                className="text-muted-foreground active:bg-accent -mr-2 ml-auto flex h-11 shrink-0 items-center gap-1.5 rounded-full px-3 text-[15px] font-medium"
+              >
+                <MonitorPlay aria-hidden className="h-[18px] w-[18px]" />
+                Running
+              </button>
+            )}
+          </div>
         )}
         <header className="flex items-end justify-between gap-3">
           <div className="min-w-0">

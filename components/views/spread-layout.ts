@@ -47,6 +47,11 @@ export interface SpreadLayout {
   /** Claude's last turn on the left page, the pane right */
   replyLeft: boolean;
   homeOpen: boolean;
+  /**
+   * Half open, the home fills the left page the pane leaves empty (it isn't
+   * the home asked for: the session stays the surface)
+   */
+  homeFill: boolean;
   /** Two panes, one on each side of the fold */
   splitFold: boolean;
   /** Half open, Focus on the terminal: the git view on the left page */
@@ -56,6 +61,11 @@ export interface SpreadLayout {
    * there (Open-Changes), and changesOpen resets once this is false
    */
   changesRoom: boolean;
+  /**
+   * The column's Changes can bring Changes up beside the conversation from
+   * here: Now steps aside and Changes or Files gives way to it
+   */
+  changesReach: boolean;
   /** Changes on the right page beside the conversation */
   changesBeside: boolean;
   /**
@@ -106,14 +116,9 @@ export function spreadLayout(i: SpreadInput): SpreadLayout {
   const splitFold = twoPages && !homeOpen;
   // Typing a reply only lends the pages to the context for a while, so it
   // hides Changes without closing it
-  const changesRoom =
-    i.pages &&
-    i.hasSession &&
-    i.hasFolder &&
-    !i.pageOpen &&
-    !twoPages &&
-    !i.homeWanted &&
-    conversation;
+  const changesReach =
+    i.pages && i.hasSession && i.hasFolder && !i.pageOpen && !twoPages;
+  const changesRoom = changesReach && !i.homeWanted && conversation;
   // Live and Changes share the right page; Live asked last wins
   const changesBeside =
     changesRoom && i.changesOpen && !replyLeft && !i.liveOpen && !reviewBeside;
@@ -149,30 +154,37 @@ export function spreadLayout(i: SpreadInput): SpreadLayout {
   // Half open nothing may sit in the bend: only the chat lays itself out as
   // a book, anything else takes the right page. A workspace page takes it
   // flat too: its centred form would sit across the hinge.
-  const paneRight =
+  const rightOnly =
     i.pages &&
     !homeOpen &&
     !changesLeft &&
     !paneLeft &&
     !splitFold &&
     (replyLeft || (i.pageOpen ? !pageWide : i.book && i.viewMode !== "chat"));
+  // Half open the left page it leaves isn't left blank: Now fills it, as
+  // when it was asked for (Focus keeps it empty)
+  const homeFill = rightOnly && i.book && !replyLeft && !i.focus;
+  const paneRight = rightOnly && !homeFill;
   // Across the fold: content may cross it, controls move right of it
   const paneWide =
     i.pages &&
     !homeOpen &&
+    !homeFill &&
     !changesLeft &&
     !paneLeft &&
     !paneRight &&
     !splitFold;
-  const pageGap = i.pages && (homeOpen || changesLeft || paneRight);
+  const pageGap = i.pages && (homeOpen || homeFill || changesLeft || paneRight);
   return {
     pageWide,
     twoPages,
     replyLeft,
-    homeOpen,
+    homeOpen: homeOpen || homeFill,
+    homeFill,
     splitFold,
     changesLeft,
     changesRoom,
+    changesReach,
     changesBeside,
     reviewRoom,
     reviewBeside,

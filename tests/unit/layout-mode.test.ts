@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  closedDuoGuess,
   isOpenDuoSize,
   throughKeyboard,
   layoutModeFor,
@@ -125,4 +126,48 @@ test("throughKeyboard: a shorter screen at the same width keeps the answer", () 
   // Turned: the width changes, so it asks again
   assert.equal(open(669, 951), false);
   assert.equal(open(669, 533), false);
+});
+
+test("layoutModeFor: the closed Duo on its side is not the open one", () => {
+  // DPD-4: duo:true at the outer display's landscape size
+  assert.equal(isOpenDuoSize(678, 466, true, true), false);
+  assert.equal(
+    mode({ width: 678, height: 466, touch: true, native: true, duo: true }),
+    "duo-closed"
+  );
+  // The keyboard up on the closed Duo stays closed
+  assert.equal(
+    mode({ width: 466, height: 378, touch: true, native: true, duo: true }),
+    "duo-closed"
+  );
+  // The open Duo still is
+  assert.equal(
+    mode({ width: 951, height: 669, touch: true, native: true, duo: true }),
+    "duo-open"
+  );
+});
+
+test("closedDuoGuess: only the outer display's size", () => {
+  // PT-9: iPad mini portrait and its splits in the app are not a Duo (as
+  // in Safari, they get the phone layout)
+  assert.equal(closedDuoGuess(744, 1133), false);
+  assert.equal(closedDuoGuess(694, 1032), false);
+  assert.equal(closedDuoGuess(507, 1032), false);
+  // iPhones from SE to Pro Max
+  for (const [w, h] of [
+    [375, 667],
+    [390, 844],
+    [402, 874],
+    [440, 956],
+  ])
+    assert.equal(closedDuoGuess(w, h), false, `${w}x${h}`);
+  assert.equal(closedDuoGuess(466, 678), true);
+  assert.equal(
+    mode({ width: 744, height: 1133, touch: true, native: true }),
+    "phone"
+  );
+  assert.equal(
+    mode({ width: 694, height: 1032, touch: true, native: true }),
+    "phone"
+  );
 });

@@ -175,7 +175,7 @@ export const Pane = memo(function Pane({
   }, [terminalRun]);
 
   // File editor state - lifted here so it persists across view switches
-  const fileEditor = useFileEditor();
+  const fileEditor = useFileEditor(paneId);
 
   // Its agents (the agents view; the column's Agents item and the ⋯)
   const agentCounts = useAgentCount({
@@ -345,16 +345,17 @@ export const Pane = memo(function Pane({
   }, [isFocused, gitStatus]);
 
   useEffect(() => {
-    if (!navRequest || !isFocused) return;
+    if (!navRequest) return;
     // Asked for a session that's still attaching: wait until it's this one's,
-    // but not for ever, nor apply it once it's that old
+    // but not for ever, nor apply it once it's that old. It needn't be the
+    // focused pane's: one opened beside leaves the focus where it was
     if (navRequest.sessionId) {
       if (Date.now() - navRequest.timestamp > 10_000) {
-        mobileNavActions.clearRequest();
+        if (isFocused) mobileNavActions.clearRequest();
         return;
       }
       if (navRequest.sessionId !== session?.id) return;
-    }
+    } else if (!isFocused) return;
     if (navRequest.mode === "terminal" || session?.working_directory) {
       // Asked for, so not a default an empty chat swaps for the terminal
       defaultedRef.current = null;
@@ -415,6 +416,19 @@ export const Pane = memo(function Pane({
     // Not tmux clear-history: that would drop the session's own history.
     `; printf '\\033[H\\033[2J\\033[3J'`;
 
+  // The tabs as they are now, for a delayed start to check; its timers,
+  // cleared with the pane
+  const paneDataRef = useRef(paneData);
+  paneDataRef.current = paneData;
+  const startTimers = useRef(new Set<ReturnType<typeof setTimeout>>());
+  useEffect(() => {
+    const timers = startTimers.current;
+    return () => {
+      timers.forEach(clearTimeout);
+      timers.clear();
+    };
+  }, []);
+
   // Create onConnected callback for a specific tab
   const getTerminalConnectedHandler = useCallback(
     (tab: (typeof paneData.tabs)[0]) => (info?: { replacedPty: boolean }) => {
@@ -446,19 +460,50 @@ export const Pane = memo(function Pane({
 
       // Opened beside: the session runs here instead of a shell
       const launch = !tmuxName && takePaneLaunch(paneId);
-      if (launch) {
-        setTimeout(() => launch(handle), 100);
-      } else if (tmuxName) {
-        // Existing session — re-attach
-        setTimeout(() => handle.sendCommand(`${tmuxSetup}; tmux attach -t ${tmuxName}`), 100);
-      } else {
-        // Bare tab — create a new persistent tmux session
-        const shellTmuxName = `shell-${tab.id}`;
-        setTimeout(() => {
-          handle.sendCommand(`${tmuxSetup}; tmux attach -t ${shellTmuxName} 2>/dev/null || tmux new -s ${shellTmuxName}`);
-          attachSession(paneId, "", shellTmuxName);
-        }, 100);
-      }
+      // An empty tab you didn't ask a terminal of waits for a session: no
+      // tmux shell of its own to count, or to race a session picked now
+      if (!launch && !tmuxName && !tab.shell) return;
+
+      const timer = setTimeout(() => {
+        startTimers.current.delete(timer);
+        // A session picked meanwhile runs here instead
+        const current = () =>
+          paneDataRef.current.tabs.find((t) => t.id === tab.id);
+        const now = current();
+        if (
+          !now ||
+          now.sessionId !== tab.sessionId ||
+          now.attachedTmux !== tab.attachedTmux
+        ) {
+          return;
+        }
+        if (launch) {
+          launch(handle);
+        } else if (tmuxName) {
+          // Existing session — re-attach
+          handle.sendShellCommand(`${tmuxSetup}; tmux attach -t ${tmuxName}`);
+        } else {
+          // Asked-for terminal — a persistent tmux shell
+          const shellTmuxName = `shell-${tab.id}`;
+          handle
+            .sendShellCommand(
+              `${tmuxSetup}; tmux attach -t ${shellTmuxName} 2>/dev/null || tmux new -s ${shellTmuxName}`
+            )
+            .then((ok) => {
+              const after = current();
+              if (
+                ok &&
+                after &&
+                !after.sessionId &&
+                !after.attachedTmux &&
+                paneDataRef.current.activeTabId === tab.id
+              ) {
+                attachSession(paneId, "", shellTmuxName);
+              }
+            });
+        }
+      }, 100);
+      startTimers.current.add(timer);
     },
     [paneId, sessions, onRegisterTerminal, attachSession, tmuxSetup]
   );
@@ -538,7 +583,7 @@ export const Pane = memo(function Pane({
           isFocused={isFocused}
           onTabSwitch={(tabId) => switchTab(paneId, tabId)}
           onTabClose={(tabId) => closeTab(paneId, tabId)}
-          onTabAdd={() => addTab(paneId)}
+          onTabAdd={() => addTab(paneId, true)}
         />
       )}
       {/* E-Git, E-Files: on the Duo those pages carry their own title, and
@@ -562,9 +607,9 @@ export const Pane = memo(function Pane({
         canClose={canClose}
         onGitDrawerToggle={() => setGitDrawerOpen((prev) => !prev)}
         onShellDrawerToggle={() => setShellDrawerOpen((prev) => !prev)}
-        onTabAdd={() => addTab(paneId)}
-        onSplitHorizontal={() => splitHorizontal(paneId)}
-        onSplitVertical={() => splitVertical(paneId)}
+        onTabAdd={() => addTab(paneId, true)}
+        onSplitHorizontal={() => splitHorizontal(paneId, undefined, true)}
+        onSplitVertical={() => splitVertical(paneId, true)}
         onClose={() => close(paneId)}
       />
       )}

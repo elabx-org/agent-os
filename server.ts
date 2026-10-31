@@ -4,6 +4,7 @@ import next from "next";
 import { WebSocketServer, WebSocket } from "ws";
 import * as pty from "node-pty";
 import { exec } from "child_process";
+import { readFileSync } from "fs";
 import { randomBytes } from "crypto";
 import { scheduleStoreSync } from "./lib/store-sync";
 import { startPushWatcher } from "./lib/push/watcher";
@@ -12,6 +13,12 @@ import { issueUserProof } from "./lib/user-proof";
 import { registerMcp } from "./lib/register-mcp";
 import { proxyRequest, proxyUpgrade } from "./lib/port-proxy";
 import { applyOriginGate, originGateRefusesUpgrade } from "./lib/origin-gate";
+import {
+  isPlainShell,
+  leaveKeys,
+  parseCmdline,
+  parseTpgid,
+} from "./lib/pty-foreground";
 import {
   authConfig,
   deny,
@@ -44,6 +51,7 @@ interface PtySession {
   killTimer: ReturnType<typeof setTimeout> | null;
   alive: boolean; // pong received tracking
   pingInterval: ReturnType<typeof setInterval> | null;
+  shellQueue: Promise<unknown>; // shell commands run one after another
 }
 
 const sessions = new Map<string, PtySession>();
@@ -76,6 +84,108 @@ function detachSession(session: PtySession): void {
       sessions.delete(session.id);
     }, PTY_GRACE_MS);
   }
+}
+
+const SHELL_LEAVE_MS = 2_000; // for a detached tmux client to exit
+const SHELL_WAIT_MS = 3_000; // for a login shell's profile to finish
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+// What runs in front of the PTY's shell: the shell itself, or a program
+// (tmux, an agent) that typed text would reach instead
+function foreground(session: PtySession): {
+  shell: boolean;
+  args: string[];
+  pid: number | null;
+} {
+  const pid = session.pty.pid;
+  try {
+    const tpgid = parseTpgid(readFileSync(`/proc/${pid}/stat`, "utf8"));
+    if (tpgid === pid) return { shell: true, args: [], pid };
+    if (tpgid !== null) {
+      const cmdline = readFileSync(`/proc/${tpgid}/cmdline`, "utf8");
+      return { shell: false, args: parseCmdline(cmdline), pid: tpgid };
+    }
+  } catch { /* no /proc: by name */ }
+  const name = session.pty.process;
+  return { shell: isPlainShell(name), args: [name], pid: null };
+}
+
+async function waitForShell(session: PtySession, ms: number): Promise<boolean> {
+  const until = Date.now() + ms;
+  while (!foreground(session).shell) {
+    if (Date.now() > until) return false;
+    await sleep(50);
+  }
+  return true;
+}
+
+// A typed line has started its client (tmux, claude attach) for good, not
+// an attach that fails over to `tmux new`; or it's back at the prompt, not
+// just between its setup commands
+async function settle(session: PtySession): Promise<void> {
+  const until = Date.now() + SHELL_WAIT_MS;
+  let started = false;
+  let front = foreground(session);
+  let since = Date.now();
+  while (Date.now() < until) {
+    await sleep(20);
+    const now = foreground(session);
+    if (now.pid !== front.pid) {
+      front = now;
+      since = Date.now();
+    }
+    if (!front.shell) started = true;
+    const steady = Date.now() - since;
+    if (front.shell) {
+      if (started && steady > 300) return;
+    } else if (leaveKeys(front.args) && steady > 200) {
+      return;
+    }
+  }
+}
+
+// Type a tmux attach or agent launch line, but only at the shell's prompt:
+// typed into tmux or a running agent it would be the user's prompt. With
+// `leave`, first leave tmux or a shown background agent (switching what
+// the terminal shows) and clear a half-typed line. Commands queue per PTY,
+// so a second can't land in the tmux the first one attached.
+function runInShell(
+  session: PtySession,
+  command: string,
+  leave: boolean
+): Promise<boolean> {
+  const run = async () => {
+    const front = foreground(session);
+    if (!front.shell) {
+      const keys = leaveKeys(front.args);
+      if (keys) {
+        if (!leave) return false;
+        session.pty.write(keys);
+        if (!(await waitForShell(session, SHELL_LEAVE_MS))) return false;
+      } else if (!(await waitForShell(session, SHELL_WAIT_MS))) {
+        return false;
+      }
+    }
+    if (leave) {
+      session.pty.write("\x03");
+      // The tty drops input queued behind Ctrl+C
+      await sleep(50);
+      if (!foreground(session).shell) return false;
+    }
+    session.pty.write(command + "\r");
+    return true;
+  };
+  const result = session.shellQueue.then(run).catch(() => false);
+  // The next waits until this one runs (or is done): the shell is still in
+  // front just after a line is typed, and a second line would land in the
+  // tmux the first one starts
+  session.shellQueue = result
+    .then(async (typed) => {
+      if (typed) await settle(session);
+    })
+    .catch(() => {});
+  return result;
 }
 
 function attachSession(
@@ -145,6 +255,13 @@ function attachSession(
         case "command":
           session.pty.write(msg.data + "\r");
           break;
+        case "shell-command":
+          runInShell(session, String(msg.data), !!msg.leave).then((ok) => {
+            if (ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({ type: "shell-command-result", id: msg.id, ok }));
+            }
+          });
+          break;
         case "ping":
           // Application-level ping from client
           if (ws.readyState === WebSocket.OPEN) {
@@ -208,6 +325,7 @@ function createPtySession(ws: WebSocket): PtySession | null {
       killTimer: null,
       alive: true,
       pingInterval: null,
+      shellQueue: Promise.resolve(),
     };
 
     // Always buffer PTY output (even during disconnect)

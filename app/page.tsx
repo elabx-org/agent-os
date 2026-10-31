@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useSnapshot } from "valtio";
+import { toast } from "sonner";
 
 // Debug log buffer - persists even if console is closed
 const debugLogs: string[] = [];
@@ -39,8 +40,14 @@ import { useSessionLinks } from "@/hooks/useSessionLinks";
 import { usePresence } from "@/hooks/usePresence";
 import { useFoldPosture } from "@/hooks/useFoldPosture";
 import { useViewShortcuts } from "@/hooks/useViewShortcuts";
-import { useLayoutModeSource } from "@/hooks/useLayoutMode";
-import { surfaceStore, useSurfaceSource } from "@/stores/surface";
+import { layoutStore, useLayoutModeSource } from "@/hooks/useLayoutMode";
+import {
+  homeAfterSwitch,
+  lastPageUsed,
+  notePageUsed,
+  surfaceStore,
+  useSurfaceSource,
+} from "@/stores/surface";
 import { useSessions } from "@/hooks/useSessions";
 import { useProjects } from "@/hooks/useProjects";
 import { useDevServersManager } from "@/hooks/useDevServersManager";
@@ -57,12 +64,24 @@ import { DesktopView } from "@/components/views/DesktopView";
 import { MobileView } from "@/components/views/MobileView";
 import { getPendingPrompt, clearPendingPrompt } from "@/stores/initialPrompt";
 import { closeSettings } from "@/stores/settingsPage";
-import { closePage } from "@/stores/workspacePage";
+import { closePage, workspacePageStore } from "@/stores/workspacePage";
 import { besideStore, setPaneLaunch } from "@/stores/beside";
-import { closeNew, newSurfaceStore, openNew } from "@/stores/newSurface";
+import {
+  closeNew,
+  keepNewDraftOnClose,
+  newSurfaceStore,
+  openNew,
+} from "@/stores/newSurface";
 import { mobileNavActions, mobileNavStore } from "@/stores/mobileNav";
 import { focusStore, loadFocus } from "@/stores/focus";
-import { registerNavHandlers, runNav } from "@/lib/nav-actions";
+import {
+  noteOrigin,
+  registerNavHandlers,
+  resumeView,
+  runNav,
+} from "@/lib/nav-actions";
+import { WIDE } from "@/lib/column-spec";
+import { backStore } from "@/stores/back";
 import { runningStore } from "@/stores/running";
 import { isNative } from "@/lib/native-bridge";
 import { isEnded } from "@/lib/settle-types";
@@ -72,6 +91,13 @@ import { useScriptShortcuts } from "@/hooks/useScriptShortcuts";
 import { useFreshSessionCleanup } from "@/hooks/useFreshSessionCleanup";
 import { OPEN_SESSION_EVENT, type OpenSessionDetail } from "@/lib/bg-send";
 import { EdgeBack } from "@/components/EdgeBack";
+import { keepPlace, restorePlace, takePlace } from "@/stores/place";
+
+/** A workspace page on the open Duo's right page (not one across both) */
+const pageBeside = () => {
+  const kind = workspacePageStore.page?.kind;
+  return !!kind && kind !== "inbox" && kind !== "running";
+};
 
 function HomeContent() {
   // UI State
@@ -135,6 +161,13 @@ function HomeContent() {
   // Set CSS variable for viewport height (handles mobile keyboard)
   useViewportHeight();
 
+  // A session picked before any terminal connected, and the attach that
+  // opens it (defined below) once one registers
+  const queuedSession = useRef<{ session: Session; ts: number } | null>(null);
+  const attachToSessionRef = useRef<((session: Session) => void) | null>(
+    null
+  );
+
   // Terminal ref management
   const registerTerminalRef = useCallback(
     (paneId: string, tabId: string, ref: TerminalHandle | null) => {
@@ -144,6 +177,13 @@ function HomeContent() {
         debugLog(
           `Terminal registered: ${key}, total refs: ${terminalRefs.current.size}`
         );
+        // A session picked while none was connected opens now, unless it
+        // waited too long to still be what you want
+        const queued = queuedSession.current;
+        queuedSession.current = null;
+        if (queued && Date.now() - queued.ts < 15_000) {
+          setTimeout(() => attachToSessionRef.current?.(queued.session), 0);
+        }
       } else {
         terminalRefs.current.delete(key);
         debugLog(
@@ -272,13 +312,15 @@ function HomeContent() {
     [sessions, getInitScriptCommand]
   );
 
-  // Attach a session to a terminal
+  // Attach a session to a terminal. leave: out of what the terminal shows
+  // first (another session's tmux); otherwise it starts in a fresh shell
   const runSessionInTerminal = useCallback(
-    (
+    async (
       terminal: TerminalHandle,
       paneId: string,
       session: Session,
-      sessionInfo: { sessionName: string; cwd: string; command: string }
+      sessionInfo: { sessionName: string; cwd: string; command: string },
+      leave = false
     ) => {
       // Paused (handed off, M4) or settled (M8): its chat shows, its agent
       // isn't relaunched
@@ -301,9 +343,19 @@ function HomeContent() {
         `tmux bind-key -T copy-mode-vi WheelDownPane send-keys -X -N 5 scroll-down`,
         `tmux bind-key m display-menu -T "Tmux" -x R -y P "Copy Mode" c copy-mode "Paste Buffer" p paste-buffer "" "" "" "Split Horizontal" h 'split-window -h' "Split Vertical" v 'split-window -v'`,
       ].map(c => `${c} 2>/dev/null`).join("; ");
-      terminal.sendCommand(
-        `${tmuxSetup}; tmux attach -t ${sessionName} 2>/dev/null || ${tmuxNew}`
+      // The server types it only at the shell's prompt, never into tmux or
+      // an agent running there
+      const typed = await terminal.sendShellCommand(
+        `${tmuxSetup}; tmux attach -t ${sessionName} 2>/dev/null || ${tmuxNew}`,
+        leave
       );
+      if (!typed) {
+        debugLog(`Terminal busy, not attaching: ${session.name}`);
+        toast("Terminal busy", {
+          description: "Quit what runs there, then open the session again",
+        });
+        return;
+      }
       attachSession(paneId, session.id, sessionName);
       // A pane starting beside the one being typed into leaves the keyboard
       if (!typingElsewhere()) terminal.focus();
@@ -311,55 +363,44 @@ function HomeContent() {
     [attachSession]
   );
 
-  // Leave whatever a pane's terminal runs and attach the session there
+  // Leave whatever a pane's terminal runs and attach the session there.
+  // The server knows whether it's in tmux (the tab's attachedTmux can lag)
   const switchTerminalTo = useCallback(
-    (terminal: TerminalHandle, paneId: string, session: Session) => {
-      const activeTab = getActiveTab(paneId);
-      const isInTmux = !!activeTab?.attachedTmux;
-
-      if (isInTmux) {
-        terminal.sendInput("\x02d");
-      }
-
-      setTimeout(
-        () => {
-          terminal.sendInput("\x03");
-          setTimeout(async () => {
-            const sessionInfo = await buildSessionCommand(session);
-            runSessionInTerminal(terminal, paneId, session, sessionInfo);
-          }, 50);
-        },
-        isInTmux ? 100 : 0
-      );
+    async (terminal: TerminalHandle, paneId: string, session: Session) => {
+      const sessionInfo = await buildSessionCommand(session);
+      await runSessionInTerminal(terminal, paneId, session, sessionInfo, true);
     },
-    [getActiveTab, buildSessionCommand, runSessionInTerminal]
+    [buildSessionCommand, runSessionInTerminal]
   );
 
   // Attach session to terminal
   const attachToSession = useCallback(
     async (session: Session) => {
+      // Its back returns to what it was opened from
+      noteOrigin(session.id);
       // Whatever opened it, the session shows rather than staying under
-      // Settings or a workspace page
+      // Settings or a workspace page (a half-typed New is kept for later)
+      keepNewDraftOnClose();
       closeSettings();
       closePage();
       const terminalInfo = getTerminalWithFallback();
       if (!terminalInfo) {
-        debugLog(
-          `ERROR: No terminal available to attach session: ${session.name}`
-        );
-        alert(
-          `[AgentOS Debug] No terminal available!\n\nRun agentOSLogs() in console to see debug logs.`
-        );
+        // Picked before the first terminal connected: it opens once one does
+        debugLog(`No terminal yet, queueing session: ${session.name}`);
+        queuedSession.current = { session, ts: Date.now() };
         return;
       }
+      queuedSession.current = null;
       switchTerminalTo(terminalInfo.terminal, terminalInfo.paneId, session);
     },
     [getTerminalWithFallback, switchTerminalTo]
   );
+  attachToSessionRef.current = attachToSession;
 
   // Open beside: a session in a pane next to the focused one (the other
-  // page on the open Duo). Splits while there's room, else takes the other
-  // pane over. Already on screen, it just takes focus.
+  // page on the open Duo). Splits while there's room, keeping the focus on
+  // the pane being typed into, else takes the other pane over. Already on
+  // screen, it just takes focus.
   const openSessionBeside = useCallback(
     (session: Session) => {
       // One screen, one session: it just opens
@@ -387,6 +428,8 @@ function HomeContent() {
           )
         );
         splitHorizontal(focusedPaneId, paneId);
+        // Leaving side by side or folding keeps the session you were in
+        focusPane(focusedPaneId);
         return;
       }
       const target = ids.filter((id) => id !== focusedPaneId).at(-1);
@@ -505,13 +548,27 @@ function HomeContent() {
   useEffect(() => {
     runningStore.sessionId = focusedActiveTab?.sessionId ?? null;
   }, [focusedActiveTab?.sessionId]);
+  // Back's labels name the project they go back to
+  useEffect(() => {
+    backStore.projectNames = Object.fromEntries(
+      projects.map((p) => [p.id, p.name])
+    );
+  }, [projects]);
   const lastBesideRef = useRef(0);
   useEffect(
     () =>
       registerNavHandlers({
+        // The open Duo lands on the conversation, not Changes or Files
+        // across both pages
         resume: () => {
           closePage();
           setSidebarOpen(false);
+          const view = resumeView(
+            layoutStore.mode,
+            mobileNavStore.viewMode,
+            mobileNavStore.conversationView
+          );
+          if (view) mobileNavActions.requestViewMode(view);
         },
         // On a phone a page covers the home: leave it for the home
         openSessions: () =>
@@ -519,7 +576,18 @@ function HomeContent() {
             ? setSidebarOpen(true)
             : setSidebarOpen((open) => !open),
         openFind: () => setShowQuickSwitcher(true),
-        openNewSession: () => openNew(),
+        // At once, so the action that closes it sees what was under it
+        closeFind: () => {
+          surfaceStore.searchOpen = false;
+          setShowQuickSwitcher(false);
+        },
+        // On a project page, in that project (as the page's own + does)
+        openNewSession: () => {
+          const page = workspacePageStore.page;
+          if (page?.kind === "project")
+            openNew({ projectId: page.projectId, runAs: "session" });
+          else openNew();
+        },
         // Now, never toggled: what covers the home closes
         openNow: () => {
           closePage();
@@ -534,6 +602,8 @@ function HomeContent() {
         // The most recent other session beside the focused one (workers
         // show inside their conductor's)
         openBeside: () => {
+          // One page has no beside: it never swaps another session in
+          if (!WIDE.includes(layoutStore.mode)) return;
           // The column's toggle: one press, delivered twice, mustn't undo itself
           const now = Date.now();
           if (now - lastBesideRef.current < 700) return;
@@ -603,8 +673,8 @@ function HomeContent() {
   // link can land before the start state below is chosen, so note it
   const linkedSession = useRef(false);
   useSessionLinks(sessions, (session) => {
-    // A link that loaded the page can come before the first terminal
-    if (!getTerminalWithFallback()) return false;
+    // A link that loaded the page can come before the first terminal: it
+    // queues like a pick, so a session picked after it still wins
     linkedSession.current = true;
     attachToSession(session);
     if (isMobile) setSidebarOpen(false);
@@ -613,13 +683,60 @@ function HomeContent() {
 
   // Open beside the session on the web, unless Focus is on. On narrow
   // screens and the open iPhone Duo (where the home is a page that back
-  // shows) start on the home unless a session is up; folding keeps the session
+  // shows) start on the home unless a session is up. A reload of the tab
+  // starts where it was (stores/place), unless a link opened a session
+  const started = useRef(false);
+  const wasNarrow = useRef(false);
+  const phoneHome = useRef<{ home: boolean; sessionId: string | null }>(null);
+  const homeForPage = useRef(false);
   useEffect(() => {
     if (!isHydrated) return;
     const onSession = !!focusedActiveTab?.sessionId || linkedSession.current;
+    const linked = linkedSession.current;
     linkedSession.current = false;
-    setSidebarOpen(isMobile || isNative() ? !onSession : !focusStore.on);
+    const narrow = isMobile || isNative();
+    if (!started.current) {
+      started.current = true;
+      wasNarrow.current = narrow;
+      const place = takePlace();
+      if (place && !linked) {
+        restorePlace(place);
+        setShowQuickSwitcher(place.find);
+        setSidebarOpen(place.home || (narrow && !onSession));
+      } else {
+        setSidebarOpen(narrow ? !onSession : !focusStore.on);
+      }
+      // For as long as the page lives
+      keepPlace();
+      return;
+    }
+    // Folding, unfolding or turning keeps what showed (stores/surface)
+    const sessionId = focusedActiveTab?.sessionId ?? null;
+    if (!narrow && wasNarrow.current)
+      phoneHome.current = { home: sidebarOpen, sessionId };
+    const next = homeAfterSwitch({
+      narrow,
+      wasNarrow: wasNarrow.current,
+      onePage: isMobile,
+      onSession,
+      sessionId,
+      home: sidebarOpen,
+      focus: focusStore.on,
+      before: phoneHome.current,
+      pageBeside: pageBeside(),
+      homeForPage: homeForPage.current,
+      lastPage: lastPageUsed(),
+    });
+    wasNarrow.current = narrow;
+    homeForPage.current = next.homeForPage;
+    setSidebarOpen(next.home);
   }, [isMobile, isHydrated]);
+  // Now opened by hand is the page in use; closed, it no longer only sits
+  // beside a page
+  useEffect(() => {
+    if (sidebarOpen && !homeForPage.current) notePageUsed("home");
+    if (!sidebarOpen) homeForPage.current = false;
+  }, [sidebarOpen]);
 
   useViewShortcuts();
 
@@ -654,20 +771,16 @@ function HomeContent() {
       if (!/^\w[\w-]*$/.test(id)) return;
       const terminalInfo = getTerminalWithFallback();
       if (!terminalInfo) return;
-      const { terminal, paneId } = terminalInfo;
+      const { terminal } = terminalInfo;
       // Out of any tmux session first, as attaching a session does
-      if (getActiveTab(paneId)?.attachedTmux) terminal.sendInput("\x02d");
-      setTimeout(() => {
-        terminal.sendInput("\x03");
-        setTimeout(() => terminal.sendCommand(`claude attach ${id}`), 50);
-      }, 100);
+      terminal.sendShellCommand(`claude attach ${id}`, true);
       terminal.focus();
       if (isMobile) setSidebarOpen(false);
     };
     window.addEventListener("agentos-attach-background", onAttach);
     return () =>
       window.removeEventListener("agentos-attach-background", onAttach);
-  }, [getTerminalWithFallback, getActiveTab, isMobile]);
+  }, [getTerminalWithFallback, isMobile]);
 
   // Session selection handler
   const handleSelectSession = useCallback(

@@ -28,7 +28,7 @@ import { useLayoutMode, type LayoutMode } from "@/hooks/useLayoutMode";
 import { useListTitles } from "@/hooks/useSessionTitles";
 import { useViewport } from "@/hooks/useViewport";
 import { useIsNative } from "@/hooks/useIsNative";
-import { registerNavHandlers } from "@/lib/nav-actions";
+import { registerNavHandlers, registerPageBack } from "@/lib/nav-actions";
 import { nativeCaps } from "@/lib/native-bridge";
 import { mobileNavActions } from "@/stores/mobileNav";
 import { backPage } from "@/stores/workspacePage";
@@ -154,6 +154,10 @@ function ProjectWorkspace({
       openProjectSettings: () => setSheetOpen(true),
     });
   }, [ownMore]);
+  // Back closes the sheet, and only the sheet
+  useEffect(() => {
+    if (sheetOpen) return registerPageBack("Close", () => setSheetOpen(false));
+  }, [sheetOpen]);
 
   const newSession = () => view.handleNewSessionInProject(project.id);
   const newAgent = uncategorized

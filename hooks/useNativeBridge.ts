@@ -18,8 +18,10 @@ import { settingsPageStore } from "@/stores/settingsPage";
 import { workspacePageStore } from "@/stores/workspacePage";
 import { focusStore } from "@/stores/focus";
 import { runningStore } from "@/stores/running";
+import { backStore } from "@/stores/back";
 import { newSurfaceStore } from "@/stores/newSurface";
 import { surfaceStore } from "@/stores/surface";
+import { sessionActionsStore } from "@/stores/sessionActions";
 import { layoutStore } from "@/hooks/useLayoutMode";
 import { nativeColumn } from "@/components/ControlColumn/columnState";
 import { startClientLog } from "@/lib/client-log";
@@ -125,6 +127,7 @@ export function useNativeBridge({ waitingCount }: NativeBridgeOptions) {
             subscribeKey(mobileNavStore, "homeTab", report),
             subscribeKey(mobileNavStore, "inboxOpen", report),
             subscribeKey(mobileNavStore, "liveOpen", report),
+            subscribeKey(mobileNavStore, "changesOpen", report),
             subscribeKey(mobileNavStore, "nativeKeyboard", report),
             // A sheet over the session and a turn in progress change the
             // closed column (× | ✓, × | Changes, Stop)
@@ -142,8 +145,13 @@ export function useNativeBridge({ waitingCount }: NativeBridgeOptions) {
             subscribeKey(surfaceStore, "searchOpen", report),
             subscribeKey(surfaceStore, "behind", report),
             subscribeKey(settingsPageStore, "detail", report),
+            subscribeKey(settingsPageStore, "returnTo", report),
+            subscribe(backStore, report),
+            subscribeKey(runningStore, "sessionId", report),
             subscribeKey(layoutStore, "mode", report),
             subscribe(columnOrderStore, report),
+            // More's Scripts, Settle and Copy session ID
+            subscribe(sessionActionsStore, report),
           ]
         : []),
     ];

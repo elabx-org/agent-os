@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useSnapshot } from "valtio";
-import { ChevronLeft, Folder, Plus, Search } from "lucide-react";
+import { ChevronLeft, Folder, MonitorPlay, Plus, Search } from "lucide-react";
 import { AppLogo } from "@/components/SessionList/SessionListHeader";
 import type { Session } from "@/lib/db";
 import type { SessionStatus, ViewProps } from "@/components/views/types";
@@ -16,6 +16,7 @@ import { withoutPaused } from "@/lib/paused";
 import { openPage, workspacePageStore } from "@/stores/workspacePage";
 import { newSurfaceStore } from "@/stores/newSurface";
 import { mobileNavStore } from "@/stores/mobileNav";
+import { runningStore } from "@/stores/running";
 import { cn } from "@/lib/utils";
 import { SIDEBAR_PROJECTS, shortAge, sidebarProjects } from "./model";
 import { UsageCard } from "./UsageCard";
@@ -122,6 +123,7 @@ export function DesktopSidebar({
   const { page } = useSnapshot(workspacePageStore);
   const { open: newOpen } = useSnapshot(newSurfaceStore);
   const { homeTab } = useSnapshot(mobileNavStore);
+  const { enabled: running } = useSnapshot(runningStore);
   // The server renders the Mac's; others see their own once mounted
   const [findKey, setFindKey] = useState("⌘K");
   useEffect(() => {
@@ -312,6 +314,21 @@ export function DesktopSidebar({
               </button>
             )}
           </>
+        )}
+        {/* Labs' Running: the Duo's More has it; here, every session's */}
+        {!newOpen && running && (
+          <button
+            type="button"
+            onClick={() => openPage({ kind: "running" })}
+            aria-current={page?.kind === "running" ? "page" : undefined}
+            className={cn(
+              "srow hover:bg-foreground/5 mt-2.5 w-full flex-none text-left",
+              page?.kind === "running" && "sel hover:bg-primary/20"
+            )}
+          >
+            <MonitorPlay className="text-muted-foreground h-4 w-4 flex-none" />
+            <span className="min-w-0 flex-1 truncate">Running</span>
+          </button>
         )}
       </nav>
 

@@ -23,6 +23,7 @@ import { PrChip } from "@/components/a/PrChip";
 import { isEnded, sessionPr, wantsSettleChip } from "@/lib/settle-types";
 import { useSettleActions } from "./settle-action";
 import { formatAge, workingLine } from "./activity-format";
+import { useBackLabel } from "@/components/ControlColumn/columnState";
 
 /** What every header says about the session */
 export interface HeaderInfo {
@@ -287,12 +288,13 @@ export function FoldHeader({
   menu?: ReactNode;
 }) {
   const agentsView = canonicalViewMode(viewMode) === "agents";
+  const backLabel = useBackLabel();
   return (
     <header className="native-top-inset kb-compact-hide bg-background flex shrink-0 items-center gap-2.5 px-5 pt-4 pb-2">
       <button
         type="button"
-        onClick={() => runNav("sessions")}
-        aria-label="Back"
+        onClick={() => runNav("back")}
+        aria-label={backLabel}
         className="glass flex h-11 w-11 shrink-0 items-center justify-center rounded-full"
       >
         <ChevronLeft aria-hidden className="h-5 w-5" strokeWidth={2.3} />
@@ -375,6 +377,13 @@ export function DesktopHeader({
           className="text-[13px]"
         />
       </div>
+      {/* A narrow bar keeps Chat | Terminal (Changes is the ⋯'s drawer) */}
+      <ViewSeg
+        viewMode={viewMode}
+        onViewModeChange={onViewModeChange}
+        className="bg-card @min-[640px]/bar:hidden"
+        views={CHAT_TERMINAL}
+      />
       <ViewSeg
         // `workers` is the agents view too
         viewMode={agentsView ? "agents" : viewMode}

@@ -18,6 +18,9 @@ export interface TabData {
   id: string;
   sessionId: string | null;
   attachedTmux: string | null;
+  /** Asked for as a terminal (a tab or split you added): it starts a shell
+      in tmux. Otherwise an empty tab waits for a session */
+  shell?: boolean;
 }
 
 export interface PaneData {
@@ -37,17 +40,18 @@ export function generateTabId(): string {
 }
 
 // Create a new tab
-export function createTab(): TabData {
+export function createTab(shell = false): TabData {
   return {
     id: generateTabId(),
     sessionId: null,
     attachedTmux: null,
+    ...(shell && { shell }),
   };
 }
 
 // Create initial pane data with one tab
-export function createPaneData(): PaneData {
-  const tab = createTab();
+export function createPaneData(shell = false): PaneData {
+  const tab = createTab(shell);
   return {
     tabs: [tab],
     activeTabId: tab.id,
@@ -105,7 +109,8 @@ export function splitPane(
   state: PaneState,
   paneId: string,
   direction: "horizontal" | "vertical",
-  newPaneId: string = generatePaneId()
+  newPaneId: string = generatePaneId(),
+  shell = false
 ): PaneState | null {
   if (countPanes(state.layout) >= MAX_PANES) {
     return null; // Max panes reached
@@ -126,7 +131,7 @@ export function splitPane(
     focusedPaneId: newPaneId,
     panes: {
       ...state.panes,
-      [newPaneId]: createPaneData(),
+      [newPaneId]: createPaneData(shell),
     },
   };
 }

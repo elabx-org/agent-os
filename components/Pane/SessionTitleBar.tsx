@@ -28,6 +28,8 @@ import {
   Play,
   MessageSquare,
   CircleCheck,
+  MonitorPlay,
+  Search,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -49,6 +51,9 @@ import { useIsNative } from "@/hooks/useIsNative";
 import { besidePills, useSpreadPanes } from "@/components/views/SessionSpread";
 import { usePanes } from "@/contexts/PaneContext";
 import { useLayoutMode } from "@/hooks/useLayoutMode";
+import { useShortScreen } from "@/hooks/useShortScreen";
+import { runningStore } from "@/stores/running";
+import { useBackLabel } from "@/components/ControlColumn/columnState";
 import { DesktopLiveButton } from "./DesktopViewSwitch";
 import { BesideItems } from "@/components/BesideItems";
 import { useReplyPage } from "@/components/ReplyContext/store";
@@ -69,6 +74,7 @@ import {
   FoldHeader,
   PageHeader,
   PaneCardHeader,
+  ViewSeg,
   type HeaderInfo,
 } from "@/components/Session/SessionHeader";
 import { addedLines } from "@/components/Session/activity-format";
@@ -218,9 +224,14 @@ export function SessionTitleBar({
   const wide = !isMobile;
   // The desktop shell has no column, so its views switch in this bar
   const layout = useLayoutMode();
+  const backLabel = useBackLabel();
   const hasFolder = !!session?.working_directory;
   // Plain phones get the column as a bottom bar, which has no room for it
   const settingsHere = isMobile && !native && railWidth === 0;
+  // A phone on its side has no bar under the session (phoneBar): its
+  // views and places are here
+  const short = useShortScreen();
+  const { enabled: running } = useSnapshot(runningStore);
 
   const variant = headerVariant({
     hasSession: !!session,
@@ -281,6 +292,7 @@ export function SessionTitleBar({
   // The new headers keep Focus, Files and Changes here; their segments
   // show Chat and Terminal (the desktop's Changes too)
   const newHeader = variant !== "classic";
+  const barless = !newHeader && layout === "phone" && short && !!session;
   // N-PermMode's chip sits by the title in the page and on the desktop bar
   const chipInHeader =
     !!info &&
@@ -425,6 +437,25 @@ export function SessionTitleBar({
               <DropdownMenuItem onSelect={() => onViewModeChange("files")}>
                 <FolderOpen className="h-4 w-4" />
                 Files
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuSeparator />
+          </>
+        )}
+        {barless && (
+          <>
+            <DropdownMenuItem onSelect={() => runNav("live")}>
+              <Activity className="h-4 w-4" />
+              Live activity
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => runNav("search")}>
+              <Search className="h-4 w-4" />
+              Find
+            </DropdownMenuItem>
+            {running && (
+              <DropdownMenuItem onSelect={() => runNav("running")}>
+                <MonitorPlay className="h-4 w-4" />
+                Running
               </DropdownMenuItem>
             )}
             <DropdownMenuSeparator />
@@ -643,8 +674,11 @@ export function SessionTitleBar({
       >
         <button
           type="button"
-          onClick={() => runNav("sessions")}
-          aria-label="Sessions"
+          // The desktop's shows and hides the sidebar; elsewhere it goes
+          // back as the column's would (Changes to the conversation, a
+          // session to the project it was opened from)
+          onClick={() => runNav(layout === "desktop" ? "sessions" : "back")}
+          aria-label={layout === "desktop" ? "Sessions" : backLabel}
           className={iconButton}
         >
           <ChevronLeft className="h-5 w-5" />
@@ -664,6 +698,16 @@ export function SessionTitleBar({
           )}
         </div>
 
+        {barless && (
+          <ViewSeg
+            viewMode={viewMode}
+            onViewModeChange={onViewModeChange}
+            views={[
+              { mode: "chat", label: "Chat" },
+              { mode: "terminal", label: "Terminal" },
+            ]}
+          />
+        )}
         {session && (
           <button
             type="button"

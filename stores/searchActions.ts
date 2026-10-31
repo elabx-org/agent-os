@@ -36,3 +36,9 @@ export function requestSearchAction(request: NewRequest) {
 export function clearSearchAction() {
   searchActionStore.request = null;
 }
+
+/**
+ * Find's last query: Find opens on it again, so back from a result shows
+ * the results it came from
+ */
+export const searchQueryStore = proxy<{ query: string }>({ query: "" });

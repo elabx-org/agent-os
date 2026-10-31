@@ -31,15 +31,29 @@ export function useCopyToClipboard(
     async (text: string): Promise<boolean> => {
       if (!text) return false;
 
+      let ok = false;
       try {
         await navigator.clipboard.writeText(text);
-        setCopied(true);
-        setTimeout(() => setCopied(false), feedbackDuration);
-        return true;
+        ok = true;
       } catch {
-        // Clipboard API failed or unavailable
-        return false;
+        // No Clipboard API outside https: copy from a selected field instead
+        const field = document.createElement("textarea");
+        field.value = text;
+        field.style.position = "fixed";
+        field.style.opacity = "0";
+        document.body.appendChild(field);
+        field.select();
+        try {
+          ok = document.execCommand("copy");
+        } catch {
+          ok = false;
+        }
+        field.remove();
       }
+      if (!ok) return false;
+      setCopied(true);
+      setTimeout(() => setCopied(false), feedbackDuration);
+      return true;
     },
     [feedbackDuration]
   );

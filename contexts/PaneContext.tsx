@@ -40,12 +40,17 @@ interface PaneContextValue {
   swap: () => void;
   isMobile: boolean;
   focusPane: (paneId: string) => void;
-  /** newPaneId names the new pane, to launch something in it */
-  splitHorizontal: (paneId: string, newPaneId?: string) => void;
-  splitVertical: (paneId: string) => void;
+  /** newPaneId names the new pane, to launch something in it; shell, when
+      you asked for a terminal there */
+  splitHorizontal: (
+    paneId: string,
+    newPaneId?: string,
+    shell?: boolean
+  ) => void;
+  splitVertical: (paneId: string, shell?: boolean) => void;
   close: (paneId: string) => void;
   // Tab management
-  addTab: (paneId: string) => void;
+  addTab: (paneId: string, shell?: boolean) => void;
   closeTab: (paneId: string, tabId: string) => void;
   switchTab: (paneId: string, tabId: string) => void;
   // Session management (operates on active tab)
@@ -109,16 +114,25 @@ export function PaneProvider({ children }: { children: ReactNode }) {
     );
   }, []);
 
-  const splitHorizontal = useCallback((paneId: string, newPaneId?: string) => {
-    setState((prev) => {
-      const newState = splitPane(prev, paneId, "horizontal", newPaneId);
-      return newState || prev;
-    });
-  }, []);
+  const splitHorizontal = useCallback(
+    (paneId: string, newPaneId?: string, shell?: boolean) => {
+      setState((prev) => {
+        const newState = splitPane(
+          prev,
+          paneId,
+          "horizontal",
+          newPaneId,
+          shell
+        );
+        return newState || prev;
+      });
+    },
+    []
+  );
 
-  const splitVertical = useCallback((paneId: string) => {
+  const splitVertical = useCallback((paneId: string, shell?: boolean) => {
     setState((prev) => {
-      const newState = splitPane(prev, paneId, "vertical");
+      const newState = splitPane(prev, paneId, "vertical", undefined, shell);
       return newState || prev;
     });
   }, []);
@@ -135,11 +149,11 @@ export function PaneProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // Tab management
-  const addTab = useCallback((paneId: string) => {
+  const addTab = useCallback((paneId: string, shell?: boolean) => {
     setState((prev) => {
       const pane = prev.panes[paneId];
       if (!pane) return prev;
-      const newTab = createTab();
+      const newTab = createTab(shell);
       return {
         ...prev,
         panes: {

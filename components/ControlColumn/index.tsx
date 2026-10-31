@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { useIsNative } from "@/hooks/useIsNative";
 import { useSurface } from "@/stores/surface";
+import { useShortScreen } from "@/hooks/useShortScreen";
+import { phoneBar } from "@/lib/column-spec";
 import { ColumnItems } from "./ColumnItems";
 import { useColumn } from "./columnState";
 import { useKeyboardUp } from "./useKeyboardUp";
@@ -24,7 +26,7 @@ interface ControlColumnProps {
   /**
    * column: a vertical capsule, placed by the parent (or by sideRailWidth);
    * hbar: the tabletop's centred bar (HBar); tabs: the phone's tab bar and
-   * New button (TabBar), none inside a session
+   * New button (TabBar), the tabletop's bar inside a session
    */
   variant: "column" | "hbar" | "tabs";
   /**
@@ -51,13 +53,15 @@ export function ControlColumn({
 
 /**
  * A phone: the tab bar over the home and its pages. Inside a session the
- * composer takes its place (E-iPhone); the header has back and the views
+ * bar of views under the composer, as on a table (Fold-Chat): the header
+ * has only back, Focus and ⋯, so Chat, Find and Running are reached here.
+ * On its side the header takes them instead (SessionTitleBar)
  */
 function PhoneBar({ className }: { className?: string }) {
   const surface = useSurface();
-  return surface === "session" || surface === "beside" ? null : (
-    <TabBar className={className} />
-  );
+  const bar = phoneBar(surface, useShortScreen());
+  if (bar === "tabs") return <TabBar className={className} />;
+  return bar === "session" ? <HBar className={className} /> : null;
 }
 
 function Column({

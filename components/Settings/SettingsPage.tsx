@@ -29,6 +29,7 @@ import {
 import { AgentRow } from "@/components/rows/AgentRow";
 import { GroupCard, GroupRow } from "@/components/a";
 import { isNative, nativeCaps, postToNative } from "@/lib/native-bridge";
+import { runNav } from "@/lib/nav-actions";
 import { postureStore } from "@/stores/posture";
 import { mobileNavStore } from "@/stores/mobileNav";
 import { layoutStore, type LayoutMode } from "@/hooks/useLayoutMode";
@@ -44,8 +45,6 @@ import { statusKeys } from "@/data/sessions/keys";
 import { duoPreviewStore } from "@/stores/duoPreview";
 import { PRESETS, loadUploadPrefs, uploadPrefs } from "@/stores/videoUploads";
 import {
-  closeSettings,
-  settingsBack,
   settingsPageStore,
   showSettingsSection,
   type SettingsSection,
@@ -157,7 +156,7 @@ export function SettingsPage(props: NotificationsSectionProps) {
 }
 
 function SettingsLayer(props: NotificationsSectionProps) {
-  const { section, detail, labs } = useSnapshot(settingsPageStore);
+  const { section, detail, labs, returnTo } = useSnapshot(settingsPageStore);
   const { fold } = useSnapshot(postureStore);
   const { on: duoTrial } = useSnapshot(duoPreviewStore);
   const { preset } = useSnapshot(uploadPrefs);
@@ -166,13 +165,21 @@ function SettingsLayer(props: NotificationsSectionProps) {
   const split = SPLIT.includes(layout);
   // Only ever mounted in the browser, so no hydration to match
   const native = isNative();
+  // The touch key bar shows on any touch screen, the desktop layout's too
+  // (an iPad, an iPhone on its side), so its settings do
+  const touch = window.matchMedia("(pointer: coarse)").matches;
   // The column draws close/back and Server: the web column on the closed
   // Duo in Safari, the app's own once it takes the column spec. Otherwise
   // the page has its own.
   const nativeColumn = native && nativeCaps().column;
-  // Phone and tabletop: the app hides its column ([]), Server with it
+  // Phone and tabletop: the app hides its column ([]), Server and the way
+  // out with it
   const serverInColumn = nativeColumn && !PAGE_BARS.includes(layout);
-  const columnNav = nativeColumn || (!native && layout === "duo-closed");
+  const columnNav = serverInColumn || (!native && layout === "duo-closed");
+  // Opened from Needs you, back and close return there (lib/nav-actions.ts)
+  const backLabel = returnTo ? "Back to Needs you" : "Back to Settings";
+  const closeLabel = returnTo ? "Back to Needs you" : "Close settings";
+  const close = () => runNav("closeSettings");
   const navRef = useRef<HTMLButtonElement>(null);
   const layerRef = useRef<HTMLDivElement>(null);
 
@@ -207,11 +214,11 @@ function SettingsLayer(props: NotificationsSectionProps) {
       if (e.key !== "Escape") return;
       if (document.querySelector('[data-slot="dialog-content"]')) return;
       e.preventDefault();
-      if (split || !settingsBack()) closeSettings();
+      runNav("back");
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [split]);
+  }, []);
 
   useEffect(loadUploadPrefs, []);
 
@@ -235,7 +242,7 @@ function SettingsLayer(props: NotificationsSectionProps) {
   const rows: SettingsSection[] = [
     "notifications",
     "display",
-    ...(layout !== "desktop" || native ? (["keys"] as const) : []),
+    ...(layout !== "desktop" || native || touch ? (["keys"] as const) : []),
     "column",
     ...(native ? (["duo"] as const) : []),
     "claude",
@@ -334,15 +341,11 @@ function SettingsLayer(props: NotificationsSectionProps) {
 
   if (!split) {
     const navButton = columnNav ? null : detail ? (
-      <NavButton
-        ref={navRef}
-        label="Back to Settings"
-        onClick={() => settingsBack()}
-      >
+      <NavButton ref={navRef} label={backLabel} onClick={() => runNav("back")}>
         <ChevronLeft className="h-5 w-5" />
       </NavButton>
     ) : (
-      <NavButton ref={navRef} label="Close settings" onClick={closeSettings}>
+      <NavButton ref={navRef} label={closeLabel} onClick={close}>
         <X className="h-5 w-5" />
       </NavButton>
     );
@@ -363,8 +366,8 @@ function SettingsLayer(props: NotificationsSectionProps) {
         )}
       >
         <PageEdge
-          label={detail ? "Back to Settings" : "Close settings"}
-          onClose={() => (detail ? settingsBack() : closeSettings())}
+          label={detail ? backLabel : closeLabel}
+          onClose={() => runNav("back")}
         />
         <div ref={scrollRef} className={scroll}>
           {navButton && <div className="-mt-2 px-3 pb-1">{navButton}</div>}
@@ -399,7 +402,7 @@ function SettingsLayer(props: NotificationsSectionProps) {
       style={{ ...layerStyle, ...gutters(20) }}
       className={layer}
     >
-      <PageEdge label="Close settings" onClose={closeSettings} />
+      <PageEdge label={closeLabel} onClose={close} />
       <aside
         style={listStyle}
         className={cn(
@@ -417,11 +420,7 @@ function SettingsLayer(props: NotificationsSectionProps) {
             <div className="flex items-center justify-between pr-3">
               <h1 className={title}>Settings</h1>
               {!nativeColumn && (
-                <NavButton
-                  ref={navRef}
-                  label="Close settings"
-                  onClick={closeSettings}
-                >
+                <NavButton ref={navRef} label={closeLabel} onClick={close}>
                   <X className="h-5 w-5" />
                 </NavButton>
               )}

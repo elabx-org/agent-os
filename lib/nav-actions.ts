@@ -3,7 +3,11 @@
  * the iOS app's bar, the session header's back and the shortcuts.
  */
 
-import { mobileNavActions, mobileNavStore } from "@/stores/mobileNav";
+import {
+  mobileNavActions,
+  mobileNavStore,
+  type PaneViewMode,
+} from "@/stores/mobileNav";
 import {
   closeSettings,
   openSettings,
@@ -16,15 +20,22 @@ import {
   closePage,
   openPage,
   workspacePageStore,
+  type WorkspacePage,
 } from "@/stores/workspacePage";
 import { runningStore } from "@/stores/running";
 import { closeNew, newSurfaceStore } from "@/stores/newSurface";
 import { openProjectSettings } from "@/stores/projectSettings";
 import { openScripts } from "@/stores/scriptsSheet";
-import { currentSurface, surfaceStore } from "@/stores/surface";
-import { toggleAllCollapsed, toggleShowFinished } from "@/stores/agentTree";
+import { currentSurface, surfaceStore, type Surface } from "@/stores/surface";
+import {
+  agentTreeStore,
+  toggleAllCollapsed,
+  toggleShowFinished,
+} from "@/stores/agentTree";
+import { backStore, setOrigin, type BackOrigin } from "@/stores/back";
 import { isNative, postToNative } from "@/lib/native-bridge";
-import { layoutStore } from "@/hooks/useLayoutMode";
+import { WIDE } from "@/lib/column-spec";
+import { layoutStore, type LayoutMode } from "@/hooks/useLayoutMode";
 
 /** Every action, for the routes table and its test */
 export const NAV_ACTIONS = [
@@ -69,6 +80,8 @@ export const NAV_ACTIONS = [
   "newFile",
   "upload",
   "running",
+  "settle",
+  "copyId",
 ] as const;
 
 /**
@@ -98,6 +111,8 @@ export const MORE_EVENT = "agentos-more";
 interface NavHandlers {
   openSessions: () => void;
   openFind: () => void;
+  /** Close Find, showing what was under it */
+  closeFind: () => void;
   openNewSession: () => void;
   openSettings: () => void;
   /** Now, never toggled: the home shown (app/page.tsx registers it) */
@@ -150,6 +165,10 @@ interface NavHandlers {
   /** E-Files' column: New file, Upload (the files view registers them) */
   newFile: () => void;
   uploadFile: () => void;
+  /** More's Settle and Copy session ID: the focused session's title bar
+      registers them */
+  settleSession: () => void;
+  copySessionId: () => void;
 }
 
 /**
@@ -172,6 +191,7 @@ function leaveForHome(tab: "now" | "projects") {
 export const navStore: NavHandlers = {
   openSessions: () => {},
   openFind: () => {},
+  closeFind: () => {},
   openNewSession: () => {},
   openSettings: () => openSettings(),
   openNow: showNow,
@@ -192,7 +212,12 @@ export const navStore: NavHandlers = {
   },
   openSort: () => {},
   clearHistory: () => {},
-  openNotifSettings: () => openSettings("notifications"),
+  // From Needs you, back from them returns there
+  openNotifSettings: () =>
+    openSettings(
+      "notifications",
+      currentSurface() === "needs" ? "needs" : undefined
+    ),
   openServer: () => {
     if (isNative()) postToNative({ type: "server" });
   },
@@ -220,6 +245,8 @@ export const navStore: NavHandlers = {
   newPullRequest: () => {},
   newFile: () => {},
   uploadFile: () => {},
+  settleSession: () => {},
+  copySessionId: () => {},
 };
 
 /**
@@ -239,58 +266,263 @@ export function registerNavHandlers(
   };
 }
 
-/** A workspace page's own back (a pushed detail): true if it went back */
-let pageBack: (() => boolean) | null = null;
+/** A pushed detail's own back: a workspace page's, or the session view's */
+let pageBack: (() => void) | null = null;
+let viewBack: (() => void) | null = null;
 
-/** Sets the page's back; the returned cleanup clears it while still set */
-export function registerPageBack(back: () => boolean): () => void {
+/**
+ * While a workspace page shows a pushed detail (a preview, a sheet), back
+ * closes it first and says so; the returned cleanup clears it while still set
+ */
+export function registerPageBack(label: string, back: () => void): () => void {
   pageBack = back;
+  backStore.pageLabel = label;
   return () => {
-    if (pageBack === back) pageBack = null;
+    if (pageBack !== back) return;
+    pageBack = null;
+    backStore.pageLabel = null;
   };
+}
+
+/** The same for the focused session's git or files view (a diff, a file) */
+export function registerViewBack(label: string, back: () => void): () => void {
+  viewBack = back;
+  backStore.viewLabel = label;
+  return () => {
+    if (viewBack !== back) return;
+    viewBack = null;
+    backStore.viewLabel = null;
+  };
+}
+
+/** Where Back goes and what it's called, for every way of going back */
+export interface BackTarget {
+  label: string;
+  go: () => void;
+}
+
+/** A page as Back names it */
+function pageName(page: WorkspacePage): string {
+  switch (page.kind) {
+    case "project":
+      return backStore.projectNames[page.projectId] ?? "project";
+    case "projectSettings":
+      return "project settings";
+    case "inbox":
+      return "Needs you";
+    case "running":
+      return "Running";
+    case "new":
+      return "New session";
+    case "agent":
+      return "agent";
+  }
+}
+
+/** A surface as Back names it */
+function surfaceName(surface: Surface): string {
+  switch (surface) {
+    case "session":
+    case "beside":
+      return "session";
+    case "project": {
+      const page = workspacePageStore.page;
+      return page ? pageName(page) : "project";
+    }
+    case "projects":
+      return "Projects";
+    case "needs":
+      return "Needs you";
+    case "new":
+      return "New session";
+    case "settings":
+      return "Settings";
+    case "running":
+      return "Running";
+    case "now":
+    case "search":
+      return "Now";
+  }
+}
+
+/** The home as Back shows it: the phone keeps its Projects tab */
+function homeTarget(): BackTarget {
+  return {
+    label:
+      mobileNavStore.homeTab === "projects"
+        ? "Back to Projects"
+        : "Back to Now",
+    go: () => navStore.goBack(),
+  };
+}
+
+function originName(from: BackOrigin): string {
+  if (from.kind === "search") return "Find";
+  if (from.kind === "needs") return "Needs you";
+  return pageName(from.page);
+}
+
+/** Back to where the session was opened from */
+function reopen(from: BackOrigin) {
+  backStore.origin = null;
+  if (from.kind === "search") return navStore.openFind();
+  // On one page it opens over the home again, so its own back is the home's
+  if (!WIDE.includes(layoutStore.mode)) navStore.openNow();
+  // Needs you is a page or the desktop's dialog: inboxOpen opens either
+  if (from.kind === "needs" || from.page.kind === "inbox")
+    return mobileNavActions.setInboxOpen(true);
+  openPage(from.page);
+}
+
+/** Leave Settings: for Needs you when it was opened from there */
+function leaveSettings() {
+  const returnTo = settingsPageStore.returnTo;
+  closeSettings();
+  if (returnTo === "needs") mobileNavActions.setInboxOpen(true);
 }
 
 /**
  * One level up, topmost layer first as surfaceFor ranks them: a Settings
- * section, Settings, Find, New, a page, Needs you, Projects, else Now
+ * section, Settings, Find, New, a page, Needs you, Projects, Now over a
+ * session; in a session a pushed detail, Changes or Files on one page, then
+ * where the session was opened from, else Now. The column's label, the
+ * headers' and the iOS app's back, a swipe and Esc all go by it
  */
-function goBack() {
+export function backTarget(): BackTarget {
+  const mode = layoutStore.mode;
+  const wide = WIDE.includes(mode);
   // A panel on the right page or the Live sheet is the top layer
   if (
-    layoutStore.mode !== "desktop" &&
+    mode !== "desktop" &&
     (mobileNavStore.liveOpen || mobileNavStore.changesOpen)
-  ) {
-    mobileNavStore.liveOpen = false;
-    mobileNavStore.changesOpen = false;
-    return;
-  }
+  )
+    return {
+      label: mobileNavStore.liveOpen ? "Close live activity" : "Close Changes",
+      go: () => {
+        mobileNavStore.liveOpen = false;
+        mobileNavStore.changesOpen = false;
+      },
+    };
   if (settingsPageStore.open) {
-    if (!settingsBack()) closeSettings();
-    return;
+    // Opened on a section from Needs you, it goes back there; split
+    // (list | section), there's no level between
+    if (settingsPageStore.returnTo === "needs")
+      return { label: "Back to Needs you", go: leaveSettings };
+    if (settingsPageStore.detail && !wide)
+      return { label: "Back to Settings", go: () => settingsBack() };
+    return { label: "Close settings", go: leaveSettings };
   }
-  // app/page.tsx's goBack closes Find before anything else
-  if (surfaceStore.searchOpen) return navStore.goBack();
-  if (newSurfaceStore.open) return closeNew();
-  if (workspacePageStore.page) {
-    if (pageBack?.()) return;
-    if (workspacePageStore.previous) backPage();
-    else navStore.openNow();
-    return;
+  // app/page.tsx's goBack closes Find, showing what was under it
+  if (surfaceStore.searchOpen)
+    return {
+      label: `Back to ${surfaceName(currentSurface({ searchOpen: false }))}`,
+      go: () => navStore.goBack(),
+    };
+  if (newSurfaceStore.open) return { label: "Cancel", go: closeNew };
+  const page = workspacePageStore.page;
+  if (page) {
+    if (pageBack && backStore.pageLabel)
+      return { label: backStore.pageLabel, go: pageBack };
+    const previous = workspacePageStore.previous;
+    if (previous)
+      return { label: `Back to ${pageName(previous)}`, go: backPage };
+    // Opened over the session (New, Needs you, Running from its column),
+    // back to it; over the home, or with no session, the home
+    if (surfaceStore.behind && (wide || !surfaceStore.home))
+      return { label: "Back to session", go: () => void closePage() };
+    return { ...homeTarget(), go: () => navStore.openNow() };
   }
-  if (mobileNavStore.inboxOpen) return mobileNavActions.setInboxOpen(false);
+  if (mobileNavStore.inboxOpen)
+    return {
+      label: `Back to ${surfaceName(currentSurface({ inboxOpen: false }))}`,
+      go: () => mobileNavActions.setInboxOpen(false),
+    };
   // Projects is Now's other half: back from it is Now
-  if (surfaceStore.home && mobileNavStore.homeTab === "projects") {
-    mobileNavStore.homeTab = "now";
-    return;
-  }
+  if (surfaceStore.home && mobileNavStore.homeTab === "projects")
+    return {
+      label: "Back to Now",
+      go: () => {
+        mobileNavStore.homeTab = "now";
+      },
+    };
   // Now over (or beside) a session: back to it
-  if (surfaceStore.home && surfaceStore.behind) return navStore.resume();
-  // The closed Duo's Changes and Files go back to the conversation (E-Git,
-  // E-Files); elsewhere their column's back is Now's
+  if (surfaceStore.home && surfaceStore.behind)
+    return { label: "Back to session", go: () => navStore.resume() };
+  // A diff, a commit or an open file goes back to its list first
+  if (viewBack && backStore.viewLabel)
+    return { label: backStore.viewLabel, go: viewBack };
   const view = mobileNavStore.viewMode;
-  if (layoutStore.mode === "duo-closed" && (view === "git" || view === "files"))
-    return mobileNavActions.requestViewMode(mobileNavStore.conversationView);
-  navStore.goBack();
+  // The agents view registers its own goBack (components/Session/AgentsView)
+  if ((view === "agents" || view === "workers") && mode !== "desktop")
+    return {
+      label:
+        mode !== "duo-closed"
+          ? "Back to session"
+          : agentTreeStore.detailOpen
+            ? "Back to agents"
+            : "Back to live activity",
+      go: () => navStore.goBack(),
+    };
+  // Changes and Files go back to the conversation (E-Git, E-Files); on the
+  // desktop they're tabs of their own
+  if (mode !== "desktop" && (view === "git" || view === "files"))
+    return {
+      label: "Back to session",
+      go: () =>
+        mobileNavActions.requestViewMode(mobileNavStore.conversationView),
+    };
+  // Opened from a project, Needs you or Find: back there, also while it
+  // attaches (the one it left, or none, still in view with the home away)
+  const origin = backStore.origin;
+  const inView = runningStore.sessionId;
+  if (
+    origin &&
+    (inView === origin.sessionId ||
+      (inView === origin.left && (inView !== null || !surfaceStore.home)))
+  ) {
+    const { from } = origin;
+    return { label: `Back to ${originName(from)}`, go: () => reopen(from) };
+  }
+  return homeTarget();
+}
+
+function goBack() {
+  backTarget().go();
+}
+
+/**
+ * The view to bring up when the open Duo's Now steps aside for the session
+ * (resume): its conversation if Changes or Files was left beside Now, as
+ * those would take both pages with no way back on them; null keeps the view
+ */
+export function resumeView(
+  mode: LayoutMode,
+  viewMode: PaneViewMode,
+  conversationView: "chat" | "terminal"
+): "chat" | "terminal" | null {
+  const pages = mode === "duo-open" || mode === "book";
+  return pages && (viewMode === "git" || viewMode === "files")
+    ? conversationView
+    : null;
+}
+
+/**
+ * A session is opening: what it opens from (Find, a page but New, Needs
+ * you) is where its back returns; from anywhere else, its back is Now's
+ */
+export function noteOrigin(sessionId: string): void {
+  const page = workspacePageStore.page;
+  setOrigin(
+    sessionId,
+    surfaceStore.searchOpen
+      ? { kind: "search" }
+      : page && page.kind !== "new"
+        ? { kind: "page", page: { ...page } }
+        : mobileNavStore.inboxOpen
+          ? { kind: "needs" }
+          : null,
+    runningStore.sessionId
+  );
 }
 
 // Like the rail: the current view again opens the session list
@@ -335,7 +567,7 @@ export const NAV_ROUTES: Record<NavAction, (leftPage: boolean) => void> = {
   clearHistory: () => navStore.clearHistory(),
   notifSettings: () => navStore.openNotifSettings(),
   server: () => navStore.openServer(),
-  closeSettings: () => closeSettings(),
+  closeSettings: () => leaveSettings(),
   projectSettings: () => navStore.openProjectSettings(),
   newProject: () => navStore.openNewProject(),
   start: () => navStore.startNew(),
@@ -352,6 +584,8 @@ export const NAV_ROUTES: Record<NavAction, (leftPage: boolean) => void> = {
   newPr: () => navStore.newPullRequest(),
   newFile: () => navStore.newFile(),
   upload: () => navStore.uploadFile(),
+  settle: () => navStore.settleSession(),
+  copyId: () => navStore.copySessionId(),
   // M16, behind Labs: what sessions left running, with a preview
   // From a session, what it started; elsewhere everything
   running: () => {
@@ -369,12 +603,28 @@ const KEEPS_SETTINGS = new Set<NavAction>([
   "focus",
   "back",
   "server",
+  // Closes it itself, back to Needs you when it came from there
+  "closeSettings",
+]);
+
+/** Actions on or over Find: it stays up for them (Settings opens over it) */
+const KEEPS_FIND = new Set<NavAction>([
+  "search",
+  "find",
+  "more",
+  "back",
+  "focus",
+  "settings",
+  "server",
+  "closeSettings",
 ]);
 
 export function runNav(action: NavAction): void {
   // Settings covers the app: anything else in the column leaves it. Focus
   // only changes what shows around the session, so it keeps Settings up
   if (!KEEPS_SETTINGS.has(action)) closeSettings();
+  // Find's More goes somewhere else: Find closes rather than stay on top
+  if (surfaceStore.searchOpen && !KEEPS_FIND.has(action)) navStore.closeFind();
   // A view picked over a workspace page goes back to the session
   const leftPage =
     (action === "chat" ||

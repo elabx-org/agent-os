@@ -25,12 +25,21 @@ export const settingsPageStore = proxy<{
   detail: boolean;
   /** Labs shows after a long press on the version line, until reload */
   labs: boolean;
-}>({ open: false, section: "notifications", detail: false, labs: false });
+  /** Opened from Needs you (its Notification settings): back returns there */
+  returnTo: "needs" | null;
+}>({
+  open: false,
+  section: "notifications",
+  detail: false,
+  labs: false,
+  returnTo: null,
+});
 
 /** Opens on the list, or straight on a section when one is named */
-export function openSettings(section?: SettingsSection) {
+export function openSettings(section?: SettingsSection, returnTo?: "needs") {
   if (section) settingsPageStore.section = section;
   settingsPageStore.detail = !!section;
+  settingsPageStore.returnTo = returnTo ?? null;
   settingsPageStore.open = true;
 }
 
@@ -50,4 +59,5 @@ export function settingsBack(): boolean {
 export function closeSettings() {
   settingsPageStore.open = false;
   settingsPageStore.detail = false;
+  settingsPageStore.returnTo = null;
 }

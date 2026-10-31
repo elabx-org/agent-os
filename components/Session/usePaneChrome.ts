@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
+import { toast } from "sonner";
 import { useSnapshot } from "valtio";
 import type { Session } from "@/lib/db";
 import { registerNavHandlers } from "@/lib/nav-actions";
@@ -12,6 +13,11 @@ import { useCanOfferMove } from "@/hooks/useWorktreeMove";
 import { useLayoutMode } from "@/hooks/useLayoutMode";
 import { useIsNative } from "@/hooks/useIsNative";
 import { interruptSession } from "@/components/DeckActions";
+import { useSettleActions } from "@/components/Session/settle-action";
+import { canSettle } from "@/lib/settle-views";
+import { displayTitle, useListTitles } from "@/hooks/useSessionTitles";
+import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
+import { sessionActionsStore } from "@/stores/sessionActions";
 
 /**
  * What the pane's session chrome needs from the pane: the column learns
@@ -53,6 +59,46 @@ export function usePaneChrome({
       stopSession: () => void interruptSession(sessionId),
     });
   }, [isFocused, sessionId]);
+
+  // The column's More (and the iOS app's) offers the header ⋯'s Scripts,
+  // Settle and Copy session ID: that ⋯ is hidden on the closed Duo's page
+  // header, beside the pills and in Changes and Files
+  const { settle } = useSettleActions();
+  const { copy } = useCopyToClipboard();
+  const titles = useListTitles(session ? [session] : []);
+  const latest = useRef({ session, titles, settle, copy });
+  latest.current = { session, titles, settle, copy };
+  const scripts =
+    !!session?.project_id && session.project_id !== "uncategorized";
+  const settleable = !!session && canSettle(session);
+  useEffect(() => {
+    if (!isFocused || !sessionId) return;
+    Object.assign(sessionActionsStore, {
+      sessionId,
+      scripts,
+      settle: settleable,
+    });
+    const unregister = registerNavHandlers({
+      settleSession: () => {
+        const { session, titles, settle } = latest.current;
+        if (session) void settle(session, displayTitle(session, titles).title);
+      },
+      copySessionId: async () => {
+        if (await latest.current.copy(sessionId))
+          toast.success("Session ID copied");
+        else toast.error("Couldn't copy the session ID");
+      },
+    });
+    return () => {
+      unregister();
+      if (sessionActionsStore.sessionId === sessionId)
+        Object.assign(sessionActionsStore, {
+          sessionId: null,
+          scripts: false,
+          settle: false,
+        });
+    };
+  }, [isFocused, sessionId, scripts, settleable]);
 
   // The column's ⋯ offers "Move to a worktree" for the focused session
   useEffect(() => {

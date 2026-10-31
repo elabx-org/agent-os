@@ -6,6 +6,7 @@ import { FileDiffCard } from "@/components/DiffViewer";
 import { useCommitDetail, useCommitFileDiff } from "@/data/git/queries";
 import { parseDiff } from "@/lib/diff-parser";
 import { gitBadgeClass, gitBadgeOf } from "@/lib/git-types";
+import { commitFileOpen, setCommitFileOpen } from "@/stores/gitPlace";
 import type { CommitFile } from "@/lib/git-history";
 import { shortAge } from "./git-format";
 import { Subpage } from "./Subpage";
@@ -90,7 +91,12 @@ function CommitFileCard({
   file: CommitFile;
   wrap?: boolean;
 }) {
-  const [open, setOpen] = useState(false);
+  // Kept across a fold, a turn or a reload (stores/gitPlace)
+  const [open, setOpenState] = useState(() => commitFileOpen(hash, file.path));
+  const setOpen = (next: boolean) => {
+    setOpenState(next);
+    setCommitFileOpen(hash, file.path, next);
+  };
   const { data: diff, isPending } = useCommitFileDiff(
     repoPath,
     open ? hash : null,

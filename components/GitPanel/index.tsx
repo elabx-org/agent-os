@@ -24,8 +24,9 @@ import {
 } from "./useGitModel";
 import { useViewport } from "@/hooks/useViewport";
 import { useLayoutMode } from "@/hooks/useLayoutMode";
-import { registerNavHandlers } from "@/lib/nav-actions";
+import { registerNavHandlers, registerViewBack } from "@/lib/nav-actions";
 import { setGitMenu } from "@/stores/gitMenu";
+import { gitPlace, setGitPlace } from "@/stores/gitPlace";
 import { moveSheetStore, openMoveSheet } from "@/stores/moveSheet";
 import { cn } from "@/lib/utils";
 import type { GitFile } from "@/lib/git-status";
@@ -65,7 +66,9 @@ export function GitPanel(props: GitPanelProps) {
       ref={setRoot}
       className="bg-background relative h-full w-full min-w-0 overflow-hidden"
     >
+      {/* Another session's view starts on its own place */}
       <GitPanelContent
+        key={props.sessionId ?? props.workingDirectory}
         {...props}
         narrow={isMobile || (width > 0 && width < NARROW_WIDTH)}
       />
@@ -104,9 +107,15 @@ function GitPanelContent({
   const closed = useLayoutMode() === "duo-closed";
   const columnActions = !!active && closed && narrow;
 
-  const [tab, setTab] = useState<Tab>("changes");
+  // A fold, a turn or a reload remounts the view: it opens where it was
+  // (stores/gitPlace)
+  const placeKey = sessionId ?? workingDirectory;
+  const [kept] = useState(() => gitPlace(placeKey));
+  const [tab, setTab] = useState<Tab>(kept?.tab ?? "changes");
   const [openFile, setOpenFile] = useState<OpenFile | null>(null);
-  const [commitHash, setCommitHash] = useState<string | null>(null);
+  const [commitHash, setCommitHash] = useState<string | null>(
+    kept?.commitHash ?? null
+  );
   const [reviewing, setReviewing] = useState(false);
   const [creatingPR, setCreatingPR] = useState(false);
 
@@ -141,6 +150,23 @@ function GitPanelContent({
     [workingDirectory]
   );
 
+  // The diff it had open loads again. Until it shows the place stays as
+  // it was: a view mounted and gone at once (the layout settling) mustn't
+  // forget it
+  const reopening = useRef(!!kept?.file);
+  useEffect(() => {
+    if (kept?.file) void showFile(kept.file);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const shownFile = openFile?.file ?? null;
+  useEffect(() => {
+    if (reopening.current) {
+      if (!shownFile) return;
+      reopening.current = false;
+    }
+    setGitPlace(placeKey, { tab, file: shownFile, commitHash });
+  }, [placeKey, tab, shownFile, commitHash]);
+
   const openCommit = (hash: string) => {
     setOpenFile(null);
     setReviewing(false);
@@ -174,6 +200,24 @@ function GitPanelContent({
       newPullRequest: () => latest.current.newPullRequest(),
     });
   }, [active]);
+
+  // Back off a diff, a commit or the PR's review to the list before
+  // leaving the view, where it is pushed over the list
+  const subpageBack = openFile
+    ? "Back to changes"
+    : commitHash
+      ? "Back to history"
+      : reviewing && m.pr
+        ? "Back to git"
+        : null;
+  useEffect(() => {
+    if (!active || !narrow || !subpageBack) return;
+    return registerViewBack(subpageBack, () => {
+      setOpenFile(null);
+      setCommitHash(null);
+      setReviewing(false);
+    });
+  }, [active, narrow, subpageBack]);
 
   // The title row has no ⋯ here: the column's More takes its items
   const model = useRef(m);

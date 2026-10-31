@@ -1,11 +1,16 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  backTarget,
   canonicalNav,
   NAV_ACTIONS,
   NAV_ROUTES,
   navStore,
+  noteOrigin,
   registerNavHandlers,
+  registerPageBack,
+  registerViewBack,
+  resumeView,
   runNav,
   type NavAction,
 } from "../../lib/nav-actions";
@@ -15,6 +20,8 @@ import { workspacePageStore } from "../../stores/workspacePage";
 import { surfaceStore } from "../../stores/surface";
 import { focusStore } from "../../stores/focus";
 import { layoutStore } from "../../hooks/useLayoutMode";
+import { backStore } from "../../stores/back";
+import { runningStore } from "../../stores/running";
 
 /** Every handler replaced by one that notes its name */
 function spyHandlers() {
@@ -36,6 +43,13 @@ function reset() {
   mobileNavStore.viewMode = "terminal";
   mobileNavStore.liveOpen = false;
   mobileNavStore.changesOpen = false;
+  mobileNavStore.homeTab = "now";
+  surfaceStore.home = false;
+  surfaceStore.behind = false;
+  surfaceStore.searchOpen = false;
+  layoutStore.mode = "desktop";
+  backStore.origin = null;
+  runningStore.sessionId = null;
 }
 
 test("every NavAction has a route, and only those", () => {
@@ -127,13 +141,20 @@ test("runNav: the new actions reach their handlers", () => {
 test("runNav: back goes one level up", () => {
   const { calls, stop } = spyHandlers();
   try {
-    // A Settings section, then Settings
+    // A Settings section, then Settings (on one page; split, the list and
+    // the section show together, so it just closes)
     reset();
+    layoutStore.mode = "duo-closed";
     settingsPageStore.open = true;
     settingsPageStore.detail = true;
     runNav("back");
     assert.equal(settingsPageStore.detail, false);
     assert.equal(settingsPageStore.open, true);
+    runNav("back");
+    assert.equal(settingsPageStore.open, false);
+    layoutStore.mode = "desktop";
+    settingsPageStore.open = true;
+    settingsPageStore.detail = true;
     runNav("back");
     assert.equal(settingsPageStore.open, false);
 
@@ -166,7 +187,7 @@ test("runNav: back goes one level up", () => {
   }
 });
 
-test("runNav: back from the closed Changes or Files is the conversation", () => {
+test("runNav: back from Changes or Files is the conversation (15)", () => {
   const { calls, stop } = spyHandlers();
   try {
     reset();
@@ -178,14 +199,25 @@ test("runNav: back from the closed Changes or Files is the conversation", () => 
     assert.deepEqual(calls, []);
 
     reset();
+    layoutStore.mode = "duo-closed";
     mobileNavStore.viewMode = "files";
     mobileNavStore.conversationView = "chat";
     runNav("back");
     assert.equal(mobileNavStore.request?.mode, "chat");
 
-    // Open, their back is Now's as before
+    // Open too, named for it, not Now
     reset();
     layoutStore.mode = "duo-open";
+    mobileNavStore.viewMode = "files";
+    mobileNavStore.conversationView = "terminal";
+    assert.equal(backTarget().label, "Back to session");
+    runNav("back");
+    assert.equal(mobileNavStore.request?.mode, "terminal");
+    assert.deepEqual(calls, []);
+
+    // On the desktop they're tabs: their back is Now's as before
+    reset();
+    layoutStore.mode = "desktop";
     mobileNavStore.viewMode = "git";
     runNav("back");
     assert.equal(mobileNavStore.request, null);
@@ -194,6 +226,15 @@ test("runNav: back from the closed Changes or Files is the conversation", () => 
     layoutStore.mode = "desktop";
     stop();
   }
+});
+
+test("resumeView: the open Duo's Now steps aside to the conversation (7)", () => {
+  assert.equal(resumeView("duo-open", "git", "terminal"), "terminal");
+  assert.equal(resumeView("book", "files", "chat"), "chat");
+  assert.equal(resumeView("duo-open", "chat", "terminal"), null);
+  // One page, or the desktop's tabs: the view stays
+  assert.equal(resumeView("duo-closed", "git", "terminal"), null);
+  assert.equal(resumeView("desktop", "files", "terminal"), null);
 });
 
 test("runNav: Changes without a page beside asks for the git view", () => {
@@ -318,4 +359,276 @@ test("back: Now with a session behind it goes back to the session", () => {
   surfaceStore.home = false;
   surfaceStore.behind = false;
   stop();
+});
+
+test("backTarget: the label says where back goes", () => {
+  const { calls, stop } = spyHandlers();
+  try {
+    reset();
+    layoutStore.mode = "duo-closed";
+    surfaceStore.behind = true;
+    runningStore.sessionId = "s1";
+    // From the session, Now
+    assert.equal(backTarget().label, "Back to Now");
+    // Find over the session goes back to it
+    surfaceStore.searchOpen = true;
+    assert.equal(backTarget().label, "Back to session");
+    // ...and over Now to Now
+    surfaceStore.home = true;
+    assert.equal(backTarget().label, "Back to Now");
+    surfaceStore.searchOpen = false;
+    // Now over the session
+    assert.equal(backTarget().label, "Back to session");
+    // The phone's Projects tab
+    mobileNavStore.homeTab = "projects";
+    assert.equal(backTarget().label, "Back to Now");
+    surfaceStore.home = false;
+    assert.equal(backTarget().label, "Back to Projects");
+    // Settings: a section, the list
+    reset();
+    layoutStore.mode = "duo-closed";
+    settingsPageStore.open = true;
+    settingsPageStore.detail = true;
+    assert.equal(backTarget().label, "Back to Settings");
+    settingsPageStore.detail = false;
+    assert.equal(backTarget().label, "Close settings");
+    // The open Duo's panels
+    reset();
+    layoutStore.mode = "duo-open";
+    mobileNavStore.changesOpen = true;
+    assert.equal(backTarget().label, "Close Changes");
+    assert.deepEqual(calls, []);
+  } finally {
+    reset();
+    stop();
+  }
+});
+
+test("back: a page over the session goes back to it, over the home to Now", () => {
+  const { calls, stop } = spyHandlers();
+  try {
+    reset();
+    layoutStore.mode = "duo-closed";
+    surfaceStore.behind = true;
+    workspacePageStore.page = { kind: "inbox" };
+    assert.equal(backTarget().label, "Back to session");
+    runNav("back");
+    assert.equal(workspacePageStore.page, null);
+    assert.deepEqual(calls, []);
+
+    surfaceStore.home = true;
+    workspacePageStore.page = { kind: "running" };
+    assert.equal(backTarget().label, "Back to Now");
+    runNav("back");
+    assert.deepEqual(calls, ["openNow"]);
+
+    // A page opened from another names it
+    reset();
+    backStore.projectNames = { p1: "agent-os" };
+    workspacePageStore.previous = { kind: "project", projectId: "p1" };
+    workspacePageStore.page = { kind: "projectSettings", projectId: "p1" };
+    assert.equal(backTarget().label, "Back to agent-os");
+  } finally {
+    reset();
+    stop();
+  }
+});
+
+test("back: a pushed detail goes back first, with its own name", () => {
+  const { calls, stop } = spyHandlers();
+  try {
+    reset();
+    workspacePageStore.page = { kind: "running" };
+    let closed = 0;
+    const unregister = registerPageBack("Back to Running", () => closed++);
+    assert.equal(backTarget().label, "Back to Running");
+    runNav("back");
+    assert.equal(closed, 1);
+    assert.equal(workspacePageStore.page?.kind, "running");
+    unregister();
+    assert.equal(backStore.pageLabel, null);
+    assert.notEqual(backTarget().label, "Back to Running");
+
+    // A diff in the closed Changes: its list, then the conversation
+    reset();
+    layoutStore.mode = "duo-closed";
+    mobileNavStore.viewMode = "git";
+    mobileNavStore.conversationView = "chat";
+    const stopView = registerViewBack("Back to history", () => closed++);
+    assert.equal(backTarget().label, "Back to history");
+    runNav("back");
+    assert.equal(closed, 2);
+    assert.equal(mobileNavStore.request?.mode, undefined);
+    stopView();
+    assert.equal(backTarget().label, "Back to session");
+    runNav("back");
+    assert.equal(mobileNavStore.request?.mode, "chat");
+
+    // A page over the view goes back before the view's detail
+    reset();
+    layoutStore.mode = "duo-closed";
+    const stopFiles = registerViewBack("Back to files", () => closed++);
+    workspacePageStore.page = { kind: "inbox" };
+    runNav("back");
+    assert.equal(closed, 2);
+    assert.deepEqual(calls, ["openNow"]);
+    stopFiles();
+  } finally {
+    reset();
+    stop();
+  }
+});
+
+test("back: Changes and Files on a phone go back to the conversation", () => {
+  const { calls, stop } = spyHandlers();
+  try {
+    for (const mode of ["phone", "tabletop"] as const) {
+      reset();
+      layoutStore.mode = mode;
+      mobileNavStore.viewMode = "files";
+      mobileNavStore.conversationView = "terminal";
+      assert.equal(backTarget().label, "Back to session", mode);
+      runNav("back");
+      assert.equal(mobileNavStore.request?.mode, "terminal", mode);
+    }
+    assert.deepEqual(calls, []);
+  } finally {
+    reset();
+    stop();
+  }
+});
+
+test("back: a session goes back to the project, Needs you or Find it came from", () => {
+  const { calls, stop } = spyHandlers();
+  try {
+    // From a project page, on one page: the project over the home
+    reset();
+    layoutStore.mode = "duo-closed";
+    backStore.projectNames = { p1: "agent-os" };
+    workspacePageStore.page = { kind: "project", projectId: "p1" };
+    noteOrigin("s1");
+    workspacePageStore.page = null;
+    runningStore.sessionId = "s1";
+    surfaceStore.behind = true;
+    assert.equal(backTarget().label, "Back to agent-os");
+    runNav("back");
+    assert.deepEqual(calls, ["openNow"]);
+    assert.deepEqual(workspacePageStore.page, {
+      kind: "project",
+      projectId: "p1",
+    });
+    // Once
+    assert.equal(backStore.origin, null);
+
+    // While it attaches, the session it left still shows
+    reset();
+    runningStore.sessionId = "s0";
+    workspacePageStore.page = { kind: "project", projectId: "p1" };
+    noteOrigin("s1");
+    workspacePageStore.page = null;
+    assert.equal(backTarget().label, "Back to agent-os");
+
+    // Another session in view: the origin isn't its
+    reset();
+    calls.length = 0;
+    workspacePageStore.page = { kind: "project", projectId: "p1" };
+    noteOrigin("s1");
+    workspacePageStore.page = null;
+    runningStore.sessionId = "s2";
+    assert.equal(backTarget().label, "Back to Now");
+
+    // From Needs you (a page, beside on the open Duo)
+    reset();
+    calls.length = 0;
+    layoutStore.mode = "duo-open";
+    workspacePageStore.page = { kind: "inbox" };
+    noteOrigin("s1");
+    workspacePageStore.page = null;
+    runningStore.sessionId = "s1";
+    assert.equal(backTarget().label, "Back to Needs you");
+    runNav("back");
+    assert.equal(mobileNavStore.inboxOpen, true);
+    assert.deepEqual(calls, []);
+
+    // From Find: Find again
+    reset();
+    calls.length = 0;
+    surfaceStore.searchOpen = true;
+    noteOrigin("s1");
+    surfaceStore.searchOpen = false;
+    runningStore.sessionId = "s1";
+    assert.equal(backTarget().label, "Back to Find");
+    runNav("back");
+    assert.deepEqual(calls, ["openFind"]);
+
+    // From New, Now: the session is new
+    reset();
+    workspacePageStore.page = { kind: "new" };
+    noteOrigin("s1");
+    assert.equal(backStore.origin, null);
+  } finally {
+    reset();
+    stop();
+  }
+});
+
+test("back: Notification settings from Needs you go back to it", () => {
+  const { stop } = spyHandlers();
+  try {
+    reset();
+    stop();
+    layoutStore.mode = "duo-closed";
+    workspacePageStore.page = { kind: "inbox" };
+    runNav("notifSettings");
+    assert.equal(settingsPageStore.open, true);
+    assert.equal(settingsPageStore.section, "notifications");
+    assert.equal(settingsPageStore.returnTo, "needs");
+    assert.equal(backTarget().label, "Back to Needs you");
+    runNav("back");
+    assert.equal(settingsPageStore.open, false);
+    assert.equal(mobileNavStore.inboxOpen, true);
+
+    // Close does the same
+    reset();
+    workspacePageStore.page = { kind: "inbox" };
+    runNav("notifSettings");
+    runNav("closeSettings");
+    assert.equal(settingsPageStore.open, false);
+    assert.equal(mobileNavStore.inboxOpen, true);
+
+    // From anywhere else, Settings just closes
+    reset();
+    runNav("notifSettings");
+    assert.equal(settingsPageStore.returnTo, null);
+    runNav("closeSettings");
+    assert.equal(mobileNavStore.inboxOpen, false);
+  } finally {
+    reset();
+  }
+});
+
+test("Find's More: going elsewhere closes Find; More, back, Settings keep it", () => {
+  for (const action of NAV_ACTIONS) {
+    reset();
+    surfaceStore.searchOpen = true;
+    const { calls, stop } = spyHandlers();
+    runNav(action);
+    stop();
+    const keeps = [
+      "search",
+      "find",
+      "more",
+      "back",
+      "focus",
+      "settings",
+      "server",
+      "closeSettings",
+    ].includes(action);
+    assert.equal(calls.includes("closeFind"), !keeps, action);
+  }
+  reset();
+  const { calls, stop } = spyHandlers();
+  runNav("projects");
+  stop();
+  assert.ok(!calls.includes("closeFind"), "no Find, nothing to close");
 });
