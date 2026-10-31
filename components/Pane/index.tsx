@@ -404,11 +404,11 @@ export const Pane = memo(function Pane({
     // desktop on one session each get a window that wraps at their screen
     `tmux set-option -g window-size latest`,
     `tmux set-window-option -g aggressive-resize on`,
-    // Scroll 5 lines per wheel event instead of 1 for smoother scrolling
-    `tmux bind-key -T copy-mode WheelUpPane send-keys -X -N 5 scroll-up`,
-    `tmux bind-key -T copy-mode WheelDownPane send-keys -X -N 5 scroll-down`,
-    `tmux bind-key -T copy-mode-vi WheelUpPane send-keys -X -N 5 scroll-up`,
-    `tmux bind-key -T copy-mode-vi WheelDownPane send-keys -X -N 5 scroll-down`,
+    // A row per wheel event: the page sends one per row of travel
+    `tmux bind-key -T copy-mode WheelUpPane send-keys -X scroll-up`,
+    `tmux bind-key -T copy-mode WheelDownPane send-keys -X scroll-down`,
+    `tmux bind-key -T copy-mode-vi WheelUpPane send-keys -X scroll-up`,
+    `tmux bind-key -T copy-mode-vi WheelDownPane send-keys -X scroll-down`,
     // Tmux menu
     `tmux bind-key m display-menu -T "Tmux" -x R -y P "Copy Mode" c copy-mode "Paste Buffer" p paste-buffer "" "" "" "Split Horizontal" h 'split-window -h' "Split Vertical" v 'split-window -v'`,
   ].map(c => `${c} 2>/dev/null`).join("; ") +
