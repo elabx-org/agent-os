@@ -3,6 +3,7 @@
 import type { Terminal as XTerm } from "@xterm/xterm";
 import { WS_RECONNECT_BASE_DELAY, WS_RECONNECT_MAX_DELAY } from "../constants";
 import { typingElsewhere } from "@/lib/typing-elsewhere";
+import { clientLog } from "@/lib/client-log";
 
 export interface WebSocketCallbacks {
   /** replacedPty: a reconnect landed on a new PTY, so tmux must be re-attached */
@@ -29,6 +30,10 @@ const CLIENT_PING_INTERVAL_MS = 20_000; // 20s
 // The server answers every ping, so silence this long means a dead socket
 // that never fired onclose (phone slept, network changed)
 const SERVER_SILENCE_TIMEOUT_MS = 60_000;
+// A handshake still going after this is stuck (a phone just woken, its
+// network not back yet): the browser can wait a minute or more before it
+// gives up, all of it on "Connecting...". Start a fresh one instead.
+const HANDSHAKE_TIMEOUT_MS = 5_000;
 
 export function createWebSocketConnection(
   term: XTerm,
@@ -74,8 +79,29 @@ export function createWebSocketConnection(
     }
   }
 
+  let handshakeTimer: ReturnType<typeof setTimeout> | null = null;
+  let connectStartedAt = 0;
+
+  function clearHandshake() {
+    if (handshakeTimer) clearTimeout(handshakeTimer);
+    handshakeTimer = null;
+  }
+
+  function watchHandshake(sock: WebSocket) {
+    clearHandshake();
+    connectStartedAt = Date.now();
+    handshakeTimer = setTimeout(() => {
+      handshakeTimer = null;
+      if (wsRef.current !== sock || sock.readyState !== WebSocket.CONNECTING)
+        return;
+      clientLog(`terminal socket stuck ${HANDSHAKE_TIMEOUT_MS}ms, retrying`);
+      forceReconnect();
+    }, HANDSHAKE_TIMEOUT_MS);
+  }
+
   const ws = new WebSocket(buildWsUrl());
   wsRef.current = ws;
+  watchHandshake(ws);
 
   const sendResize = (cols: number, rows: number) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
@@ -103,6 +129,10 @@ export function createWebSocketConnection(
 
   // Handler functions defined once and reused across reconnects
   function handleOpen() {
+    clearHandshake();
+    clientLog(
+      `terminal socket open after ${Date.now() - connectStartedAt}ms${sessionId ? " (again)" : ""}`
+    );
     callbacks.onSetConnected(true);
     callbacks.onConnectionStateChange("connected");
     reconnectDelayRef.current = WS_RECONNECT_BASE_DELAY;
@@ -198,7 +228,11 @@ export function createWebSocketConnection(
     }
   }
 
-  function handleClose() {
+  function handleClose(event: CloseEvent) {
+    clearHandshake();
+    clientLog(
+      `terminal socket closed ${event.code} after ${Date.now() - connectStartedAt}ms`
+    );
     stopClientPing();
     callbacks.onSetConnected(false);
     callbacks.onDisconnected?.();
@@ -255,6 +289,7 @@ export function createWebSocketConnection(
     // Create fresh connection — include sessionId for PTY reattachment
     const newWs = new WebSocket(buildWsUrl());
     wsRef.current = newWs;
+    watchHandshake(newWs);
     newWs.onopen = handleOpen;
     newWs.onmessage = handleMessage;
     newWs.onclose = handleClose;
@@ -319,6 +354,9 @@ export function createWebSocketConnection(
 
     const wasHiddenFor = hiddenAt ? Date.now() - hiddenAt : 0;
     hiddenAt = null;
+    clientLog(
+      `terminal visible after ${Math.round(wasHiddenFor / 1000)}s hidden, socket ${wsRef.current?.readyState ?? "none"}`
+    );
 
     // If hidden for more than 5 seconds, force reconnect (iOS Safari kills sockets)
     if (wasHiddenFor > 5000) {
@@ -354,6 +392,7 @@ export function createWebSocketConnection(
     window.removeEventListener("pageshow", handlePageShow);
     window.removeEventListener("online", handleOnline);
     stopClientPing();
+    clearHandshake();
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
       reconnectTimeoutRef.current = null;
