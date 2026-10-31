@@ -15,6 +15,7 @@ import { statusKeys } from "@/data/sessions/keys";
 import type { SessionStatus } from "@/components/views/types";
 import type { ComposerEngine } from "@/components/Composer";
 import { AskCard } from "./AskCard";
+import { ChoiceCard } from "./ChoiceCard";
 import { ContextCard } from "./ContextCard";
 import { QuoteChips } from "./QuoteChips";
 import { ReplySheet } from "./ReplySheet";
@@ -59,9 +60,11 @@ export function ReplyContextBar({
   const { data: statuses } = useQuery<{
     statuses: Record<string, SessionStatus>;
   }>({ queryKey: statusKeys.all, enabled: false });
-  const waiting =
-    !!sessionId && statuses?.statuses[sessionId]?.status === "waiting";
-  const context = useReplyContext(sessionId, typing || sheetOpen || waiting);
+  const status = sessionId ? statuses?.statuses[sessionId]?.status : undefined;
+  const waiting = status === "waiting";
+  // Done with its turn: a question in its message may want a reply
+  const settled = waiting || status === "idle";
+  const context = useReplyContext(sessionId, typing || sheetOpen || settled);
   // Claude's question on screen, with all its questions known
   const asking =
     !!sessionId &&
@@ -83,6 +86,16 @@ export function ReplyContextBar({
     !elsewhere &&
     !sheetOpen &&
     dismissed[sessionId] !== turn;
+  // A question asked in Claude's message, with replies to tap
+  const choosing =
+    !!sessionId &&
+    settled &&
+    !typing &&
+    !sheetOpen &&
+    !elsewhere &&
+    context?.kind === "message" &&
+    !!context.choices &&
+    dismissed[sessionId] !== `choices:${turn}`;
 
   // Layouts around the pane make room for the context while this is on
   useEffect(() => {
@@ -117,11 +130,22 @@ export function ReplyContextBar({
 
   // The answer card covers the view above the composer, up to its top
   const [askRoom, setAskRoom] = useState<number | undefined>(undefined);
+  // The replies sit above the terminal's key row, which stays in reach:
+  // they're offered after most turns, not only when Claude waits on you
+  const [keysLift, setKeysLift] = useState(0);
   useLayoutEffect(() => {
     const anchor = anchorRef.current;
-    if (!asking || !anchor) return;
-    const measure = () =>
-      setAskRoom(Math.max(160, roomAbove(anchor, bounds?.current) - 8));
+    if (!(asking || choosing) || !anchor) return;
+    const measure = () => {
+      const keys = anchor
+        .closest(".fold-controls")
+        ?.querySelector<HTMLElement>(".keybar-row");
+      const top = anchor.getBoundingClientRect().top;
+      const keysTop = keys?.getBoundingClientRect().top ?? top;
+      const lift = choosing && keysTop < top ? Math.round(top - keysTop) : 0;
+      setKeysLift(lift);
+      setAskRoom(Math.max(160, roomAbove(anchor, bounds?.current) - 8 - lift));
+    };
     measure();
     window.addEventListener("resize", measure);
     window.visualViewport?.addEventListener("resize", measure);
@@ -129,7 +153,7 @@ export function ReplyContextBar({
       window.removeEventListener("resize", measure);
       window.visualViewport?.removeEventListener("resize", measure);
     };
-  }, [asking, bounds]);
+  }, [asking, choosing, bounds]);
 
   const closeSheet = useCallback(() => setSheetOpen(false), []);
   const focusDraft = useCallback(() => {
@@ -174,6 +198,21 @@ export function ReplyContextBar({
             sessionId={sessionId}
             questions={context.questions}
             maxHeight={askRoom}
+          />
+        </div>
+      )}
+      {choosing && context.choices && (
+        <div
+          className="absolute inset-x-0 bottom-full z-20"
+          style={{ maxHeight: askRoom, marginBottom: keysLift }}
+        >
+          <ChoiceCard
+            // A new question starts afresh
+            key={turn}
+            sessionId={sessionId}
+            choices={context.choices}
+            maxHeight={askRoom}
+            onDone={() => dismissCard(sessionId, `choices:${turn}`)}
           />
         </div>
       )}
