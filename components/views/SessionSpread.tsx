@@ -29,7 +29,7 @@ import { FOLD_CLEAR, useHinge } from "@/hooks/useHinge";
 import { useLayoutMode } from "@/hooks/useLayoutMode";
 import { navStore, registerNavHandlers, runNav } from "@/lib/nav-actions";
 import { dropHome, notePageUsed, setHome } from "@/stores/surface";
-import { isNative, nativeCaps } from "@/lib/native-bridge";
+import { isNative, nativeCaps, onNativeEvent } from "@/lib/native-bridge";
 import { postureStore } from "@/stores/posture";
 import { resetSwap, toggleSwap } from "@/stores/paneOrder";
 import { focusStore } from "@/stores/focus";
@@ -352,15 +352,30 @@ export function SessionSpread({
   useEffect(() => setHome(homeWanted), [homeWanted]);
   useEffect(() => dropHome, []);
 
-  // Which page was used last, for a fold to one page: a tap on either, or
-  // a view picked for the session
+  // Which page was used last, for a fold to one page: a tap, a focus or a
+  // key on either, the iOS bar's keys (they type into the session), or a
+  // view picked for the session
   const homeRef = useRef<HTMLDivElement>(null);
-  const notePage = (e: PointerEvent) => {
-    if (pages && homeOpen && !homeFill)
+  const twoShown = pages && homeOpen && !homeFill;
+  const notePage = (e: { target: EventTarget | null }) => {
+    if (twoShown)
       notePageUsed(
         homeRef.current?.contains(e.target as Node) ? "home" : "session"
       );
   };
+  useEffect(() => {
+    if (!twoShown) return;
+    return onNativeEvent((event) => {
+      if (
+        event.type === "key" ||
+        event.type === "paste" ||
+        event.type === "image" ||
+        event.type === "select" ||
+        event.type === "snippets"
+      )
+        notePageUsed("session");
+    });
+  }, [twoShown]);
   const shownMode = useRef(viewMode);
   useEffect(() => {
     if (shownMode.current === viewMode) return;
@@ -464,6 +479,8 @@ export function SessionSpread({
     <div
       className="relative flex min-h-0 min-w-0 flex-1"
       onPointerDownCapture={notePage}
+      onFocusCapture={notePage}
+      onKeyDownCapture={notePage}
     >
       {/* The home: a sidebar on the web, the left page on the open Duo */}
       <div

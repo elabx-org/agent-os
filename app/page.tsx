@@ -312,6 +312,9 @@ function HomeContent() {
     [sessions, getInitScriptCommand]
   );
 
+  // A new tab in the focused pane for a session (set below, once defined)
+  const openInNewTabRef = useRef<((session: Session) => void) | null>(null);
+
   // Attach a session to a terminal. leave: out of what the terminal shows
   // first (another session's tmux); otherwise it starts in a fresh shell
   const runSessionInTerminal = useCallback(
@@ -350,6 +353,14 @@ function HomeContent() {
         leave
       );
       if (!typed) {
+        // Something else runs there (vim, a script): leave it be and open
+        // the session in a new tab beside it. A new tab's fresh shell
+        // (leave false) never lands here again
+        if (leave && openInNewTabRef.current) {
+          debugLog(`Terminal busy, opening in a new tab: ${session.name}`);
+          openInNewTabRef.current(session);
+          return;
+        }
         debugLog(`Terminal busy, not attaching: ${session.name}`);
         toast("Terminal busy", {
           description: "Quit what runs there, then open the session again",
@@ -507,6 +518,7 @@ function HomeContent() {
     },
     [addTab, focusedPaneId, buildSessionCommand, runSessionInTerminal]
   );
+  openInNewTabRef.current = openSessionInNewTab;
 
   // Notification click handler
   const handleNotificationClick = useCallback(
