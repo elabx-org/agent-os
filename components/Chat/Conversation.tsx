@@ -170,7 +170,8 @@ function UserBubble({
       : [];
   const images = [...pasted, ...split.images];
   return (
-    <div className="relative ml-8 flex min-w-0 flex-col items-end">
+    // The row's full width: the bubble's 82% is of it, not of the bubble
+    <div className="relative ml-8 flex min-w-0 flex-col items-end self-stretch">
       <div
         ref={ref}
         onContextMenu={(e) => {
