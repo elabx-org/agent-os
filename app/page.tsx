@@ -462,8 +462,10 @@ function HomeContent() {
     if (!session || Date.now() - besideRequest.ts > 10_000) return;
     if (besideRequest.view)
       mobileNavActions.requestViewMode(besideRequest.view, session.id);
-    openSessionBeside(session);
-  }, [besideRequest, sessions, openSessionBeside]);
+    // One page has no beside: open it there rather than swap out yours
+    if (WIDE.includes(layoutStore.mode)) openSessionBeside(session);
+    else attachToSession(session);
+  }, [besideRequest, sessions, openSessionBeside, attachToSession]);
 
   // Open session in new tab
   const openSessionInNewTab = useCallback(

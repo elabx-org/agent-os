@@ -12,6 +12,8 @@ export interface ColumnItemProps extends Omit<
   label: string;
   /** Shown in the hover hint, e.g. "⌘1" */
   shortcut?: string;
+  /** After the shortcut, where it doesn't apply: "not in the terminal" */
+  shortcutNote?: string;
   selected?: boolean;
   badge?: number;
   /** amber: needs you; neutral: a plain count */
@@ -59,6 +61,7 @@ export function ColumnItem({
   icon: Icon,
   label,
   shortcut,
+  shortcutNote,
   selected,
   badge,
   badgeTone = "amber",
@@ -118,6 +121,9 @@ export function ColumnItem({
           <kbd className="border-border text-muted-foreground rounded border px-1 font-mono text-[11px]">
             {shortcut}
           </kbd>
+        )}
+        {shortcut && shortcutNote && (
+          <span className="text-muted-foreground">{shortcutNote}</span>
         )}
       </span>
     </button>

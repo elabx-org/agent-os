@@ -42,6 +42,8 @@ export function useTerminalConnection({
 }: UseTerminalConnectionProps): UseTerminalConnectionReturn {
   const [connected, setConnected] = useState(false);
   const [isAtBottom, setIsAtBottom] = useState(true);
+  // Reading the history layer counts as scrolled up: ↓ goes back to live
+  const [historyOpen, setHistoryOpen] = useState(false);
   // The history a swipe back opens over the live terminal (touch-scroll.ts)
   const historyRef = useRef<HistoryLayer | null>(null);
   // Rows the history was scrolled up when a long press opened select mode
@@ -322,6 +324,7 @@ export function useTerminalConnection({
         term,
         exec: execRawViaWs,
         onLongPressRef: longPressRef,
+        onOpenChange: setHistoryOpen,
       });
       historyRef.current = history;
       // Typed into the terminal (keyboard, keys): back to the live screen
@@ -497,7 +500,7 @@ export function useTerminalConnection({
   return {
     connected,
     connectionState,
-    isAtBottom,
+    isAtBottom: isAtBottom && !historyOpen,
     xtermRef,
     searchAddonRef,
     scrollToBottom,

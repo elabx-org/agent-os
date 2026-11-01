@@ -36,6 +36,8 @@ export interface HistoryLayerConfig {
   exec: (command: string) => Promise<string | null>;
   /** A finger held still on the history (opens select mode) */
   onLongPressRef?: { current: (() => void) | undefined };
+  /** It covered the terminal (true) or went (false): the ↓ button's cue */
+  onOpenChange?: (open: boolean) => void;
 }
 
 export interface HistoryLayer {
@@ -385,6 +387,7 @@ export function createHistoryLayer(config: HistoryLayerConfig): HistoryLayer {
       tmuxScrolled = parsed.header.scrolled > 0;
       el.style.display = "block";
       isOpen = true;
+      config.onOpenChange?.(true);
       el.scrollTop = maxScroll() - parsed.header.scrolled * rowPx;
       // What the finger did while the rows were on their way
       if (queued) {
@@ -413,6 +416,7 @@ export function createHistoryLayer(config: HistoryLayerConfig): HistoryLayer {
     settleTimer = null;
     if (!isOpen) return;
     isOpen = false;
+    config.onOpenChange?.(false);
     if (el) {
       el.style.display = "none";
       el.textContent = "";

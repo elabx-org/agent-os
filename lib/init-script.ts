@@ -38,6 +38,10 @@ tmux bind-key -T copy-mode-vi WheelDownPane send-keys -X scroll-down 2>/dev/null
 # No status line: AgentOS's header already names the session, and on a phone
 # the keyboard leaves few enough rows
 tmux set-option status off 2>/dev/null
+# True colour: the page's terminal draws RGB (server.ts sets COLORTERM), so
+# tmux passes Claude's diff backgrounds on instead of the nearest 256 colour.
+# Read when a client attaches; once per server, not appended every time
+tmux show-options -s terminal-features 2>/dev/null | grep -q 'xterm-256color:RGB' || tmux set-option -as terminal-features ',xterm-256color:RGB' 2>/dev/null
 tmux bind-key m display-menu -T "Tmux" -x R -y P "Copy Mode" c copy-mode "Paste Buffer" p paste-buffer "" "" "" "Split Horizontal" h "split-window -h" "Split Vertical" v "split-window -v" "" "" "" "Kill Pane" x "confirm-before kill-pane" 2>/dev/null
 
 # Clear and show banner

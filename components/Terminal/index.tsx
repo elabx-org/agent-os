@@ -1678,6 +1678,16 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
           </ContextMenuContent>
         </ContextMenu>
 
+        {/* Scroll to bottom: at the output's foot, above the keys and the
+            composer (a zero-height anchor, so the terminal's size is
+            untouched) */}
+        <div className="relative h-0 shrink-0">
+          <ScrollToBottomButton
+            visible={!isAtBottom}
+            onClick={scrollToBottom}
+          />
+        </div>
+
         {/* Copied to clipboard flash */}
         {copiedFlash && (
           <div className="animate-in fade-in absolute top-3 left-1/2 z-50 -translate-x-1/2 rounded-full bg-green-500 px-3 py-1 text-xs text-white shadow-lg">
@@ -1785,8 +1795,6 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
           />
         )}
 
-        {/* Scroll to bottom button */}
-        <ScrollToBottomButton visible={!isAtBottom} onClick={scrollToBottom} />
 
         {/* Mobile: Keyboard toggle button (not on the deck: it would sit in the
             fold; with the composer it sits in the composer's row instead) */}
