@@ -71,6 +71,7 @@ import {
 } from "@/lib/adaptive-keys";
 import type { Session } from "@/lib/db";
 import { useFoldDeck } from "@/hooks/useFoldDeck";
+import { useLayoutMode } from "@/hooks/useLayoutMode";
 import {
   useSpreadFold,
   useSpreadPages,
@@ -1330,6 +1331,12 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
       ? { width: duoPages.left, flexShrink: 0 }
       : undefined;
     const rightSlot = { flex: "1 1 0", minWidth: 0 };
+    // Typing with the app's keyboard bar up: its keys replace the page's
+    // row, so the composer takes both pages instead of leaving one empty.
+    // Only while flat: half open like a book, the fold is reserved
+    const layoutMode = useLayoutMode();
+    const wideTyping =
+      sideBySide && nativeKeyboard && !deck && layoutMode !== "book";
     const twoRowPages = duoLayout === "two-rows" ? duoPages : null;
 
     // Extract terminal text for select mode overlay
@@ -1885,7 +1892,9 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
             <div
               className="bg-background shrink-0"
               style={
-                sideBySide
+                wideTyping
+                  ? { order: 1, ...rightSlot }
+                  : sideBySide
                   ? duoLayout === "split"
                     ? { order: 1, ...leftSlot }
                     : { order: 3, ...rightSlot }
@@ -1957,7 +1966,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
               )}
             </div>
             {/* Nothing in the fold */}
-            {sideBySide && duoPages && (
+            {sideBySide && duoPages && !wideTyping && (
               <div
                 aria-hidden="true"
                 className="shrink-0"
@@ -1969,6 +1978,8 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
               style={
                 laptopKeys
                   ? { order: 3, height: deck.deck }
+                  : wideTyping
+                  ? { display: "none" }
                   : // Under the composer: on the deck, and the row from
                     // above the composer onto the keyboard while it's up
                     tabletopBase || (rowAbove && keyboardUp)
