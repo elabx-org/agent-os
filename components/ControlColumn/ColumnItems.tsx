@@ -76,6 +76,9 @@ export function ColumnItems({ items, orientation }: ColumnItemsProps) {
       icon: columnIcon(item.icon),
       label: item.label,
       shortcut: key ? `${mod}${key}` : undefined,
+      // Off a Mac, Ctrl keys in the terminal are the shell's (^K kills the
+      // line): useViewShortcuts leaves them there
+      shortcutNote: key && mod === "Ctrl+" ? "not in the terminal" : undefined,
       selected: item.selected,
       badge: item.badge,
       badgeTone: item.badgeTone,

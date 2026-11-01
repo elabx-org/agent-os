@@ -227,7 +227,16 @@ export function DesktopSidebar({
           <span className="min-w-0 flex-1 truncate">
             Find sessions, files, projects
           </span>
-          <span className="font-mono text-[11px]">{findKey}</span>
+          <span
+            className="font-mono text-[11px]"
+            title={
+              findKey === "Ctrl K"
+                ? "Ctrl K finds, except in the terminal: there it's the shell's"
+                : undefined
+            }
+          >
+            {findKey}
+          </span>
         </button>
       )}
 
