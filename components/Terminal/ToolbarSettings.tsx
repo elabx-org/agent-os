@@ -54,6 +54,7 @@ import {
   type KeysRowId,
   type DuoLayout,
   TOOLBAR_BUTTONS,
+  CHAT_POOL,
   GROUP_LABELS,
   PRESETS,
   CLOSED_ROW_PX,
@@ -79,12 +80,14 @@ const ROW_OPTIONS: { value: KeysRowId; label: string }[] = [
   { value: "claude", label: "Claude" },
   { value: "claudeUp", label: "Claude · typing" },
   { value: "shell", label: "Shell" },
+  { value: "chat", label: "Chat" },
 ];
 
 const ROW_NAMES: Record<KeysRowId, string> = {
   claude: "Claude",
   claudeUp: "Claude · typing",
   shell: "Shell",
+  chat: "Chat",
 };
 
 export const DUO_LAYOUT_OPTIONS: { value: DuoLayout; label: string }[] = [
@@ -445,7 +448,9 @@ function ContextRowsEditor({
     );
   };
 
-  const pool = TOOLBAR_BUTTONS.filter((b) => !row.includes(b.id));
+  const pool = TOOLBAR_BUTTONS.filter(
+    (b) => !row.includes(b.id) && (rowId !== "chat" || CHAT_POOL.includes(b.id))
+  );
 
   return (
     <div className="space-y-4">
@@ -456,8 +461,9 @@ function ContextRowsEditor({
         onChange={onRowId}
       />
       <p className="text-muted-foreground text-xs">
-        One row for what you&apos;re in: Claude Code or the shell, keyboard up
-        or down. Hold ^C for ^D ^Z ^L and this menu, hold / for more characters.
+        {rowId === "chat"
+          ? "Above the chat's reply box, and above the keyboard in the app. Characters go into your message; ⇧Tab and Esc go to Claude."
+          : "One row for what you're in: Claude Code or the shell, keyboard up or down. Hold ^C for ^D ^Z ^L and this menu, hold / for more characters."}
       </p>
 
       {/* Live preview: the closed screen and the open Duo */}

@@ -20,7 +20,13 @@ import {
   postToNative,
 } from "@/lib/native-bridge";
 import { useSessionDraft } from "@/hooks/useSessionDraft";
-import { CHAT_KEYS } from "@/components/Terminal/toolbar-config";
+import {
+  chatRow,
+  useToolbarPreferences,
+} from "@/components/Terminal/toolbar-config";
+import { ImagePicker } from "@/components/ImagePicker";
+import { toast } from "sonner";
+import { ChatKeyRow } from "./ChatKeyRow";
 import { ComposerChips, useComposer } from "@/components/Composer";
 import { ComposerCard } from "@/components/Composer/ComposerCard";
 import { PausedBar } from "@/components/Session/PausedBar";
@@ -361,12 +367,31 @@ export function ChatView({
   // The iOS app's keyboard bar has a new line, / and @ too, and Paste
   const composerRef = useRef(composer);
   composerRef.current = composer;
+  const liveRef = useRef(live);
+  liveRef.current = live;
+  // The shortcut row's keys (Settings → Keys → Chat), and its picture picker
+  const { preferences: keyPrefs } = useToolbarPreferences();
+  const chatKeys = chatRow(keyPrefs);
+  const [pickingImage, setPickingImage] = useState(false);
+  const pasteFromClipboard = useCallback(async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text) composerRef.current.pasteText(text);
+    } catch {
+      toast("Hold in the reply box to paste");
+    }
+  }, []);
   useEffect(
     () =>
       onNativeEvent((event) => {
         if (document.activeElement !== inputRef.current) return;
-        if (event.type === "key" && isTextKey(event.key))
+        if (event.type === "key" && event.key === "\x1b[Z")
+          liveRef.current.cycleMode();
+        else if (event.type === "key" && event.key === "\x1b")
+          liveRef.current.escape();
+        else if (event.type === "key" && isTextKey(event.key))
           composerRef.current.insert(event.key);
+        else if (event.type === "image") setPickingImage(true);
         else if (event.type === "paste")
           composerRef.current.pasteText(event.text);
       }),
@@ -868,7 +893,7 @@ export function ChatView({
                       postToNative({
                         type: "keys",
                         context: "chat",
-                        ids: CHAT_KEYS,
+                        ids: chatKeys,
                       });
                   },
                   onBlur: () => setComposerFocused(false),
@@ -884,6 +909,16 @@ export function ChatView({
                 trailing={deck ? <StopPill session={session} /> : undefined}
                 above={
                   <>
+                    {mode !== "desktop" && !(isNative() && nativeKeyboard) && (
+                      <ChatKeyRow
+                        ids={chatKeys}
+                        onText={(text) => composer.insert(text)}
+                        onImage={() => setPickingImage(true)}
+                        onPaste={pasteFromClipboard}
+                        onShiftTab={live.cycleMode}
+                        onEsc={live.escape}
+                      />
+                    )}
                     {/* What's being answered, and the passages quoted to answer */}
                     <ReplyContextBar
                       composer={composer}
@@ -948,6 +983,17 @@ export function ChatView({
               ? "@2xl/chat:w-auto @2xl/chat:max-w-none @2xl/chat:flex-1 @2xl/chat:border-l-0"
               : undefined
           }
+        />
+      )}
+      {pickingImage && (
+        <ImagePicker
+          initialPath="~"
+          onSelect={(path) => {
+            setPickingImage(false);
+            composer.insert(`${path} `, true);
+            inputRef.current?.focus();
+          }}
+          onClose={() => setPickingImage(false)}
         />
       )}
       {viewingImage && (

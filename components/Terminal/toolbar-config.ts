@@ -139,7 +139,7 @@ export interface ToolbarPreferences {
 }
 
 /** The context rows Settings → Keys edits: Claude, Claude while typing, Shell */
-export type KeysRowId = "claude" | "claudeUp" | "shell";
+export type KeysRowId = "claude" | "claudeUp" | "shell" | "chat";
 
 /** Open Duo, a pane across both pages: composer left and keys right (split),
     the other way round (mirrored), or both rows across both pages */
@@ -182,10 +182,22 @@ const SHELL: ToolbarButtonId[] = [
   "char-slash", "cursor", "enter", "ctrl-c",
 ];
 
+// The chat's row: above its reply box, and the app's bar above the keyboard
+const CHAT: ToolbarButtonId[] = [
+  "image", "paste", "char-slash", "char-at", "shift-tab", "esc", "newline",
+];
+
+/** The keys the chat can use: text for the box, or Shift+Tab and Esc for Claude */
+export const CHAT_POOL: ToolbarButtonId[] = [
+  "image", "paste", "char-slash", "char-at", "char-tilde", "char-pipe",
+  "char-gt", "shift-tab", "esc", "newline",
+];
+
 export const DEFAULT_CONTEXT_ROWS: Record<KeysRowId, ToolbarButtonId[]> = {
   claude: CLAUDE_DOWN,
   claudeUp: CLAUDE_UP,
   shell: SHELL,
+  chat: CHAT,
 };
 
 /** Which saved row a context shows (with the on-screen keyboard up, Claude
@@ -224,8 +236,10 @@ export function contextRow(
   return savedContextRow(rowIdFor(context, keyboardUp), prefs);
 }
 
-/** What the app's keyboard bar shows in the chat box (it has no row here) */
-export const CHAT_KEYS: ToolbarButtonId[] = ["paste", "newline"];
+/** The chat's row as ordered in Settings → Keys (only keys it can use) */
+export function chatRow(prefs?: ToolbarPreferences): ToolbarButtonId[] {
+  return savedContextRow("chat", prefs).filter((id) => CHAT_POOL.includes(id));
+}
 
 // --- Overflow: keys past the row's width go into ⋯ ---
 
