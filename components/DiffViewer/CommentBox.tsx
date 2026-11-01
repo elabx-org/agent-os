@@ -18,6 +18,13 @@ export interface CommentBoxProps {
   /** Resolves when it went (or was queued / added to the tray) */
   onSubmit: (body: string) => Promise<void>;
   onCancel: () => void;
+  /** In place of "Lines 24 to 25" */
+  caption?: string;
+  /** Focus the text at once (not on a table's base: the keyboard covers it) */
+  autoFocus?: boolean;
+  /** Text kept by the parent, so the box can move and keep it */
+  draft?: string;
+  onDraft?: (body: string) => void;
 }
 
 /**
@@ -33,8 +40,12 @@ export function CommentBox({
   error,
   onSubmit,
   onCancel,
+  caption,
+  autoFocus = true,
+  draft,
+  onDraft,
 }: CommentBoxProps) {
-  const [body, setBody] = useState("");
+  const [body, setBody] = useState(draft ?? "");
   const [ownError, setOwnError] = useState<string | null>(null);
   const area = useRef<HTMLTextAreaElement>(null);
   const box = useRef<HTMLDivElement>(null);
@@ -48,11 +59,12 @@ export function CommentBox({
   }, [body]);
 
   useEffect(() => {
+    if (!autoFocus) return;
     // Into view and focused, without scrolling the page under the keyboard twice
     area.current?.focus({ preventScroll: true });
     // The whole box, its Send button too, not just the text
     box.current?.scrollIntoView({ block: "nearest" });
-  }, []);
+  }, [autoFocus]);
 
   const text = body.trim();
   const submit = async () => {
@@ -70,7 +82,7 @@ export function CommentBox({
     <div ref={box} className="px-3 pt-1.5 pb-2 font-sans">
       <div className="flex flex-col gap-2 rounded-[14px] border border-[hsl(var(--meter)/0.5)] bg-[var(--sheet)] px-3 py-2.5">
         <div className="text-muted-foreground text-[13px]">
-          {linesCaption(range)}
+          {caption ?? linesCaption(range)}
         </div>
         <label className="block">
           <span className="sr-only">Comment</span>
@@ -80,7 +92,10 @@ export function CommentBox({
             value={body}
             maxLength={MAX_COMMENT_BODY}
             placeholder={`Comment for ${agentName}`}
-            onChange={(e) => setBody(e.target.value)}
+            onChange={(e) => {
+              setBody(e.target.value);
+              onDraft?.(e.target.value);
+            }}
             onKeyDown={(e) => {
               if (e.key === "Escape") {
                 e.preventDefault();

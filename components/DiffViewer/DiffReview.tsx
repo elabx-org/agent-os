@@ -9,10 +9,12 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
+import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import {
   ChevronDown,
   ChevronLeft,
+  ChevronRight,
   ChevronUp,
   File,
   Loader2,
@@ -32,6 +34,7 @@ import { useSessionDiff } from "@/hooks/useSessionDiff";
 import { useReviewComments } from "@/hooks/useReviewComments";
 import { useReviewSend } from "@/hooks/useReviewSend";
 import { commentCount } from "@/lib/review-send";
+import { linesCaption } from "@/lib/review-format";
 import { DiffCounts, DiffLines } from "./UnifiedDiff";
 import { FileDiffCard } from "./FileDiffCard";
 import { CommentBox } from "./CommentBox";
@@ -68,6 +71,11 @@ export interface DiffReviewProps {
   className?: string;
   /** The parent's placement extras (on a table: the bottom stops at the fold) */
   style?: CSSProperties;
+  /**
+   * On a table: the base below the fold, for the scope and the file list,
+   * or the comment box while lines are selected; the diff keeps the top
+   */
+  base?: HTMLElement | null;
 }
 
 const LAYOUT_KEY = "agentos.diffReview.layout";
@@ -120,6 +128,7 @@ export function DiffReview({
   onUndoTurn,
   className,
   style,
+  base,
 }: DiffReviewProps) {
   const mode = useLayoutMode();
   const desktop = mode === "desktop";
@@ -163,6 +172,10 @@ export function DiffReview({
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const root = useRef<HTMLDivElement>(null);
   const openTarget = useRef<number | null>(null);
+  // On the base, a selection is commented on at once; its text is kept
+  // here so the box can move above the fold (the keyboard covers the base)
+  const onBase = !!base && single;
+  const draft = useRef("");
 
   // A new scope: nothing selected, first file
   useEffect(() => {
@@ -204,7 +217,14 @@ export function DiffReview({
   const clear = useCallback(() => {
     setSelection(null);
     setComposing(null);
+    draft.current = "";
   }, []);
+  // Off the base with a comment started: its box under the lines instead
+  useEffect(() => {
+    if (!onBase && selection && draft.current) setComposing(selection);
+    // Only when the base goes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onBase]);
   const startComment = useCallback(() => {
     if (selection) setComposing(selection);
   }, [selection]);
@@ -225,7 +245,7 @@ export function DiffReview({
   }, [held, clear, onClose]);
 
   const submit = async (body: string) => {
-    const sel = composing;
+    const sel = composing ?? (onBase ? selection : null);
     const file = sel && files.find((f) => pathOf(f) === sel.path);
     if (!sel || !file) return;
     const input = {
@@ -249,6 +269,7 @@ export function DiffReview({
     }
     setComposing(null);
     setSelection(null);
+    draft.current = "";
   };
 
   // Never rejects: the tray shows send.error
@@ -314,6 +335,7 @@ export function DiffReview({
     const bar =
       selection &&
       !composing &&
+      !onBase &&
       selection.path === path &&
       selection.side === side &&
       selection.endLine === n;
@@ -341,6 +363,8 @@ export function DiffReview({
             busy={flow === "immediate" ? send.sending : adding}
             onSubmit={submit}
             onCancel={() => setComposing(null)}
+            draft={draft.current}
+            onDraft={(body) => (draft.current = body)}
           />
         )}
       </>
@@ -379,6 +403,76 @@ export function DiffReview({
     .join(" · ");
   const canUndo = turnNo !== null && !!onUndoTurn && !compact;
 
+  const fileRows = files.map((f, i) => {
+    const p = pathOf(f);
+    const split = splitPath(p);
+    return (
+      <button
+        key={p}
+        type="button"
+        aria-pressed={i === fileIndex}
+        onClick={() => {
+          setFileIndex(i);
+          setPicking(false);
+          clear();
+        }}
+        className={cn(
+          "row min-h-12 w-full text-left",
+          // The base's list has no file row above its first
+          (i > 0 || !onBase) && "border-t border-[var(--hair)]",
+          i === fileIndex && "sel"
+        )}
+      >
+        <span className="flex min-w-0 flex-1 flex-col">
+          <span className="truncate font-mono text-[13px]">{split.name}</span>
+          {split.folder && (
+            <span className="text-muted-foreground truncate text-[13px]">
+              {split.folder}
+            </span>
+          )}
+        </span>
+        {!f.isBinary && (
+          <DiffCounts added={f.additions} removed={f.deletions} />
+        )}
+      </button>
+    );
+  });
+
+  const scopeSeg = (
+    <div
+      className="seg bg-card max-w-full self-start overflow-x-auto"
+      role="group"
+      aria-label="Diff scope"
+    >
+      {hasTurn && (
+        <button
+          type="button"
+          aria-pressed={turnNo !== null}
+          onClick={() => setScope(`turn:${thisTurn!}`)}
+          className="shrink-0"
+        >
+          This turn
+        </button>
+      )}
+      <button
+        type="button"
+        aria-pressed={scope === "branch"}
+        onClick={() => setScope("branch")}
+        className="shrink-0"
+      >
+        Branch
+      </button>
+      <button
+        type="button"
+        aria-pressed={scope === "uncommitted"}
+        onClick={() => setScope("uncommitted")}
+        className="shrink-0"
+      >
+        Uncommitted
+      </button>
+    </div>
+  );
+
   let body: ReactNode;
   if (isLoading && !diff) {
     body = (
@@ -411,74 +505,42 @@ export function DiffReview({
     const pending = pendingByPath.get(path) ?? 0;
     body = (
       <>
-        <div className="group-card shrink-0">
-          <button
-            type="button"
-            aria-expanded={picking}
-            onClick={() => setPicking(!picking)}
-            className="row min-h-12 w-full text-left"
-            title={path}
-          >
-            <File
-              aria-hidden="true"
-              className="text-primary dark:text-meter h-4 w-4 shrink-0"
-            />
-            <span className="flex min-w-0 flex-1 flex-col">
-              <span className="truncate font-mono text-[13px]">{name}</span>
-              <span className="text-muted-foreground truncate text-[13px]">
-                {fileIndex + 1} of {files.length}{" "}
-                {files.length === 1 ? "file" : "files"}
-                {pending > 0 && ` · ${commentCount(pending)}`}
-              </span>
-            </span>
-            {!current.isBinary && (
-              <DiffCounts
-                added={current.additions}
-                removed={current.deletions}
+        {!onBase && (
+          <div className="group-card shrink-0">
+            <button
+              type="button"
+              aria-expanded={picking}
+              onClick={() => setPicking(!picking)}
+              className="row min-h-12 w-full text-left"
+              title={path}
+            >
+              <File
+                aria-hidden="true"
+                className="text-primary dark:text-meter h-4 w-4 shrink-0"
               />
-            )}
-            {picking ? (
-              <ChevronUp className="text-muted-foreground h-4 w-4 shrink-0" />
-            ) : (
-              <ChevronDown className="text-muted-foreground h-4 w-4 shrink-0" />
-            )}
-          </button>
-          {picking &&
-            files.map((f, i) => {
-              const p = pathOf(f);
-              const split = splitPath(p);
-              return (
-                <button
-                  key={p}
-                  type="button"
-                  aria-pressed={i === fileIndex}
-                  onClick={() => {
-                    setFileIndex(i);
-                    setPicking(false);
-                    clear();
-                  }}
-                  className={cn(
-                    "row min-h-12 w-full border-t border-[var(--hair)] text-left",
-                    i === fileIndex && "sel"
-                  )}
-                >
-                  <span className="flex min-w-0 flex-1 flex-col">
-                    <span className="truncate font-mono text-[13px]">
-                      {split.name}
-                    </span>
-                    {split.folder && (
-                      <span className="text-muted-foreground truncate text-[13px]">
-                        {split.folder}
-                      </span>
-                    )}
-                  </span>
-                  {!f.isBinary && (
-                    <DiffCounts added={f.additions} removed={f.deletions} />
-                  )}
-                </button>
-              );
-            })}
-        </div>
+              <span className="flex min-w-0 flex-1 flex-col">
+                <span className="truncate font-mono text-[13px]">{name}</span>
+                <span className="text-muted-foreground truncate text-[13px]">
+                  {fileIndex + 1} of {files.length}{" "}
+                  {files.length === 1 ? "file" : "files"}
+                  {pending > 0 && ` · ${commentCount(pending)}`}
+                </span>
+              </span>
+              {!current.isBinary && (
+                <DiffCounts
+                  added={current.additions}
+                  removed={current.deletions}
+                />
+              )}
+              {picking ? (
+                <ChevronUp className="text-muted-foreground h-4 w-4 shrink-0" />
+              ) : (
+                <ChevronDown className="text-muted-foreground h-4 w-4 shrink-0" />
+              )}
+            </button>
+            {picking && fileRows}
+          </div>
+        )}
         <div
           className={cn(
             "min-h-0 flex-1 overflow-y-auto overscroll-contain",
@@ -597,57 +659,28 @@ export function DiffReview({
         )}
       </div>
 
-      <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
-        <div
-          className="seg bg-card max-w-full self-start overflow-x-auto"
-          role="group"
-          aria-label="Diff scope"
-        >
-          {hasTurn && (
-            <button
-              type="button"
-              aria-pressed={turnNo !== null}
-              onClick={() => setScope(`turn:${thisTurn!}`)}
-              className="shrink-0"
-            >
-              This turn
-            </button>
+      {!onBase && (
+        <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+          {scopeSeg}
+          {desktop && placement === "page" && (
+            <div className="seg bg-card" role="group" aria-label="Layout">
+              {(["unified", "split"] as const).map((l) => (
+                <button
+                  key={l}
+                  type="button"
+                  aria-pressed={layout === l}
+                  onClick={() => {
+                    setLayout(l);
+                    saveLayout(l);
+                  }}
+                >
+                  {l === "unified" ? "Unified" : "Split"}
+                </button>
+              ))}
+            </div>
           )}
-          <button
-            type="button"
-            aria-pressed={scope === "branch"}
-            onClick={() => setScope("branch")}
-            className="shrink-0"
-          >
-            Branch
-          </button>
-          <button
-            type="button"
-            aria-pressed={scope === "uncommitted"}
-            onClick={() => setScope("uncommitted")}
-            className="shrink-0"
-          >
-            Uncommitted
-          </button>
         </div>
-        {desktop && placement === "page" && (
-          <div className="seg bg-card" role="group" aria-label="Layout">
-            {(["unified", "split"] as const).map((l) => (
-              <button
-                key={l}
-                type="button"
-                aria-pressed={layout === l}
-                onClick={() => {
-                  setLayout(l);
-                  saveLayout(l);
-                }}
-              >
-                {l === "unified" ? "Unified" : "Split"}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
+      )}
 
       {body}
 
@@ -671,6 +704,70 @@ export function DiffReview({
           }
         />
       )}
+
+      {onBase &&
+        base &&
+        createPortal(
+          selection ? (
+            <div className="-mx-3 flex flex-col gap-1">
+              <CommentBox
+                // A new range, a new box; its text carries over
+                key={`${selection.path}:${selection.side}:${selection.startLine}:${selection.endLine}`}
+                range={rangeOf(selection)}
+                caption={`${splitPath(selection.path).name} · ${linesCaption(rangeOf(selection))}`}
+                flow={flow}
+                agentName={agentName}
+                busy={flow === "immediate" ? send.sending : adding}
+                onSubmit={submit}
+                onCancel={clear}
+                autoFocus={false}
+                draft={draft.current}
+                onDraft={(body) => (draft.current = body)}
+              />
+              <div className="flex gap-2 px-3">
+                <button
+                  type="button"
+                  disabled={fileIndex <= 0}
+                  onClick={() => {
+                    setFileIndex(fileIndex - 1);
+                    clear();
+                  }}
+                  className="pill pill-secondary pill-sm flex-1 disabled:opacity-40"
+                >
+                  <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+                  Previous file
+                </button>
+                <button
+                  type="button"
+                  disabled={fileIndex >= files.length - 1}
+                  onClick={() => {
+                    setFileIndex(fileIndex + 1);
+                    clear();
+                  }}
+                  className="pill pill-secondary pill-sm flex-1 disabled:opacity-40"
+                >
+                  Next file
+                  <ChevronRight className="h-4 w-4" aria-hidden="true" />
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+                <span className="text-muted-foreground text-[13px]">
+                  {diff
+                    ? `${files.length} ${files.length === 1 ? "file" : "files"} changed`
+                    : "Changes"}
+                </span>
+                {scopeSeg}
+              </div>
+              {files.length > 0 && (
+                <div className="group-card shrink-0">{fileRows}</div>
+              )}
+            </>
+          ),
+          base
+        )}
     </section>
   );
 }
