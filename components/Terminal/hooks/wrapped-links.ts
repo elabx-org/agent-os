@@ -15,6 +15,25 @@ import { openSessionLink } from "@/lib/client/link-target";
 const URL_PATTERN = /https?:\/\/[^\s<>"'`]+/g;
 const URL_CHAR = /[\w\-.~:/?#[\]@!$&'()*+,;=%]/;
 const MAX_ROWS = 8;
+const SENTENCE_END = /[.,;:!?]['")\]]*$|[)\]]$/;
+const PLAIN_WORD = /^[A-Za-z][a-z]*[.,;:!?'")\]]*$/;
+
+/**
+ * A row's text runs on into the next row's: it reaches the right edge and
+ * the next carries on without a space. Not when the row ends a sentence
+ * (".", ")." …) and the next starts a plain word: a paragraph whose line
+ * happens to fill the pane, not a URL broken at the edge.
+ */
+export function rowRunsOn(row: string, next: string, cols: number): boolean {
+  const line = row.trimEnd();
+  // Claude Code leaves a column of margin; tmux fills the row
+  if (line.length < cols - 1) return false;
+  if (!URL_CHAR.test(line[line.length - 1])) return false;
+  const rest = next.trimStart();
+  if (!rest || !URL_CHAR.test(rest[0])) return false;
+  const word = rest.split(/\s/)[0];
+  return !(SENTENCE_END.test(line) && PLAIN_WORD.test(word));
+}
 
 export function openLink(uri: string) {
   // localhost links go through the port proxy; the iOS app opens
@@ -27,15 +46,9 @@ export function registerWrappedLinks(term: Terminal) {
     term.buffer.active.getLine(row)?.translateToString(true) ?? "";
 
   /** Row (0-based) runs into row + 1 */
-  const continues = (row: number) => {
-    if (row + 1 >= term.buffer.active.length) return false;
-    const line = text(row).trimEnd();
-    // Claude Code leaves a column of margin; tmux fills the row
-    if (line.length < term.cols - 1) return false;
-    if (!URL_CHAR.test(line[line.length - 1])) return false;
-    const next = text(row + 1).trimStart();
-    return next.length > 0 && URL_CHAR.test(next[0]);
-  };
+  const continues = (row: number) =>
+    row + 1 < term.buffer.active.length &&
+    rowRunsOn(text(row), text(row + 1), term.cols);
 
   const provider: ILinkProvider = {
     provideLinks(y, callback) {
