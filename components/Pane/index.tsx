@@ -53,6 +53,7 @@ import { isNative } from "@/lib/native-bridge";
 import { useSharedFiles } from "@/hooks/useSharedFiles";
 import { useGitStatus } from "@/data/git/queries";
 import { useTerminalRunRequest } from "@/stores/scriptTerminal";
+import { PickSession } from "./PickSession";
 
 // Dynamic imports for client-only components with loading states
 const Terminal = dynamic(
@@ -376,6 +377,34 @@ export const Pane = memo(function Pane({
     focusPane(paneId);
   }, [focusPane, paneId]);
 
+  // A tab with neither a session nor a tmux: a bare shell. The pane offers
+  // its sessions first; "Open a terminal" keeps the shell for that tab
+  const [shellTabs, setShellTabs] = useState<ReadonlySet<string>>(
+    () => new Set()
+  );
+  const bareTab =
+    activeTab &&
+    !activeTab.sessionId &&
+    !activeTab.attachedTmux &&
+    !shellTabs.has(activeTab.id)
+      ? activeTab
+      : null;
+  const pickSession = viewMode === "terminal" && bareTab && (
+    // Focused on the press, so the pick (on the click, after a render)
+    // opens in this pane
+    <div className="contents" onPointerDownCapture={handleFocus}>
+      <PickSession
+        key={bareTab.id}
+        sessions={sessions}
+        onPick={(id) => onSelectSession?.(id)}
+        onShell={() => {
+          setShellTabs((tabs) => new Set(tabs).add(bareTab.id));
+          terminalRef?.focus();
+        }}
+      />
+    </div>
+  );
+
   const handleDetach = useCallback(() => {
     if (terminalRef) {
       terminalRef.sendInput("\x02d"); // Ctrl+B d to detach
@@ -674,6 +703,8 @@ export const Pane = memo(function Pane({
             );
           })}
 
+          {pickSession}
+
           {/* Chat: mounted only while shown, it polls the transcript */}
           {viewMode === "chat" && session && (
             <ChatView
@@ -793,6 +824,8 @@ export const Pane = memo(function Pane({
                       </div>
                     );
                   })}
+
+                  {pickSession}
 
                   {/* Chat */}
                   {viewMode === "chat" && session && (
