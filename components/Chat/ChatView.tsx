@@ -434,6 +434,8 @@ export function ChatView({
   const [composerFocused, setComposerFocused] = useState(false);
   const deck = useFoldDeck(rootRef);
   const deckControls = deck && !composerFocused && !nativeKeyboard;
+  // A diff open on a table: its files (or the comment box) take the base
+  const [diffBase, setDiffBase] = useState<HTMLDivElement | null>(null);
   const onDeckFold = !!deck;
   useEffect(() => {
     if (!onDeck) return;
@@ -792,6 +794,11 @@ export function ChatView({
             <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pt-1.5 pb-3">
               {needsYou && hasCard ? (
                 needsYouCard
+              ) : reviewHere &&
+                diffTurn !== null &&
+                !pages &&
+                mode !== "desktop" ? (
+                <div ref={setDiffBase} className="flex flex-col gap-3" />
               ) : (
                 <DeckActions
                   sessionId={session.id}
@@ -968,6 +975,7 @@ export function ChatView({
           placement={pages || mode === "desktop" ? "page" : "screen"}
           onClose={() => setDiffTurn(null)}
           onUndoTurn={setUndoTurn}
+          base={deckControls && !pages && mode !== "desktop" ? diffBase : null}
           className={
             pages
               ? "min-w-0 flex-1"
