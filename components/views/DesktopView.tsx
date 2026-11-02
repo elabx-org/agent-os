@@ -240,7 +240,11 @@ export function DesktopView(props: ViewProps) {
         projects={projects}
         homeOpen={sidebarOpen}
         homeWidth={homeWidth}
-        pageSpread={page?.kind === "inbox" || page?.kind === "running"}
+        pageSpread={
+          page?.kind === "inbox" ||
+          page?.kind === "running" ||
+          page?.kind === "mocks"
+        }
         page={
           pageOpen && (
             <WorkspacePage view={props} onOpenSession={openFromHome} />

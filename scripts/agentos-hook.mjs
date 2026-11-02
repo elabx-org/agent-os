@@ -12,6 +12,9 @@
  * for this session) it also marks turn boundaries through
  * agentos-snapshot.mjs: the pre snapshot on UserPromptSubmit (capped at 3s),
  * edited paths on PostToolUse, the post snapshot detached on Stop.
+ *
+ * A published Artifact (a mock) is appended to claude-state/mocks.jsonl for
+ * AgentOS's Mocks page (lib/mocks.ts), with the session it came from.
  */
 import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
@@ -222,6 +225,65 @@ function record(dir, input) {
   }
 }
 
+const ARTIFACT_URL = /https:\/\/claude\.ai\/(?:code\/)?artifact\/[\w-]+/;
+
+/** The page's <title>, from the first 8 KB of the published file */
+function titleOf(file) {
+  if (typeof file !== "string" || !file) return undefined;
+  try {
+    const fd = fs.openSync(file, "r");
+    const buf = Buffer.alloc(8192);
+    const n = fs.readSync(fd, buf, 0, buf.length, 0);
+    fs.closeSync(fd);
+    const m = buf
+      .subarray(0, n)
+      .toString("utf8")
+      .match(/<title>([^<]*)</i);
+    return m ? m[1].trim() || undefined : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** A page published with the Artifact tool, for the Mocks page */
+function mockOf(input) {
+  if (input.hook_event_name !== "PostToolUse") return null;
+  if (input.tool_name !== "Artifact") return null;
+  const args = input.tool_input || {};
+  if (args.action && args.action !== "publish") return null;
+  if (args.asset || args.type_url) return null;
+  const text =
+    typeof input.tool_response === "string"
+      ? input.tool_response
+      : JSON.stringify(input.tool_response ?? "");
+  if (!/Published /.test(text)) return null;
+  const url = text.match(ARTIFACT_URL)?.[0] ?? args.url;
+  if (!url) return null;
+  const version = Number(text.match(/\(Version (\d+)/)?.[1]) || undefined;
+  const file =
+    text.match(/Published (\S+) at https:/)?.[1] ?? args.file_path ?? undefined;
+  return {
+    url,
+    version,
+    file,
+    title: titleOf(file) ?? args.title ?? undefined,
+    description:
+      typeof args.description === "string"
+        ? capText(args.description, MAX_MESSAGE)
+        : undefined,
+  };
+}
+
+function recordMock(dir, input) {
+  const mock = mockOf(input);
+  if (!mock) return;
+  const line = { t: Date.now(), session: path.basename(dir), ...mock };
+  fs.appendFileSync(
+    path.join(path.dirname(dir), "mocks.jsonl"),
+    JSON.stringify(line) + "\n"
+  );
+}
+
 const SNAPSHOT_SCRIPT = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
   "agentos-snapshot.mjs"
@@ -276,6 +338,11 @@ try {
       record(dir, input);
     } catch {
       // Recording is best effort
+    }
+    try {
+      recordMock(dir, input);
+    } catch {
+      // So is a mock
     }
     await markTurn(dir, input);
   }

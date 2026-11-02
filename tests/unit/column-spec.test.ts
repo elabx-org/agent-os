@@ -694,7 +694,7 @@ test("More never offers the view showing (23)", () => {
   );
 });
 
-test("moreExtras: the other view, the session's actions, Running (21, DPD-13)", () => {
+test("moreExtras: the other view, the session's actions, Running, Mocks (21, DPD-13)", () => {
   const session = { scripts: true, settle: true, copyId: true };
   const ids = (src: Partial<MoreSources>) =>
     moreExtras({
@@ -705,7 +705,13 @@ test("moreExtras: the other view, the session's actions, Running (21, DPD-13)", 
       session,
       ...src,
     }).map((i) => i.id);
-  assert.deepEqual(ids({}), ["scripts", "settle", "copyId", "running"]);
+  assert.deepEqual(ids({}), [
+    "scripts",
+    "settle",
+    "copyId",
+    "running",
+    "mocks",
+  ]);
   // Files with the bar's Chat: Terminal too
   assert.deepEqual(ids({ viewMode: "files", shown: ["chat", "files"] }), [
     "terminal",
@@ -713,6 +719,7 @@ test("moreExtras: the other view, the session's actions, Running (21, DPD-13)", 
     "settle",
     "copyId",
     "running",
+    "mocks",
   ]);
   // The closed Files column shows neither
   assert.deepEqual(ids({ viewMode: "files", shown: ["back"] }).slice(0, 2), [
@@ -721,12 +728,22 @@ test("moreExtras: the other view, the session's actions, Running (21, DPD-13)", 
   ]);
   assert.deepEqual(
     ids({ session: { scripts: false, settle: false, copyId: true } }),
-    ["copyId", "running"]
+    ["copyId", "running", "mocks"]
   );
-  // Off a session only Running, and never on Running itself
-  assert.deepEqual(ids({ surface: "projects", viewMode: null }), ["running"]);
+  // Off a session Running and Mocks, and neither on its own page
+  assert.deepEqual(ids({ surface: "projects", viewMode: null }), [
+    "running",
+    "mocks",
+  ]);
   assert.deepEqual(ids({ surface: "running", viewMode: null }), []);
-  assert.deepEqual(ids({ running: false, surface: "now" }), []);
+  assert.deepEqual(ids({ surface: "mocks", viewMode: null }), ["running"]);
+  assert.deepEqual(ids({ running: false, surface: "now" }), ["mocks"]);
+  assert.deepEqual(ids({ running: false, surface: "settings" }), []);
+  // Shown already: not again
+  assert.deepEqual(
+    ids({ running: false, surface: "now", shown: ["mocks"] }),
+    []
+  );
 });
 
 test("More offers a session's agents while the column leaves them out", () => {

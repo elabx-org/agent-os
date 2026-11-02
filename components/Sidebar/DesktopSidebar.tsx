@@ -2,7 +2,14 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useSnapshot } from "valtio";
-import { ChevronLeft, Folder, MonitorPlay, Plus, Search } from "lucide-react";
+import {
+  ChevronLeft,
+  Folder,
+  GalleryVerticalEnd,
+  MonitorPlay,
+  Plus,
+  Search,
+} from "lucide-react";
 import { AppLogo } from "@/components/SessionList/SessionListHeader";
 import type { Session } from "@/lib/db";
 import type { SessionStatus, ViewProps } from "@/components/views/types";
@@ -337,6 +344,21 @@ export function DesktopSidebar({
           >
             <MonitorPlay className="text-muted-foreground h-4 w-4 flex-none" />
             <span className="min-w-0 flex-1 truncate">Running</span>
+          </button>
+        )}
+        {!newOpen && (
+          <button
+            type="button"
+            onClick={() => openPage({ kind: "mocks" })}
+            aria-current={page?.kind === "mocks" ? "page" : undefined}
+            className={cn(
+              "srow hover:bg-foreground/5 w-full flex-none text-left",
+              !running && "mt-2.5",
+              page?.kind === "mocks" && "sel hover:bg-primary/20"
+            )}
+          >
+            <GalleryVerticalEnd className="text-muted-foreground h-4 w-4 flex-none" />
+            <span className="min-w-0 flex-1 truncate">Mocks</span>
           </button>
         )}
       </nav>

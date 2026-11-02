@@ -188,6 +188,12 @@ const BASE = {
     icon: "MonitorPlay",
     label: "Running",
   },
+  mocks: {
+    id: "mocks",
+    symbol: "rectangle.on.rectangle",
+    icon: "GalleryVerticalEnd",
+    label: "Mocks",
+  },
   chat: {
     id: "chat",
     symbol: "bubble.left",
@@ -623,6 +629,15 @@ export function moreItems(
     });
 }
 
+/** Where More offers the Mocks page (from a session, its own mocks) */
+const MOCKS_FROM: Surface[] = [
+  "session",
+  "beside",
+  "now",
+  "projects",
+  "project",
+];
+
 /** What More adds to what the column leaves out, where it shows */
 export interface MoreSources {
   surface: Surface;
@@ -654,6 +669,7 @@ export function moreExtras(src: MoreSources): Base[] {
     if (src.session.copyId) out.push(BASE.copyId);
   }
   if (src.running && src.surface !== "running") out.push(BASE.running);
+  if (MOCKS_FROM.includes(src.surface)) out.push(BASE.mocks);
   return out.filter((it) => !src.shown.includes(it.id));
 }
 
@@ -994,6 +1010,7 @@ export function columnFor(
     case "search":
       return [back(ctx), item(BASE.more, sep)];
     case "running":
+    case "mocks":
       // Its own page, not the session's: back (to the session it was
       // opened from) | More (the list has Show all itself)
       return [back(ctx), item(BASE.more, sep)];

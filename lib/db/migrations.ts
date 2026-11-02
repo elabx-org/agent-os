@@ -563,6 +563,35 @@ const migrations: Migration[] = [
       );
     }),
   },
+  {
+    id: 34,
+    name: "add_mocks_table",
+    up: atomic((db) => {
+      // Mocks sessions publish (lib/mocks.ts), from the Claude hook's
+      // claude-state/mocks.jsonl; status ongoing|completed|rejected|abandoned,
+      // status_by auto|user|session; times in epoch ms
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS mocks (
+          url TEXT PRIMARY KEY,
+          session_id TEXT,
+          project_id TEXT,
+          title TEXT,
+          file TEXT,
+          description TEXT,
+          versions INTEGER NOT NULL DEFAULT 1,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL,
+          status TEXT NOT NULL DEFAULT 'ongoing',
+          status_by TEXT NOT NULL DEFAULT 'auto',
+          status_note TEXT,
+          status_at INTEGER,
+          pr TEXT,
+          archived_at INTEGER
+        );
+        CREATE INDEX IF NOT EXISTS idx_mocks_updated ON mocks(updated_at);
+      `);
+    }),
+  },
 ];
 
 export function runMigrations(db: Database.Database): void {
