@@ -252,10 +252,28 @@ function mockOf(input) {
   const args = input.tool_input || {};
   if (args.action && args.action !== "publish") return null;
   if (args.asset || args.type_url) return null;
-  const text =
-    typeof input.tool_response === "string"
-      ? input.tool_response
-      : JSON.stringify(input.tool_response ?? "");
+  const res = input.tool_response;
+  // The tool's structured result: { url, path, title, seq, ... }
+  if (res && typeof res === "object" && !Array.isArray(res)) {
+    if (typeof res.url !== "string" || !ARTIFACT_URL.test(res.url)) return null;
+    const file = typeof res.path === "string" ? res.path : args.file_path;
+    return {
+      url: res.url.match(ARTIFACT_URL)[0],
+      version: Number(res.seq) || undefined,
+      file,
+      title:
+        (typeof res.title === "string" && res.title) ||
+        titleOf(file) ||
+        args.title ||
+        undefined,
+      description:
+        typeof args.description === "string"
+          ? capText(args.description, MAX_MESSAGE)
+          : undefined,
+    };
+  }
+  // Or its text: "Published <file> at <url> (Version N, ..."
+  const text = typeof res === "string" ? res : JSON.stringify(res ?? "");
   if (!/Published /.test(text)) return null;
   const url = text.match(ARTIFACT_URL)?.[0] ?? args.url;
   if (!url) return null;

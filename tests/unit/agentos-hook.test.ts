@@ -221,6 +221,33 @@ describe("agentos-hook mocks", () => {
     assert.equal(line.description, "Three rail options");
   });
 
+  test("the tool's structured result: link, seq, path and title", () => {
+    const { home, stateDir } = setup(null);
+    quiet(
+      runHook(
+        stateDir("s2"),
+        publish(
+          {
+            url: "https://claude.ai/artifact/SeecS479EiWVuGVGi7SCuJ",
+            path: "/scratch/mocks-tracker.html",
+            title: "AgentOS Mocks Tracker",
+            seq: 3,
+            version: "1793657716-d0cc",
+            unchanged: false,
+          },
+          { description: "Where the list lives" }
+        )
+      )
+    );
+    const [line] = inbox(home);
+    assert.equal(line.session, "s2");
+    assert.equal(line.url, "https://claude.ai/artifact/SeecS479EiWVuGVGi7SCuJ");
+    assert.equal(line.version, 3);
+    assert.equal(line.file, "/scratch/mocks-tracker.html");
+    assert.equal(line.title, "AgentOS Mocks Tracker");
+    assert.equal(line.description, "Where the list lives");
+  });
+
   test("reads, lists, asset uploads and failures are not mocks", () => {
     const { home, stateDir } = setup(null);
     const ok = "Published /x.html at https://claude.ai/artifact/AbC (Version 1";
@@ -234,6 +261,7 @@ describe("agentos-hook mocks", () => {
       })
     );
     quiet(runHook(stateDir("s1"), { ...publish(ok), tool_name: "Write" }));
+    quiet(runHook(stateDir("s1"), publish({ error: "conflict" })));
     assert.deepEqual(inbox(home), []);
   });
 });
