@@ -261,6 +261,7 @@ export function DesktopView(props: ViewProps) {
               sessions={sessions}
               sessionStatuses={sessionStatuses}
               shownIds={shownIds}
+              projectNames={projectNames}
               shells={shells}
               onOpenSession={openOnDesktop}
               onFocusPane={focusPane}
