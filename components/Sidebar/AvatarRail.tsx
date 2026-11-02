@@ -17,6 +17,8 @@ export interface AvatarRailProps {
   sessionStatuses: Record<string, SessionStatus>;
   /** Sessions showing in a pane: ringed in the accent */
   shownIds: string[];
+  /** Project names by id, for each tile's caption */
+  projectNames?: Record<string, string>;
   /** Panes showing a plain shell (no session): a ringed >_ tile each */
   shells?: { paneId: string; name: string }[];
   onOpenSession: (session: Session) => void;
@@ -25,18 +27,36 @@ export interface AvatarRailProps {
 }
 
 /** The rail's width (Desk-Beside) */
-export const AVATAR_RAIL_WIDTH = 72;
+export const AVATAR_RAIL_WIDTH = 76;
 
 /**
  * Desk-Beside: the sidebar collapsed while two panes are open. New on
  * top, an agent tile per session on screen or needing you or working, with
- * its state dot, and the open shells; what's on screen is ringed. Settings
- * at the bottom.
+ * its state dot, and the open shells; what's on screen is ringed. Each tile
+ * is captioned with its project and title, since a touch screen never
+ * shows the hover title. Settings at the bottom.
  */
+
+function RailCaption({ top, sub }: { top: string; sub?: string }) {
+  return (
+    <span
+      aria-hidden
+      className="w-[68px] text-center text-[10px] leading-tight"
+    >
+      <span className="text-foreground block truncate font-semibold">
+        {top}
+      </span>
+      {sub && (
+        <span className="text-muted-foreground block truncate">{sub}</span>
+      )}
+    </span>
+  );
+}
 export function AvatarRail({
   sessions,
   sessionStatuses,
   shownIds,
+  projectNames = {},
   shells = [],
   onOpenSession,
   onFocusPane,
@@ -68,32 +88,41 @@ export function AvatarRail({
           const state = sessionState(s, sessionStatuses[s.id]?.status, "");
           const { title } = displayTitle(s, titles);
           const dot = state === "needs" || state === "work";
+          const project = s.project_id ? projectNames[s.project_id] : undefined;
           return (
             <button
               key={s.id}
               type="button"
               onClick={() => onOpenSession(s)}
-              aria-label={`${title}, ${STATE_WORD[state].toLowerCase()}`}
+              aria-label={`${title}${project ? `, ${project}` : ""}, ${STATE_WORD[state].toLowerCase()}`}
               title={title}
-              className={cn(
-                "relative flex-none rounded-xl active:opacity-80",
-                shownIds.includes(s.id) &&
-                  "shadow-[0_0_0_2px_hsl(var(--primary))]"
-              )}
+              className="flex flex-none flex-col items-center gap-1 active:opacity-80"
             >
-              <Avatar
-                {...agentAvatar(s.agent_type)}
-                className={state === "paused" ? "opacity-60" : undefined}
-              />
-              {dot && (
-                <span
-                  aria-hidden
-                  className={cn(
-                    "border-page absolute -right-0.5 -bottom-0.5 h-3 w-3 rounded-full border-2",
-                    STATE_DOT_CLASS[state]
-                  )}
+              <span
+                className={cn(
+                  "relative rounded-xl",
+                  shownIds.includes(s.id) &&
+                    "shadow-[0_0_0_2px_hsl(var(--primary))]"
+                )}
+              >
+                <Avatar
+                  {...agentAvatar(s.agent_type)}
+                  className={state === "paused" ? "opacity-60" : undefined}
                 />
-              )}
+                {dot && (
+                  <span
+                    aria-hidden
+                    className={cn(
+                      "border-page absolute -right-0.5 -bottom-0.5 h-3 w-3 rounded-full border-2",
+                      STATE_DOT_CLASS[state]
+                    )}
+                  />
+                )}
+              </span>
+              <RailCaption
+                top={project ?? title}
+                sub={project ? title : undefined}
+              />
             </button>
           );
         })}
@@ -104,9 +133,12 @@ export function AvatarRail({
             onClick={() => onFocusPane?.(shell.paneId)}
             aria-label={`${shell.name}, shell`}
             title={shell.name}
-            className="relative flex-none rounded-xl shadow-[0_0_0_2px_hsl(var(--primary))] active:opacity-80"
+            className="flex flex-none flex-col items-center gap-1 active:opacity-80"
           >
-            <Avatar label=">_" tone="shell" icon={Terminal} />
+            <span className="rounded-xl shadow-[0_0_0_2px_hsl(var(--primary))]">
+              <Avatar label=">_" tone="shell" icon={Terminal} />
+            </span>
+            <RailCaption top={shell.name} sub="Shell" />
           </button>
         ))}
       </div>
