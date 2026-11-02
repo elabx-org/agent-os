@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   agentsMoreItem,
   columnFor,
+  shortColumn,
   hiddenSlots,
   moreExtras,
   moreItems,
@@ -202,11 +203,31 @@ test("columnFor: keyboard up compacts the closed session column (Closed-Terminal
     fmt(columnFor("session", "duo-closed", ctx)),
     "back | chat git[3n] more"
   );
-  // Only the closed Duo's column is that short
+  // The open Duo's too, so iOS doesn't fold the view switch into its ⋯
   assert.equal(
     fmt(columnFor("session", "duo-open", ctx)),
+    "back | chat git[3n] more"
+  );
+  assert.equal(
+    fmt(columnFor("session", "book", ctx)),
+    "back | chat git[3n] more"
+  );
+  // The desktop has no keyboard to make room for
+  assert.equal(
+    fmt(columnFor("session", "desktop", ctx)),
     "back | chat git[3n] files live | more"
   );
+});
+
+test("shortColumn: where the keyboard cuts the column down", () => {
+  assert.equal(shortColumn("session", "duo-closed", true), true);
+  assert.equal(shortColumn("beside", "duo-closed", true), true);
+  assert.equal(shortColumn("session", "duo-open", true), true);
+  assert.equal(shortColumn("session", "book", true), true);
+  assert.equal(shortColumn("beside", "duo-open", true), false);
+  assert.equal(shortColumn("now", "duo-open", true), false);
+  assert.equal(shortColumn("session", "desktop", true), false);
+  assert.equal(shortColumn("session", "duo-open", false), false);
 });
 
 test("columnFor: working, Stop stands before More on the closed Duo (N-Queue)", () => {

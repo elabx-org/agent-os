@@ -8,6 +8,7 @@ import {
   moreItems,
   moreExtras,
   agentsMoreItem,
+  shortColumn,
   type ColumnContext,
   type ColumnItem,
   type ColumnOrder,
@@ -229,10 +230,8 @@ export function nativeColumn(): {
             kind,
             columnOrderStore.order,
             mobileNavStore.viewMode,
-            // The closed Duo's session column, cut down above the keyboard
-            mode === "duo-closed" &&
-              mobileNavStore.nativeKeyboard &&
-              (surface === "session" || surface === "beside"),
+            // The session column, cut down above the keyboard
+            shortColumn(surface, mode, mobileNavStore.nativeKeyboard),
             WIDE.includes(mode)
           )
         : []),

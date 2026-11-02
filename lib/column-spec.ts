@@ -860,6 +860,22 @@ export function phoneBar(
 export const WIDE: LayoutMode[] = ["duo-open", "book", "desktop"];
 
 /**
+ * The keyboard up cuts the session column to what fits above it: on the
+ * closed Duo, and on the open one too (a session across both pages), where
+ * iOS would otherwise fold the view switch into its own overflow
+ */
+export function shortColumn(
+  surface: Surface,
+  mode: LayoutMode,
+  keyboardUp: boolean
+): boolean {
+  if (!keyboardUp) return false;
+  if (mode === "duo-closed")
+    return surface === "session" || surface === "beside";
+  return (mode === "duo-open" || mode === "book") && surface === "session";
+}
+
+/**
  * The items for a surface, top to bottom (or left to right), as the mocks
  * draw them: Main, Closed-Chat/Terminal/Settings/Project, E-Display,
  * E-Projects, E-NeedsYou, E-New, N-Search, Open-Now, Open-Beside,
@@ -899,7 +915,7 @@ export function columnFor(
     case "session":
       return sessionColumn(
         ctx,
-        mode === "duo-closed" && ctx.keyboardUp,
+        shortColumn(surface, mode, ctx.keyboardUp),
         mode === "duo-closed"
       );
     case "beside":
