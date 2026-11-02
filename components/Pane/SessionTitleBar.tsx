@@ -51,6 +51,8 @@ import { useIsNative } from "@/hooks/useIsNative";
 import { besidePills, useSpreadPanes } from "@/components/views/SessionSpread";
 import { usePanes } from "@/contexts/PaneContext";
 import { useLayoutMode } from "@/hooks/useLayoutMode";
+import { useSurface } from "@/stores/surface";
+import { shortColumn } from "@/lib/column-spec";
 import { useShortScreen } from "@/hooks/useShortScreen";
 import { runningStore } from "@/stores/running";
 import { useBackLabel } from "@/components/ControlColumn/columnState";
@@ -224,6 +226,7 @@ export function SessionTitleBar({
   const wide = !isMobile;
   // The desktop shell has no column, so its views switch in this bar
   const layout = useLayoutMode();
+  const surface = useSurface();
   const backLabel = useBackLabel();
   const hasFolder = !!session?.working_directory;
   // Plain phones get the column as a bottom bar, which has no room for it
@@ -269,8 +272,12 @@ export function SessionTitleBar({
   const replyPage = useReplyPage(session?.id);
   const slimRef = useRef<HTMLDivElement>(null);
   const pageSlim = variant === "page" || variant === "large";
+  // The Duo's system column keeps its view switch while typing; a text one
+  // here would only repeat it (HIG: prefer a symbol, keep bar placement)
+  const viewInColumn =
+    nativeTyping && shortColumn(surface, layout, nativeKeyboard);
   const peek =
-    session && (viewMode === "terminal" || viewMode === "chat")
+    session && !viewInColumn && (viewMode === "terminal" || viewMode === "chat")
       ? viewMode
       : null;
   // Switch in the tap itself and focus the other view's box there, so the
@@ -639,12 +646,7 @@ export function SessionTitleBar({
   else if (info && variant === "fold")
     header = (
       <div className={cn(hidden && "hidden")}>
-        <FoldHeader
-          info={info}
-          viewMode={viewMode}
-          onViewModeChange={onViewModeChange}
-          menu={moreMenu}
-        />
+        <FoldHeader info={info} menu={moreMenu} />
       </div>
     );
   else if (info && (variant === "page" || variant === "large"))

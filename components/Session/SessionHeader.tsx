@@ -275,19 +275,18 @@ const CHAT_TERMINAL: { mode: PaneViewMode; label: ReactNode }[] = [
  * Half folded (Fold-Chat, Fold-Terminal): a back circle, the title in a
  * glass pill with its crumb, and Chat | Terminal on the right
  */
+/**
+ * Tabletop's header: back, the title and ⋯. Chat, Terminal and Agents are
+ * the bar's on the base half, so no text switch repeats them up here
+ */
 export function FoldHeader({
   info,
-  viewMode,
-  onViewModeChange,
   menu,
 }: {
   info: HeaderInfo;
-  viewMode: PaneViewMode;
-  onViewModeChange: (mode: PaneViewMode) => void;
   /** ⋯, for the rarer views and actions */
   menu?: ReactNode;
 }) {
-  const agentsView = canonicalViewMode(viewMode) === "agents";
   const backLabel = useBackLabel();
   return (
     <header className="native-top-inset kb-compact-hide bg-background flex shrink-0 items-center gap-2.5 px-5 pt-4 pb-2">
@@ -305,20 +304,7 @@ export function FoldHeader({
         </span>
         <Crumb info={info} className="text-xs leading-tight" />
       </div>
-      <div className="ml-auto flex shrink-0 items-center gap-1.5">
-        {/* The agents view shows as the third, selected segment */}
-        <ViewSeg
-          viewMode={agentsView ? "agents" : viewMode}
-          onViewModeChange={onViewModeChange}
-          views={
-            agentsView
-              ? [...CHAT_TERMINAL, { mode: "agents", label: "Agents" }]
-              : CHAT_TERMINAL
-          }
-          className="glass"
-        />
-        {menu}
-      </div>
+      <div className="ml-auto flex shrink-0 items-center gap-1.5">{menu}</div>
     </header>
   );
 }
