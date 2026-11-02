@@ -28,6 +28,7 @@ import {
   Play,
   MessageSquare,
   CircleCheck,
+  GalleryVerticalEnd,
   MonitorPlay,
   Search,
 } from "lucide-react";
@@ -465,6 +466,10 @@ export function SessionTitleBar({
                 Running
               </DropdownMenuItem>
             )}
+            <DropdownMenuItem onSelect={() => runNav("mocks")}>
+              <GalleryVerticalEnd className="h-4 w-4" />
+              Mocks
+            </DropdownMenuItem>
             <DropdownMenuSeparator />
           </>
         )}

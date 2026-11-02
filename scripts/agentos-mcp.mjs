@@ -204,6 +204,7 @@ const server = new McpServer(
       "Permission requests are the user's: you can't answer them (answer_prompt and send_message refuse) or start sessions that skip them. When a session is waiting for permission, tell the user and let them answer it in AgentOS.",
       "You can't control your own session. Don't stop, interrupt or answer prompts in sessions you didn't start unless the user asks.",
       "The user is on their phone, not this machine: a server you start (a dev server, a preview, a test page) is reachable only through AgentOS's port proxy. When you start one, give the user its preview_url link, never a localhost or 0.0.0.0 address, and don't open ports to the network. Bind to 127.0.0.1 or 0.0.0.0 on any free port. list_servers shows what runs; stop_server stops only servers your own session started.",
+      "When the user approves, rejects or drops a mock you published, record it with set_mock_status (with the PR once it's built).",
     ].join("\n"),
   }
 );
@@ -613,6 +614,33 @@ server.registerTool(
     if (!found?.pid) throw new Error(`Nothing listens on port ${port}`);
     await api(`/api/running/${found.pid}`, { method: "DELETE" });
     return `Stopped :${port}`;
+  })
+);
+
+server.registerTool(
+  "set_mock_status",
+  {
+    description:
+      "Record where a mock you published (a claude.ai artifact link) stands on the user's Mocks page: completed when the user approved it and it was built (give the PR), rejected when the user turned it down, abandoned when the user dropped it, ongoing when work on it resumes. Only mocks published since AgentOS began tracking them.",
+    inputSchema: {
+      url: z.string().describe("The mock's claude.ai artifact link"),
+      status: z.enum(["ongoing", "completed", "rejected", "abandoned"]),
+      pr: z
+        .string()
+        .optional()
+        .describe("The PR that built it, e.g. #162 or a link"),
+      note: z
+        .string()
+        .optional()
+        .describe("A few words on why, e.g. 'User picked option B'"),
+    },
+  },
+  tool(async ({ url, status, pr, note }) => {
+    await api("/api/mocks", {
+      method: "PATCH",
+      body: { url, status, note, ...(pr ? { pr } : {}) },
+    });
+    return `Marked ${status}`;
   })
 );
 

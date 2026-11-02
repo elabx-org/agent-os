@@ -48,4 +48,8 @@ export const PAGES: { [K in WorkspacePageKind]: ComponentType<PageProps<K>> } =
       () => import("@/components/Running").then((m) => m.RunningPage),
       { ssr: false }
     ),
+    mocks: dynamic(
+      () => import("@/components/Mocks").then((m) => m.MocksPage),
+      { ssr: false }
+    ),
   };

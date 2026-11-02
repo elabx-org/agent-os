@@ -80,6 +80,7 @@ export const NAV_ACTIONS = [
   "newFile",
   "upload",
   "running",
+  "mocks",
   "settle",
   "copyId",
 ] as const;
@@ -312,6 +313,8 @@ function pageName(page: WorkspacePage): string {
       return "Needs you";
     case "running":
       return "Running";
+    case "mocks":
+      return "Mocks";
     case "new":
       return "New session";
     case "agent":
@@ -339,6 +342,8 @@ function surfaceName(surface: Surface): string {
       return "Settings";
     case "running":
       return "Running";
+    case "mocks":
+      return "Mocks";
     case "now":
     case "search":
       return "Now";
@@ -594,6 +599,13 @@ export const NAV_ROUTES: Record<NavAction, (leftPage: boolean) => void> = {
     const sessionId =
       (surface === "session" || surface === "beside") && runningStore.sessionId;
     openPage(sessionId ? { kind: "running", sessionId } : { kind: "running" });
+  },
+  // Every session's mocks; from a session, the ones it published
+  mocks: () => {
+    const surface = currentSurface();
+    const sessionId =
+      (surface === "session" || surface === "beside") && runningStore.sessionId;
+    openPage(sessionId ? { kind: "mocks", sessionId } : { kind: "mocks" });
   },
 };
 

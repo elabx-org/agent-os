@@ -171,3 +171,69 @@ describe("agentos-hook turn snapshots", () => {
     assert.equal(journal(dir).length, 0);
   });
 });
+
+describe("agentos-hook mocks", () => {
+  const publish = (response: unknown, input: object = {}) => ({
+    session_id: "c1",
+    cwd: "/tmp",
+    transcript_path: "/nonexistent",
+    hook_event_name: "PostToolUse",
+    tool_name: "Artifact",
+    tool_use_id: "a1",
+    tool_input: { file_path: "/nowhere/mock.html", ...input },
+    tool_response: response,
+  });
+  const inbox = (home: string) => {
+    const file = path.join(home, "claude-state", "mocks.jsonl");
+    return fs.existsSync(file)
+      ? fs
+          .readFileSync(file, "utf8")
+          .split("\n")
+          .filter(Boolean)
+          .map((l) => JSON.parse(l))
+      : [];
+  };
+
+  test("a publish is recorded with its session, link, version and title", () => {
+    const { home, root, stateDir } = setup(null);
+    const page = path.join(root, "rail.html");
+    fs.writeFileSync(page, "<title>Session Rail Labels</title><p>x</p>");
+    quiet(
+      runHook(
+        stateDir("s1"),
+        publish(
+          [
+            {
+              type: "text",
+              text: `Published ${page} at https://claude.ai/artifact/Vw8HPGnKzVR3KKajW9BeWQ (Version 2, version id 1-a) Icon: "layout".`,
+            },
+          ],
+          { file_path: page, description: "Three rail options" }
+        )
+      )
+    );
+    const [line] = inbox(home);
+    assert.equal(line.session, "s1");
+    assert.equal(line.url, "https://claude.ai/artifact/Vw8HPGnKzVR3KKajW9BeWQ");
+    assert.equal(line.version, 2);
+    assert.equal(line.file, page);
+    assert.equal(line.title, "Session Rail Labels");
+    assert.equal(line.description, "Three rail options");
+  });
+
+  test("reads, lists, asset uploads and failures are not mocks", () => {
+    const { home, stateDir } = setup(null);
+    const ok = "Published /x.html at https://claude.ai/artifact/AbC (Version 1";
+    quiet(runHook(stateDir("s1"), publish(ok, { action: "read" })));
+    quiet(runHook(stateDir("s1"), publish(ok, { asset: true })));
+    quiet(runHook(stateDir("s1"), publish("Refused: conflict")));
+    quiet(
+      runHook(stateDir("s1"), {
+        ...publish(ok),
+        hook_event_name: "PostToolUseFailure",
+      })
+    );
+    quiet(runHook(stateDir("s1"), { ...publish(ok), tool_name: "Write" }));
+    assert.deepEqual(inbox(home), []);
+  });
+});

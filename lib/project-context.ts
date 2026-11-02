@@ -123,6 +123,10 @@ This list was written when this session started; ListAgents shows who is running
 The user works from their phone through AgentOS, not on this machine, so localhost links don't reach them. A server you start (a dev server, a preview, a test page) is reachable through AgentOS's port proxy: port 5173 is ${example}. When you start one, give the user that link (the agent-os MCP tool preview_url gives it for a port), never a localhost or 0.0.0.0 address, and don't open ports to the network. Stop servers you started when you're done with them (stop_server).`);
   }
 
+  sections.push(`## Mocks you publish
+
+AgentOS lists every mock you publish (an Artifact) on the user's Mocks page, as ongoing. When the user decides on one, record it with the agent-os MCP tool set_mock_status: completed once it's built (with the PR), rejected when they turn it down, abandoned when they drop it.`);
+
   const dropFile = path.join(
     suggestionsDir(project.id),
     `${session?.id ?? "<session id>"}-<short-name>.md`

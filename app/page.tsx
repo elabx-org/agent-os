@@ -96,7 +96,9 @@ import { keepPlace, restorePlace, takePlace } from "@/stores/place";
 /** A workspace page on the open Duo's right page (not one across both) */
 const pageBeside = () => {
   const kind = workspacePageStore.page?.kind;
-  return !!kind && kind !== "inbox" && kind !== "running";
+  return (
+    !!kind && kind !== "inbox" && kind !== "running" && kind !== "mocks"
+  );
 };
 
 function HomeContent() {

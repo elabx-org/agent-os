@@ -90,6 +90,11 @@ function stateDir(sessionId: string): string {
   return path.join(stateRoot(), sessionId);
 }
 
+/** Where every session's hooks write (the mocks inbox: lib/mocks.ts) */
+export function claudeStateRoot(): string {
+  return stateRoot();
+}
+
 /** Where a session's hooks write (turn journal: lib/turns.ts) */
 export function claudeStateDir(sessionId: string): string | null {
   return SESSION_ID.test(sessionId) ? stateDir(sessionId) : null;
