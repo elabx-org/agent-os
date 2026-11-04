@@ -11,6 +11,7 @@ import {
   rowToHtml,
   type HistoryPalette,
 } from "@/lib/terminal-history";
+import { openLink, urlAt } from "./wrapped-links";
 
 // Rows per block: the history is laid out as blocks of known height from
 // the start, each filled with its rows when it nears the screen, so loading
@@ -27,6 +28,12 @@ const AHEAD_SCREENS = 3;
 const SETTLE_MS = 120;
 const LONG_PRESS_MS = 500;
 const SLOP_PX = 10;
+// Rows either side of a tapped row read for a URL broken at the edge
+const LINK_ROWS = 8;
+// A click this soon after a touch came from the touch
+const TOUCH_CLICK_MS = 800;
+// A scroll this recent is still moving under a new touch
+const SCROLLING_MS = 100;
 
 export type OpenResult = "shown" | "none" | "closed";
 
@@ -93,6 +100,7 @@ export function createHistoryLayer(config: HistoryLayerConfig): HistoryLayer {
   let filled = new Set<number>();
   let total = 0;
   let rowPx = 16;
+  let cellPx = 8;
   let palette: HistoryPalette | null = null;
   let rgb = false;
   let cols = 0;
@@ -113,6 +121,11 @@ export function createHistoryLayer(config: HistoryLayerConfig): HistoryLayer {
   let held = false;
   let longPressTimer: ReturnType<typeof setTimeout> | null = null;
   let touchStart: { x: number; y: number } | null = null;
+  // The touch scrolled, held or stopped a coast: not a tap on a link
+  let notTap = false;
+  // When the last touch ended (the click a touch makes is not a mouse's)
+  let lastTouch = -Infinity;
+  let lastScroll = -Infinity;
 
   const maxScroll = () => (el ? el.scrollHeight - el.clientHeight : 0);
   const atBottom = () => !!el && el.scrollTop >= maxScroll() - 1;
@@ -209,6 +222,7 @@ export function createHistoryLayer(config: HistoryLayerConfig): HistoryLayer {
   };
 
   const onScroll = () => {
+    lastScroll = performance.now();
     fillAhead();
     settle();
   };
@@ -217,6 +231,11 @@ export function createHistoryLayer(config: HistoryLayerConfig): HistoryLayer {
   // still opens select mode, as on the terminal
   const onTouchStart = (e: TouchEvent) => {
     touching = true;
+    // A touch that stops a coast or a native scroll only stops it
+    notTap =
+      momentumRaf !== null ||
+      e.touches.length !== 1 ||
+      performance.now() - lastScroll < SCROLLING_MS;
     stopMomentum();
     cancelLongPress();
     if (e.touches.length !== 1) return;
@@ -224,26 +243,124 @@ export function createHistoryLayer(config: HistoryLayerConfig): HistoryLayer {
     if (onLongPressRef?.current) {
       longPressTimer = setTimeout(() => {
         longPressTimer = null;
+        notTap = true;
         onLongPressRef.current?.();
       }, LONG_PRESS_MS);
     }
   };
   const onTouchMove = (e: TouchEvent) => {
-    if (!touchStart || !longPressTimer) return;
+    if (!touchStart) return;
     const t = e.touches[0];
     if (
       Math.abs(t.clientX - touchStart.x) > SLOP_PX ||
       Math.abs(t.clientY - touchStart.y) > SLOP_PX
-    )
+    ) {
+      notTap = true;
       cancelLongPress();
+    }
   };
   const onTouchEnd = (e: TouchEvent) => {
     if (e.touches.length > 0) return;
+    // A tap: a URL under it opens (the browser's click after a touch is
+    // skipped: iOS may not send one for plain text)
+    const t = e.type === "touchend" ? e.changedTouches[0] : undefined;
+    if (t && touchStart && !notTap) openUrlAt(t.target, t.clientX, t.clientY);
+    lastTouch = performance.now();
     touching = false;
     touchStart = null;
     cancelLongPress();
     settle();
   };
+  // The plain text of history row i (from the oldest), when it's drawn
+  const rowText = (i: number): string | null => {
+    const block = blocks[Math.floor(i / BLOCK_ROWS)];
+    if (!block || !filled.has(Math.floor(i / BLOCK_ROWS))) return null;
+    const row = block.children[i % BLOCK_ROWS];
+    return row ? (row.textContent ?? "") : null;
+  };
+
+  // The character under a point of a row: its index in the row's text
+  const charAt = (row: Element, x: number, y: number): number => {
+    type CaretDoc = Document & {
+      caretPositionFromPoint?: (
+        x: number,
+        y: number
+      ) => { offsetNode: Node; offset: number } | null;
+    };
+    const doc = document as CaretDoc;
+    let node: Node | null = null;
+    let offset = 0;
+    if (doc.caretPositionFromPoint) {
+      const p = doc.caretPositionFromPoint(x, y);
+      node = p?.offsetNode ?? null;
+      offset = p?.offset ?? 0;
+    } else if (doc.caretRangeFromPoint) {
+      const r = doc.caretRangeFromPoint(x, y);
+      node = r?.startContainer ?? null;
+      offset = r?.startOffset ?? 0;
+    }
+    if (!node || node.nodeType !== Node.TEXT_NODE || !row.contains(node))
+      return Math.floor((x - row.getBoundingClientRect().left) / cellPx);
+    // The caret falls between characters: the one under the point is
+    // before it when that one reaches past the point
+    if (offset > 0) {
+      const range = document.createRange();
+      range.setStart(node, offset - 1);
+      range.setEnd(node, offset);
+      if (range.getBoundingClientRect().right > x) offset--;
+    }
+    let before = 0;
+    const walk = document.createTreeWalker(row, NodeFilter.SHOW_TEXT);
+    for (let t = walk.nextNode(); t && t !== node; t = walk.nextNode())
+      before += t.textContent?.length ?? 0;
+    return before + offset;
+  };
+
+  // The URL at a point of the history opens, as on the live terminal
+  const openUrlAt = (target: EventTarget | null, x: number, y: number) => {
+    if (!el) return;
+    let row = target instanceof Element ? target : null;
+    while (row && row.parentElement?.parentElement !== el)
+      row = row.parentElement;
+    if (!row?.parentElement) return;
+    const b = blocks.indexOf(row.parentElement as HTMLDivElement);
+    if (b < 0) return;
+    const index =
+      b * BLOCK_ROWS +
+      Array.prototype.indexOf.call(row.parentElement.children, row);
+    const rows: string[] = [];
+    let at = 0;
+    for (let i = index - LINK_ROWS; i <= index + LINK_ROWS; i++) {
+      const text = rowText(i);
+      if (text === null) {
+        if (i < index) rows.length = 0;
+        else break;
+        continue;
+      }
+      if (i === index) at = rows.length;
+      rows.push(text);
+    }
+    const uri = urlAt(rows, at, charAt(row, x, y), cols);
+    if (uri) openLink(uri);
+  };
+  // A click on a URL (a mouse: a touch's tap opened it at touchend)
+  const onClick = (e: MouseEvent) => {
+    if (e.button !== 0 || performance.now() - lastTouch < TOUCH_CLICK_MS)
+      return;
+    openUrlAt(e.target, e.clientX, e.clientY);
+  };
+  // A pointer over a URL shows it's a link (desktop)
+  const onMouseMove = (e: MouseEvent) => {
+    if (!el) return;
+    const row =
+      e.target instanceof Element &&
+      e.target.closest(".agentos-history>div>div");
+    if (!row) return void (el.style.cursor = "");
+    const text = row.textContent ?? "";
+    const i = charAt(row, e.clientX, e.clientY);
+    el.style.cursor = urlAt([text], 0, i, Infinity) ? "pointer" : "";
+  };
+
   // A desktop wheel over the history scrolls it natively, not tmux
   const onWheel = (e: WheelEvent) => {
     e.stopPropagation();
@@ -264,6 +381,8 @@ export function createHistoryLayer(config: HistoryLayerConfig): HistoryLayer {
       el.addEventListener("touchend", onTouchEnd, { passive: true });
       el.addEventListener("touchcancel", onTouchEnd, { passive: true });
       el.addEventListener("wheel", onWheel, { passive: true });
+      el.addEventListener("click", onClick);
+      el.addEventListener("mousemove", onMouseMove, { passive: true });
     }
     if (el.parentElement !== host) host.appendChild(el);
     // Exactly over the terminal's rows, in its font and colours
@@ -274,7 +393,7 @@ export function createHistoryLayer(config: HistoryLayerConfig): HistoryLayer {
     const hostBox = host.getBoundingClientRect();
     const cell = cellSize(term);
     rowPx = cell?.height ?? box.height / term.rows;
-    const cellPx = cell?.width ?? box.width / term.cols;
+    cellPx = cell?.width ?? box.width / term.cols;
     const font = `${term.options.fontSize ?? 14}px ${term.options.fontFamily ?? "monospace"}`;
     Object.assign(el.style, {
       left: `${box.left - hostBox.left - host.clientLeft}px`,
