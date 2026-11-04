@@ -35,6 +35,69 @@ export function rowRunsOn(row: string, next: string, cols: number): boolean {
   return !(SENTENCE_END.test(line) && PLAIN_WORD.test(word));
 }
 
+/** A matched URL without the sentence's punctuation after it */
+export function trimUrl(match: string): string {
+  let uri = match.replace(/[.,;:!?'"]+$/, "");
+  // A closing bracket belongs to the URL only when it opened one
+  while (
+    /[)\]]$/.test(uri) &&
+    (uri.match(/[([]/g)?.length ?? 0) < (uri.match(/[)\]]/g)?.length ?? 0)
+  ) {
+    uri = uri.slice(0, -1);
+  }
+  return uri;
+}
+
+/**
+ * The URL at column `col` of `rows[index]` (plain text rows of a pane
+ * `cols` wide), following it onto the rows before and after when Claude
+ * Code or tmux broke it at the edge. Null when there's none there.
+ */
+export function urlAt(
+  rows: readonly string[],
+  index: number,
+  col: number,
+  cols: number
+): string | null {
+  const row = rows[index];
+  if (row === undefined) return null;
+  let first = index;
+  while (
+    first > 0 &&
+    index - first < MAX_ROWS &&
+    rowRunsOn(rows[first - 1], rows[first], cols)
+  )
+    first--;
+  let last = index;
+  while (
+    last + 1 < rows.length &&
+    last - first < MAX_ROWS &&
+    rowRunsOn(rows[last], rows[last + 1], cols)
+  )
+    last++;
+
+  // The joined text, and where the tapped character falls in it
+  let joined = "";
+  let at = -1;
+  for (let r = first; r <= last; r++) {
+    const raw = rows[r];
+    const trimmed = r === last ? raw : raw.trimEnd();
+    const start = r === first ? 0 : raw.length - raw.trimStart().length;
+    if (r === index) {
+      // The indent before a broken URL's rest
+      if (col < start) return null;
+      at = joined.length + (col - start);
+    }
+    joined += trimmed.slice(start);
+  }
+  if (at < 0) return null;
+  for (const match of joined.matchAll(URL_PATTERN)) {
+    const uri = trimUrl(match[0]);
+    if (at >= match.index && at < match.index + uri.length) return uri;
+  }
+  return null;
+}
+
 export function openLink(uri: string) {
   // localhost links go through the port proxy; the iOS app opens
   // window.open targets in Safari
@@ -75,14 +138,7 @@ export function registerWrappedLinks(term: Terminal) {
 
       const links: ILink[] = [];
       for (const match of joined.matchAll(URL_PATTERN)) {
-        let uri = match[0].replace(/[.,;:!?'"]+$/, "");
-        // A closing bracket belongs to the URL only when it opened one
-        while (
-          /[)\]]$/.test(uri) &&
-          (uri.match(/[([]/g)?.length ?? 0) < (uri.match(/[)\]]/g)?.length ?? 0)
-        ) {
-          uri = uri.slice(0, -1);
-        }
+        const uri = trimUrl(match[0]);
         const from = cells[match.index];
         const to = cells[match.index + uri.length - 1];
         if (!from || !to || from.row === to.row) continue;
