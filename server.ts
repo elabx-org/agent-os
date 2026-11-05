@@ -15,6 +15,7 @@ import { proxyRequest, proxyUpgrade } from "./lib/port-proxy";
 import { applyOriginGate, originGateRefusesUpgrade } from "./lib/origin-gate";
 import {
   isPlainShell,
+  isTmuxClient,
   leaveKeys,
   parseCmdline,
   parseTpgid,
@@ -109,6 +110,18 @@ function foreground(session: PtySession): {
   } catch { /* no /proc: by name */ }
   const name = session.pty.process;
   return { shell: isPlainShell(name), args: [name], pid: null };
+}
+
+// tmux sizes a window to the client last resized or typed in (window-size
+// latest). A terminal that reconnects at the size it had gets no SIGWINCH
+// from the kernel, so another client (the closed Duo's narrow one) would
+// keep the window its size. Telling the tmux client makes it the latest.
+function claimTmuxWindow(session: PtySession) {
+  const front = foreground(session);
+  if (front.shell || front.pid === null || !isTmuxClient(front.args)) return;
+  try {
+    process.kill(front.pid, "SIGWINCH");
+  } catch { /* gone */ }
 }
 
 async function waitForShell(session: PtySession, ms: number): Promise<boolean> {
@@ -251,6 +264,7 @@ function attachSession(
           break;
         case "resize":
           session.pty.resize(msg.cols, msg.rows);
+          claimTmuxWindow(session);
           break;
         case "command":
           session.pty.write(msg.data + "\r");

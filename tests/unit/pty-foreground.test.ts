@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   isPlainShell,
+  isTmuxClient,
   leaveKeys,
   parseCmdline,
   parseTpgid,
@@ -64,4 +65,15 @@ test("a tab is a shell only when asked for", () => {
   assert.equal(beside.panes.p2.tabs[0].shell, undefined);
   const asked = splitPane(state, "p1", "vertical", "p3", true)!;
   assert.equal(asked.panes.p3.tabs[0].shell, true);
+});
+
+test("isTmuxClient: an attached tmux client, not a quick tmux command", () => {
+  assert.equal(
+    isTmuxClient(["tmux", "attach-session", "-t", "claude-x"]),
+    true
+  );
+  assert.equal(isTmuxClient(["tmux: client"]), true);
+  assert.equal(isTmuxClient(["tmux", "set-option", "-g", "x"]), false);
+  assert.equal(isTmuxClient(["claude", "attach"]), false);
+  assert.equal(isTmuxClient(["bash"]), false);
 });
