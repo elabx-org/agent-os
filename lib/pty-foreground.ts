@@ -53,3 +53,8 @@ export function leaveKeys(args: string[]): string | null {
   if (name === "claude" && args[1] === "attach") return "\x03";
   return null;
 }
+
+/** A tmux client runs in front (one that attached this terminal to a session) */
+export function isTmuxClient(args: string[]): boolean {
+  return leaveKeys(args) === "\x02d";
+}
