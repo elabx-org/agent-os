@@ -98,6 +98,7 @@ import { ImageViewer } from "@/components/ImageViewer";
 import { useFileEvents, useImageEvents } from "@/lib/client/image-view";
 import { fileOpenActions } from "@/stores/fileOpen";
 import { takeVideos } from "@/stores/videoUploads";
+import { clientLog } from "@/lib/client-log";
 import { joinWrappedUrls, linkify } from "./linkify";
 import {
   ContextMenu,
@@ -244,6 +245,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
       getScrollState,
       restoreScrollState,
       reconnect,
+      socketState,
     } = useTerminalConnection({
       terminalRef,
       onConnected,
@@ -765,6 +767,12 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
       async (text: string) => {
         const term = xtermRef.current;
         const keys = ++keysRef.current;
+        clientLog(
+          `composer send ${text.length} chars, ${connectedRef.current ? "connected" : "not connected"}, socket ${socketState() ?? "none"}`
+        );
+        // Not connected, the text would go nowhere: the draft stays
+        if (text && !connectedRef.current)
+          throw new Error("Not connected to the terminal: not sent");
         // A clear still running goes first, or it eats what's typed now
         if (clearingRef.current) await clearingRef.current;
         let box = term && text ? readClaudeBox(term) : null;

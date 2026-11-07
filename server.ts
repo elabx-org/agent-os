@@ -43,6 +43,7 @@ const PING_INTERVAL_MS = 25_000; // 25s — well under typical 60s proxy timeout
 const PONG_TIMEOUT_MS = 10_000; // 10s to respond before we consider it dead
 const PTY_GRACE_MS = 300_000; // 5 min grace period after disconnect
 const OUTPUT_BUFFER_MAX = 200_000; // ~200KB scrollback buffer per session
+const EXEC_MAX_BUFFER = 64 * 1024 * 1024; // a terminal command's output (select mode's whole history)
 
 interface PtySession {
   id: string;
@@ -287,7 +288,9 @@ function attachSession(
             // AGENT_OS_TTY names this terminal's tmux client, so commands can
             // target its pane rather than tmux's most recent session
             const env = { ...process.env, AGENT_OS_TTY: (session.pty as { ptsName?: string }).ptsName ?? "" };
-            exec(msg.command, { timeout: 5000, shell: "/bin/bash", env }, (err, stdout, stderr) => {
+            // Select mode captures a long session's whole history: well over
+            // exec's 1MB default, which cut it to the oldest part
+            exec(msg.command, { timeout: 5000, shell: "/bin/bash", env, maxBuffer: EXEC_MAX_BUFFER }, (err, stdout, stderr) => {
               if (ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify({
                   type: "exec-result",

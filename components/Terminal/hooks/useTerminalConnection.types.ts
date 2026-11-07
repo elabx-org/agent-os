@@ -43,4 +43,6 @@ export interface UseTerminalConnectionReturn {
   restoreScrollState: (state: TerminalScrollState) => void;
   triggerResize: () => void;
   reconnect: () => void;
+  /** The socket's readyState, null without one */
+  socketState: () => number | null;
 }
