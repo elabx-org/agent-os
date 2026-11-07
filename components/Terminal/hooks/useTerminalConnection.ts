@@ -19,6 +19,7 @@ import {
 import { setupTouchScroll } from "./touch-scroll";
 import { createHistoryLayer, type HistoryLayer } from "./history-layer";
 import { setupWheel } from "./wheel";
+import { clientLog } from "@/lib/client-log";
 import { createWebSocketConnection } from "./websocket-connection";
 import { setupResizeHandlers } from "./resize-handlers";
 import { remeasureWhenFontsReady, terminalFontReady } from "../font-ready";
@@ -105,8 +106,14 @@ export function useTerminalConnection({
     historyRef.current?.close();
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ type: "input", data }));
+    } else {
+      clientLog(
+        `terminal input dropped (${data.length} chars): socket ${wsRef.current?.readyState ?? "none"}`
+      );
     }
   }, []);
+
+  const socketState = useCallback(() => wsRef.current?.readyState ?? null, []);
 
   const sendPaste = useCallback((data: string) => {
     historyRef.current?.close();
@@ -516,5 +523,6 @@ export function useTerminalConnection({
     restoreScrollState,
     triggerResize,
     reconnect,
+    socketState,
   };
 }
