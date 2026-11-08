@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import { RAINBOW } from "@/lib/magic-words";
 import { ImageViewer } from "@/components/ImageViewer";
 import { ImagePill, ImagePillTarget } from "./ImagePill";
+import { clientLog } from "@/lib/client-log";
 import { imageName } from "./text";
 import type { ComposerEngine } from "./useComposer";
 
@@ -72,6 +73,18 @@ export function ComposerInput({
     chips,
   } = composer;
   const backdropRef = useRef<HTMLDivElement>(null);
+  // What's drawn, to check against the box after each input: they should
+  // never differ once React has rendered (if they do, the client log says)
+  const drawnRef = useRef(display);
+  drawnRef.current = display;
+  const checkInStep = () =>
+    requestAnimationFrame(() => {
+      const el = textareaRef.current;
+      if (!el || el.value === drawnRef.current) return;
+      clientLog(
+        `composer out of step: box ${el.value.length} chars, drawn ${drawnRef.current.length}, caret ${el.selectionStart}, ${chips.length} pills`
+      );
+    });
   const targetsRef = useRef<HTMLDivElement>(null);
   const images = chips.some((c) => c.kind === "image");
   const lines = images ? "leading-8" : "leading-6";
@@ -160,9 +173,10 @@ export function ComposerInput({
       <textarea
         ref={textareaRef}
         value={display}
-        onChange={(e) =>
-          onTextChange(e.target.value, e.target.selectionStart ?? 0)
-        }
+        onChange={(e) => {
+          onTextChange(e.target.value, e.target.selectionStart ?? 0);
+          checkInStep();
+        }}
         onPaste={onPaste}
         onSelect={onSelect}
         onClick={(e) => {
