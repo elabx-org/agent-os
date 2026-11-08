@@ -209,7 +209,9 @@ export function expand(display: string, chips: Chip[]): string {
 export function keepChipsWhole(
   prev: string,
   next: string,
-  chips: Chip[]
+  chips: Chip[],
+  /** Where the browser put the caret in `next`, if known */
+  at?: number
 ): { display: string; caret: number } | null {
   let p = 0;
   while (p < prev.length && p < next.length && prev[p] === next[p]) p++;
@@ -222,8 +224,13 @@ export function keepChipsWhole(
     s++;
   let from = p;
   let to = prev.length - s;
-  const inserted = next.slice(p, next.length - s);
+  let inserted = next.slice(p, next.length - s);
+  // A deletion reaching into a pill (Backspace after it) takes all of it;
+  // a replacement (iOS autocorrect, which can take in a pill's last
+  // characters as part of a word) changes only the text around the pill
+  const deleting = inserted === "";
   let touched = false;
+  let replaced = false;
   for (const c of chips) {
     if (from === to) {
       // Typing inside a pill goes after it
@@ -236,16 +243,39 @@ export function keepChipsWhole(
       c.end > from &&
       !(from <= c.start && to >= c.end)
     ) {
-      from = Math.min(from, c.start);
-      to = Math.max(to, c.end);
       touched = true;
+      if (deleting) {
+        from = Math.min(from, c.start);
+        to = Math.max(to, c.end);
+      } else if (from < c.start) {
+        replaced = true;
+        // Into the pill's start: its characters were the replacement's last
+        inserted = inserted.slice(
+          0,
+          Math.max(0, inserted.length - (to - c.start))
+        );
+        to = c.start;
+      } else {
+        // From inside the pill: its characters were the replacement's first
+        replaced = true;
+        inserted = inserted.slice(Math.min(inserted.length, c.end - from));
+        to = Math.max(to, c.end);
+        from = c.end;
+      }
     }
   }
   if (!touched) return null;
-  return {
-    display: prev.slice(0, from) + inserted + prev.slice(to),
-    caret: from + inserted.length,
-  };
+  const display = prev.slice(0, from) + inserted + prev.slice(to);
+  // A replacement: the caret stays where the browser put it, moved by
+  // what the pill got back (the text after the edit is the same)
+  const caret =
+    replaced && at !== undefined
+      ? Math.max(
+          from + inserted.length,
+          at + (at >= p ? display.length - next.length : 0)
+        )
+      : from + inserted.length;
+  return { display, caret };
 }
 
 /** The "/" or "@" word the caret is in, for the pickers */

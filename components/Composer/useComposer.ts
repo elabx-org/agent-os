@@ -818,8 +818,21 @@ export function useComposer({
 
   const onTextChange = useCallback(
     (next: string, at: number) => {
-      const fixed = keepChipsWhole(displayRef.current, next, chipsRef.current);
-      if (fixed) setDisplay(fixed.display, fixed.caret);
+      const fixed = keepChipsWhole(
+        displayRef.current,
+        next,
+        chipsRef.current,
+        at
+      );
+      // Only a pill's own characters changed (iOS autocorrect taking in
+      // its end): nothing to change, and the caret stays where it was
+      if (
+        fixed &&
+        fixed.display === displayRef.current &&
+        !chipAt(chipsRef.current, caretRef.current)
+      )
+        setDisplay(fixed.display, caretRef.current);
+      else if (fixed) setDisplay(fixed.display, fixed.caret);
       else {
         setDisplay(next);
         setCaret(at);
