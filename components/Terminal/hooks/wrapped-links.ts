@@ -17,22 +17,39 @@ const URL_CHAR = /[\w\-.~:/?#[\]@!$&'()*+,;=%]/;
 const MAX_ROWS = 8;
 const SENTENCE_END = /[.,;:!?]['")\]]*$|[)\]]$/;
 const PLAIN_WORD = /^[A-Za-z][a-z]*[.,;:!?'")\]]*$/;
+const LIST_NUMBER = /^\d+[.)]$/;
+/** How far short of the edge Claude Code wraps a tool's output */
+const SHORT_WRAP_MARGIN = 10;
 
 /**
  * A row's text runs on into the next row's: it reaches the right edge and
  * the next carries on without a space. Not when the row ends a sentence
  * (".", ")." …) and the next starts a plain word: a paragraph whose line
  * happens to fill the pane, not a URL broken at the edge.
+ *
+ * Claude Code wraps a tool's output a few columns short of the edge, so a
+ * row ending in a URL near the edge runs on too, but only into a piece of
+ * one: not a plain word, a list number or a lone character.
  */
 export function rowRunsOn(row: string, next: string, cols: number): boolean {
   const line = row.trimEnd();
-  // Claude Code leaves a column of margin; tmux fills the row
-  if (line.length < cols - 1) return false;
-  if (!URL_CHAR.test(line[line.length - 1])) return false;
+  if (!line || !URL_CHAR.test(line[line.length - 1])) return false;
   const rest = next.trimStart();
   if (!rest || !URL_CHAR.test(rest[0])) return false;
   const word = rest.split(/\s/)[0];
-  return !(SENTENCE_END.test(line) && PLAIN_WORD.test(word));
+  // Claude Code leaves a column of margin; tmux fills the row
+  if (line.length >= cols - 1)
+    return !(SENTENCE_END.test(line) && PLAIN_WORD.test(word));
+  if (line.length < cols - SHORT_WRAP_MARGIN) return false;
+  const last = line.trimStart().split(/\s/).pop() ?? "";
+  const inUrl = /^https?:\/\//.test(last) || last === line.trimStart();
+  return (
+    inUrl &&
+    !SENTENCE_END.test(line) &&
+    word.length > 1 &&
+    !PLAIN_WORD.test(word) &&
+    !LIST_NUMBER.test(word)
+  );
 }
 
 /** A matched URL without the sentence's punctuation after it */
