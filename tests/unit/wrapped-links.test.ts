@@ -62,3 +62,32 @@ test("urlAt: a closing bracket only when the URL opened one", () => {
   assert.equal(urlAt([row], 0, 3, 80), "https://a.b/c");
   assert.equal(urlAt([row], 0, 25, 80), "https://a.b/d_(e)");
 });
+
+test("a URL Claude Code wrapped short of the edge runs on into its rest", () => {
+  // A tool's output, wrapped 5 columns short of a 53-column pane
+  const rows = [
+    "  ⎿  Updated ⧉ https://claude.ai/artifact/6gVXaa",
+    "     Pw4mdrx4Car3BaLK",
+    "    so there's no line where a page stops and the",
+  ];
+  const url = "https://claude.ai/artifact/6gVXaaPw4mdrx4Car3BaLK";
+  assert.equal(rowRunsOn(rows[0], rows[1], 53), true);
+  assert.equal(rowRunsOn(rows[1], rows[2], 53), false);
+  assert.equal(urlAt(rows, 0, 20, 53), url);
+  assert.equal(urlAt(rows, 1, 8, 53), url);
+});
+
+test("a URL ending short of the edge doesn't run into words or lists", () => {
+  const row = "  See https://claude.ai/artifact/6gVXaaPw4m";
+  assert.equal(rowRunsOn(row, "  for details", 48), false);
+  assert.equal(rowRunsOn(row, "  2. Next step", 48), false);
+  assert.equal(rowRunsOn(row, "  - a bullet", 48), false);
+  assert.equal(rowRunsOn(row + ".", "  Xyz123", 48), false);
+  // Too far short of the edge to have been wrapped
+  assert.equal(rowRunsOn(row, "  Xyz123", 80), false);
+  // Not a URL at the end
+  assert.equal(
+    rowRunsOn("  some words that end here ok", "  Xyz123", 33),
+    false
+  );
+});
