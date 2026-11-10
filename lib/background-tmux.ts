@@ -30,3 +30,15 @@ export function attachBackgroundCommand(agentId: string): string {
   const name = backgroundTmuxName(agentId);
   return `tmux attach -t ${name} 2>/dev/null || tmux new -s ${name} "export PATH='$PATH'; exec claude attach ${agentId}"`;
 }
+
+/**
+ * A tab showing a background agent belongs to no session. Tabs from before
+ * agents had tabs of their own kept the session they replaced, so the
+ * composer sent to that session's queue instead of the agent
+ */
+export function clearBackgroundSession<
+  T extends { sessionId: string | null; attachedTmux: string | null },
+>(tab: T): T {
+  if (!tab.sessionId || !backgroundAgentOfTmux(tab.attachedTmux)) return tab;
+  return { ...tab, sessionId: null };
+}

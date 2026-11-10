@@ -26,6 +26,7 @@ import {
 } from "@/lib/panes";
 import { useIsNative } from "@/hooks/useIsNative";
 import { useViewport } from "@/hooks/useViewport";
+import { clearBackgroundSession } from "@/lib/background-tmux";
 
 interface PaneContextValue {
   state: PaneState;
@@ -80,7 +81,11 @@ export function PaneProvider({ children }: { children: ReactNode }) {
       for (const [paneId, paneData] of Object.entries(saved.panes)) {
         if ("tabs" in paneData && Array.isArray(paneData.tabs)) {
           // New format
-          migratedPanes[paneId] = paneData as PaneData;
+          const data = paneData as PaneData;
+          migratedPanes[paneId] = {
+            ...data,
+            tabs: data.tabs.map(clearBackgroundSession),
+          };
         } else {
           // Old format - migrate to new
           const oldData = paneData as {

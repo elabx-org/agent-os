@@ -4,6 +4,7 @@ import {
   attachBackgroundCommand,
   backgroundAgentOfTmux,
   backgroundTmuxName,
+  clearBackgroundSession,
 } from "../../lib/background-tmux";
 
 test("a background agent's tmux names it, and nothing else does", () => {
@@ -24,4 +25,15 @@ test("attaching it reuses its tmux, else opens it in a new one", () => {
   );
   assert.match(cmd, /exec claude attach 64711d80"$/);
   assert.throws(() => attachBackgroundCommand("x; rm -rf ~"));
+});
+
+test("a tab showing a background agent drops the session it replaced", () => {
+  const tab = { id: "t", sessionId: "s1", attachedTmux: "bg-5b11c3" };
+  assert.deepEqual(clearBackgroundSession(tab), {
+    id: "t",
+    sessionId: null,
+    attachedTmux: "bg-5b11c3",
+  });
+  const session = { id: "t", sessionId: "s1", attachedTmux: "claude-s1" };
+  assert.equal(clearBackgroundSession(session), session);
 });
