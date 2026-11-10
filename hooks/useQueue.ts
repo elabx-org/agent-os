@@ -251,7 +251,8 @@ export function useQueue(
       ready: state.ready,
       holdReason: state.holdReason,
       enabled: state.enabled,
-      known: data !== undefined,
+      // No session (a background agent's tab): there's no queue to ask
+      known: !sessionId || data !== undefined,
       isLoading: on && isLoading,
       send,
       enqueue,
