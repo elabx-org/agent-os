@@ -129,6 +129,7 @@ function HomeContent() {
     attachSession,
     getActiveTab,
     addTab,
+    switchTab,
     focusPane,
     splitHorizontal,
     close: closePane,
@@ -401,6 +402,20 @@ function HomeContent() {
       keepNewDraftOnClose();
       closeSettings();
       closePage();
+      // From a background agent's own tab, a session with a tab of its own
+      // goes back to that tab rather than taking the agent's over
+      const pane = paneState.panes[focusedPaneId];
+      const front = pane?.tabs.find((t) => t.id === pane.activeTabId);
+      const own = pane?.tabs.find((t) => t.sessionId === session.id);
+      if (
+        own &&
+        front &&
+        !front.sessionId &&
+        backgroundAgentOfTmux(front.attachedTmux)
+      ) {
+        switchTab(focusedPaneId, own.id);
+        return;
+      }
       const terminalInfo = getTerminalWithFallback();
       if (!terminalInfo) {
         // Picked before the first terminal connected: it opens once one does
@@ -411,7 +426,13 @@ function HomeContent() {
       queuedSession.current = null;
       switchTerminalTo(terminalInfo.terminal, terminalInfo.paneId, session);
     },
-    [getTerminalWithFallback, switchTerminalTo]
+    [
+      getTerminalWithFallback,
+      switchTerminalTo,
+      paneState,
+      focusedPaneId,
+      switchTab,
+    ]
   );
   attachToSessionRef.current = attachToSession;
 
@@ -797,17 +818,35 @@ function HomeContent() {
       const terminalInfo = getTerminalWithFallback();
       if (!terminalInfo) return;
       const { terminal, paneId } = terminalInfo;
+      const name = backgroundTmuxName(id);
+      const pane = paneState.panes[paneId];
+      const current = pane?.tabs.find((t) => t.id === pane.activeTabId);
+      if (isMobile) setSidebarOpen(false);
+      // A tab of its own beside a session's, which stays as it was: the
+      // pane attaches the new tab's tmux when its terminal starts
+      if (current?.sessionId) {
+        const open = pane.tabs.find((t) => !t.sessionId && t.attachedTmux === name);
+        if (open) switchTab(paneId, open.id);
+        else addTab(paneId, false, name);
+        return;
+      }
       // Out of any tmux session first, as attaching a session does. In a
       // tmux of its own, which the tab keeps: a reload attaches it again
       terminal.sendShellCommand(attachBackgroundCommand(id), true);
-      attachSession(paneId, "", backgroundTmuxName(id));
+      attachSession(paneId, "", name);
       terminal.focus();
-      if (isMobile) setSidebarOpen(false);
     };
     window.addEventListener("agentos-attach-background", onAttach);
     return () =>
       window.removeEventListener("agentos-attach-background", onAttach);
-  }, [getTerminalWithFallback, attachSession, isMobile]);
+  }, [
+    getTerminalWithFallback,
+    attachSession,
+    addTab,
+    switchTab,
+    paneState,
+    isMobile,
+  ]);
 
   // Session selection handler
   const handleSelectSession = useCallback(

@@ -9,6 +9,8 @@ import {
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import type { Session } from "@/lib/db";
+import { useBackgroundAgents } from "@/components/BackgroundAgents";
+import { backgroundAgentOfTmux } from "@/lib/background-tmux";
 
 interface Tab {
   id: string;
@@ -39,9 +41,16 @@ export function DesktopTabBar({
   onTabClose,
   onTabAdd,
 }: DesktopTabBarProps) {
+  const agents = useBackgroundAgents();
   if (tabs.length < 2) return null;
 
   const getTabName = (tab: Tab) => {
+    // A background agent's own tab: its name, not its tmux
+    const agentId = tab.sessionId
+      ? null
+      : backgroundAgentOfTmux(tab.attachedTmux);
+    if (agentId)
+      return agents.find((a) => a.id === agentId)?.name || "Background agent";
     if (tab.sessionId) {
       const s = sessions.find((sess) => sess.id === tab.sessionId);
       return s?.name || tab.attachedTmux || "Session";
