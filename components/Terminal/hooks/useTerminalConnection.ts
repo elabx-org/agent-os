@@ -1,5 +1,6 @@
 "use client";
 
+import { canSendTerminalSize } from "@/lib/terminal-size";
 import { useEffect, useRef, useState, useCallback } from "react";
 import type { Terminal as XTerm } from "@xterm/xterm";
 import type { FitAddon } from "@xterm/addon-fit";
@@ -27,6 +28,18 @@ import { subscribe } from "valtio";
 import { DENSITY_EVENT } from "@/lib/display-density";
 import { terminalFontStore } from "@/lib/terminal-font";
 import { BACKGROUND_EVENT } from "@/lib/background";
+
+/** Tells tmux this terminal's size, unless it's hidden or squeezed */
+function sendSize(
+  ws: WebSocket | null,
+  term: { element?: HTMLElement },
+  cols: number,
+  rows: number
+): void {
+  if (!canSendTerminalSize(term.element, cols, rows)) return;
+  if (ws?.readyState === WebSocket.OPEN)
+    ws.send(JSON.stringify({ type: "resize", cols, rows }));
+}
 
 export type { TerminalScrollState } from "./useTerminalConnection.types";
 
@@ -243,11 +256,7 @@ export function useTerminalConnection({
     const term = xtermRef.current;
     if (!fitAddon || !term) return;
     fitAddon.fit();
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(
-        JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows })
-      );
-    }
+    sendSize(wsRef.current, term, term.cols, term.rows);
   }, []);
 
   const reconnect = useCallback(() => {
@@ -461,11 +470,9 @@ export function useTerminalConnection({
       const term = xtermRef.current;
       const fitAddon = fitAddonRef.current;
       if (!term || !fitAddon) return;
-      updateTerminalDensity(term, fitAddon, (cols, rows) => {
-        if (wsRef.current?.readyState === WebSocket.OPEN) {
-          wsRef.current.send(JSON.stringify({ type: "resize", cols, rows }));
-        }
-      });
+      updateTerminalDensity(term, fitAddon, (cols, rows) =>
+        sendSize(wsRef.current, term, cols, rows)
+      );
     };
     update();
     window.addEventListener(DENSITY_EVENT, update);
@@ -479,11 +486,9 @@ export function useTerminalConnection({
         const term = xtermRef.current;
         const fitAddon = fitAddonRef.current;
         if (!term || !fitAddon) return;
-        updateTerminalFont(term, fitAddon, (cols, rows) => {
-          if (wsRef.current?.readyState === WebSocket.OPEN) {
-            wsRef.current.send(JSON.stringify({ type: "resize", cols, rows }));
-          }
-        });
+        updateTerminalFont(term, fitAddon, (cols, rows) =>
+          sendSize(wsRef.current, term, cols, rows)
+        );
       }),
     []
   );
