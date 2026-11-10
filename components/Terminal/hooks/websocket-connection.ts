@@ -4,6 +4,7 @@ import type { Terminal as XTerm } from "@xterm/xterm";
 import { WS_RECONNECT_BASE_DELAY, WS_RECONNECT_MAX_DELAY } from "../constants";
 import { typingElsewhere } from "@/lib/typing-elsewhere";
 import { clientLog } from "@/lib/client-log";
+import { canSendTerminalSize } from "@/lib/terminal-size";
 
 export interface WebSocketCallbacks {
   /** replacedPty: a reconnect landed on a new PTY, so tmux must be re-attached */
@@ -104,6 +105,7 @@ export function createWebSocketConnection(
   watchHandshake(ws);
 
   const sendResize = (cols: number, rows: number) => {
+    if (!canSendTerminalSize(term.element, cols, rows)) return;
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ type: "resize", cols, rows }));
     }
