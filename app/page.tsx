@@ -33,6 +33,11 @@ import {
   type NotificationEntry,
 } from "@/hooks/useNeedsYou";
 import { openBackgroundAgent } from "@/components/BackgroundAgents";
+import {
+  attachBackgroundCommand,
+  backgroundAgentOfTmux,
+  backgroundTmuxName,
+} from "@/lib/background-tmux";
 import { useViewport } from "@/hooks/useViewport";
 import { useViewportHeight } from "@/hooks/useViewportHeight";
 import { useNativeBridge } from "@/hooks/useNativeBridge";
@@ -707,7 +712,11 @@ function HomeContent() {
   const homeForPage = useRef(false);
   useEffect(() => {
     if (!isHydrated) return;
-    const onSession = !!focusedActiveTab?.sessionId || linkedSession.current;
+    // A background agent the tab shows (its own tmux) counts as a session
+    const onSession =
+      !!focusedActiveTab?.sessionId ||
+      !!backgroundAgentOfTmux(focusedActiveTab?.attachedTmux) ||
+      linkedSession.current;
     const linked = linkedSession.current;
     linkedSession.current = false;
     const narrow = isMobile || isNative();
@@ -787,16 +796,18 @@ function HomeContent() {
       if (!/^\w[\w-]*$/.test(id)) return;
       const terminalInfo = getTerminalWithFallback();
       if (!terminalInfo) return;
-      const { terminal } = terminalInfo;
-      // Out of any tmux session first, as attaching a session does
-      terminal.sendShellCommand(`claude attach ${id}`, true);
+      const { terminal, paneId } = terminalInfo;
+      // Out of any tmux session first, as attaching a session does. In a
+      // tmux of its own, which the tab keeps: a reload attaches it again
+      terminal.sendShellCommand(attachBackgroundCommand(id), true);
+      attachSession(paneId, "", backgroundTmuxName(id));
       terminal.focus();
       if (isMobile) setSidebarOpen(false);
     };
     window.addEventListener("agentos-attach-background", onAttach);
     return () =>
       window.removeEventListener("agentos-attach-background", onAttach);
-  }, [getTerminalWithFallback, isMobile]);
+  }, [getTerminalWithFallback, attachSession, isMobile]);
 
   // Session selection handler
   const handleSelectSession = useCallback(

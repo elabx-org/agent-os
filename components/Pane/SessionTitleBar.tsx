@@ -94,12 +94,22 @@ import { bgSendStore } from "@/stores/bgSend";
 import { isAutoSessionName } from "@/lib/session-names";
 import { useCanOfferMove } from "@/hooks/useWorktreeMove";
 import { openMoveSheet } from "@/stores/moveSheet";
+import type { BackgroundAgent } from "@/lib/claude-background";
+import { AgentCrumb } from "@/components/BackgroundAgents/AgentDetail";
+import {
+  BackgroundBadge,
+  IN_BACKGROUND_CLASS,
+} from "@/components/Session/InBackground";
 
 interface SessionTitleBarProps {
   session: Session | null | undefined;
   projects: Project[];
   /** What a tab without a session shows instead (its tmux name) */
   fallbackTitle?: string | null;
+  /** The background agent a tab without a session shows (its own tmux) */
+  backgroundAgent?: BackgroundAgent;
+  /** The session is in Claude's background agents, not this terminal */
+  inBackground?: boolean;
   isMobile: boolean;
   isFocused: boolean;
   viewMode: PaneViewMode;
@@ -151,6 +161,8 @@ export function SessionTitleBar({
   session,
   projects,
   fallbackTitle,
+  backgroundAgent,
+  inBackground,
   isMobile,
   isFocused,
   viewMode,
@@ -207,7 +219,10 @@ export function SessionTitleBar({
   const { fresh } = useSnapshot(bgSendStore);
   // A session opened by "Send and start a new session" is "New session" until named
   const { title, idLabel } = !session
-    ? { title: fallbackTitle || "No session", idLabel: undefined }
+    ? {
+        title: backgroundAgent?.name || fallbackTitle || "No session",
+        idLabel: undefined,
+      }
     : session.id in fresh &&
         !titles[session.id] &&
         isAutoSessionName(session.name)
@@ -253,6 +268,7 @@ export function SessionTitleBar({
           project:
             projectName && projectName !== "Uncategorized" ? projectName : null,
           state,
+          inBackground,
         }
       : null;
   // Desk-Chat's "Changes +59" and branch, from the folder's shared poll
@@ -698,8 +714,20 @@ export function SessionTitleBar({
           {state && (
             <span className="text-muted-foreground truncate text-xs leading-tight">
               {crumb.map((part) => `${part} · `)}
-              <span className={STATE_TEXT_CLASS[state]}>
-                {STATE_WORD[state]}
+              {inBackground ? (
+                <span className={IN_BACKGROUND_CLASS}>In background</span>
+              ) : (
+                <span className={STATE_TEXT_CLASS[state]}>
+                  {STATE_WORD[state]}
+                </span>
+              )}
+            </span>
+          )}
+          {!session && backgroundAgent && (
+            <span className="text-muted-foreground flex min-w-0 items-center gap-1.5 text-xs leading-tight">
+              <BackgroundBadge />
+              <span className="min-w-0 truncate">
+                <AgentCrumb agent={backgroundAgent} />
               </span>
             </span>
           )}

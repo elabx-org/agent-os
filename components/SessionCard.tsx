@@ -1,5 +1,7 @@
 "use client";
 
+import { useParkedSessions } from "@/components/BackgroundAgents";
+import { BackgroundBadge } from "@/components/Session/InBackground";
 import { useState, useRef, useEffect } from "react";
 import { afterMenuCloses, cn } from "@/lib/utils";
 import {
@@ -626,6 +628,7 @@ export function SessionCard({
     );
   };
 
+  const parked = !!useParkedSessions()[session.id];
   const cardContent = (
     <AgentRow
       ref={cardRef}
@@ -679,6 +682,9 @@ export function SessionCard({
           {pinned && (
             <Pin className="text-muted-foreground h-3 w-3 flex-shrink-0 -rotate-45" />
           )}
+
+          {/* Claude moved it to its background agents */}
+          {parked && <BackgroundBadge label="In background" />}
 
           {/* Fork indicator */}
           {session.parent_session_id && (
