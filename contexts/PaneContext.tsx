@@ -50,7 +50,8 @@ interface PaneContextValue {
   splitVertical: (paneId: string, shell?: boolean) => void;
   close: (paneId: string) => void;
   // Tab management
-  addTab: (paneId: string, shell?: boolean) => void;
+  /** `attachedTmux`: the new tab attaches that tmux (a background agent's) */
+  addTab: (paneId: string, shell?: boolean, attachedTmux?: string) => void;
   closeTab: (paneId: string, tabId: string) => void;
   switchTab: (paneId: string, tabId: string) => void;
   // Session management (operates on active tab)
@@ -149,24 +150,28 @@ export function PaneProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // Tab management
-  const addTab = useCallback((paneId: string, shell?: boolean) => {
-    setState((prev) => {
-      const pane = prev.panes[paneId];
-      if (!pane) return prev;
-      const newTab = createTab(shell);
-      return {
-        ...prev,
-        panes: {
-          ...prev.panes,
-          [paneId]: {
-            ...pane,
-            tabs: [...pane.tabs, newTab],
-            activeTabId: newTab.id,
+  const addTab = useCallback(
+    (paneId: string, shell?: boolean, attachedTmux?: string) => {
+      setState((prev) => {
+        const pane = prev.panes[paneId];
+        if (!pane) return prev;
+        const newTab = createTab(shell);
+        if (attachedTmux) newTab.attachedTmux = attachedTmux;
+        return {
+          ...prev,
+          panes: {
+            ...prev.panes,
+            [paneId]: {
+              ...pane,
+              tabs: [...pane.tabs, newTab],
+              activeTabId: newTab.id,
+            },
           },
-        },
-      };
-    });
-  }, []);
+        };
+      });
+    },
+    []
+  );
 
   const closeTab = useCallback((paneId: string, tabId: string) => {
     setState((prev) => {
