@@ -25,12 +25,19 @@ export function backgroundJobId(agentCommand: string): string | null {
 }
 
 /** Opens a backgrounded conversation in place of a resume that would refuse it */
-function attachLines(agentCommand: string): string {
+export function attachLines(agentCommand: string): string {
   const job = backgroundJobId(agentCommand);
   if (!job) return "";
+  // Not a stopped one: \`claude attach\` would start it in the background
+  // again, where "Bring back here" (app/api/sessions/[id]/bring-back) took
+  // it from
   return `# In Claude's background agents, --resume refuses this conversation:
-# open it there instead (no such job: carry on and resume it)
-claude attach ${job} 2>/dev/null && exit 0
+# open it there instead (no such job, or stopped: carry on and resume it)
+JOB_STATE=$(claude agents --json --all 2>/dev/null | tr -d '\\n' | grep -o '"id": *"${job}"[^}]*' | grep -o '"state": *"[a-z]*"')
+case "$JOB_STATE" in
+  ""|*'"stopped"') ;;
+  *) claude attach ${job} 2>/dev/null && exit 0 ;;
+esac
 `;
 }
 

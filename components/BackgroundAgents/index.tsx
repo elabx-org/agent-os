@@ -52,6 +52,8 @@ export function home(dir: string): string {
 }
 
 let shared: BackgroundAgent[] = [];
+/** Sessions Claude moved to its background agents (not stopped), by session */
+let parked: Record<string, BackgroundAgent> = {};
 /** Lists fetched so far, so an opened agent is known until the next one */
 let polls = 0;
 const listeners = new Set<(agents: BackgroundAgent[]) => void>();
@@ -62,9 +64,13 @@ export async function poll() {
   try {
     const res = await fetch("/api/background-agents");
     const data = await res.json();
+    const all = (data.agents ?? []) as BackgroundAgent[];
     // Parked sessions are listed as the sessions they are
-    shared = ((data.agents ?? []) as BackgroundAgent[]).filter(
-      (a) => !a.agentOsSessionId
+    shared = all.filter((a) => !a.agentOsSessionId);
+    parked = Object.fromEntries(
+      all
+        .filter((a) => a.agentOsSessionId && a.state !== "stopped")
+        .map((a) => [a.agentOsSessionId, a])
     );
     polls++;
     listeners.forEach((listener) => listener(shared));
@@ -100,6 +106,23 @@ export function useBackgroundAgents() {
     };
   }, []);
   return agents;
+}
+
+/**
+ * The background agent this session is in, when Claude moved it there (← on
+ * an empty prompt opens Claude's agent view); undefined when it's here
+ */
+export function useParkedAgent(
+  sessionId: string | null | undefined
+): BackgroundAgent | undefined {
+  useBackgroundAgents();
+  return sessionId ? parked[sessionId] : undefined;
+}
+
+/** Every session in the background, for the lists' "In background" tag */
+export function useParkedSessions(): Record<string, BackgroundAgent> {
+  useBackgroundAgents();
+  return parked;
 }
 
 /** The agents opened, as they were, for before the list has them */

@@ -130,18 +130,29 @@ async function listWithParked(): Promise<BackgroundAgent[]> {
     listBackgroundAgents(),
     parkedJobPanes(),
   ]);
+  const rows = getDb()
+    .prepare(
+      "SELECT id, tmux_name, claude_session_id FROM sessions WHERE tmux_name IS NOT NULL OR claude_session_id IS NOT NULL"
+    )
+    .all() as {
+    id: string;
+    tmux_name: string | null;
+    claude_session_id: string | null;
+  }[];
   const byTmux = new Map(
-    (
-      getDb()
-        .prepare(
-          "SELECT id, tmux_name FROM sessions WHERE tmux_name IS NOT NULL"
-        )
-        .all() as { id: string; tmux_name: string }[]
-    ).map((s) => [s.tmux_name, s.id])
+    rows.filter((s) => s.tmux_name).map((s) => [s.tmux_name, s.id])
+  );
+  // Its conversation too: the pane that parked it may have closed since
+  const byConversation = new Map(
+    rows
+      .filter((s) => s.claude_session_id)
+      .map((s) => [s.claude_session_id, s.id])
   );
   for (const agent of agents) {
     const pane = parked.get(agent.id);
-    const sessionId = pane ? byTmux.get(pane) : undefined;
+    const sessionId =
+      (pane ? byTmux.get(pane) : undefined) ??
+      (agent.sessionId ? byConversation.get(agent.sessionId) : undefined);
     if (sessionId) agent.agentOsSessionId = sessionId;
   }
   return agents;

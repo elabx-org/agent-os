@@ -24,6 +24,7 @@ import { isEnded, sessionPr, wantsSettleChip } from "@/lib/settle-types";
 import { useSettleActions } from "./settle-action";
 import { formatAge, workingLine } from "./activity-format";
 import { useBackLabel } from "@/components/ControlColumn/columnState";
+import { IN_BACKGROUND_CLASS } from "./InBackground";
 
 /** What every header says about the session */
 export interface HeaderInfo {
@@ -32,6 +33,8 @@ export interface HeaderInfo {
   /** The project's name, none for Uncategorized */
   project: string | null;
   state: AgentState;
+  /** In Claude's background agents: the crumb says so in place of the state */
+  inBackground?: boolean;
 }
 
 /** The crumb's state word: an idle session is Ready, as in the mocks */
@@ -73,7 +76,9 @@ export function Crumb({
   ]
     .filter(Boolean)
     .join(" · ");
-  const { word, cls } = crumbState(info.state);
+  const { word, cls } = info.inBackground
+    ? { word: "In background", cls: IN_BACKGROUND_CLASS }
+    : crumbState(info.state);
   return (
     <span className={cn("text-muted-foreground min-w-0 truncate", className)}>
       {parts}

@@ -54,6 +54,15 @@ import { useSharedFiles } from "@/hooks/useSharedFiles";
 import { useGitStatus } from "@/data/git/queries";
 import { useTerminalRunRequest } from "@/stores/scriptTerminal";
 import { PickSession } from "./PickSession";
+import {
+  useBackgroundAgent,
+  useParkedAgent,
+} from "@/components/BackgroundAgents";
+import { InBackgroundBanner } from "@/components/Session/InBackground";
+import {
+  attachBackgroundCommand,
+  backgroundAgentOfTmux,
+} from "@/lib/background-tmux";
 
 // Dynamic imports for client-only components with loading states
 const Terminal = dynamic(
@@ -169,6 +178,13 @@ export const Pane = memo(function Pane({
   // Handed off (M4) or settled (M8): no terminal to attach or launch, its
   // chat stays
   const sessionPaused = isEnded(session);
+  // A background agent opened here (its own tmux), or this session moved
+  // to Claude's background agents
+  const backgroundId = session
+    ? null
+    : backgroundAgentOfTmux(activeTab?.attachedTmux);
+  const backgroundAgent = useBackgroundAgent(backgroundId ?? "");
+  const parkedAgent = useParkedAgent(session?.id);
   // M3: a script for this session's shell drawer opens it
   const terminalRun = useTerminalRunRequest(session?.id);
   useEffect(() => {
@@ -508,6 +524,11 @@ export const Pane = memo(function Pane({
         }
         if (launch) {
           launch(handle);
+        } else if (tmuxName && !tab.sessionId && backgroundAgentOfTmux(tmuxName)) {
+          // A background agent it showed: attach it again, or open it anew
+          handle.sendShellCommand(
+            `${tmuxSetup}; ${attachBackgroundCommand(backgroundAgentOfTmux(tmuxName)!)}`
+          );
         } else if (tmuxName) {
           // Existing session — re-attach
           handle.sendShellCommand(`${tmuxSetup}; tmux attach -t ${tmuxName}`);
@@ -621,7 +642,9 @@ export const Pane = memo(function Pane({
       <SessionTitleBar
         session={session}
         projects={projects}
-        fallbackTitle={activeTab?.attachedTmux}
+        fallbackTitle={backgroundId ? "Background agent" : activeTab?.attachedTmux}
+        backgroundAgent={backgroundId ? backgroundAgent : undefined}
+        inBackground={!!parkedAgent}
         isMobile={isMobile}
         isFocused={isFocused}
         viewMode={viewMode}
@@ -645,6 +668,9 @@ export const Pane = memo(function Pane({
       {/* Here, not in the header: Changes and Files on the Duo have none */}
       {session && <MoveToWorktreeSheetHost session={session} />}
       {showStrip && session && <ActivityStrip session={session} />}
+      {session && parkedAgent && (
+        <InBackgroundBanner session={session} agent={parkedAgent} />
+      )}
 
       {/* Content Area - Mobile: simple flex, Desktop: resizable panels */}
       {isMobile ? (
