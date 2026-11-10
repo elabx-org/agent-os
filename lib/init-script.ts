@@ -7,6 +7,33 @@ import {
   type SessionBrowserEnv,
 } from "./browser-helper";
 
+const UUID = /([0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/;
+
+/**
+ * The background job a Claude resume may find its conversation in. Claude
+ * can move a session to its background agents (`claude agents`); --resume
+ * then refuses it and exits, so the tmux closes as it opens. Its job id is
+ * the session id's first 8 characters. Null for anything but a plain Claude
+ * resume (a fork opens a copy, which --resume allows).
+ */
+export function backgroundJobId(agentCommand: string): string | null {
+  if (!/^claude\s/.test(agentCommand.trim())) return null;
+  if (/\s--fork-session\b/.test(agentCommand)) return null;
+  const resume = agentCommand.match(/\s--resume\s+(\S+)/);
+  const id = resume?.[1].match(UUID);
+  return id ? id[1] : null;
+}
+
+/** Opens a backgrounded conversation in place of a resume that would refuse it */
+function attachLines(agentCommand: string): string {
+  const job = backgroundJobId(agentCommand);
+  if (!job) return "";
+  return `# In Claude's background agents, --resume refuses this conversation:
+# open it there instead (no such job: carry on and resume it)
+claude attach ${job} 2>/dev/null && exit 0
+`;
+}
+
 /**
  * Generate an init script that shows the AgentOS banner and configures tmux
  */
@@ -67,7 +94,7 @@ export PATH="$HOME/.local/bin:$PATH"
 # Sign-in links CLIs open go to Agent-OS (lib/browser-helper.ts)
 ${exportLines(browser)}
 # Start the agent
-exec ${agentCommand}
+${attachLines(agentCommand)}exec ${agentCommand}
 `;
 }
 
