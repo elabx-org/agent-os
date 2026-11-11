@@ -6,7 +6,9 @@ import type { Session } from "@/lib/db";
 import type { ViewProps } from "@/components/views/types";
 import { workspacePageStore } from "@/stores/workspacePage";
 import { cn } from "@/lib/utils";
-import { runNav } from "@/lib/nav-actions";
+import { navStore, runNav } from "@/lib/nav-actions";
+import { layoutStore } from "@/hooks/useLayoutMode";
+import { surfaceStore } from "@/stores/surface";
 import { PAGES, type PageProps } from "./pages";
 import { PageEdge } from "@/components/ui/page-edge";
 
@@ -26,6 +28,10 @@ export function WorkspacePage({
   className,
 }: WorkspacePageProps) {
   const { page } = useSnapshot(workspacePageStore);
+  // Beside Now on the open Duo: dragged toward the fold it takes both pages
+  const { home } = useSnapshot(surfaceStore);
+  const { mode } = useSnapshot(layoutStore);
+  const beside = home && (mode === "duo-open" || mode === "book");
   const ref = useRef<HTMLDivElement>(null);
   const kind = page?.kind;
 
@@ -62,7 +68,11 @@ export function WorkspacePage({
         className
       )}
     >
-      <PageEdge label="Back" onClose={() => runNav("back")} />
+      <PageEdge
+        label="Back"
+        onClose={() => runNav("back")}
+        onExpand={beside ? () => navStore.putHomeAway() : undefined}
+      />
       <Page
         // A new subject starts fresh (another project, another agent)
         key={JSON.stringify(page)}

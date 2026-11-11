@@ -6,16 +6,21 @@ import { cn } from "@/lib/utils";
 /**
  * The grip on a layer's left edge: drag it right a third of the way (at most 160px) or flick it
  * and the layer slides away and `onClose` runs, else it springs back. A tap
- * closes too. It moves the element it sits in, which must be positioned
+ * closes too. With `onExpand`, a drag the other way (toward the fold) past
+ * a quarter (at most 96px) runs it instead: the layer takes the whole
+ * screen. It moves the element it sits in, which must be positioned
  */
 export function PageEdge({
   label,
   onClose,
+  onExpand,
   side = "left",
   className,
 }: {
   label: string;
   onClose: () => void;
+  /** Dragged the other way: widen the layer rather than close it */
+  onExpand?: () => void;
   /** "right": the grip on the right edge, dragged left (the open Duo's Now) */
   side?: "left" | "right";
   className?: string;
@@ -57,8 +62,11 @@ export function PageEdge({
       onPointerMove={(e) => {
         const d = drag.current;
         if (!d) return;
-        d.dx = Math.max(0, (e.clientX - d.x) * dir);
-        layer(e.currentTarget).style.transform = `translateX(${d.dx * dir}px)`;
+        const dx = (e.clientX - d.x) * dir;
+        d.dx = onExpand ? dx : Math.max(0, dx);
+        // Toward the fold it gives a little, as a hint, not a slide
+        const shown = d.dx < 0 ? Math.max(d.dx * 0.3, -40) : d.dx;
+        layer(e.currentTarget).style.transform = `translateX(${shown * dir}px)`;
       }}
       onPointerUp={(e) => {
         const d = drag.current;
@@ -66,9 +74,17 @@ export function PageEdge({
         if (!d) return;
         const width = layer(e.currentTarget).offsetWidth || 1;
         const speed = d.dx / Math.max(1, performance.now() - d.t);
+        if (
+          onExpand &&
+          (d.dx < -Math.min(width / 4, 96) || (speed < -0.6 && d.dx < -30))
+        ) {
+          settle(e.currentTarget, false);
+          onExpand();
+          return;
+        }
         settle(
           e.currentTarget,
-          d.dx < 4 ||
+          Math.abs(d.dx) < 4 ||
             d.dx > Math.min(width / 3, 160) ||
             (speed > 0.6 && d.dx > 30)
         );

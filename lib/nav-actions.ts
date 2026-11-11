@@ -122,6 +122,9 @@ interface NavHandlers {
   goBack: () => void;
   /** From Now back to the session behind it (the closed Duo, phones) */
   resume: () => void;
+  /** Put the open Duo's left page (Now, Projects) away: what is on the
+      right, a project page included, takes both pages */
+  putHomeAway: () => void;
   openProjects: () => void;
   /** The live activity sheet (the session's activity rail) */
   openLive: () => void;
@@ -198,6 +201,7 @@ export const navStore: NavHandlers = {
   openNow: showNow,
   goBack: () => navStore.openNow(),
   resume: () => {},
+  putHomeAway: () => {},
   // Projects is Now's other half until it has a page of its own (M1b)
   openProjects: () => navStore.openNow(),
   // Opens, never toggles: ‹, the panel's × or a swipe closes it

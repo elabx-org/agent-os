@@ -616,6 +616,8 @@ function HomeContent() {
           );
           if (view) mobileNavActions.requestViewMode(view);
         },
+        // The page on the right stays: it takes both pages
+        putHomeAway: () => setSidebarOpen(false),
         // On a phone a page covers the home: leave it for the home
         openSessions: () =>
           isMobile && closePage()
