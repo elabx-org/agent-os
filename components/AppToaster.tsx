@@ -23,7 +23,10 @@ export function AppToaster() {
       position={hinge ? "top-right" : "top-center"}
       closeButton
       // Clear of the status strip, and of the iOS app's system column
-      offset={{ top: "max(16px, env(safe-area-inset-top))" }}
+      offset={{
+        top: "max(16px, env(safe-area-inset-top))",
+        right: "calc(16px + env(safe-area-inset-right))",
+      }}
       mobileOffset={{
         top: "max(12px, env(safe-area-inset-top))",
         left: "12px",

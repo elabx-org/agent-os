@@ -350,3 +350,23 @@ html[data-hinge] [data-spread="wide"] .activity-strip {
 .terminal-container {
   background: hsl(var(--background));
 }
+
+/* Toasts end at the iOS app's column. Sonner's phone layout is the
+   screen's full width from the left offset, which ignores the right one
+   and ran the toast (and its button) under the column */
+@media (max-width: 600px) {
+  [data-sonner-toaster] {
+    width: auto !important;
+  }
+  [data-sonner-toaster] [data-sonner-toast] {
+    width: 100% !important;
+  }
+}
+/* A toast's button (Reload, Undo) big enough for a finger */
+@media (pointer: coarse) {
+  [data-sonner-toast][data-styled="true"] [data-button] {
+    height: 36px !important;
+    padding-inline: 14px !important;
+    font-size: 14px !important;
+  }
+}
