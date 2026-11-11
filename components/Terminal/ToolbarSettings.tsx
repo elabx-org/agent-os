@@ -66,6 +66,7 @@ import {
   useToolbarPreferences,
 } from "./toolbar-config";
 import { SheetGrab } from "@/components/ui/sheet-grab";
+import { SHEET_OVERLAY } from "./sheet-overlay";
 
 interface ToolbarSettingsProps {
   open: boolean;
@@ -127,10 +128,7 @@ export function ToolbarSettings({
   const contextMode = preferences.mode !== "custom";
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 [html[data-fold=vertical]_&]:left-[var(--fold-end)] [html[data-hinge]_&]:left-[calc(var(--hinge-x)+var(--fold-clear))] [html[data-native]_&]:right-[env(safe-area-inset-right)]"
-      onClick={onClose}
-    >
+    <div className={cn(SHEET_OVERLAY, "items-end")} onClick={onClose}>
       {/* On the open Duo it takes the right page, so the left page's key
           row shows each change as it's made */}
       <div

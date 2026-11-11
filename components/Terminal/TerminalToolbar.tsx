@@ -51,6 +51,7 @@ import { AdaptiveKey } from "./AdaptiveKey";
 import { useNarrowScreen } from "@/hooks/useNarrowScreen";
 import { adaptiveRow, type AdaptiveState } from "@/lib/adaptive-keys";
 import { SheetGrab } from "@/components/ui/sheet-grab";
+import { SHEET_OVERLAY } from "./sheet-overlay";
 
 interface TerminalToolbarProps {
   onKeyPress: (key: string) => void;
@@ -223,28 +224,27 @@ export function SnippetsModal({
   if (!open) return null;
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/50"
-      onClick={onClose}
-    >
+    <div className={cn(SHEET_OVERLAY, "items-end")} onClick={onClose}>
       <div
-        className="bg-background flex max-h-[70vh] w-full flex-col rounded-t-xl"
+        className="bg-background flex max-h-[70vh] w-full flex-col rounded-t-xl pb-[env(safe-area-inset-bottom)]"
         onClick={(e) => e.stopPropagation()}
       >
         <SheetGrab onClose={onClose} className="mx-0 mb-0 h-6" />
         {/* Header */}
-        <div className="border-border flex items-center justify-between border-b px-4 pb-3">
+        <div className="border-border flex items-center justify-between border-b px-4 pb-1">
           <span className="text-sm font-medium">Snippets</span>
           <div className="flex items-center gap-2">
             <button
               onClick={() => setIsAdding(!isAdding)}
-              className="hover:bg-muted rounded-md p-1.5"
+              aria-label="New snippet"
+              className="hover:bg-muted active:bg-muted grid size-11 place-items-center rounded-full"
             >
               <Plus className="h-5 w-5" />
             </button>
             <button
               onClick={onClose}
-              className="hover:bg-muted rounded-md p-1.5"
+              aria-label="Close snippets"
+              className="hover:bg-muted active:bg-muted grid size-11 place-items-center rounded-full"
             >
               <X className="h-5 w-5" />
             </button>
@@ -347,10 +347,7 @@ function PasteModal({
   if (!open) return null;
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-      onClick={onClose}
-    >
+    <div className={cn(SHEET_OVERLAY, "items-center")} onClick={onClose}>
       <div
         className="bg-background w-[90%] max-w-md rounded-xl p-4"
         onClick={(e) => e.stopPropagation()}
