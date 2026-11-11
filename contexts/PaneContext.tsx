@@ -27,6 +27,7 @@ import {
 import { useIsNative } from "@/hooks/useIsNative";
 import { useViewport } from "@/hooks/useViewport";
 import { clearBackgroundSession } from "@/lib/background-tmux";
+import { isNative } from "@/lib/native-bridge";
 
 interface PaneContextValue {
   state: PaneState;
@@ -86,6 +87,18 @@ export function PaneProvider({ children }: { children: ReactNode }) {
             ...data,
             tabs: data.tabs.map(clearBackgroundSession),
           };
+          // The iOS app shows no tabs: a pane keeps the one in front (the
+          // others were hidden terminals, still connected)
+          if (isNative()) {
+            const front =
+              data.tabs.find((t) => t.id === data.activeTabId) ?? data.tabs[0];
+            if (front)
+              migratedPanes[paneId] = {
+                ...migratedPanes[paneId],
+                tabs: [clearBackgroundSession(front)],
+                activeTabId: front.id,
+              };
+          }
         } else {
           // Old format - migrate to new
           const oldData = paneData as {

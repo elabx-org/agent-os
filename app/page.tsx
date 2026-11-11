@@ -823,8 +823,9 @@ function HomeContent() {
       const current = pane?.tabs.find((t) => t.id === pane.activeTabId);
       if (isMobile) setSidebarOpen(false);
       // A tab of its own beside a session's, which stays as it was: the
-      // pane attaches the new tab's tmux when its terminal starts
-      if (current?.sessionId) {
+      // pane attaches the new tab's tmux when its terminal starts. Not in
+      // the iOS app, which shows no tabs: the agent takes the tab over
+      if (current?.sessionId && !isNative()) {
         const open = pane.tabs.find((t) => !t.sessionId && t.attachedTmux === name);
         if (open) switchTab(paneId, open.id);
         else addTab(paneId, false, name);
