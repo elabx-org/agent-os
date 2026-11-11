@@ -28,7 +28,12 @@ import { useIsNative } from "@/hooks/useIsNative";
 import { FOLD_CLEAR, useHinge } from "@/hooks/useHinge";
 import { useLayoutMode } from "@/hooks/useLayoutMode";
 import { navStore, registerNavHandlers, runNav } from "@/lib/nav-actions";
-import { dropHome, notePageUsed, setHome } from "@/stores/surface";
+import {
+  dropHome,
+  notePageUsed,
+  setHome,
+  surfaceStore,
+} from "@/stores/surface";
 import { isNative, nativeCaps, onNativeEvent } from "@/lib/native-bridge";
 import { postureStore } from "@/stores/posture";
 import { resetSwap, toggleSwap } from "@/stores/paneOrder";
@@ -234,6 +239,8 @@ export function SessionSpread({
   children,
 }: SessionSpreadProps) {
   const native = useIsNative();
+  // A session or a background agent in the pane, to go back to
+  const { behind } = useSnapshot(surfaceStore);
   const mode = useLayoutMode();
   // The Duo lays out as two pages in the app and in Safari alike
   const duo = native || mode === "duo-open" || mode === "book";
@@ -495,7 +502,7 @@ export function SessionSpread({
       >
         {/* On the pages Now sits beside the session: its fold-side grip
             puts it away and the session takes both pages */}
-        {homeOpen && !homeFill && pages && session && (
+        {homeOpen && !homeFill && pages && (session || behind) && (
           <PageEdge
             side="right"
             label="Back to session"

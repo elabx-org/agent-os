@@ -584,7 +584,11 @@ function HomeContent() {
   useSurfaceSource({
     paneCount: getAllPaneIds(paneState.layout).length,
     searchOpen: showQuickSwitcher,
-    behind: !!focusedActiveTab?.sessionId,
+    // A session, or a background agent opened in the pane, waits behind
+    // Now: Now offers to go back to it
+    behind:
+      !!focusedActiveTab?.sessionId ||
+      !!backgroundAgentOfTmux(focusedActiveTab?.attachedTmux),
   });
   useEffect(loadFocus, []);
   useEffect(() => {
