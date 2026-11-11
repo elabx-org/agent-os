@@ -675,11 +675,12 @@ export function SessionTitleBar({
       <div className={cn(hidden && "hidden")}>
         <PageHeader
           info={info}
+          // The terminal gets the room, the open Duo's too: a one-line title
           size={
-            variant === "large"
-              ? "large"
-              : viewMode === "terminal"
-                ? "compact"
+            viewMode === "terminal"
+              ? "compact"
+              : variant === "large"
+                ? "large"
                 : "title"
           }
           switcher={switcher}
