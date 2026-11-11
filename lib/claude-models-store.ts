@@ -11,7 +11,7 @@ import {
   parseClaudeModels,
   type ClaudeModels,
 } from "./claude-models";
-import type { ClaudeModelAlias } from "./handoff-types";
+import type { ClaudeModel } from "./handoff-types";
 
 export function readClaudeModels(db: Database.Database): ClaudeModels {
   const row = db
@@ -42,7 +42,7 @@ export function writeClaudeModels(
 export function setSubagentModel(
   db: Database.Database,
   sessionId: string,
-  model: ClaudeModelAlias | null
+  model: ClaudeModel | null
 ): void {
   db.prepare(
     `UPDATE sessions SET subagent_model = ?, updated_at = datetime('now') WHERE id = ?`

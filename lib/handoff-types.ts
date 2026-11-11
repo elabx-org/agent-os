@@ -16,6 +16,27 @@ export const CLAUDE_MODEL_ALIASES = [
 ] as const;
 export type ClaudeModelAlias = (typeof CLAUDE_MODEL_ALIASES)[number];
 
+/**
+ * Earlier versions a session can be held on, by the model id Claude Code
+ * takes (`--model`, `/model`, CLAUDE_CODE_SUBAGENT_MODEL); an alias always
+ * means the newest of its family. Newest first within each family
+ */
+export const CLAUDE_MODEL_VERSIONS = [
+  "claude-fable-5-1",
+  "claude-fable-5",
+  "claude-opus-5",
+  "claude-opus-4-8",
+  "claude-opus-4-7",
+  "claude-opus-4-6",
+  "claude-sonnet-5",
+  "claude-sonnet-4-6",
+  "claude-haiku-4-5",
+] as const;
+export type ClaudeModelVersion = (typeof CLAUDE_MODEL_VERSIONS)[number];
+
+/** What a session or its sub-agents can be set to: an alias or a version */
+export type ClaudeModel = ClaudeModelAlias | ClaudeModelVersion;
+
 /** `claude --effort <level>` (Claude Code 2.1: low, medium, high, xhigh, max) */
 export const EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"] as const;
 export type EffortLevel = (typeof EFFORT_LEVELS)[number];
@@ -26,6 +47,16 @@ export type HandoffAgent = (typeof HANDOFF_AGENTS)[number];
 
 export function isClaudeModelAlias(value: unknown): value is ClaudeModelAlias {
   return (CLAUDE_MODEL_ALIASES as readonly unknown[]).includes(value);
+}
+
+export function isClaudeModelVersion(
+  value: unknown
+): value is ClaudeModelVersion {
+  return (CLAUDE_MODEL_VERSIONS as readonly unknown[]).includes(value);
+}
+
+export function isClaudeModel(value: unknown): value is ClaudeModel {
+  return isClaudeModelAlias(value) || isClaudeModelVersion(value);
 }
 
 export function isEffortLevel(value: unknown): value is EffortLevel {
@@ -46,14 +77,14 @@ export function isPaused(
 /** POST /api/sessions/[id]/model (Claude sessions only) */
 export interface ModelSwitchRequest {
   /** Left out when only the effort changes (no /model is sent then) */
-  model?: ClaudeModelAlias;
+  model?: ClaudeModel;
   effort?: EffortLevel;
   /**
    * The sub-agents' model, "same" for the session's own. Claude reads it
    * when it starts, so with this the picks are stored, not queued, and the
    * caller restarts the session (result.restart)
    */
-  subagents?: ClaudeModelAlias | "same";
+  subagents?: ClaudeModel | "same";
 }
 
 /**
@@ -69,11 +100,11 @@ export interface ModelSwitchResult {
   /** False when the queue isn't on for this session: the command was not queued */
   queued: boolean;
   /** Null when only the effort changed */
-  model: ClaudeModelAlias | null;
+  model: ClaudeModel | null;
   effort: EffortLevel | null;
   effortApplies: EffortApplies | null;
   /** Sent with subagents: what it is now, null for the same as the session */
-  subagents?: ClaudeModelAlias | null;
+  subagents?: ClaudeModel | null;
   /** Sent with subagents and the session is running: restart it to apply */
   restart?: boolean;
 }

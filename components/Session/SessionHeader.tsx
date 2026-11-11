@@ -17,7 +17,7 @@ import { Avatar, agentAvatar, agentName } from "@/components/a/Avatar";
 import { PlanChip } from "@/components/Chat/PlanChip";
 import { useSessionActivity } from "@/hooks/useSessionActivity";
 import { openLiveSheet, StatusCardButton } from "./ActivityStrip";
-import { canSwitch, ModelChip } from "./ModelChip";
+import { canSwitch, ModelChip, ModelCrumb } from "./ModelChip";
 import { PermissionChip } from "./PermissionChip";
 import { PrChip } from "@/components/a/PrChip";
 import { isEnded, sessionPr, wantsSettleChip } from "@/lib/settle-types";
@@ -165,6 +165,10 @@ export function PageHeader({
           )}
           {/* Working is said by the card below */}
           <Crumb info={info} state={!cards || state !== "work"} />
+          {/* The terminal's one line has no chip: the models after the crumb */}
+          {switcher && size === "compact" && canSwitch(session) && (
+            <ModelCrumb session={session} onOpen={switcher.onOpen} />
+          )}
         </div>
       )}
       {/* N-PermMode: the shield chip at the title's right, 10px from it */}

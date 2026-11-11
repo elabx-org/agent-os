@@ -3,7 +3,7 @@ import { getDb, queries, type Session } from "@/lib/db";
 import { requireUser } from "@/lib/user-proof";
 import { HandoffRefused, switchModel } from "@/lib/handoff";
 import {
-  isClaudeModelAlias,
+  isClaudeModel,
   isEffortLevel,
   type ModelSwitchResult,
 } from "@/lib/handoff-types";
@@ -34,13 +34,13 @@ export async function POST(
   const model: unknown = body?.model ?? undefined;
   const effort: unknown = body?.effort ?? undefined;
   const subagents: unknown = body?.subagents ?? undefined;
-  if (model !== undefined && !isClaudeModelAlias(model)) {
+  if (model !== undefined && !isClaudeModel(model)) {
     return NextResponse.json({ error: "Unknown model" }, { status: 400 });
   }
   if (
     subagents !== undefined &&
     subagents !== "same" &&
-    !isClaudeModelAlias(subagents)
+    !isClaudeModel(subagents)
   ) {
     return NextResponse.json(
       { error: "Unknown sub-agent model" },

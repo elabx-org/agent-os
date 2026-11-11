@@ -8,6 +8,10 @@ import {
   modelAlias,
   modelDisplayName,
   modelPicks,
+  pickLabel,
+  familyPick,
+  versionChoices,
+  subagentSegment,
   modelRowCaption,
   currentSubagents,
   SUBAGENT_PICKS,
@@ -37,13 +41,78 @@ test("currentModel: the status line wins over sessions.model", () => {
       { id: "claude-sonnet-5-5", display_name: "Sonnet 5.5" },
       "opus"
     ),
-    { alias: "sonnet", label: "Sonnet 5.5" }
+    { alias: "sonnet", label: "Sonnet 5.5", model: "sonnet" }
   );
   assert.deepEqual(currentModel(null, "haiku"), {
     alias: "haiku",
     label: "Haiku",
+    model: "haiku",
   });
-  assert.deepEqual(currentModel(null, null), { alias: null, label: null });
+  assert.deepEqual(currentModel(null, null), {
+    alias: null,
+    label: null,
+    model: null,
+  });
+});
+
+test("currentModel: an earlier version is its own pick", () => {
+  assert.deepEqual(
+    currentModel(
+      { id: "claude-fable-5-1", display_name: "Fable 5.1" },
+      "fable"
+    ),
+    { alias: "fable", label: "Fable 5.1", model: "claude-fable-5-1" }
+  );
+  // Stopped: from what was stored, named by its version
+  assert.deepEqual(currentModel(null, "claude-opus-4-8"), {
+    alias: "opus",
+    label: "Opus 4.8",
+    model: "claude-opus-4-8",
+  });
+  // The newest by its full id, a variant or a dated id: the alias
+  assert.equal(currentModel({ id: "claude-fable-5-2" }, null).model, "fable");
+  assert.equal(currentModel({ id: "claude-opus-5-5[1m]" }, null).model, "opus");
+  assert.equal(
+    currentModel({ id: "claude-haiku-4-5-20251001" }, null).model,
+    "claude-haiku-4-5"
+  );
+  // "claude-fable-5" is not a prefix match for 5.2
+  assert.equal(
+    currentModel({ id: "claude-fable-5" }, null).model,
+    "claude-fable-5"
+  );
+});
+
+test("versions: a family's newest first, the picked one names its tile", () => {
+  assert.deepEqual(
+    versionChoices("opus").map((c) => [c.id, c.label, c.name]),
+    [
+      ["opus", "5.5", "Opus 5.5, newest"],
+      ["claude-opus-5", "5", "Opus 5"],
+      ["claude-opus-4-8", "4.8", "Opus 4.8"],
+      ["claude-opus-4-7", "4.7", "Opus 4.7"],
+      ["claude-opus-4-6", "4.6", "Opus 4.6"],
+    ]
+  );
+  assert.deepEqual(
+    versionChoices("haiku").map((c) => c.label),
+    ["5.5", "4.5"]
+  );
+  const current = currentModel(
+    { id: "claude-fable-5-2", display_name: "Fable 5.2" },
+    "fable"
+  );
+  const picks = modelPicks(current, "claude-fable-5-1");
+  assert.deepEqual(
+    [picks[0].label, picks[0].caption],
+    ["Fable 5.1", "Most capable"]
+  );
+  assert.equal(modelPicks(current, "fable")[0].caption, "Current");
+  assert.equal(pickLabel("claude-opus-4-8", current), "Opus 4.8");
+  // The lit tile keeps its version; another family starts at its newest
+  const held = currentModel({ id: "claude-fable-5-1" }, null);
+  assert.equal(familyPick("fable", held), "claude-fable-5-1");
+  assert.equal(familyPick("opus", held), "opus");
 });
 
 test("modelPicks: Fable first; the current one by Claude's name", () => {
@@ -77,6 +146,9 @@ test("sub-agent picks: Same, then each model by family", () => {
   assert.equal(currentSubagents(null), "same");
   assert.equal(currentSubagents("opus"), "opus");
   assert.equal(currentSubagents("claude-opus-5-5"), "same");
+  assert.equal(currentSubagents("claude-opus-4-8"), "claude-opus-4-8");
+  assert.equal(subagentSegment("claude-opus-4-8"), "opus");
+  assert.equal(subagentSegment("same"), "same");
 });
 
 test("effortOptions: the mock's four, X-High only while in use", () => {

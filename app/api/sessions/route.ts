@@ -8,7 +8,7 @@ import { generateBranchName } from "@/lib/git";
 import { setupNativeWorktreeWhenReady, setupWorktree, type SetupResult } from "@/lib/env-setup";
 import { resolveProjectDefaults, type ResolvedProjectDefaults } from "@/lib/project-config";
 import { isSafeModelName } from "@/lib/model-name";
-import { isClaudeModelAlias } from "@/lib/handoff-types";
+import { isClaudeModel } from "@/lib/handoff-types";
 import { NO_CLAUDE_MODELS } from "@/lib/claude-models";
 import { readClaudeModels } from "@/lib/claude-models-store";
 import { findAvailablePort } from "@/lib/ports";
@@ -129,7 +129,7 @@ export async function POST(request: NextRequest) {
     if (
       requestedSubagents != null &&
       requestedSubagents !== "same" &&
-      !isClaudeModelAlias(requestedSubagents)
+      !isClaudeModel(requestedSubagents)
     ) {
       return NextResponse.json({ error: "Unknown sub-agent model" }, { status: 400 });
     }
@@ -138,7 +138,7 @@ export async function POST(request: NextRequest) {
         ? null
         : requestedSubagents === undefined
           ? claudeModels.subagents
-          : isClaudeModelAlias(requestedSubagents)
+          : isClaudeModel(requestedSubagents)
             ? requestedSubagents
             : null;
     // The file's Full access (the user chose it in the UI) is the user's

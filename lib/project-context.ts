@@ -7,7 +7,7 @@ import { getProject, getProjectSessions } from "./projects";
 import { readClaudeSessionMeta } from "./claude-transcript";
 import { parseProjectHooks } from "./project-hooks";
 import { withClaudeState, type HookGroup } from "./claude-state";
-import { isClaudeModelAlias } from "./handoff-types";
+import { isClaudeModel } from "./handoff-types";
 import { proxyEnabled } from "./port-proxy-config";
 import { publicOrigin } from "./public-origin";
 
@@ -203,7 +203,7 @@ function sessionSettings(project: Project, session: Session) {
  * CLAUDE_CODE_SUBAGENT_MODEL there never overrides the pick
  */
 function subagentEnv(session: Session): { env?: Record<string, string> } {
-  return isClaudeModelAlias(session.subagent_model)
+  return isClaudeModel(session.subagent_model)
     ? { env: { CLAUDE_CODE_SUBAGENT_MODEL: session.subagent_model } }
     : {};
 }

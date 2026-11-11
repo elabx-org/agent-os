@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ComponentProps, type ReactNode } from "react";
+import { Fragment, useState, type ComponentProps, type ReactNode } from "react";
 import {
   ChevronDown,
   ChevronRight,
@@ -41,6 +41,7 @@ import { DirectoryPicker } from "@/components/DirectoryPicker";
 import { MODELS } from "@/components/BackgroundAgents";
 import {
   CLAUDE_MODEL_CHOICES,
+  CLAUDE_MODEL_VERSION_CHOICES,
   claudeModelName,
   subagentModelName,
 } from "@/lib/claude-models";
@@ -56,22 +57,54 @@ import type { NewFormState } from "./useNewForm";
  * A session's Default is Settings → Claude Code's model, named; background
  * agents pass the model as is (Default: Claude Code's own)
  */
-function sessionModels(form: NewFormState) {
+function sessionModels(form: NewFormState): ModelItem[] {
   const fallback = form.claudeDefaults.model;
-  if (form.runAs === "background" || !fallback) return MODELS;
+  if (form.runAs === "background") return MODELS;
   return [
-    { id: "", label: `${claudeModelName(fallback)} · default` },
-    ...MODELS.slice(1),
+    ...(fallback
+      ? [
+          { id: "", label: `${claudeModelName(fallback)} · default` },
+          ...MODELS.slice(1),
+        ]
+      : MODELS),
+    ...EARLIER,
   ];
 }
 
+interface ModelItem {
+  id: string;
+  label: string;
+  /** An earlier version, held exactly: listed under its own heading */
+  earlier?: boolean;
+}
+
+const EARLIER: ModelItem[] = CLAUDE_MODEL_VERSION_CHOICES.map((c) => ({
+  id: c.id,
+  label: c.name,
+  earlier: true,
+}));
+
+/** The radio items, "Earlier versions" above the first of those */
+function ModelRadioItems({ items }: { items: ModelItem[] }) {
+  const firstEarlier = items.findIndex((m) => m.earlier);
+  return items.map((m, i) => (
+    <Fragment key={m.id || "default"}>
+      {i === firstEarlier && (
+        <DropdownMenuLabel>Earlier versions</DropdownMenuLabel>
+      )}
+      <DropdownMenuRadioItem value={m.id}>{m.label}</DropdownMenuRadioItem>
+    </Fragment>
+  ));
+}
+
 /** Sub-agents: "" is the default (named), "same" the session's own model */
-function subagentModels(form: NewFormState) {
+function subagentModels(form: NewFormState): ModelItem[] {
   const fallback = form.claudeDefaults.subagents;
   return [
     { id: "", label: `${subagentModelName(fallback)} · default` },
     ...(fallback ? [{ id: "same", label: subagentModelName(null) }] : []),
     ...CLAUDE_MODEL_CHOICES.map((c) => ({ id: c.alias, label: c.name })),
+    ...EARLIER,
   ];
 }
 
@@ -239,11 +272,7 @@ function ModeItems({ form }: { form: NewFormState }) {
 function ModelItems({ form }: { form: NewFormState }) {
   return (
     <DropdownMenuRadioGroup value={form.model} onValueChange={form.setModel}>
-      {sessionModels(form).map((m) => (
-        <DropdownMenuRadioItem key={m.id} value={m.id}>
-          {m.label}
-        </DropdownMenuRadioItem>
-      ))}
+      <ModelRadioItems items={sessionModels(form)} />
     </DropdownMenuRadioGroup>
   );
 }
@@ -254,11 +283,7 @@ function SubagentItems({ form }: { form: NewFormState }) {
       value={form.subagentModel}
       onValueChange={form.setSubagentModel}
     >
-      {subagentModels(form).map((m) => (
-        <DropdownMenuRadioItem key={m.id || "default"} value={m.id}>
-          {m.label}
-        </DropdownMenuRadioItem>
-      ))}
+      <ModelRadioItems items={subagentModels(form)} />
     </DropdownMenuRadioGroup>
   );
 }
