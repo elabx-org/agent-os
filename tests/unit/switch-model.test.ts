@@ -9,6 +9,9 @@ import {
   modelDisplayName,
   modelPicks,
   modelRowCaption,
+  currentSubagents,
+  SUBAGENT_PICKS,
+  subagentPickLabel,
   switchAction,
 } from "../../components/Session/switch-model";
 
@@ -43,23 +46,37 @@ test("currentModel: the status line wins over sessions.model", () => {
   assert.deepEqual(currentModel(null, null), { alias: null, label: null });
 });
 
-test("modelPicks: the current one by Claude's name, the rest by family", () => {
-  const picks = modelPicks({ alias: "opus", label: "Opus 5.5" });
+test("modelPicks: Fable first; the current one by Claude's name", () => {
+  const picks = modelPicks({ alias: "opus", label: "Opus 5.5 (1M context)" });
   assert.deepEqual(
     picks.map((p) => [p.alias, p.label, p.caption]),
     [
-      ["opus", "Opus 5.5", "Current"],
-      ["sonnet", "Sonnet", "Faster"],
-      ["haiku", "Haiku", "Quickest"],
+      ["fable", "Fable 5.2", "Most capable"],
+      ["opus", "Opus 5.5 (1M context)", "Current"],
+      ["sonnet", "Sonnet 5.5", "Faster"],
+      ["haiku", "Haiku 5.5", "Quickest"],
     ]
   );
-  // No version made up when nothing is known
   const unknown = modelPicks({ alias: null, label: null });
   assert.ok(unknown.every((p) => p.caption !== "Current"));
-  assert.deepEqual(
-    unknown.map((p) => p.label),
-    ["Opus", "Sonnet", "Haiku"]
-  );
+});
+
+test("modelAlias: Fable from its id and its name", () => {
+  assert.equal(modelAlias("claude-fable-5-2"), "fable");
+  assert.equal(modelAlias("Fable 5.2"), "fable");
+});
+
+test("sub-agent picks: Same, then each model by family", () => {
+  assert.deepEqual(SUBAGENT_PICKS.map(subagentPickLabel), [
+    "Same",
+    "Fable",
+    "Opus",
+    "Sonnet",
+    "Haiku",
+  ]);
+  assert.equal(currentSubagents(null), "same");
+  assert.equal(currentSubagents("opus"), "opus");
+  assert.equal(currentSubagents("claude-opus-5-5"), "same");
 });
 
 test("effortOptions: the mock's four, X-High only while in use", () => {
@@ -173,4 +190,21 @@ test("handoffRefusalText: reasons in words, 501 until the routes land", () => {
     "Reload to confirm it's you"
   );
   assert.equal(handoffRefusalText(500, null, "Claude"), "Something went wrong");
+});
+
+test("switchAction: sub-agents changed is a restart, never mid-turn", () => {
+  const idle = switchAction({ ...base, subagentsChanged: true });
+  assert.equal(idle.kind, "restart");
+  assert.equal(idle.label, "Apply and restart");
+  assert.equal(idle.disabled, false);
+  assert.match(idle.note ?? "", /same conversation/);
+  const busy = switchAction({
+    ...base,
+    subagentsChanged: true,
+    modelChanged: true,
+    busy: true,
+  });
+  assert.equal(busy.kind, "restart");
+  assert.equal(busy.disabled, true);
+  assert.match(busy.note ?? "", /Waits until/);
 });

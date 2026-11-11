@@ -2,10 +2,11 @@
 
 import { ChevronDown } from "lucide-react";
 import type { Session } from "@/lib/db";
-import { isHandoffAgent } from "@/lib/handoff-types";
+import { isClaudeModelAlias, isHandoffAgent } from "@/lib/handoff-types";
 import { cn } from "@/lib/utils";
 import { useClaudeState } from "@/hooks/useClaudeState";
 import { Avatar, agentAvatar, agentName } from "@/components/a/Avatar";
+import { claudeModelName } from "@/lib/claude-models";
 import { currentModel } from "./switch-model";
 
 /** The sessions the sheet can switch: Claude, Codex, Gemini */
@@ -14,18 +15,34 @@ export function canSwitch(session: Session | null | undefined): boolean {
 }
 
 /**
- * "Claude · Opus 5.5": the agent and, for Claude, the model it runs (its
- * status line's name, else sessions.model); other agents by their stored
- * model when they have one
+ * "Claude · Fable 5.2 · sub-agents Opus 5.5": the agent and, for Claude, the
+ * model it runs (its status line's name, else sessions.model) and its
+ * sub-agents' model, always, so neither is a surprise; other agents by
+ * their stored model when they have one
  */
 export function useModelLabel(session: Session): string {
-  const type = session.agent_type || "claude";
-  const claude = type === "claude";
-  const { status, transcriptModel } = useClaudeState(session.id, claude);
-  const model = claude
-    ? currentModel(status?.model ?? transcriptModel, session.model).label
-    : session.model || null;
-  return [agentName(type), model].filter(Boolean).join(" · ");
+  const parts = useModelParts(session);
+  return [agentName(session.agent_type || "claude"), ...parts].join(" · ");
+}
+
+/**
+ * The same without the agent: ["Fable 5.2", "sub-agents Opus 5.5"] for
+ * Claude, [model] or [] for the others; [] without a session
+ */
+export function useModelParts(session: Session | null | undefined): string[] {
+  const type = session?.agent_type || "claude";
+  const claude = !!session && type === "claude";
+  const { status, transcriptModel } = useClaudeState(session?.id, claude);
+  if (!session) return [];
+  if (!claude) return session.model ? [session.model] : [];
+  const model = currentModel(
+    status?.model ?? transcriptModel,
+    session.model
+  ).label;
+  const subagents = isClaudeModelAlias(session.subagent_model)
+    ? claudeModelName(session.subagent_model)
+    : "same";
+  return [model, `sub-agents ${subagents}`].filter((p): p is string => !!p);
 }
 
 export interface ModelChipProps {
@@ -53,7 +70,7 @@ export function ModelChip({
       onClick={onOpen}
       aria-haspopup="dialog"
       aria-expanded={open}
-      aria-label={`Agent and model: ${label.replace(" · ", ", ")}`}
+      aria-label={`Agent and model: ${label.replaceAll(" · ", ", ")}`}
       className={cn(
         "chip hover:text-foreground relative min-w-[64px] shrink pr-2.5 pl-1.5 transition-shadow",
         // A 44pt touch around the 30px chip

@@ -28,19 +28,26 @@ import {
   SheetDescription,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { fetchAsUser, refusalText } from "@/lib/client/user-fetch";
 import {
   currentEffort,
   currentModel,
+  currentSubagents,
   effortLabel,
   effortOptions,
   modelPicks,
   modelRowCaption,
+  SUBAGENT_PICKS,
+  subagentPickLabel,
   switchAction,
+  type SubagentPick,
 } from "./switch-model";
+import { subagentModelName } from "@/lib/claude-models";
 
 /**
  * N-Switch "Agent and model": Claude model + effort (between turns, queued
- * as `/model`), and the agent pick, which is a handoff to a new session in
+ * as `/model`), the sub-agents' model (a restart, resuming the
+ * conversation, as Claude reads it when it starts), and the agent pick, which is a handoff to a new session in
  * the same folder with a summary; this one stays listed, paused.
  */
 export interface SwitchSheetProps {
@@ -175,6 +182,8 @@ function SwitchBody({
   const [agent, setAgent] = useState<string>(source);
   const [model, setModel] = useState<ClaudeModelAlias | null>(current.alias);
   const [effort, setEffort] = useState<EffortLevel | null>(runningEffort);
+  const storedSubagents = currentSubagents(session.subagent_model);
+  const [subagents, setSubagents] = useState<SubagentPick>(storedSubagents);
   const [sending, setSending] = useState(false);
 
   // The status line can land after the sheet opened: follow it until a pick
@@ -192,6 +201,7 @@ function SwitchBody({
   const effortOn = claude && agent === "claude";
   const modelChanged = !!model && model !== current.alias;
   const effortChanged = !!effort && effort !== runningEffort;
+  const subagentsChanged = claude && subagents !== storedSubagents;
   const modelLabel = picks.find((p) => p.alias === model)?.label ?? null;
   const action = switchAction({
     source,
@@ -201,6 +211,7 @@ function SwitchBody({
     modelLabel,
     modelChanged,
     effortChanged,
+    subagentsChanged: agent === "claude" && subagentsChanged,
     busy: !!preview?.busy,
     paused: isPaused(session),
     settled: isSettled(session),
@@ -216,6 +227,40 @@ function SwitchBody({
     else toast(`Switching to ${what} between turns`);
   };
 
+  /** Sub-agents: stored with the rest, then Claude restarts to read them */
+  const applyWithRestart = async () => {
+    const result = await switchModel({
+      ...(modelChanged && model ? { model } : {}),
+      ...(effortChanged && effort ? { effort } : {}),
+      subagents,
+    });
+    const what = `sub-agents on ${subagentModelName(result.subagents ?? null)}`;
+    if (!result.restart) {
+      toast(`Saved: ${what} from the session's next start`);
+      return;
+    }
+    const res = await fetchAsUser(`/api/sessions/${session.id}/restart`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ whenIdle: true }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      toast(
+        res.status === 409 && data?.busy
+          ? `Saved: ${what} once ${sourceName} restarts. It's working now`
+          : refusalText(data)
+      );
+      return;
+    }
+    window.dispatchEvent(
+      new CustomEvent("agentos-session-restarted", {
+        detail: { session: data.session },
+      })
+    );
+    toast(`Restarting with ${what}`);
+  };
+
   const run = async () => {
     if (disabled) return;
     setSending(true);
@@ -229,6 +274,10 @@ function SwitchBody({
         toast(`Handed off to ${pickedName}`);
         onClose();
         onHandedOff?.(result.session);
+      } else if (action.kind === "restart") {
+        await applyWithRestart();
+        haptic("success");
+        onClose();
       } else if (action.kind === "model") {
         // Only what changed: an unchanged model sends no `/model`, which
         // would drop a variant like Opus (1M context) to the plain alias
@@ -272,7 +321,7 @@ function SwitchBody({
           aria-label="Claude model"
           aria-disabled={!modelOn || undefined}
           className={cn(
-            "grid grid-cols-3 gap-2 transition-opacity",
+            "grid grid-cols-4 gap-2 transition-opacity",
             !modelOn && "opacity-40"
           )}
         >
@@ -308,7 +357,7 @@ function SwitchBody({
           )}
           aria-disabled={!effortOn || undefined}
         >
-          <span className="text-muted-foreground w-11 shrink-0 text-[13px]">
+          <span className="text-muted-foreground w-[4.75rem] shrink-0 text-[13px] whitespace-nowrap">
             Effort
           </span>
           <div
@@ -329,6 +378,43 @@ function SwitchBody({
                 className="h-11 min-w-0 flex-1 truncate rounded-[22px] px-1"
               >
                 {effortLabel(level)}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div
+          className={cn(
+            "flex items-center gap-2.5 transition-opacity",
+            !effortOn && "opacity-40"
+          )}
+          aria-disabled={!effortOn || undefined}
+        >
+          <span className="text-muted-foreground w-[4.75rem] shrink-0 text-[13px] whitespace-nowrap">
+            Sub-agents
+          </span>
+          <div
+            role="group"
+            aria-label="Sub-agents' model"
+            className="seg min-w-0 flex-1 justify-between rounded-3xl bg-[var(--sheet-fill)]"
+          >
+            {SUBAGENT_PICKS.map((pick) => (
+              <button
+                key={pick}
+                type="button"
+                aria-pressed={subagents === pick}
+                aria-label={
+                  pick === "same"
+                    ? "Same as the session"
+                    : subagentModelName(pick)
+                }
+                disabled={!effortOn || sending}
+                onClick={() => {
+                  setTouched(true);
+                  setSubagents(pick);
+                }}
+                className="h-11 min-w-0 flex-1 truncate rounded-[22px] px-1"
+              >
+                {subagentPickLabel(pick)}
               </button>
             ))}
           </div>

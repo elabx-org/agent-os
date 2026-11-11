@@ -5,6 +5,7 @@
  */
 
 import { refusalText } from "@/lib/client/user-fetch";
+import { claudeModelName } from "@/lib/claude-models";
 import {
   CLAUDE_MODEL_ALIASES,
   EFFORT_LEVELS,
@@ -23,6 +24,7 @@ export function modelAlias(
 }
 
 const FAMILY: Record<ClaudeModelAlias, string> = {
+  fable: "Fable",
   opus: "Opus",
   sonnet: "Sonnet",
   haiku: "Haiku",
@@ -63,12 +65,13 @@ export interface ModelPick {
 }
 
 const CAPTION: Record<ClaudeModelAlias, string> = {
-  opus: "Most capable",
+  fable: "Most capable",
+  opus: "Strong",
   sonnet: "Faster",
   haiku: "Quickest",
 };
 
-/** Opus, Sonnet, Haiku; the one running says Current */
+/** Fable, Opus, Sonnet, Haiku; the one running says Current */
 export function modelPicks(current: {
   alias: ClaudeModelAlias | null;
   label: string | null;
@@ -77,13 +80,13 @@ export function modelPicks(current: {
     const isCurrent = alias === current.alias;
     return {
       alias,
-      label: (isCurrent && current.label) || FAMILY[alias],
+      label: (isCurrent && current.label) || claudeModelName(alias),
       caption: isCurrent ? "Current" : CAPTION[alias],
     };
   });
 }
 
-/** The pick's name in the button: "Switch to Sonnet" */
+/** The pick's name in the button: "Switch to Sonnet 5.5" */
 export function pickLabel(
   alias: ClaudeModelAlias,
   current: { alias: ClaudeModelAlias | null; label: string | null }
@@ -125,9 +128,28 @@ export function currentEffort(
   return isEffortLevel(sessionEffort) ? sessionEffort : null;
 }
 
+/** The sub-agents segment: Same, then each model */
+export type SubagentPick = ClaudeModelAlias | "same";
+
+export const SUBAGENT_PICKS: SubagentPick[] = ["same", ...CLAUDE_MODEL_ALIASES];
+
+/** Its label in the segment: "Same", "Opus" (its aria-label names the version) */
+export function subagentPickLabel(pick: SubagentPick): string {
+  return pick === "same" ? "Same" : FAMILY[pick];
+}
+
+/** The session's stored sub-agents' model as a pick */
+export function currentSubagents(
+  stored: string | null | undefined
+): SubagentPick {
+  return CLAUDE_MODEL_ALIASES.find((alias) => alias === stored) ?? "same";
+}
+
 export type SwitchAction =
   | { kind: "handoff"; label: string; disabled: boolean; note: string | null }
   | { kind: "model"; label: string; disabled: boolean; note: string | null }
+  /** Sub-agents changed: stored, then the session restarts to read it */
+  | { kind: "restart"; label: string; disabled: boolean; note: string | null }
   | { kind: "none"; label: string; disabled: true; note: string | null };
 
 /**
@@ -146,6 +168,8 @@ export function switchAction(o: {
   modelLabel: string | null;
   modelChanged: boolean;
   effortChanged: boolean;
+  /** The sub-agents' model changed (Claude only) */
+  subagentsChanged?: boolean;
   /** From the preview: mid-turn */
   busy: boolean;
   paused: boolean;
@@ -165,6 +189,17 @@ export function switchAction(o: {
       label: `Hand off to ${o.pickedName}`,
       disabled: o.busy,
       note: o.busy ? `Waits until ${o.sourceName} is done` : null,
+    };
+  // Claude reads the sub-agents' model when it starts: a restart, never
+  // mid-turn, resuming the same conversation (the model and effort go too)
+  if (o.source === "claude" && o.subagentsChanged)
+    return {
+      kind: "restart",
+      label: "Apply and restart",
+      disabled: o.busy,
+      note: o.busy
+        ? `Waits until ${o.sourceName} is done`
+        : `${o.sourceName} restarts in the same conversation`,
     };
   if (o.source === "claude" && o.modelChanged && o.modelLabel)
     return {

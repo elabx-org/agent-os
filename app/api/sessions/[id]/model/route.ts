@@ -8,11 +8,12 @@ import {
   type ModelSwitchResult,
 } from "@/lib/handoff-types";
 
-// POST /api/sessions/[id]/model {model?, effort?} - ModelSwitchResult.
+// POST /api/sessions/[id]/model {model?, effort?, subagents?} - ModelSwitchResult.
 // The user's only. Claude sessions: `/model <alias>` and `/effort <level>`,
 // each only when picked, go through the queue as commands, sent only at
 // idle; with the queue off or the session stopped they apply at its next
-// launch.
+// launch. With subagents (read only when Claude starts) all are stored and
+// result.restart says to restart the running session.
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -32,10 +33,21 @@ export async function POST(
   const body = await request.json().catch(() => null);
   const model: unknown = body?.model ?? undefined;
   const effort: unknown = body?.effort ?? undefined;
+  const subagents: unknown = body?.subagents ?? undefined;
   if (model !== undefined && !isClaudeModelAlias(model)) {
     return NextResponse.json({ error: "Unknown model" }, { status: 400 });
   }
-  if (model === undefined && effort === undefined) {
+  if (
+    subagents !== undefined &&
+    subagents !== "same" &&
+    !isClaudeModelAlias(subagents)
+  ) {
+    return NextResponse.json(
+      { error: "Unknown sub-agent model" },
+      { status: 400 }
+    );
+  }
+  if (model === undefined && effort === undefined && subagents === undefined) {
     return NextResponse.json(
       { error: "Pick a model or an effort" },
       { status: 400 }
@@ -52,6 +64,7 @@ export async function POST(
     const result: ModelSwitchResult = await switchModel(session, {
       model,
       effort,
+      subagents,
     });
     return NextResponse.json(result);
   } catch (error) {

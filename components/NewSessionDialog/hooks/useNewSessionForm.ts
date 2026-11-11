@@ -55,6 +55,8 @@ export function useNewSessionForm({
   const [initialPrompt, setInitialPrompt] = useState("");
   // "" keeps the server's default
   const [model, setModel] = useState("");
+  // "": Settings → Claude Code's default; "same" or a Claude alias
+  const [subagentModel, setSubagentModel] = useState("");
   // New → Permissions; null keeps the agent's (or project's) default
   const [permissionMode, setPermissionMode] = useState<Mode | null>(null);
 
@@ -271,6 +273,8 @@ export function useNewSessionForm({
         useTmux,
         initialPrompt: initialPrompt.trim() || null,
         model: model || undefined,
+        subagentModel:
+          agentType === "claude" ? subagentModel || undefined : undefined,
       },
       {
         onSuccess: (data) => {
@@ -327,6 +331,7 @@ export function useNewSessionForm({
     setFeatureName("");
     setInitialPrompt("");
     setModel("");
+    setSubagentModel("");
     setPermissionMode(null);
     setShowNewProject(false);
     setNewProjectName("");
@@ -356,6 +361,8 @@ export function useNewSessionForm({
     setInitialPrompt,
     model,
     setModel,
+    subagentModel,
+    setSubagentModel,
     permissionMode,
     setPermissionMode,
     // Branch/Worktree

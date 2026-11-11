@@ -8,7 +8,12 @@ import type { Session } from "./db/types";
 import type { QueueItem } from "./queue/types";
 
 /** Claude's model aliases, as `/model <alias>` and `--model <alias>` take them */
-export const CLAUDE_MODEL_ALIASES = ["opus", "sonnet", "haiku"] as const;
+export const CLAUDE_MODEL_ALIASES = [
+  "fable",
+  "opus",
+  "sonnet",
+  "haiku",
+] as const;
 export type ClaudeModelAlias = (typeof CLAUDE_MODEL_ALIASES)[number];
 
 /** `claude --effort <level>` (Claude Code 2.1: low, medium, high, xhigh, max) */
@@ -43,6 +48,12 @@ export interface ModelSwitchRequest {
   /** Left out when only the effort changes (no /model is sent then) */
   model?: ClaudeModelAlias;
   effort?: EffortLevel;
+  /**
+   * The sub-agents' model, "same" for the session's own. Claude reads it
+   * when it starts, so with this the picks are stored, not queued, and the
+   * caller restarts the session (result.restart)
+   */
+  subagents?: ClaudeModelAlias | "same";
 }
 
 /**
@@ -61,6 +72,10 @@ export interface ModelSwitchResult {
   model: ClaudeModelAlias | null;
   effort: EffortLevel | null;
   effortApplies: EffortApplies | null;
+  /** Sent with subagents: what it is now, null for the same as the session */
+  subagents?: ClaudeModelAlias | null;
+  /** Sent with subagents and the session is running: restart it to apply */
+  restart?: boolean;
 }
 
 /** POST /api/sessions/[id]/handoff */

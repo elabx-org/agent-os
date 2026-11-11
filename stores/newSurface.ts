@@ -51,6 +51,7 @@ export interface NewDraft {
   workingDirectory?: string;
   agentType?: AgentType;
   model?: string;
+  subagentModel?: string;
   permissionMode?: Mode | null;
 }
 

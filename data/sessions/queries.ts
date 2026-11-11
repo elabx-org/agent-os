@@ -309,6 +309,8 @@ export interface CreateSessionInput {
   initialPrompt: string | null;
   /** Left out, the server keeps its default */
   model?: string;
+  /** A Claude alias or "same"; left out, Settings → Claude Code's default */
+  subagentModel?: string;
   /**
    * lib/permission-mode.ts Mode (New → Permissions); null or left out keeps
    * the agent's default. Full access is honoured only from the user

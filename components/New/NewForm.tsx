@@ -9,6 +9,7 @@ import {
   Layers,
   Loader2,
   Shield,
+  Users,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -38,6 +39,11 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { DirectoryPicker } from "@/components/DirectoryPicker";
 import { MODELS } from "@/components/BackgroundAgents";
+import {
+  CLAUDE_MODEL_CHOICES,
+  claudeModelName,
+  subagentModelName,
+} from "@/lib/claude-models";
 import { GroupCard } from "@/components/a/GroupCard";
 import { ProjectSelector } from "@/components/NewSessionDialog/ProjectSelector";
 import { AgentSelector } from "@/components/NewSessionDialog/AgentSelector";
@@ -47,10 +53,27 @@ import { getProviderDefinition } from "@/lib/providers/registry";
 import type { NewFormState } from "./useNewForm";
 
 /**
- * A session's "sonnet" is what the server stores when none was chosen, so a
- * session can't ask for it; background agents pass the model as is
+ * A session's Default is Settings → Claude Code's model, named; background
+ * agents pass the model as is (Default: Claude Code's own)
  */
-const SESSION_MODELS = MODELS.filter((m) => m.id !== "sonnet");
+function sessionModels(form: NewFormState) {
+  const fallback = form.claudeDefaults.model;
+  if (form.runAs === "background" || !fallback) return MODELS;
+  return [
+    { id: "", label: `${claudeModelName(fallback)} · default` },
+    ...MODELS.slice(1),
+  ];
+}
+
+/** Sub-agents: "" is the default (named), "same" the session's own model */
+function subagentModels(form: NewFormState) {
+  const fallback = form.claudeDefaults.subagents;
+  return [
+    { id: "", label: `${subagentModelName(fallback)} · default` },
+    ...(fallback ? [{ id: "same", label: subagentModelName(null) }] : []),
+    ...CLAUDE_MODEL_CHOICES.map((c) => ({ id: c.alias, label: c.name })),
+  ];
+}
 
 // The radio value for no mode: the agent's (or project's) own default
 const DEFAULT_MODE = "default";
@@ -213,10 +236,6 @@ function ModeItems({ form }: { form: NewFormState }) {
   );
 }
 
-function sessionModels(form: NewFormState) {
-  return form.runAs === "background" ? MODELS : SESSION_MODELS;
-}
-
 function ModelItems({ form }: { form: NewFormState }) {
   return (
     <DropdownMenuRadioGroup value={form.model} onValueChange={form.setModel}>
@@ -229,14 +248,37 @@ function ModelItems({ form }: { form: NewFormState }) {
   );
 }
 
-/** What the rows and boxes say for the model and the mode */
+function SubagentItems({ form }: { form: NewFormState }) {
+  return (
+    <DropdownMenuRadioGroup
+      value={form.subagentModel}
+      onValueChange={form.setSubagentModel}
+    >
+      {subagentModels(form).map((m) => (
+        <DropdownMenuRadioItem key={m.id || "default"} value={m.id}>
+          {m.label}
+        </DropdownMenuRadioItem>
+      ))}
+    </DropdownMenuRadioGroup>
+  );
+}
+
+/** What the rows and boxes say for the model, sub-agents and the mode */
 function choiceLabels(form: NewFormState) {
   const model =
     sessionModels(form).find((m) => m.id === form.model)?.label ?? "Default";
+  const subagents = (
+    subagentModels(form).find((m) => m.id === form.subagentModel)?.label ?? ""
+  ).replace(/ · default$/, "");
   // The old auto-approve toggle, still on, is full access
   const mode: Mode | null =
     form.permissionMode ?? (form.skipPermissions ? "bypassPermissions" : null);
-  return { model, mode, modeLabel: mode ? MODE_LABELS[mode] : "Default" };
+  return {
+    model: model.replace(/ · default$/, ""),
+    subagents,
+    mode,
+    modeLabel: mode ? MODE_LABELS[mode] : "Default",
+  };
 }
 
 /** "Start Claude in agent-os"; short: "Start Claude" (D-New) */
@@ -444,7 +486,7 @@ export function NewForm({
   const [projectsOpen, setProjectsOpen] = useState(false);
   const wide = layout === "wide";
   const background = form.runAs === "background";
-  const { model, mode, modeLabel } = choiceLabels(form);
+  const { model, subagents, mode, modeLabel } = choiceLabels(form);
   const worktreeShown = !background && form.isGit;
 
   const projectPicker = projectsOpen && (
@@ -538,6 +580,7 @@ export function NewForm({
       "bg-card flex h-12 min-w-0 items-center gap-2.5 rounded-[14px] px-3.5 text-[14px]";
     const choices = [
       form.showModel ? model : null,
+      form.showSubagents ? `sub-agents ${subagents}` : null,
       form.showPermissions && mode ? modeLabel : null,
     ]
       .filter(Boolean)
@@ -588,6 +631,13 @@ export function NewForm({
                   <>
                     <DropdownMenuLabel>Model</DropdownMenuLabel>
                     <ModelItems form={form} />
+                  </>
+                )}
+                {form.showSubagents && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuLabel>Sub-agents</DropdownMenuLabel>
+                    <SubagentItems form={form} />
                   </>
                 )}
                 {form.showModel && form.showPermissions && (
@@ -704,6 +754,17 @@ export function NewForm({
             <DropdownMenuContent align="end" className="min-w-56">
               <DropdownMenuLabel>Model</DropdownMenuLabel>
               <ModelItems form={form} />
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+        {form.showSubagents && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <OptionRow icon={Users} label="Sub-agents" value={subagents} />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="min-w-56">
+              <DropdownMenuLabel>Sub-agents&apos; model</DropdownMenuLabel>
+              <SubagentItems form={form} />
             </DropdownMenuContent>
           </DropdownMenu>
         )}

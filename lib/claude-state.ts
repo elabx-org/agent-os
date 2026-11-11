@@ -202,7 +202,10 @@ export function claudeStateSettings(sessionId: string): {
 /** Adds the state capture to a session's settings, keeping its own hooks */
 export function withClaudeState(
   sessionId: string,
-  settings: { hooks?: Record<string, HookGroup[]> }
+  settings: {
+    hooks?: Record<string, HookGroup[]>;
+    env?: Record<string, string>;
+  }
 ): object {
   // Claude's view, whatever its own settings say (Labs: Claude full screen)
   const tui = getFlag("claudeFullscreen") ? "fullscreen" : "default";
