@@ -241,6 +241,8 @@ export function DesktopView(props: ViewProps) {
         homeOpen={sidebarOpen}
         homeWidth={homeWidth}
         pageSpread={
+          // A project takes both pages once the list beside it is put away
+          (page?.kind === "project" && !sidebarOpen) ||
           page?.kind === "inbox" ||
           page?.kind === "running" ||
           page?.kind === "mocks"

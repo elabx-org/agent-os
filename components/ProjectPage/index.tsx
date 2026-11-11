@@ -25,6 +25,10 @@ import { useDevServersQuery } from "@/data/dev-servers";
 import { useGitStatus } from "@/data/git/queries";
 import { useMergedTodayQuery } from "@/data/projects";
 import { useLayoutMode, type LayoutMode } from "@/hooks/useLayoutMode";
+import {
+  useSpreadFold,
+  useSpreadPages,
+} from "@/components/views/SessionSpread";
 import { useListTitles } from "@/hooks/useSessionTitles";
 import { useViewport } from "@/hooks/useViewport";
 import { useIsNative } from "@/hooks/useIsNative";
@@ -94,6 +98,9 @@ function ProjectWorkspace({
 }: Omit<PageProps<"project">, "page"> & { project: ProjectWithDevServers }) {
   const { isTouch } = useViewport();
   const mode = useLayoutMode();
+  // Given both pages (the list put away), the project splits at the fold
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const spread = useSpreadPages(scrollRef, useSpreadFold());
   const { sessions: all, sessionStatuses: statuses } = view;
   const uncategorized = project.is_uncategorized;
 
@@ -279,93 +286,127 @@ function ProjectWorkspace({
     </DropdownMenu>
   );
 
+  const head = (
+    <>
+      <PageHeader
+        large
+        // The open Duo's right page: Projects is on the left one
+        detail={!spread && (mode === "duo-open" || mode === "book")}
+        title={title}
+        subtitle={subtitle}
+        actions={ownMore ? more : undefined}
+      />
+
+      <div className="flex gap-2.5">
+        <button
+          type="button"
+          onClick={newSession}
+          className="pill pill-primary min-w-0 flex-1 active:opacity-80 @3xl/page:flex-none"
+        >
+          <Plus className="h-4 w-4 flex-none" strokeWidth={2.4} />
+          New session
+        </button>
+        {!uncategorized && (
+          <>
+            <button
+              type="button"
+              onClick={openFiles}
+              disabled={!openFiles}
+              className="pill pill-secondary active:opacity-80 disabled:opacity-40"
+            >
+              <Folder className="h-4 w-4 flex-none" />
+              Files
+            </button>
+            <button
+              type="button"
+              onClick={openChanges}
+              disabled={!openChanges}
+              aria-label={
+                files.length
+                  ? `${files.length} changed file${files.length === 1 ? "" : "s"}`
+                  : "Changes"
+              }
+              className="pill pill-secondary tabular-nums active:opacity-80 disabled:opacity-40"
+            >
+              <GitBranch className="h-4 w-4 flex-none" />
+              {files.length > 0 && files.length}
+            </button>
+          </>
+        )}
+      </div>
+
+      {empty && (
+        <p className="text-muted-foreground px-1 text-[15px]">
+          Nothing in {project.name} yet. Start a session
+          {newAgent && " or a background agent"} here.
+        </p>
+      )}
+    </>
+  );
+  const work = (
+    <>
+      <SessionsSection
+        sessions={sessions}
+        statuses={statuses}
+        titles={titles}
+        activeSessionId={view.activeSession?.id}
+        projects={view.projects}
+        actions={mutations}
+        onOpenSession={onOpenSession}
+      />
+      <AgentsSection agents={agents} />
+      <RunningSection
+        servers={servers}
+        onRestart={mutations.handleRestartDevServer}
+        onStop={mutations.handleStopDevServer}
+        onRemove={mutations.handleRemoveDevServer}
+      />
+      <ProjectScripts project={project} />
+    </>
+  );
+  const notes = (
+    <>
+      <MergedTodaySection prs={merged} />
+      <InstructionsSection
+        text={instructions}
+        suggestions={project.suggestions ?? 0}
+        onEdit={settings}
+      />
+    </>
+  );
+
   return (
     <div className="@container/page flex min-h-0 flex-1 flex-col">
       <div
+        ref={scrollRef}
         className={cn(
           "min-h-0 flex-1 overflow-y-auto overscroll-contain pb-[max(1.5rem,var(--pane-inset-bottom,env(safe-area-inset-bottom)))]",
-          PAD[mode]
+          spread ? "pt-5" : PAD[mode]
         )}
       >
-        <div className="flex max-w-[760px] flex-col gap-3.5">
-          <PageHeader
-            large
-            // The open Duo's right page: Projects is on the left one
-            detail={mode === "duo-open" || mode === "book"}
-            title={title}
-            subtitle={subtitle}
-            actions={ownMore ? more : undefined}
-          />
-
-          <div className="flex gap-2.5">
-            <button
-              type="button"
-              onClick={newSession}
-              className="pill pill-primary min-w-0 flex-1 active:opacity-80 @3xl/page:flex-none"
-            >
-              <Plus className="h-4 w-4 flex-none" strokeWidth={2.4} />
-              New session
-            </button>
-            {!uncategorized && (
-              <>
-                <button
-                  type="button"
-                  onClick={openFiles}
-                  disabled={!openFiles}
-                  className="pill pill-secondary active:opacity-80 disabled:opacity-40"
-                >
-                  <Folder className="h-4 w-4 flex-none" />
-                  Files
-                </button>
-                <button
-                  type="button"
-                  onClick={openChanges}
-                  disabled={!openChanges}
-                  aria-label={
-                    files.length
-                      ? `${files.length} changed file${files.length === 1 ? "" : "s"}`
-                      : "Changes"
-                  }
-                  className="pill pill-secondary tabular-nums active:opacity-80 disabled:opacity-40"
-                >
-                  <GitBranch className="h-4 w-4 flex-none" />
-                  {files.length > 0 && files.length}
-                </button>
-              </>
-            )}
+        {spread ? (
+          // Across both pages (the list put away): the project and its
+          // notes on the left, its sessions and agents on the right
+          <div
+            className="grid items-start"
+            style={{
+              gridTemplateColumns: `${spread.left}px ${spread.gutter}px ${spread.right}px`,
+            }}
+          >
+            <div className="flex min-w-0 flex-col gap-3.5 pr-5 pl-6">
+              {head}
+              {notes}
+            </div>
+            <div aria-hidden="true" />
+            <div className="flex min-w-0 flex-col gap-3.5 px-5">{work}</div>
           </div>
-
-          {empty && (
-            <p className="text-muted-foreground px-1 text-[15px]">
-              Nothing in {project.name} yet. Start a session
-              {newAgent && " or a background agent"} here.
-            </p>
-          )}
-
-          <SessionsSection
-            sessions={sessions}
-            statuses={statuses}
-            titles={titles}
-            activeSessionId={view.activeSession?.id}
-            projects={view.projects}
-            actions={mutations}
-            onOpenSession={onOpenSession}
-          />
-          <AgentsSection agents={agents} />
-          <RunningSection
-            servers={servers}
-            onRestart={mutations.handleRestartDevServer}
-            onStop={mutations.handleStopDevServer}
-            onRemove={mutations.handleRemoveDevServer}
-          />
-          <ProjectScripts project={project} />
-          <MergedTodaySection prs={merged} />
-          <InstructionsSection
-            text={instructions}
-            suggestions={project.suggestions ?? 0}
-            onEdit={settings}
-          />
-        </div>
+        ) : (
+          <div className="flex max-w-[760px] flex-col gap-3.5">
+            {head}
+            {work}
+            {notes}
+          </div>
+        )}
       </div>
 
       <ActionSheet
