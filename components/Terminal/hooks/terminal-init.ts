@@ -13,9 +13,10 @@ import { getDensity } from "@/lib/display-density";
 import { terminalFontFamily, terminalFontStore } from "@/lib/terminal-font";
 import { terminalFontReady } from "../font-ready";
 import { applyTypingAssist, getTypingAssist } from "../typing-assist";
+import { clipboardKey, isMacPlatform } from "@/lib/clipboard-keys";
 
 export interface TerminalCallbacks {
-  /** Called when paste is requested (Cmd+V or Ctrl+Shift+V) */
+  /** Called when paste is requested (⌘V, Ctrl+V off a Mac, Ctrl+Shift+V) */
   onPaste?: () => void;
   /** Called when copy is requested but no xterm selection exists (try tmux buffer) */
   onCopyFallback?: () => void;
@@ -109,6 +110,26 @@ export function createTerminal(
     document.body.removeChild(textarea);
   };
 
+  // A drag in tmux (mouse mode) leaves no selection in xterm: it went to
+  // tmux's buffer. Until the next key or click, Ctrl+C copies that
+  const mac = isMacPlatform();
+  let dragged = false;
+  let downAt: { x: number; y: number } | null = null;
+  const handleDragStart = (event: MouseEvent) => {
+    dragged = false;
+    downAt = event.button === 0 ? { x: event.clientX, y: event.clientY } : null;
+  };
+  const handleDragEnd = (event: MouseEvent) => {
+    if (
+      downAt &&
+      Math.hypot(event.clientX - downAt.x, event.clientY - downAt.y) > 4
+    )
+      dragged = true;
+    downAt = null;
+  };
+  container.addEventListener("mousedown", handleDragStart, true);
+  window.addEventListener("mouseup", handleDragEnd, true);
+
   // Handle Cmd+A, Cmd+C, Cmd+V via document event listener (more reliable than attachCustomKeyEventHandler)
   // Only those: ⌘1–4, ⌘., ⌘K, ⌘I, ⌘N and ⌘, pass through to the app's
   // shortcuts (hooks/useViewShortcuts.ts), and xterm sends nothing for ⌘
@@ -129,32 +150,29 @@ export function createTerminal(
       return;
     }
 
-    // Cmd+V (macOS) or Ctrl+Shift+V for paste
-    if ((isMeta && key === "v") || (isCtrl && event.shiftKey && key === "v")) {
-      event.preventDefault();
-      event.stopPropagation();
+    const action = clipboardKey({
+      key,
+      ctrl: isCtrl,
+      meta: isMeta,
+      shift: event.shiftKey,
+      alt: event.altKey,
+      mac,
+      selected: term.hasSelection(),
+      dragged,
+    });
+    // Ctrl or Shift alone comes first: the drag still counts for the C
+    if (!["control", "shift", "meta", "alt"].includes(key)) dragged = false;
+    if (!action) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (action === "paste") {
       callbacks?.onPaste?.();
-      return;
-    }
-
-    // Cmd+C (macOS) for copy — try xterm selection first, then tmux buffer fallback
-    // Ctrl+Shift+C also copies (Linux convention)
-    // Plain Ctrl+C without selection must pass through as SIGINT
-    if (key === "c") {
-      if (isMeta || (isCtrl && event.shiftKey)) {
-        const selection = term.getSelection();
-        if (selection) {
-          event.preventDefault();
-          event.stopPropagation();
-          copyToClipboard(selection);
-        } else {
-          // No xterm selection — try tmux buffer
-          event.preventDefault();
-          event.stopPropagation();
-          callbacks?.onCopyFallback?.();
-        }
-        return;
-      }
+    } else if (action === "copy") {
+      copyToClipboard(term.getSelection());
+      term.clearSelection();
+    } else {
+      // No xterm selection: what was dragged in tmux is in its buffer
+      callbacks?.onCopyFallback?.();
     }
   };
 
@@ -188,6 +206,8 @@ export function createTerminal(
     document.removeEventListener("keydown", handleKeyDown, true);
     container.removeEventListener("contextmenu", handleContextMenu, true);
     container.removeEventListener("mousedown", handleMouseDown, true);
+    container.removeEventListener("mousedown", handleDragStart, true);
+    window.removeEventListener("mouseup", handleDragEnd, true);
   };
 
   return { term, fitAddon, searchAddon, cleanup };
