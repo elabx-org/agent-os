@@ -135,6 +135,9 @@ interface TerminalProps {
   showImageButton?: boolean;
   /** The session whose unsent composer text is synced (none: not kept) */
   draftId?: string | null;
+  /** The draft picked videos join where there's no session (a background
+      agent's tab) */
+  mediaDraft?: string | null;
   /** What runs in that session, from the pane's session list */
   agentType?: string;
   /** Shown (its tab and the terminal view); a hidden one stops polling */
@@ -154,6 +157,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
       initialScrollState,
       showImageButton = true,
       draftId,
+      mediaDraft,
       agentType: sessionAgentType,
       active = true,
       session,
@@ -161,6 +165,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
     },
     ref
   ) {
+    const videoDraft = draftId ?? mediaDraft ?? null;
     const terminalRef = useRef<HTMLDivElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const { isMobile, isTouch } = useViewport();
@@ -324,7 +329,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
     const handleFileDrop = useCallback(
       async (_file: File, files: File[]) => {
         // Videos become frames, beside the box
-        const rest = takeVideos(files, draftId);
+        const rest = takeVideos(files, videoDraft);
         if (!rest.length) return;
         setIsUploading(true);
         try {
@@ -334,7 +339,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
           setIsUploading(false);
         }
       },
-      [handleImageSelect, draftId]
+      [handleImageSelect, videoDraft]
     );
 
     // Drag and drop for file uploads
@@ -1794,7 +1799,9 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
             initialPath="~"
             onSelect={handleImageSelect}
             onVideos={
-              draftId ? (files) => takeVideos(files, draftId) : undefined
+              videoDraft
+                ? (files) => takeVideos(files, videoDraft)
+                : undefined
             }
             onClose={() => setShowImagePicker(false)}
           />
@@ -1922,6 +1929,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
                   value={composerText}
                   onChange={onComposerChange}
                   sessionId={draftId}
+                  videoDraft={videoDraft}
                   onSend={sendFromComposer}
                   onArrow={composerArrow}
                   onTypeInTerminal={typeInTerminal}
