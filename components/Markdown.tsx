@@ -9,6 +9,7 @@ import { Check, ChevronRight, Copy, Globe, Lock } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { linkTarget, loadLinkProxy } from "@/lib/client/link-target";
+import { MockLink, MockRowContext } from "@/components/Mocks/chat";
 
 /** A link in a reply: localhost:<port> opens through the port proxy */
 function LinkOut({
@@ -63,9 +64,11 @@ export const Markdown = React.memo(function Markdown({
       data-source-id={sourceId}
     >
       <SourceContext.Provider value={quotable ? text : null}>
-        <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
-          {text}
-        </ReactMarkdown>
+        <MockRowContext.Provider value={sourceId}>
+          <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+            {text}
+          </ReactMarkdown>
+        </MockRowContext.Provider>
       </SourceContext.Provider>
     </div>
   );
@@ -245,7 +248,10 @@ const components: Components = {
   p: function P({ children, node }) {
     const quote = useQuoteSource(node, "p");
     const link = loneArtifactLink(node);
-    if (link) return <ArtifactCard {...link} />;
+    if (link)
+      return (
+        <MockLink href={link.href} fallback={<ArtifactCard {...link} />} />
+      );
     return (
       <p className="my-2 first:mt-0 last:mb-0" data-quote={quote}>
         {children}

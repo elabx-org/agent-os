@@ -300,6 +300,28 @@ function recordMock(dir, input) {
     path.join(path.dirname(dir), "mocks.jsonl"),
     JSON.stringify(line) + "\n"
   );
+  try {
+    snapshotMock(path.dirname(dir), mock);
+  } catch {
+    // The page isn't shown in AgentOS then; the link still is
+  }
+}
+
+/**
+ * Keeps the page as it was published (lib/mocks.ts mockPageFile serves it
+ * in the chat's card): the file can change or go before anyone looks
+ */
+function snapshotMock(root, mock) {
+  const id = mock.url.match(/\/artifact\/([\w-]+)/)?.[1];
+  if (!id || typeof mock.file !== "string" || !/\.html?$/i.test(mock.file))
+    return;
+  const stat = fs.statSync(mock.file);
+  if (!stat.isFile() || stat.size > 16 * 1024 * 1024) return;
+  const dir = path.join(root, "mock-snapshots");
+  fs.mkdirSync(dir, { recursive: true });
+  const to = path.join(dir, `${id}.html`);
+  fs.copyFileSync(mock.file, `${to}.tmp`);
+  fs.renameSync(`${to}.tmp`, to);
 }
 
 const SNAPSHOT_SCRIPT = path.join(

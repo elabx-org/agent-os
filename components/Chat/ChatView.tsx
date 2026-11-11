@@ -41,6 +41,9 @@ import { StopPill } from "@/components/Session/StopPill";
 import { useFoldDeck } from "@/hooks/useFoldDeck";
 import { useLayoutMode } from "@/hooks/useLayoutMode";
 import { useQueue } from "@/hooks/useQueue";
+import { deliver } from "@/lib/review-send";
+import { lastMockMentions } from "@/lib/mock-types";
+import { MockChatContext, type MockChat } from "@/components/Mocks/chat";
 import { useTurns } from "@/hooks/useTurns";
 import { useSearchAction } from "@/hooks/useSearchAction";
 import { useSessionPrompt } from "@/data/prompts/queries";
@@ -500,6 +503,45 @@ export function ChatView({
     },
     [session.id, sent]
   );
+  // A mock's card (components/Mocks/chat.tsx): its decision goes as the
+  // user's message, the way the composer sends, and "Ask for changes" starts
+  // the reply; only the last message linking a mock shows its card in full
+  const mockMentions = useMemo(
+    () =>
+      lastMockMentions(
+        rows.flatMap((r) =>
+          r.kind === "assistant" ? [{ id: r.id, text: r.text }] : []
+        )
+      ),
+    [rows]
+  );
+  const queueRef = useRef(queue);
+  queueRef.current = queue;
+  const mockChat = useMemo<MockChat>(
+    () => ({
+      send: async (text) => {
+        const q = queueRef.current;
+        await deliver(text, {
+          queueEnabled: q.enabled,
+          queueKnown: q.known,
+          queueSend: (t) => q.send(t),
+          direct: (t) => sendDirect(t),
+        });
+        sent();
+      },
+      draft: (text) => {
+        const c = composerRef.current;
+        // Asked twice: the reply it started is still there
+        if (!c.draft.includes(text.trim())) {
+          if (c.draft.trim()) c.insert(text, true);
+          else c.replace(text);
+        }
+        c.textareaRef.current?.focus();
+      },
+      lastRow: mockMentions,
+    }),
+    [mockMentions, sendDirect, sent]
+  );
   // The header's inset (Closed-Chat 20px, Fold, open Duo and desktop
   // 24px); the composer row sits 16px in on the closed Duo and the phone
   const roomy = mode !== "duo-closed" && mode !== "phone";
@@ -566,499 +608,505 @@ export function ChatView({
   );
 
   return (
-    <div
-      ref={outerRef}
-      // Its container query makes it a stacking layer: above the pane's
-      // dim while the send menu is open, with its own dim inside
-      className={cn(
-        "@container/chat relative flex h-full",
-        menuHere && "z-[11]"
-      )}
-    >
-      <SendMenuDim sessionId={session.id} />
-      {/* The book's left page: earlier rows, down to where the right one
+    <MockChatContext.Provider value={mockChat}>
+      <div
+        ref={outerRef}
+        // Its container query makes it a stacking layer: above the pane's
+        // dim while the send menu is open, with its own dim inside
+        className={cn(
+          "@container/chat relative flex h-full",
+          menuHere && "z-[11]"
+        )}
+      >
+        <SendMenuDim sessionId={session.id} />
+        {/* The book's left page: earlier rows, down to where the right one
           picks up */}
-      {book && pages && (
-        <>
+        {book && pages && (
+          <>
+            <div
+              ref={leftRef}
+              {...quoteMenu.handlers}
+              onScroll={(e) => {
+                const el = e.currentTarget;
+                leftAtBottom.current =
+                  el.scrollHeight - el.scrollTop - el.clientHeight < 48;
+              }}
+              className={cn(
+                "bg-background min-h-0 shrink-0 overflow-y-auto pt-3",
+                inset,
+                !controlPages &&
+                  "pb-[calc(0.75rem+var(--pane-inset-bottom,env(safe-area-inset-bottom)))]"
+              )}
+              // The composer runs under this page too
+              style={{
+                width: pages.left,
+                paddingBottom: controlPages ? controlsHeight + 12 : undefined,
+              }}
+            >
+              <div
+                className={cn(
+                  "mx-auto flex min-h-full flex-col justify-end gap-3",
+                  column
+                )}
+              >
+                {earlier}
+                <div ref={leftRowsRef} className="flex flex-col gap-3">
+                  <Conversation
+                    rows={rows.slice(0, seam)}
+                    results={results}
+                    agents={agentsByTool}
+                    onOpenAgent={setOpenAgent}
+                    workflows={runsById}
+                    onShowWorkflow={setOpenRun}
+                    quotable
+                    turns={turnActions}
+                    onReuse={reuseMessage}
+                    sessionId={session.id}
+                  />
+                </div>
+              </div>
+            </div>
+            {gutter}
+          </>
+        )}
+        <div
+          ref={rootRef}
+          className={cn(
+            "bg-background flex h-full min-w-0 flex-col",
+            pages && side ? "shrink-0" : "flex-1"
+          )}
+          style={pages && side ? { width: pages.left } : undefined}
+        >
+          {agents.length > 0 && !hideAgentsBar && (
+            <div className="border-border shrink-0 border-b px-3 py-1.5">
+              <button
+                type="button"
+                onClick={() => setAgentList((v) => !v)}
+                aria-expanded={agentList}
+                className="text-muted-foreground active:bg-accent hover:bg-accent flex h-9 items-center gap-2 rounded-full px-3 text-xs"
+              >
+                {running.length > 0 ? (
+                  <Loader2 className="text-primary h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Bot className="h-3.5 w-3.5" />
+                )}
+                {running.length > 0
+                  ? `${running.length} ${running.length === 1 ? "agent" : "agents"} working`
+                  : `${agents.length} ${agents.length === 1 ? "agent" : "agents"}`}
+                <ChevronRight
+                  className={cn(
+                    "h-3.5 w-3.5 transition-transform",
+                    agentList && "rotate-90"
+                  )}
+                />
+              </button>
+              {agentList && (
+                <div className="mx-auto flex max-h-[40vh] max-w-3xl flex-col gap-1.5 overflow-y-auto pt-1.5 pb-1">
+                  {[
+                    ...running,
+                    ...agents.filter((a) => a.status !== "running").reverse(),
+                  ].map((agent) => (
+                    <SubagentRow
+                      key={agent.agentId}
+                      agent={agent}
+                      onOpen={(id) => {
+                        setOpenAgent(id);
+                        setAgentList(false);
+                      }}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+          {/* N-BgSend: "Sent to <name>" floats over the top of the chat */}
+          <div className="relative z-20 h-0 shrink-0">
+            <div
+              className={cn(
+                "pointer-events-none absolute inset-x-0 top-2",
+                inset
+              )}
+            >
+              <div className={cn("pointer-events-auto mx-auto", column)}>
+                <SentToast sessionId={session.id} />
+              </div>
+              <div className="mt-2 flex justify-center">
+                <LastMinePill
+                  visible={mineAbove}
+                  onJump={jumpToMine}
+                  className="pointer-events-auto"
+                />
+              </div>
+            </div>
+          </div>
           <div
-            ref={leftRef}
+            ref={scrollRef}
             {...quoteMenu.handlers}
             onScroll={(e) => {
               const el = e.currentTarget;
-              leftAtBottom.current =
+              atBottom.current =
                 el.scrollHeight - el.scrollTop - el.clientHeight < 48;
             }}
-            className={cn(
-              "bg-background min-h-0 shrink-0 overflow-y-auto pt-3",
-              inset,
-              !controlPages &&
-                "pb-[calc(0.75rem+var(--pane-inset-bottom,env(safe-area-inset-bottom)))]"
-            )}
-            // The composer runs under this page too
-            style={{
-              width: pages.left,
-              paddingBottom: controlPages ? controlsHeight + 12 : undefined,
-            }}
+            className={cn("min-h-0 flex-1 overflow-y-auto py-3", inset)}
           >
-            <div
-              className={cn(
-                "mx-auto flex min-h-full flex-col justify-end gap-3",
-                column
-              )}
-            >
-              {earlier}
-              <div ref={leftRowsRef} className="flex flex-col gap-3">
-                <Conversation
-                  rows={rows.slice(0, seam)}
-                  results={results}
-                  agents={agentsByTool}
-                  onOpenAgent={setOpenAgent}
-                  workflows={runsById}
-                  onShowWorkflow={setOpenRun}
-                  quotable
-                  turns={turnActions}
-                  onReuse={reuseMessage}
-                  sessionId={session.id}
-                />
-              </div>
-            </div>
-          </div>
-          {gutter}
-        </>
-      )}
-      <div
-        ref={rootRef}
-        className={cn(
-          "bg-background flex h-full min-w-0 flex-col",
-          pages && side ? "shrink-0" : "flex-1"
-        )}
-        style={pages && side ? { width: pages.left } : undefined}
-      >
-        {agents.length > 0 && !hideAgentsBar && (
-          <div className="border-border shrink-0 border-b px-3 py-1.5">
-            <button
-              type="button"
-              onClick={() => setAgentList((v) => !v)}
-              aria-expanded={agentList}
-              className="text-muted-foreground active:bg-accent hover:bg-accent flex h-9 items-center gap-2 rounded-full px-3 text-xs"
-            >
-              {running.length > 0 ? (
-                <Loader2 className="text-primary h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Bot className="h-3.5 w-3.5" />
-              )}
-              {running.length > 0
-                ? `${running.length} ${running.length === 1 ? "agent" : "agents"} working`
-                : `${agents.length} ${agents.length === 1 ? "agent" : "agents"}`}
-              <ChevronRight
-                className={cn(
-                  "h-3.5 w-3.5 transition-transform",
-                  agentList && "rotate-90"
-                )}
-              />
-            </button>
-            {agentList && (
-              <div className="mx-auto flex max-h-[40vh] max-w-3xl flex-col gap-1.5 overflow-y-auto pt-1.5 pb-1">
-                {[
-                  ...running,
-                  ...agents.filter((a) => a.status !== "running").reverse(),
-                ].map((agent) => (
-                  <SubagentRow
-                    key={agent.agentId}
-                    agent={agent}
-                    onOpen={(id) => {
-                      setOpenAgent(id);
-                      setAgentList(false);
-                    }}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-        {/* N-BgSend: "Sent to <name>" floats over the top of the chat */}
-        <div className="relative z-20 h-0 shrink-0">
-          <div
-            className={cn(
-              "pointer-events-none absolute inset-x-0 top-2",
-              inset
-            )}
-          >
-            <div className={cn("pointer-events-auto mx-auto", column)}>
-              <SentToast sessionId={session.id} />
-            </div>
-            <div className="mt-2 flex justify-center">
-              <LastMinePill
-                visible={mineAbove}
-                onJump={jumpToMine}
-                className="pointer-events-auto"
-              />
-            </div>
-          </div>
-        </div>
-        <div
-          ref={scrollRef}
-          {...quoteMenu.handlers}
-          onScroll={(e) => {
-            const el = e.currentTarget;
-            atBottom.current =
-              el.scrollHeight - el.scrollTop - el.clientHeight < 48;
-          }}
-          className={cn("min-h-0 flex-1 overflow-y-auto py-3", inset)}
-        >
-          <div className={cn("mx-auto flex flex-col gap-3", column)}>
-            {state === "loading" && (
-              <div className="text-muted-foreground flex items-center gap-2 py-8 text-sm">
-                <Loader2 className="h-4 w-4 animate-spin" /> Loading the
-                conversation…
-              </div>
-            )}
-            {/* Handed off or settled: no terminal to open. Codex and Gemini
-                keep no transcript, so theirs as it was when it ended */}
-            {state === "missing" &&
-              paused &&
-              (pausedOther ? (
-                <PausedHistory session={session} />
-              ) : (
-                <div className="text-muted-foreground py-8 text-sm">
-                  No Claude Code conversation was found for this session.
+            <div className={cn("mx-auto flex flex-col gap-3", column)}>
+              {state === "loading" && (
+                <div className="text-muted-foreground flex items-center gap-2 py-8 text-sm">
+                  <Loader2 className="h-4 w-4 animate-spin" /> Loading the
+                  conversation…
                 </div>
-              ))}
-            {fresh &&
-              !paused &&
-              (state === "missing" || (state === "ready" && !items.length)) && (
-                <FreshSessionHint session={session} />
               )}
-            {state === "missing" && !paused && !fresh && (
-              <div className="text-muted-foreground py-8 text-sm">
-                No Claude Code conversation found for this session.{" "}
-                <button
-                  type="button"
-                  onClick={onOpenTerminal}
-                  className="text-primary underline-offset-2 hover:underline"
-                >
-                  Open the terminal
-                </button>
-              </div>
-            )}
-            {!book && earlier}
-            {book ? (
-              <div ref={rowsRef} className="flex flex-col gap-3">
-                <Conversation
-                  rows={rows.slice(seam)}
-                  results={results}
-                  agents={agentsByTool}
-                  onOpenAgent={setOpenAgent}
-                  workflows={runsById}
-                  onShowWorkflow={setOpenRun}
-                  quotable
-                  turns={turnActions}
-                  onReuse={reuseMessage}
-                  sessionId={session.id}
-                />
-              </div>
-            ) : (
-              <div ref={convRef} className="contents">
-                <Conversation
-                  rows={rows}
-                  results={results}
-                  agents={agentsByTool}
-                  onOpenAgent={setOpenAgent}
-                  workflows={runsById}
-                  onShowWorkflow={setOpenRun}
-                  quotable
-                  turns={turnActions}
-                  onReuse={reuseMessage}
-                  sessionId={session.id}
-                />
-              </div>
-            )}
-            {!deckControls && needsYouCard}
+              {/* Handed off or settled: no terminal to open. Codex and Gemini
+                keep no transcript, so theirs as it was when it ended */}
+              {state === "missing" &&
+                paused &&
+                (pausedOther ? (
+                  <PausedHistory session={session} />
+                ) : (
+                  <div className="text-muted-foreground py-8 text-sm">
+                    No Claude Code conversation was found for this session.
+                  </div>
+                ))}
+              {fresh &&
+                !paused &&
+                (state === "missing" ||
+                  (state === "ready" && !items.length)) && (
+                  <FreshSessionHint session={session} />
+                )}
+              {state === "missing" && !paused && !fresh && (
+                <div className="text-muted-foreground py-8 text-sm">
+                  No Claude Code conversation found for this session.{" "}
+                  <button
+                    type="button"
+                    onClick={onOpenTerminal}
+                    className="text-primary underline-offset-2 hover:underline"
+                  >
+                    Open the terminal
+                  </button>
+                </div>
+              )}
+              {!book && earlier}
+              {book ? (
+                <div ref={rowsRef} className="flex flex-col gap-3">
+                  <Conversation
+                    rows={rows.slice(seam)}
+                    results={results}
+                    agents={agentsByTool}
+                    onOpenAgent={setOpenAgent}
+                    workflows={runsById}
+                    onShowWorkflow={setOpenRun}
+                    quotable
+                    turns={turnActions}
+                    onReuse={reuseMessage}
+                    sessionId={session.id}
+                  />
+                </div>
+              ) : (
+                <div ref={convRef} className="contents">
+                  <Conversation
+                    rows={rows}
+                    results={results}
+                    agents={agentsByTool}
+                    onOpenAgent={setOpenAgent}
+                    workflows={runsById}
+                    onShowWorkflow={setOpenRun}
+                    quotable
+                    turns={turnActions}
+                    onReuse={reuseMessage}
+                    sessionId={session.id}
+                  />
+                </div>
+              )}
+              {!deckControls && needsYouCard}
+            </div>
           </div>
-        </div>
 
-        {deck && (
-          <div
-            aria-hidden="true"
-            className="shrink-0"
-            style={{ height: deck.gap }}
-          />
-        )}
-        <div
-          ref={controlsRef}
-          className={cn(
-            "pt-1.5 pb-[calc(0.625rem+var(--pane-inset-bottom,env(safe-area-inset-bottom)))]",
-            roomy ? "px-6" : "px-4",
-            // As pages, it already sits on one side of the fold
-            !paged && !controlPages && "fold-controls",
-            deck && "flex flex-col",
-            controlPages && "flex items-end",
-            book && controlPages && "bg-background relative"
-          )}
-          style={{
-            height: deck?.deck,
-            // The book's right page holds it: reach back under the left page
-            marginLeft:
-              book && controlPages
-                ? -(controlPages.left + controlPages.gutter)
-                : undefined,
-          }}
-        >
-          {/* On the base, nearest the work above: the answer Claude is
-          waiting for, or Stop / Changes / Terminal. The composer comes last,
-          within the thumbs' reach. */}
-          {/* The deck's first line, just under the fold (Fold-Chat) */}
           {deck && (
-            <DeckStateLine
-              session={session}
-              active={active}
-              className="-mx-6 pt-0"
+            <div
+              aria-hidden="true"
+              className="shrink-0"
+              style={{ height: deck.gap }}
             />
           )}
-          {deckControls && (
-            <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pt-1.5 pb-3">
-              {needsYou && hasCard ? (
-                needsYouCard
-              ) : reviewHere &&
-                diffTurn !== null &&
-                !pages &&
-                mode !== "desktop" ? (
-                <div ref={setDiffBase} className="flex flex-col gap-3" />
-              ) : (
-                <DeckActions
+          <div
+            ref={controlsRef}
+            className={cn(
+              "pt-1.5 pb-[calc(0.625rem+var(--pane-inset-bottom,env(safe-area-inset-bottom)))]",
+              roomy ? "px-6" : "px-4",
+              // As pages, it already sits on one side of the fold
+              !paged && !controlPages && "fold-controls",
+              deck && "flex flex-col",
+              controlPages && "flex items-end",
+              book && controlPages && "bg-background relative"
+            )}
+            style={{
+              height: deck?.deck,
+              // The book's right page holds it: reach back under the left page
+              marginLeft:
+                book && controlPages
+                  ? -(controlPages.left + controlPages.gutter)
+                  : undefined,
+            }}
+          >
+            {/* On the base, nearest the work above: the answer Claude is
+          waiting for, or Stop / Changes / Terminal. The composer comes last,
+          within the thumbs' reach. */}
+            {/* The deck's first line, just under the fold (Fold-Chat) */}
+            {deck && (
+              <DeckStateLine
+                session={session}
+                active={active}
+                className="-mx-6 pt-0"
+              />
+            )}
+            {deckControls && (
+              <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pt-1.5 pb-3">
+                {needsYou && hasCard ? (
+                  needsYouCard
+                ) : reviewHere &&
+                  diffTurn !== null &&
+                  !pages &&
+                  mode !== "desktop" ? (
+                  <div ref={setDiffBase} className="flex flex-col gap-3" />
+                ) : (
+                  <DeckActions
+                    sessionId={session.id}
+                    status={status}
+                    view="chat"
+                    onView={(mode) =>
+                      mode === "terminal"
+                        ? onOpenTerminal()
+                        : mobileNavActions.requestViewMode(mode, session.id)
+                    }
+                  />
+                )}
+              </div>
+            )}
+            <div
+              className={cn(
+                "relative shrink-0",
+                !controlPages && mode === "desktop" && "mx-auto w-full",
+                !controlPages && mode === "desktop" && column
+              )}
+              // Less the container's padding, so it ends where the page does
+              style={
+                controlPages
+                  ? { width: controlPages.left - controlsPad }
+                  : undefined
+              }
+            >
+              {/* Handed off: Open the new session or Resume here; settled:
+                Resume. In place of the composer (its transcript still reads
+                above) */}
+              {paused &&
+                (settled ? (
+                  <SettledBar session={session} />
+                ) : (
+                  <PausedBar session={session} />
+                ))}
+              {!paused && (
+                <RewindSheet
+                  live={live}
+                  cwd={composer.cwd}
+                  onRewound={onOpenTerminal}
+                />
+              )}
+              {!paused && (
+                <ComposerCard
+                  composer={composer}
                   sessionId={session.id}
-                  status={status}
-                  view="chat"
-                  onView={(mode) =>
-                    mode === "terminal"
-                      ? onOpenTerminal()
-                      : mobileNavActions.requestViewMode(mode, session.id)
+                  session={session}
+                  agentName="Claude"
+                  inlinePlus={mode === "desktop"}
+                  queue={queue}
+                  onSendDirect={sendDirect}
+                  onSent={sent}
+                  placeholder={
+                    mode !== "desktop"
+                      ? "Reply to Claude"
+                      : diffTurn !== null
+                        ? // D-Diff: the chat is narrower beside the review
+                          "Reply to Claude, / for commands"
+                        : "Reply to Claude, / for commands, @ for files"
+                  }
+                  inputProps={{
+                    onFocus: () => {
+                      setComposerFocused(true);
+                      // The app's keyboard bar shows no terminal keys in chat
+                      if (isNative())
+                        postToNative({
+                          type: "keys",
+                          context: "chat",
+                          ids: chatKeys,
+                        });
+                    },
+                    onBlur: () => setComposerFocused(false),
+                    // Shift+Tab and Esc go to Claude; the card sends on Return
+                    onKeyDown: (e) => {
+                      live.onKeyDown(e);
+                    },
+                    enterKeyHint: "send",
+                    inputClassName: "max-h-40",
+                    autoGrow: true,
+                  }}
+                  // Half folded, Stop sits beside the composer (Fold-Chat)
+                  trailing={deck ? <StopPill session={session} /> : undefined}
+                  above={
+                    <>
+                      {mode !== "desktop" &&
+                        !(isNative() && nativeKeyboard) && (
+                          <ChatKeyRow
+                            ids={chatKeys}
+                            onText={(text) => composer.insert(text)}
+                            onImage={() => setPickingImage(true)}
+                            onPaste={pasteFromClipboard}
+                            onShiftTab={live.cycleMode}
+                            onEsc={live.escape}
+                          />
+                        )}
+                      {/* What's being answered, and the passages quoted to answer */}
+                      <ReplyContextBar
+                        composer={composer}
+                        sessionId={session.id}
+                        view="chat"
+                        bounds={rootRef}
+                      />
+                      <ComposerChips composer={composer} historyChip />
+                    </>
                   }
                 />
               )}
             </div>
-          )}
-          <div
-            className={cn(
-              "relative shrink-0",
-              !controlPages && mode === "desktop" && "mx-auto w-full",
-              !controlPages && mode === "desktop" && column
-            )}
-            // Less the container's padding, so it ends where the page does
-            style={
-              controlPages
-                ? { width: controlPages.left - controlsPad }
-                : undefined
-            }
-          >
-            {/* Handed off: Open the new session or Resume here; settled:
-                Resume. In place of the composer (its transcript still reads
-                above) */}
-            {paused &&
-              (settled ? (
-                <SettledBar session={session} />
-              ) : (
-                <PausedBar session={session} />
-              ))}
-            {!paused && (
-              <RewindSheet
-                live={live}
-                cwd={composer.cwd}
-                onRewound={onOpenTerminal}
-              />
-            )}
-            {!paused && (
-              <ComposerCard
-                composer={composer}
-                sessionId={session.id}
-                session={session}
-                agentName="Claude"
-                inlinePlus={mode === "desktop"}
-                queue={queue}
-                onSendDirect={sendDirect}
-                onSent={sent}
-                placeholder={
-                  mode !== "desktop"
-                    ? "Reply to Claude"
-                    : diffTurn !== null
-                      ? // D-Diff: the chat is narrower beside the review
-                        "Reply to Claude, / for commands"
-                      : "Reply to Claude, / for commands, @ for files"
-                }
-                inputProps={{
-                  onFocus: () => {
-                    setComposerFocused(true);
-                    // The app's keyboard bar shows no terminal keys in chat
-                    if (isNative())
-                      postToNative({
-                        type: "keys",
-                        context: "chat",
-                        ids: chatKeys,
-                      });
-                  },
-                  onBlur: () => setComposerFocused(false),
-                  // Shift+Tab and Esc go to Claude; the card sends on Return
-                  onKeyDown: (e) => {
-                    live.onKeyDown(e);
-                  },
-                  enterKeyHint: "send",
-                  inputClassName: "max-h-40",
-                  autoGrow: true,
-                }}
-                // Half folded, Stop sits beside the composer (Fold-Chat)
-                trailing={deck ? <StopPill session={session} /> : undefined}
-                above={
-                  <>
-                    {mode !== "desktop" && !(isNative() && nativeKeyboard) && (
-                      <ChatKeyRow
-                        ids={chatKeys}
-                        onText={(text) => composer.insert(text)}
-                        onImage={() => setPickingImage(true)}
-                        onPaste={pasteFromClipboard}
-                        onShiftTab={live.cycleMode}
-                        onEsc={live.escape}
+            {controlPages && (
+              <>
+                <div
+                  aria-hidden="true"
+                  className="shrink-0"
+                  style={{ width: controlPages.gutter }}
+                />
+                <div className="flex min-w-0 flex-1 items-center gap-2 pb-1.5">
+                  {!!ask?.options.length && !ask.questions?.length && (
+                    <>
+                      <span className="text-muted-foreground shrink-0 text-xs">
+                        Claude asks
+                      </span>
+                      <AnswerChips
+                        context={ask}
+                        sessionId={session.id}
+                        className="min-w-0"
                       />
-                    )}
-                    {/* What's being answered, and the passages quoted to answer */}
-                    <ReplyContextBar
-                      composer={composer}
-                      sessionId={session.id}
-                      view="chat"
-                      bounds={rootRef}
-                    />
-                    <ComposerChips composer={composer} historyChip />
-                  </>
-                }
-              />
+                    </>
+                  )}
+                </div>
+              </>
             )}
           </div>
-          {controlPages && (
-            <>
-              <div
-                aria-hidden="true"
-                className="shrink-0"
-                style={{ width: controlPages.gutter }}
-              />
-              <div className="flex min-w-0 flex-1 items-center gap-2 pb-1.5">
-                {!!ask?.options.length && !ask.questions?.length && (
-                  <>
-                    <span className="text-muted-foreground shrink-0 text-xs">
-                      Claude asks
-                    </span>
-                    <AnswerChips
-                      context={ask}
-                      sessionId={session.id}
-                      className="min-w-0"
-                    />
-                  </>
-                )}
-              </div>
-            </>
-          )}
         </div>
-      </div>
-      {side && pages && gutter}
-      {openedRun && !opened && (
-        <WorkflowPanel
-          key={openedRun.runId}
-          run={openedRun}
-          onOpenAgent={setOpenAgent}
-          onClose={() => setOpenRun(null)}
-          className={
-            pages
-              ? "@2xl/chat:w-auto @2xl/chat:max-w-none @2xl/chat:flex-1 @2xl/chat:border-l-0"
-              : undefined
-          }
-        />
-      )}
-      {opened && (
-        <SubagentPanel
-          key={opened.agentId}
+        {side && pages && gutter}
+        {openedRun && !opened && (
+          <WorkflowPanel
+            key={openedRun.runId}
+            run={openedRun}
+            onOpenAgent={setOpenAgent}
+            onClose={() => setOpenRun(null)}
+            className={
+              pages
+                ? "@2xl/chat:w-auto @2xl/chat:max-w-none @2xl/chat:flex-1 @2xl/chat:border-l-0"
+                : undefined
+            }
+          />
+        )}
+        {opened && (
+          <SubagentPanel
+            key={opened.agentId}
+            sessionId={session.id}
+            agent={opened}
+            onClose={() => setOpenAgent(null)}
+            // The right page, with the conversation on the left
+            className={
+              pages
+                ? "@2xl/chat:w-auto @2xl/chat:max-w-none @2xl/chat:flex-1 @2xl/chat:border-l-0"
+                : undefined
+            }
+          />
+        )}
+        {pickingImage && (
+          <ImagePicker
+            initialPath="~"
+            onSelect={(path) => {
+              setPickingImage(false);
+              composer.insert(`${path} `, true);
+              inputRef.current?.focus();
+            }}
+            onClose={() => setPickingImage(false)}
+          />
+        )}
+        {viewingImage && (
+          <ImageViewer
+            path={viewingImage}
+            // A pasted picture has no file to put in a message
+            onAdd={
+              isImageUrl(viewingImage)
+                ? undefined
+                : () => {
+                    setViewingImage(null);
+                    composer.insert(`${viewingImage} `, true);
+                  }
+            }
+            onClose={() => setViewingImage(null)}
+          />
+        )}
+        {reviewHere && diffTurn !== null && (
+          <DiffReview
+            session={session}
+            agentName="Claude"
+            initialScope={`turn:${diffTurn}`}
+            // Beside the conversation on the open Duo (O-Diff) and the
+            // desktop (D-Diff); over it on the closed Duo and the phone
+            placement={pages || mode === "desktop" ? "page" : "screen"}
+            onClose={() => setDiffTurn(null)}
+            onUndoTurn={setUndoTurn}
+            base={
+              deckControls && !pages && mode !== "desktop" ? diffBase : null
+            }
+            className={
+              pages
+                ? "min-w-0 flex-1"
+                : mode === "desktop"
+                  ? "bg-background absolute inset-0 z-10 @2xl/chat:static @2xl/chat:w-[62%] @2xl/chat:max-w-[60rem] @2xl/chat:shrink-0"
+                  : // Over the conversation, inside the chat's own box (the
+                    // closed Duo's column stays clear; UndoSheet is above)
+                    "bg-background absolute inset-0 z-10"
+            }
+            // On a table: above the fold (clear of the hinge, as the
+            // column's rule), the composer stays on the deck
+            style={
+              deck && !pages && mode !== "desktop"
+                ? {
+                    bottom: deck.deck + deck.gap,
+                    paddingBottom: Math.max(0, FOLD_CLEAR - deck.gap / 2),
+                  }
+                : undefined
+            }
+          />
+        )}
+        {/* On a table while typing: Claude's last turn over the chat above */}
+        <DeckContext
           sessionId={session.id}
-          agent={opened}
-          onClose={() => setOpenAgent(null)}
-          // The right page, with the conversation on the left
-          className={
-            pages
-              ? "@2xl/chat:w-auto @2xl/chat:max-w-none @2xl/chat:flex-1 @2xl/chat:border-l-0"
-              : undefined
-          }
+          view="chat"
+          on={!!deck && active && diffTurn === null}
+          cover={scrollRef}
         />
-      )}
-      {pickingImage && (
-        <ImagePicker
-          initialPath="~"
-          onSelect={(path) => {
-            setPickingImage(false);
-            composer.insert(`${path} `, true);
-            inputRef.current?.focus();
-          }}
-          onClose={() => setPickingImage(false)}
-        />
-      )}
-      {viewingImage && (
-        <ImageViewer
-          path={viewingImage}
-          // A pasted picture has no file to put in a message
-          onAdd={
-            isImageUrl(viewingImage)
-              ? undefined
-              : () => {
-                  setViewingImage(null);
-                  composer.insert(`${viewingImage} `, true);
-                }
-          }
-          onClose={() => setViewingImage(null)}
-        />
-      )}
-      {reviewHere && diffTurn !== null && (
-        <DiffReview
-          session={session}
-          agentName="Claude"
-          initialScope={`turn:${diffTurn}`}
-          // Beside the conversation on the open Duo (O-Diff) and the
-          // desktop (D-Diff); over it on the closed Duo and the phone
-          placement={pages || mode === "desktop" ? "page" : "screen"}
-          onClose={() => setDiffTurn(null)}
-          onUndoTurn={setUndoTurn}
-          base={deckControls && !pages && mode !== "desktop" ? diffBase : null}
-          className={
-            pages
-              ? "min-w-0 flex-1"
-              : mode === "desktop"
-                ? "bg-background absolute inset-0 z-10 @2xl/chat:static @2xl/chat:w-[62%] @2xl/chat:max-w-[60rem] @2xl/chat:shrink-0"
-                : // Over the conversation, inside the chat's own box (the
-                  // closed Duo's column stays clear; UndoSheet is above)
-                  "bg-background absolute inset-0 z-10"
-          }
-          // On a table: above the fold (clear of the hinge, as the
-          // column's rule), the composer stays on the deck
-          style={
-            deck && !pages && mode !== "desktop"
-              ? {
-                  bottom: deck.deck + deck.gap,
-                  paddingBottom: Math.max(0, FOLD_CLEAR - deck.gap / 2),
-                }
-              : undefined
-          }
-        />
-      )}
-      {/* On a table while typing: Claude's last turn over the chat above */}
-      <DeckContext
-        sessionId={session.id}
-        view="chat"
-        on={!!deck && active && diffTurn === null}
-        cover={scrollRef}
-      />
-      {quoteMenu.menu}
-      {undoTurn !== null && (
-        <UndoSheet
-          turnNo={undoTurn}
-          turns={turns}
-          agentName="Claude"
-          onClose={() => setUndoTurn(null)}
-        />
-      )}
-    </div>
+        {quoteMenu.menu}
+        {undoTurn !== null && (
+          <UndoSheet
+            turnNo={undoTurn}
+            turns={turns}
+            agentName="Claude"
+            onClose={() => setUndoTurn(null)}
+          />
+        )}
+      </div>
+    </MockChatContext.Provider>
   );
 }

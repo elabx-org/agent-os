@@ -48,7 +48,14 @@ export interface ColumnContext {
   working?: boolean;
   /** A sheet over the session other than Live activity (N-Undo,
       N-Switch, N-PermMode, N-Scripts) */
-  sheet?: "undo" | "switch" | "permissions" | "scripts" | "move" | null;
+  sheet?:
+    | "undo"
+    | "switch"
+    | "permissions"
+    | "scripts"
+    | "move"
+    | "mock"
+    | null;
   /**
    * What the move sheet (N-Worktree) can do now: move, cancel the
    * scheduled move, or nothing (loading, refused, running). Absent: move
@@ -461,6 +468,8 @@ function sheetColumn(ctx: ColumnContext): ColumnItem[] | null {
     return [item(BASE.closeSheet), changes(ctx, { selected: false, ...sep })];
   // N-Switch: the close alone
   if (ctx.sheet === "switch") return [item(BASE.closeSheet)];
+  // A mock open full screen from the chat: the close alone
+  if (ctx.sheet === "mock") return [item(BASE.closeSheet)];
   if (ctx.sheet === "permissions")
     return [
       item(BASE.closeSheet),
