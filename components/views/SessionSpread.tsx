@@ -500,16 +500,15 @@ export function SessionSpread({
         )}
         style={homeStyle}
       >
-        {/* On the pages Now sits beside the session or a page: its
-            fold-side grip puts it away and what is on the right (the page
-            the user picked, else the session) takes both pages */}
-        {homeOpen && !homeFill && pages && (pageOpen || session || behind) && (
+        {/* On the pages Now sits beside the session: its fold-side grip
+            puts it away and the session takes both pages. Beside a page
+            there's one grip, the page's own (drag it toward the fold to
+            widen it, away to close it) */}
+        {homeOpen && !homeFill && pages && !pageOpen && (session || behind) && (
           <PageEdge
             side="right"
-            label={pageOpen ? "Hide the list" : "Back to session"}
-            onClose={() =>
-              pageOpen ? navStore.putHomeAway() : runNav("resume")
-            }
+            label="Back to session"
+            onClose={() => runNav("resume")}
           />
         )}
         {/* The page's own colour edge to edge (Open-Now); the bottom inset
