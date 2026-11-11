@@ -632,3 +632,23 @@ test("Find's More: going elsewhere closes Find; More, back, Settings keep it", (
   stop();
   assert.ok(!calls.includes("closeFind"), "no Find, nothing to close");
 });
+
+test("backTarget: two side by side on the pages close the right one", () => {
+  const { calls, stop } = spyHandlers();
+  try {
+    reset();
+    layoutStore.mode = "duo-open";
+    surfaceStore.paneCount = 2;
+    backStore.besideName = "Session 23";
+    assert.equal(backTarget().label, "Close Session 23");
+    backTarget().go();
+    assert.deepEqual(calls, ["closeBeside"]);
+    // Closed, they're stacked: back is as before
+    layoutStore.mode = "duo-closed";
+    assert.notEqual(backTarget().label, "Close Session 23");
+  } finally {
+    surfaceStore.paneCount = 1;
+    backStore.besideName = null;
+    stop();
+  }
+});

@@ -600,6 +600,17 @@ function HomeContent() {
       projects.map((p) => [p.id, p.name])
     );
   }, [projects]);
+  // Two side by side: the right one's name, for the column's Close
+  const rightPaneId = getAllPaneIds(paneState.layout)[1];
+  const rightPane = rightPaneId ? paneState.panes[rightPaneId] : undefined;
+  const rightTab = rightPane?.tabs.find((t) => t.id === rightPane.activeTabId);
+  const rightName = rightTab
+    ? (sessions.find((s) => s.id === rightTab.sessionId)?.name ??
+      (backgroundAgentOfTmux(rightTab.attachedTmux) ? "the agent" : null))
+    : null;
+  useEffect(() => {
+    backStore.besideName = rightName;
+  }, [rightName]);
   const lastBesideRef = useRef(0);
   useEffect(
     () =>
@@ -618,6 +629,16 @@ function HomeContent() {
         },
         // The page on the right stays: it takes both pages
         putHomeAway: () => setSidebarOpen(false),
+        // The right page's session closes; the left takes both pages
+        closeBeside: () => {
+          const ids = getAllPaneIds(paneState.layout);
+          if (ids.length > 1) closePane(ids[ids.length - 1]);
+        },
+        // Back to the session being typed into, alone
+        closeAll: () =>
+          getAllPaneIds(paneState.layout)
+            .filter((id) => id !== focusedPaneId)
+            .forEach(closePane),
         // On a phone a page covers the home: leave it for the home
         openSessions: () =>
           isMobile && closePage()

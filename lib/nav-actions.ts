@@ -55,6 +55,8 @@ export const NAV_ACTIONS = [
   "search",
   "live",
   "beside",
+  "closeBeside",
+  "closeAll",
   "swap",
   "more",
   "sort",
@@ -130,6 +132,10 @@ interface NavHandlers {
   openLive: () => void;
   /** Open the focused session's neighbour beside it (open Duo, desktop) */
   openBeside: () => void;
+  /** Close the session on the right page, the left one takes both */
+  closeBeside: () => void;
+  /** Back to one session: every other pane closes */
+  closeAll: () => void;
   /** Swap the two panes without remounting them (M1b registers it) */
   swapPanes: () => void;
   /** The ⋯ menu of the current surface */
@@ -211,6 +217,8 @@ export const navStore: NavHandlers = {
   // Pick the session to put beside it
   openBeside: () => navStore.openFind(),
   swapPanes: () => {},
+  closeBeside: () => {},
+  closeAll: () => {},
   openMore: () => {
     if (typeof window !== "undefined")
       window.dispatchEvent(new Event(MORE_EVENT));
@@ -412,6 +420,22 @@ export function backTarget(): BackTarget {
         mobileNavStore.changesOpen = false;
       },
     };
+  // Two sessions side by side on the pages: the top item closes the right
+  // one, as Live activity's closes it (C-Beside)
+  if (
+    (mode === "duo-open" || mode === "book") &&
+    surfaceStore.paneCount >= 2 &&
+    !settingsPageStore.open &&
+    !surfaceStore.searchOpen &&
+    !newSurfaceStore.open &&
+    !workspacePageStore.page &&
+    !mobileNavStore.inboxOpen &&
+    !surfaceStore.home
+  )
+    return {
+      label: `Close ${backStore.besideName ?? "the right page"}`,
+      go: () => navStore.closeBeside(),
+    };
   if (settingsPageStore.open) {
     // Opened on a section from Needs you, it goes back there; split
     // (list | section), there's no level between
@@ -570,6 +594,8 @@ export const NAV_ROUTES: Record<NavAction, (leftPage: boolean) => void> = {
   search: () => navStore.openFind(),
   live: () => navStore.openLive(),
   beside: () => navStore.openBeside(),
+  closeBeside: () => navStore.closeBeside(),
+  closeAll: () => navStore.closeAll(),
   swap: () => navStore.swapPanes(),
   more: () => navStore.openMore(),
   sort: () => navStore.openSort(),
