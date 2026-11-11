@@ -219,6 +219,19 @@ describe("agentos-hook mocks", () => {
     assert.equal(line.file, page);
     assert.equal(line.title, "Session Rail Labels");
     assert.equal(line.description, "Three rail options");
+    // The page as published is kept, for the chat's card to show
+    assert.equal(
+      fs.readFileSync(
+        path.join(
+          home,
+          "claude-state",
+          "mock-snapshots",
+          "Vw8HPGnKzVR3KKajW9BeWQ.html"
+        ),
+        "utf8"
+      ),
+      "<title>Session Rail Labels</title><p>x</p>"
+    );
   });
 
   test("the tool's structured result: link, seq, path and title", () => {

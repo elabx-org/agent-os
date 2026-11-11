@@ -7,6 +7,7 @@ import {
   MOCK_STATUSES,
   type Mock,
   type MockChange,
+  mockId,
   type MockRow,
   type MockStatusBy,
 } from "./mock-types";
@@ -111,6 +112,68 @@ export function applyInbox(
   return changed;
 }
 
+/** Where the hook keeps each mock's page as it was published */
+function snapshotDir(): string {
+  return path.join(claudeStateRoot(), "mock-snapshots");
+}
+
+/** The largest page served (the Artifact tool's own limit) */
+const MAX_PAGE_BYTES = 16 * 1024 * 1024;
+
+/**
+ * The page AgentOS can show for a mock: the hook's copy from when it was
+ * published, else (mocks from before there were copies) the file it was
+ * published from, which may have changed since. HTML only
+ */
+export function mockPageFile(
+  row: Pick<MockRow, "url" | "file">
+): { file: string; snapshot: boolean } | null {
+  const id = mockId(row.url);
+  const usable = (file: string) => {
+    try {
+      const stat = fs.statSync(file);
+      return stat.isFile() && stat.size > 0 && stat.size <= MAX_PAGE_BYTES;
+    } catch {
+      return false;
+    }
+  };
+  if (id) {
+    const copy = path.join(snapshotDir(), `${id}.html`);
+    if (usable(copy)) return { file: copy, snapshot: true };
+  }
+  if (row.file && /\.html?$/i.test(row.file) && usable(row.file))
+    return { file: row.file, snapshot: false };
+  return null;
+}
+
+/**
+ * The page as a whole document. The Artifact tool publishes a fragment and
+ * wraps it; this is that wrapper (charset, viewport, its small reset). A
+ * file that is a document already goes as it is
+ */
+export function mockDocument(page: string): string {
+  if (/^\s*(?:<!doctype|<html[\s>])/i.test(page)) return page;
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><style>:root{color-scheme:light}body{margin:0;font:14px system-ui,-apple-system,"Segoe UI",sans-serif}img{max-width:100%}[hidden]{display:none!important}</style></head><body>${page}</body></html>`;
+}
+
+/**
+ * The policy a mock's page is served under. `sandbox` without
+ * allow-same-origin gives it an origin of its own, so its scripts can't
+ * read AgentOS's cookies or storage, and nothing but what a published
+ * Artifact may load (its CDNs, Google Fonts, inline and data:) is fetched:
+ * no requests to AgentOS or anywhere else
+ */
+export const MOCK_PAGE_CSP = [
+  "sandbox allow-scripts",
+  "default-src 'none'",
+  "script-src 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://unpkg.com https://cdn.tailwindcss.com https://code.jquery.com",
+  "style-src 'unsafe-inline' https://fonts.googleapis.com",
+  "font-src https://fonts.gstatic.com data:",
+  "img-src data: blob:",
+  "media-src data: blob:",
+  "frame-ancestors 'self'",
+].join("; ");
+
 function inboxFile(): string {
   return path.join(claudeStateRoot(), "mocks.jsonl");
 }
@@ -152,7 +215,9 @@ export function toMock(
     session: (id: string) => string | null;
     project: (id: string) => string | null;
   },
-  now: number
+  now: number,
+  /** Whether its page can be shown here (mockPageFile); left out: no */
+  hasPreview: (row: MockRow) => boolean = () => false
 ): Mock {
   const { status, auto } = effectiveStatus(row, now);
   return {
@@ -174,6 +239,7 @@ export function toMock(
         : row.status_note,
     pr: row.pr,
     archived: row.archived_at !== null,
+    preview: hasPreview(row),
   };
 }
 

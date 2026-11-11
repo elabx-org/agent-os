@@ -5,6 +5,8 @@
 
 export const MOCK_STATUSES = [
   "ongoing",
+  // The user said build it (the chat's card); completed once it's built
+  "approved",
   "completed",
   "rejected",
   "abandoned",
@@ -51,6 +53,37 @@ export interface Mock {
   statusNote: string | null;
   pr: string | null;
   archived: boolean;
+  /** AgentOS can show the page itself (/api/mocks/preview), not only link it */
+  preview: boolean;
+}
+
+/** "AbC" from "https://claude.ai/artifact/AbC": a mock's name in a path */
+export function mockId(url: string): string | null {
+  return (
+    url.match(
+      /^https:\/\/(?:www\.)?claude\.ai\/(?:code\/)?artifacts?\/([\w-]+)/i
+    )?.[1] ?? null
+  );
+}
+
+/** Where AgentOS serves a mock's page, sandboxed (app/api/mocks/preview) */
+export function mockPreviewSrc(url: string, version: number): string {
+  return `/api/mocks/preview?url=${encodeURIComponent(url)}&v=${version}`;
+}
+
+/** What a decision on the chat's card tells the session */
+export function mockDecisionText(
+  decision: "approved" | "rejected",
+  title: string
+): string {
+  return decision === "approved"
+    ? `Approved the mock "${title}". Build it.`
+    : `Rejected the mock "${title}". Don't build it.`;
+}
+
+/** What "Ask for changes" starts the reply with */
+export function mockChangesText(title: string): string {
+  return `Changes to the mock "${title}": `;
 }
 
 /** What it shows as: a quiet ongoing mock the hook set turns abandoned */
@@ -73,4 +106,22 @@ export interface MockChange {
   note?: string | null;
   pr?: string | null;
   archived?: boolean;
+}
+
+/**
+ * The last message that links each mock, by mock id: that one shows the
+ * mock's card in full, earlier ones a line pointing down to it
+ */
+export function lastMockMentions(
+  messages: readonly { id: string; text: string }[]
+): Map<string, string> {
+  const last = new Map<string, string>();
+  const link =
+    /https:\/\/(?:www\.)?claude\.ai\/(?:code\/)?artifacts?\/([\w-]+)/gi;
+  for (const message of messages) {
+    for (const match of message.text.matchAll(link)) {
+      last.set(match[1], message.id);
+    }
+  }
+  return last;
 }

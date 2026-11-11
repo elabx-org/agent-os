@@ -4,6 +4,7 @@ import { isAgentOrigin } from "@/lib/agent-origin";
 import {
   changeMocks,
   ingestMocks,
+  mockPageFile,
   MOCK_STATUSES,
   toMock,
   type MockChange,
@@ -59,7 +60,8 @@ export async function GET() {
           session: (id) => sessions.get(id)?.name ?? null,
           project: (id) => projects.get(id)?.name ?? null,
         },
-        now
+        now,
+        (r) => mockPageFile(r) !== null
       )
     );
     return NextResponse.json({ mocks });

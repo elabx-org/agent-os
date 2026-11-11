@@ -44,6 +44,7 @@ type Filter = "all" | MockStatus | "archived";
 
 const NAME: Record<MockStatus, string> = {
   ongoing: "Ongoing",
+  approved: "Approved",
   completed: "Completed",
   rejected: "Rejected",
   abandoned: "Abandoned",
@@ -51,6 +52,7 @@ const NAME: Record<MockStatus, string> = {
 
 const PILL: Record<MockStatus, string> = {
   ongoing: "bg-blue-500/15 text-blue-600 dark:text-blue-300",
+  approved: "bg-violet-500/15 text-violet-700 dark:text-violet-300",
   completed: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
   rejected: "bg-red-500/15 text-red-700 dark:text-red-300",
   abandoned: "bg-foreground/10 text-muted-foreground",
