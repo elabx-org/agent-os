@@ -27,7 +27,7 @@ import {
 } from "./handoff-store";
 import { readClaudeModels, setSubagentModel } from "./claude-models-store";
 import {
-  isClaudeModelAlias,
+  isClaudeModel,
   isEffortLevel,
   isHandoffAgent,
   isPaused,
@@ -279,7 +279,7 @@ export function createSuccessor(
         db,
         id,
         (source.agent_type || "claude") === "claude"
-          ? isClaudeModelAlias(source.subagent_model)
+          ? isClaudeModel(source.subagent_model)
             ? source.subagent_model
             : null
           : readClaudeModels(db).subagents
@@ -318,7 +318,7 @@ export function createHandoff(deps: HandoffDeps) {
     // Either may be left out: an effort-only change never sends /model
     // (it would drop a variant such as opus[1m] back to the plain alias)
     const model = request.model;
-    if (model !== undefined && !isClaudeModelAlias(model)) {
+    if (model !== undefined && !isClaudeModel(model)) {
       throw new HandoffRefused(400, { error: "Unknown model" });
     }
     if (request.effort !== undefined && !isEffortLevel(request.effort)) {
@@ -328,7 +328,7 @@ export function createHandoff(deps: HandoffDeps) {
     if (
       subagents !== undefined &&
       subagents !== "same" &&
-      !isClaudeModelAlias(subagents)
+      !isClaudeModel(subagents)
     ) {
       throw new HandoffRefused(400, { error: "Unknown sub-agent model" });
     }

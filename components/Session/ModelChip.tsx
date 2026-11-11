@@ -2,7 +2,7 @@
 
 import { ChevronDown } from "lucide-react";
 import type { Session } from "@/lib/db";
-import { isClaudeModelAlias, isHandoffAgent } from "@/lib/handoff-types";
+import { isClaudeModel, isHandoffAgent } from "@/lib/handoff-types";
 import { cn } from "@/lib/utils";
 import { useClaudeState } from "@/hooks/useClaudeState";
 import { Avatar, agentAvatar, agentName } from "@/components/a/Avatar";
@@ -39,10 +39,42 @@ export function useModelParts(session: Session | null | undefined): string[] {
     status?.model ?? transcriptModel,
     session.model
   ).label;
-  const subagents = isClaudeModelAlias(session.subagent_model)
+  const subagents = isClaudeModel(session.subagent_model)
     ? claudeModelName(session.subagent_model)
     : "same";
   return [model, `sub-agents ${subagents}`].filter((p): p is string => !!p);
+}
+
+/**
+ * "· Fable 5.2 · sub-agents Opus 5.5" after a crumb, where the chip has no
+ * room (the terminal's one-line header): the models are still said, and a
+ * tap opens Agent and model
+ */
+export function ModelCrumb({
+  session,
+  onOpen,
+}: {
+  session: Session;
+  onOpen: () => void;
+}) {
+  const parts = useModelParts(session);
+  if (parts.length === 0) return null;
+  return (
+    <>
+      <span aria-hidden className="text-muted-foreground">
+        ·
+      </span>
+      <button
+        type="button"
+        onClick={onOpen}
+        aria-haspopup="dialog"
+        aria-label={`Agent and model: ${parts.join(", ")}`}
+        className="text-muted-foreground hover:text-foreground relative min-w-0 shrink-[2] truncate after:absolute after:inset-x-0 after:-inset-y-3 after:content-['']"
+      >
+        {parts.join(" · ")}
+      </button>
+    </>
+  );
 }
 
 export interface ModelChipProps {

@@ -5,11 +5,19 @@
  */
 
 import { refusalText } from "@/lib/client/user-fetch";
-import { claudeModelName } from "@/lib/claude-models";
+import {
+  claudeModelFamily,
+  claudeModelName,
+  claudeModelVersion,
+  claudeModelVersions,
+} from "@/lib/claude-models";
 import {
   CLAUDE_MODEL_ALIASES,
   EFFORT_LEVELS,
+  isClaudeModel,
+  isClaudeModelAlias,
   isEffortLevel,
+  type ClaudeModel,
   type ClaudeModelAlias,
   type EffortLevel,
   type HandoffRefusal,
@@ -44,22 +52,39 @@ export function modelDisplayName(
   return name || null;
 }
 
+export interface CurrentModel {
+  /** Its family, the tile that's lit */
+  alias: ClaudeModelAlias | null;
+  label: string | null;
+  /** The earlier version it is held on, else the alias (its newest) */
+  model: ClaudeModel | null;
+}
+
 /** The model a session runs: Claude's status line first, else sessions.model */
 export function currentModel(
   statusModel: { id?: string; display_name?: string | null } | null | undefined,
   sessionModel: string | null | undefined
-): { alias: ClaudeModelAlias | null; label: string | null } {
+): CurrentModel {
   const shown = modelDisplayName(statusModel?.display_name);
   const alias =
     modelAlias(statusModel?.id) ??
     modelAlias(shown) ??
     modelAlias(sessionModel);
-  return { alias, label: shown ?? (alias ? FAMILY[alias] : null) };
+  const version = claudeModelVersion(statusModel?.id ?? sessionModel);
+  return {
+    alias,
+    label:
+      shown ?? (version ? claudeModelName(version) : alias && FAMILY[alias]),
+    model: version ?? alias,
+  };
 }
 
 export interface ModelPick {
   alias: ClaudeModelAlias;
-  /** The current one by Claude's own name ("Opus 5.5"), the rest by family */
+  /**
+   * The current one by Claude's own name ("Opus 5.5"), the picked family by
+   * the version picked, the rest by their newest
+   */
   label: string;
   caption: string;
 }
@@ -71,27 +96,64 @@ const CAPTION: Record<ClaudeModelAlias, string> = {
   haiku: "Quickest",
 };
 
-/** Fable, Opus, Sonnet, Haiku; the one running says Current */
-export function modelPicks(current: {
-  alias: ClaudeModelAlias | null;
-  label: string | null;
-}): ModelPick[] {
+type Current = Pick<CurrentModel, "alias" | "label"> & {
+  model?: ClaudeModel | null;
+};
+
+/**
+ * Fable, Opus, Sonnet, Haiku; the one running says Current, unless another
+ * version of it is picked (the tile then names that one)
+ */
+export function modelPicks(
+  current: Current,
+  picked?: ClaudeModel | null
+): ModelPick[] {
+  const running = current.model ?? current.alias;
   return CLAUDE_MODEL_ALIASES.map((alias) => {
-    const isCurrent = alias === current.alias;
+    const mine = picked && claudeModelFamily(picked) === alias ? picked : null;
+    const isCurrent = alias === current.alias && (!mine || mine === running);
     return {
       alias,
-      label: (isCurrent && current.label) || claudeModelName(alias),
+      label: (isCurrent && current.label) || claudeModelName(mine ?? alias),
       caption: isCurrent ? "Current" : CAPTION[alias],
     };
   });
 }
 
 /** The pick's name in the button: "Switch to Sonnet 5.5" */
-export function pickLabel(
+export function pickLabel(model: ClaudeModel, current: Current): string {
+  return modelPicks(current, model).find(
+    (p) => p.alias === claudeModelFamily(model)
+  )!.label;
+}
+
+/** What tapping a family's tile picks: the running version of the running
+ * family (no change), else the family's newest */
+export function familyPick(
   alias: ClaudeModelAlias,
-  current: { alias: ClaudeModelAlias | null; label: string | null }
-): string {
-  return modelPicks(current).find((p) => p.alias === alias)!.label;
+  current: Current
+): ClaudeModel {
+  return alias === current.alias ? (current.model ?? alias) : alias;
+}
+
+export interface VersionChoice {
+  id: ClaudeModel;
+  /** In the segment: "5.5", "4.8" */
+  label: string;
+  /** Read out: "Opus 5.5, newest", "Opus 4.8" */
+  name: string;
+}
+
+/** The Version segment for a family: its newest (the alias), then the earlier */
+export function versionChoices(family: ClaudeModelAlias): VersionChoice[] {
+  return claudeModelVersions(family).map((id) => {
+    const name = claudeModelName(id);
+    return {
+      id,
+      label: name.replace(/^\S+\s+/, ""),
+      name: isClaudeModelAlias(id) ? `${name}, newest` : name,
+    };
+  });
 }
 
 const EFFORT_WORD: Record<EffortLevel, string> = {
@@ -128,21 +190,30 @@ export function currentEffort(
   return isEffortLevel(sessionEffort) ? sessionEffort : null;
 }
 
-/** The sub-agents segment: Same, then each model */
-export type SubagentPick = ClaudeModelAlias | "same";
+/** The sub-agents' model picked: the session's own, or a model */
+export type SubagentPick = ClaudeModel | "same";
 
-export const SUBAGENT_PICKS: SubagentPick[] = ["same", ...CLAUDE_MODEL_ALIASES];
+/** The sub-agents segment: Same, then each family */
+export const SUBAGENT_PICKS: (ClaudeModelAlias | "same")[] = [
+  "same",
+  ...CLAUDE_MODEL_ALIASES,
+];
 
 /** Its label in the segment: "Same", "Opus" (its aria-label names the version) */
-export function subagentPickLabel(pick: SubagentPick): string {
+export function subagentPickLabel(pick: ClaudeModelAlias | "same"): string {
   return pick === "same" ? "Same" : FAMILY[pick];
+}
+
+/** The segment button a pick lights: its family, or Same */
+export function subagentSegment(pick: SubagentPick): ClaudeModelAlias | "same" {
+  return pick === "same" ? "same" : claudeModelFamily(pick);
 }
 
 /** The session's stored sub-agents' model as a pick */
 export function currentSubagents(
   stored: string | null | undefined
 ): SubagentPick {
-  return CLAUDE_MODEL_ALIASES.find((alias) => alias === stored) ?? "same";
+  return isClaudeModel(stored) ? stored : "same";
 }
 
 export type SwitchAction =

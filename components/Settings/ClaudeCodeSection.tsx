@@ -10,6 +10,7 @@ import { useProjectsQuery } from "@/data/projects";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
@@ -17,10 +18,11 @@ import {
 import { useClaudeModels } from "@/data/claude-models";
 import {
   CLAUDE_MODEL_CHOICES,
+  CLAUDE_MODEL_VERSION_CHOICES,
   claudeModelName,
   subagentModelName,
 } from "@/lib/claude-models";
-import { isClaudeModelAlias } from "@/lib/handoff-types";
+import { isClaudeModel } from "@/lib/handoff-types";
 import { SettingGroup } from "./SettingGroup";
 
 /** "" in the menus: Claude Code's own default / the session's model */
@@ -76,6 +78,13 @@ function ModelRow({
               {c.label}
             </DropdownMenuRadioItem>
           ))}
+          {/* Held on that exact version; the ones above follow each family */}
+          <DropdownMenuLabel>Earlier versions</DropdownMenuLabel>
+          {CLAUDE_MODEL_VERSION_CHOICES.map((c) => (
+            <DropdownMenuRadioItem key={c.id} value={c.id}>
+              {c.name}
+            </DropdownMenuRadioItem>
+          ))}
         </DropdownMenuRadioGroup>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -89,7 +98,7 @@ function ModelRow({
  */
 function ModelsGroup() {
   const { models, loaded, save, saving, error } = useClaudeModels();
-  const pick = (id: string) => (isClaudeModelAlias(id) ? id : null);
+  const pick = (id: string) => (isClaudeModel(id) ? id : null);
   return (
     <>
       <h3 className="text-muted-foreground mr-[var(--settings-gutter-r,20px)] -mb-1 ml-[var(--settings-gutter-l,20px)] pt-2 text-[13px] font-medium uppercase">

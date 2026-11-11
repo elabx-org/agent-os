@@ -8,7 +8,7 @@ import type { Session } from "@/lib/db";
 import {
   HANDOFF_AGENTS,
   isPaused,
-  type ClaudeModelAlias,
+  type ClaudeModel,
   type EffortLevel,
   type HandoffAgent,
   type ModelSwitchResult,
@@ -35,14 +35,18 @@ import {
   currentSubagents,
   effortLabel,
   effortOptions,
+  familyPick,
   modelPicks,
   modelRowCaption,
   SUBAGENT_PICKS,
   subagentPickLabel,
+  subagentSegment,
   switchAction,
+  versionChoices,
   type SubagentPick,
+  type VersionChoice,
 } from "./switch-model";
-import { subagentModelName } from "@/lib/claude-models";
+import { claudeModelFamily, subagentModelName } from "@/lib/claude-models";
 
 /**
  * N-Switch "Agent and model": Claude model + effort (between turns, queued
@@ -155,6 +159,62 @@ function CarryRow({
   );
 }
 
+/**
+ * A family's versions as a segment, newest first: "5.5 · 5 · 4.8". The
+ * first is the alias, which follows the family to each new release; the
+ * rest hold the session on that exact version
+ */
+function VersionRow({
+  label,
+  ariaLabel,
+  choices,
+  value,
+  disabled,
+  dimmed,
+  onPick,
+}: {
+  label: string;
+  ariaLabel: string;
+  choices: VersionChoice[];
+  value: ClaudeModel | null;
+  disabled: boolean;
+  dimmed: boolean;
+  onPick: (id: ClaudeModel) => void;
+}) {
+  return (
+    <div
+      className={cn(
+        "flex items-center gap-2.5 transition-opacity",
+        dimmed && "opacity-40"
+      )}
+      aria-disabled={dimmed || undefined}
+    >
+      <span className="text-muted-foreground w-[4.75rem] shrink-0 text-[13px] whitespace-nowrap">
+        {label}
+      </span>
+      <div
+        role="group"
+        aria-label={ariaLabel}
+        className="seg min-w-0 flex-1 justify-between rounded-3xl bg-[var(--sheet-fill)]"
+      >
+        {choices.map((c) => (
+          <button
+            key={c.id}
+            type="button"
+            aria-pressed={value === c.id}
+            aria-label={c.name}
+            disabled={disabled}
+            onClick={() => onPick(c.id)}
+            className="h-11 min-w-0 flex-1 truncate rounded-[22px] px-1"
+          >
+            {c.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /** Mounted while open, so the picks start from the session each time */
 function SwitchBody({
   session,
@@ -174,13 +234,13 @@ function SwitchBody({
 
   const current = claude
     ? currentModel(status?.model ?? transcriptModel, session.model)
-    : { alias: null, label: null };
+    : { alias: null, label: null, model: null };
   const runningEffort = claude
     ? currentEffort(status?.effort?.level, session.effort)
     : null;
 
   const [agent, setAgent] = useState<string>(source);
-  const [model, setModel] = useState<ClaudeModelAlias | null>(current.alias);
+  const [model, setModel] = useState<ClaudeModel | null>(current.model);
   const [effort, setEffort] = useState<EffortLevel | null>(runningEffort);
   const storedSubagents = currentSubagents(session.subagent_model);
   const [subagents, setSubagents] = useState<SubagentPick>(storedSubagents);
@@ -190,19 +250,20 @@ function SwitchBody({
   const [touched, setTouched] = useState(false);
   useEffect(() => {
     if (touched) return;
-    setModel(current.alias);
+    setModel(current.model);
     setEffort(runningEffort);
-  }, [touched, current.alias, runningEffort]);
+  }, [touched, current.model, runningEffort]);
 
-  const picks = modelPicks(current);
+  const picks = modelPicks(current, model);
+  const family = model ? claudeModelFamily(model) : null;
   const pickedName = agentName(agent);
   const modelOn = agent === "claude";
   // Effort is this Claude's own: a handoff starts with its default
   const effortOn = claude && agent === "claude";
-  const modelChanged = !!model && model !== current.alias;
+  const modelChanged = !!model && model !== current.model;
   const effortChanged = !!effort && effort !== runningEffort;
   const subagentsChanged = claude && subagents !== storedSubagents;
-  const modelLabel = picks.find((p) => p.alias === model)?.label ?? null;
+  const modelLabel = picks.find((p) => p.alias === family)?.label ?? null;
   const action = switchAction({
     source,
     sourceName,
@@ -330,15 +391,16 @@ function SwitchBody({
               key={p.alias}
               type="button"
               role="radio"
-              aria-checked={model === p.alias}
+              aria-checked={family === p.alias}
               disabled={!modelOn || sending}
               onClick={() => {
                 setTouched(true);
-                setModel(p.alias);
+                // The lit tile keeps its version; another starts at its newest
+                if (family !== p.alias) setModel(familyPick(p.alias, current));
               }}
               className={cn(
                 "pick min-w-0 gap-0.5 px-1 py-[9px]",
-                model === p.alias && "on"
+                family === p.alias && "on"
               )}
             >
               <span className="max-w-full truncate font-semibold">
@@ -350,6 +412,20 @@ function SwitchBody({
             </button>
           ))}
         </div>
+        {family && (
+          <VersionRow
+            label="Version"
+            ariaLabel="Model version"
+            choices={versionChoices(family)}
+            value={model}
+            disabled={!modelOn || sending}
+            dimmed={!modelOn}
+            onPick={(id) => {
+              setTouched(true);
+              setModel(id);
+            }}
+          />
+        )}
         <div
           className={cn(
             "flex items-center gap-2.5 transition-opacity",
@@ -401,16 +477,19 @@ function SwitchBody({
               <button
                 key={pick}
                 type="button"
-                aria-pressed={subagents === pick}
+                aria-pressed={subagentSegment(subagents) === pick}
                 aria-label={
                   pick === "same"
                     ? "Same as the session"
-                    : subagentModelName(pick)
+                    : subagentModelName(
+                        subagentSegment(subagents) === pick ? subagents : pick
+                      )
                 }
                 disabled={!effortOn || sending}
                 onClick={() => {
                   setTouched(true);
-                  setSubagents(pick);
+                  // The lit family keeps its version
+                  if (subagentSegment(subagents) !== pick) setSubagents(pick);
                 }}
                 className="h-11 min-w-0 flex-1 truncate rounded-[22px] px-1"
               >
@@ -419,6 +498,20 @@ function SwitchBody({
             ))}
           </div>
         </div>
+        {subagents !== "same" && (
+          <VersionRow
+            label=""
+            ariaLabel="Sub-agents' model version"
+            choices={versionChoices(claudeModelFamily(subagents))}
+            value={subagents}
+            disabled={!effortOn || sending}
+            dimmed={!effortOn}
+            onPick={(id) => {
+              setTouched(true);
+              setSubagents(id);
+            }}
+          />
+        )}
         {caption && (
           <p
             className={cn(

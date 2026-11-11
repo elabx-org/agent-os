@@ -294,9 +294,24 @@ describe("switchModel", () => {
     assert.equal(same.subagents, null);
     assert.equal(row("a")!.subagent_model, null);
 
+    // An earlier version of either is held by its model id
+    const held = await h.switchModel(row("a")!, {
+      model: "claude-fable-5-1",
+      subagents: "claude-opus-4-8",
+    });
+    assert.equal(held.model, "claude-fable-5-1");
+    assert.equal(row("a")!.model, "claude-fable-5-1");
+    assert.equal(row("a")!.subagent_model, "claude-opus-4-8");
+
     f.running.delete("a");
     const stopped = await h.switchModel(row("a")!, { subagents: "haiku" });
     assert.equal(stopped.restart, false);
+    await assert.rejects(
+      h.switchModel(row("a")!, {
+        model: "claude-opus-3" as unknown as "opus",
+      }),
+      /Unknown model/
+    );
     await assert.rejects(
       h.switchModel(row("a")!, {
         subagents: "gpt" as unknown as "opus",
@@ -616,6 +631,14 @@ describe("session models (Settings → Claude Code, sub-agents)", () => {
       model: "fable",
       subagents: "opus",
     });
+    // Earlier versions are saved by their model id
+    assert.deepEqual(
+      models.writeClaudeModels(d, {
+        model: "claude-fable-5-1",
+        subagents: "claude-sonnet-4-6",
+      }),
+      { model: "claude-fable-5-1", subagents: "claude-sonnet-4-6" }
+    );
   });
 
   test("launch settings carry the sub-agents' model, only when picked", async () => {
@@ -627,6 +650,12 @@ describe("session models (Settings → Claude Code, sub-agents)", () => {
       const a = await writeProjectContext(picked);
       const settings = JSON.parse(fs.readFileSync(a.settings!, "utf8"));
       assert.deepEqual(settings.env, { CLAUDE_CODE_SUBAGENT_MODEL: "opus" });
+
+      const held = addSession("s3", { subagent_model: "claude-opus-4-8" });
+      const c = await writeProjectContext(held);
+      assert.deepEqual(JSON.parse(fs.readFileSync(c.settings!, "utf8")).env, {
+        CLAUDE_CODE_SUBAGENT_MODEL: "claude-opus-4-8",
+      });
 
       const same = addSession("s2");
       const b = await writeProjectContext(same);
