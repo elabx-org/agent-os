@@ -165,7 +165,9 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
     },
     ref
   ) {
-    const videoDraft = draftId ?? mediaDraft ?? null;
+    // `||`: the iOS app takes a tab over for an agent with an empty
+    // session id, which must fall through to the agent's own draft
+    const videoDraft = draftId || mediaDraft || null;
     const terminalRef = useRef<HTMLDivElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const { isMobile, isTouch } = useViewport();
