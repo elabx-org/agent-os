@@ -625,7 +625,8 @@ export const Pane = memo(function Pane({
       onClick={handleFocus}
     >
       {/* Tabs (wide, two or more), then the header naming the session */}
-      {!isMobile && (
+      {/* Not in the iOS app: its panes hold one tab (contexts/PaneContext) */}
+      {!isMobile && !isNative() && (
         <DesktopTabBar
           tabs={paneData.tabs}
           activeTabId={paneData.activeTabId}
