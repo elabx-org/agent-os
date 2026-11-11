@@ -16,6 +16,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { useKeyRepeat } from "@/hooks/useKeyRepeat";
+import { SHEET_OVERLAY } from "./sheet-overlay";
 
 // ANSI escape sequences
 const SPECIAL_KEYS = {
@@ -190,10 +191,7 @@ function PasteModal({
   if (!open) return null;
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/50"
-      onClick={onClose}
-    >
+    <div className={cn(SHEET_OVERLAY, "items-end")} onClick={onClose}>
       <div
         className="bg-background w-full max-w-lg rounded-t-xl p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]"
         onClick={(e) => e.stopPropagation()}
