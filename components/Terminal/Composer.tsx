@@ -32,6 +32,8 @@ interface ComposerProps {
   onChange: (value: string) => void;
   /** The session typed into: its folder and agent drive the pickers */
   sessionId?: string | null;
+  /** The draft picked videos join (default: the session) */
+  videoDraft?: string | null;
   /** Called with the text to send; empty text means "press Enter". A
       rejection: not sent, the draft stays */
   onSend: (text: string) => void | Promise<void>;
@@ -80,6 +82,7 @@ export function Composer({
   value,
   onChange,
   sessionId,
+  videoDraft = sessionId,
   onSend,
   onArrow,
   onTypeInTerminal,
@@ -185,6 +188,7 @@ export function Composer({
         <ComposerCard
           composer={composer}
           sessionId={sessionId ?? ""}
+          videoDraft={videoDraft ?? ""}
           agentName={agentName}
           queue={queue}
           onSendDirect={sendDirect}
@@ -209,7 +213,7 @@ export function Composer({
           plus={
             <ComposerPlusMenu
               onPhoto={onPhoto}
-              videoDraft={sessionId}
+              videoDraft={videoDraft}
               onInsert={insert}
               onSelectText={onSelectText}
               onTypeInTerminal={onTypeInTerminal}

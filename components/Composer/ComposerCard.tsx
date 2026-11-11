@@ -63,6 +63,8 @@ import type {
 export interface ComposerCardProps {
   composer: ComposerEngine;
   sessionId: string;
+  /** The draft picked videos join: the session, or a background agent's tab */
+  videoDraft?: string;
   /** "Claude", "Codex"…: the placeholder and the queue caption name it */
   agentName: string;
   /** The session's server queue. With `queue.enabled`, sending goes
@@ -139,6 +141,7 @@ interface Editing {
 export function ComposerCard({
   composer,
   sessionId,
+  videoDraft = sessionId,
   agentName,
   queue,
   onSendDirect,
@@ -159,7 +162,7 @@ export function ComposerCard({
   inlinePlus = false,
 }: ComposerCardProps) {
   const { items: videoItems } = useSnapshot(videoStore);
-  const videos = videoItems.filter((v) => v.draft === sessionId).length;
+  const videos = videoItems.filter((v) => v.draft === videoDraft).length;
   const typed =
     queue.enabled && live?.claude && live.screen?.hasQueued
       ? live.screen.queued
@@ -328,7 +331,7 @@ export function ComposerCard({
       // With a video: its frames first, once they're ready
       if (videos) {
         sendWithVideos(
-          sessionId,
+          videoDraft,
           () => textRef.current,
           (full) => {
             void how(full, sessions, (ok) => {
@@ -359,7 +362,7 @@ export function ComposerCard({
         setSending(false);
       }
     },
-    [composer, editing, queue, videos, sessionId, onEmptySend]
+    [composer, editing, queue, videos, videoDraft, onEmptySend]
   );
   const send = useCallback(() => sendWith(viaDeliver), [sendWith, viaDeliver]);
 
@@ -674,7 +677,7 @@ export function ComposerCard({
           {!collapsed && (
             <ComposerChips composer={composer} className="px-0 pb-0" />
           )}
-          {!collapsed && videos > 0 && <VideoPills draft={sessionId} />}
+          {!collapsed && videos > 0 && <VideoPills draft={videoDraft} />}
           <div
             className={cn(
               collapsed ? "contents" : "flex flex-wrap items-center gap-2"
