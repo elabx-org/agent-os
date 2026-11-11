@@ -890,3 +890,31 @@ test("a phone on its side has no bar under a session", () => {
     assert.equal(phoneBar(surface, true), "tabs");
   }
 });
+
+test("beside on the pages: the top item closes the right session (C-Beside)", () => {
+  const ctx = { ...CTX, backLabel: "Close Session 23" };
+  for (const mode of ["duo-open", "book"] as LayoutMode[]) {
+    const [top] = columnFor("beside", mode, ctx);
+    assert.equal(top.id, "closeBeside");
+    assert.equal(top.label, "Close Session 23");
+    assert.equal(top.symbol, "xmark");
+  }
+  // Anything else up there is still back
+  assert.equal(columnFor("beside", "duo-open", CTX)[0].id, "back");
+});
+
+test("More beside: Close all but this one", () => {
+  const src = {
+    surface: "beside",
+    viewMode: "terminal",
+    shown: [],
+    running: false,
+    session: {},
+  } as unknown as MoreSources;
+  assert.ok(moreExtras(src).some((it) => it.id === "closeAll"));
+  assert.ok(
+    !moreExtras({ ...src, surface: "session" } as MoreSources).some(
+      (it) => it.id === "closeAll"
+    )
+  );
+});

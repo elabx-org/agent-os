@@ -225,6 +225,18 @@ const BASE = {
     icon: "Columns2",
     label: "Open beside",
   },
+  closeBeside: {
+    id: "closeBeside",
+    symbol: "xmark",
+    icon: "X",
+    label: "Close the right page",
+  },
+  closeAll: {
+    id: "closeAll",
+    symbol: "xmark.square",
+    icon: "X",
+    label: "Close all but this one",
+  },
   swap: {
     id: "swap",
     symbol: "arrow.left.arrow.right",
@@ -397,6 +409,13 @@ function item(base: Base, extra: Partial<ColumnItem> = {}): ColumnItem {
 }
 
 const sep = { sep: true } as const;
+
+/** Two side by side: the top item closes the right one, named (an ×) */
+function besideClose(ctx: ColumnContext): ColumnItem {
+  return ctx.backLabel?.startsWith("Close ")
+    ? item(BASE.closeBeside, { label: ctx.backLabel })
+    : back(ctx);
+}
 
 /** Back, named for where it goes; the fallback where nothing says */
 function back(ctx: ColumnContext, fallback?: string): ColumnItem {
@@ -668,6 +687,8 @@ export function moreExtras(src: MoreSources): Base[] {
     if (src.session.settle) out.push(BASE.settle);
     if (src.session.copyId) out.push(BASE.copyId);
   }
+  // Two or more side by side: back to the one being typed into, alone
+  if (src.surface === "beside") out.push(BASE.closeAll);
   if (src.running && src.surface !== "running") out.push(BASE.running);
   if (MOCKS_FROM.includes(src.surface)) out.push(BASE.mocks);
   return out.filter((it) => !src.shown.includes(it.id));
@@ -937,13 +958,13 @@ export function columnFor(
     case "beside":
       if (wide && savedOrder("beside", ctx.order))
         return [
-          back(ctx),
+          besideClose(ctx),
           ...arranged("beside", savedOrder("beside", ctx.order)!, ctx, true),
           item(BASE.more, sep),
         ];
       return wide
         ? [
-            back(ctx),
+            besideClose(ctx),
             item(BASE.beside, {
               label: "Side by side",
               selected: true,

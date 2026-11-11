@@ -3,6 +3,8 @@
 import { useRef, useCallback, useEffect, memo, useState, useMemo } from "react";
 import dynamic from "next/dynamic";
 import { usePanes } from "@/contexts/PaneContext";
+import { PageEdge } from "@/components/ui/page-edge";
+import { getAllPaneIds } from "@/lib/panes";
 import { useViewport } from "@/hooks/useViewport";
 import { useLayoutMode } from "@/hooks/useLayoutMode";
 import type {
@@ -113,6 +115,7 @@ export const Pane = memo(function Pane({
   const { isMobile } = useViewport();
   const layoutMode = useLayoutMode();
   const {
+    state: paneState,
     focusedPaneId,
     canSplit,
     canClose,
@@ -624,6 +627,16 @@ export const Pane = memo(function Pane({
       )}
       onClick={handleFocus}
     >
+      {/* Two side by side on the open Duo: the right one's fold-side grip
+          closes it, as Live activity's does */}
+      {(layoutMode === "duo-open" || layoutMode === "book") &&
+        paneCount > 1 &&
+        getAllPaneIds(paneState.layout).at(-1) === paneId && (
+          <PageEdge
+            label={`Close ${session?.name ?? "this side"}`}
+            onClose={() => close(paneId)}
+          />
+        )}
       {/* Tabs (wide, two or more), then the header naming the session */}
       {/* Not in the iOS app: its panes hold one tab (contexts/PaneContext) */}
       {!isMobile && !isNative() && (

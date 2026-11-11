@@ -24,7 +24,15 @@ export const backStore = proxy<{
    */
   origin: { sessionId: string; from: BackOrigin; left: string | null } | null;
   projectNames: Record<string, string>;
-}>({ pageLabel: null, viewLabel: null, origin: null, projectNames: {} });
+  /** Two sessions side by side: the right one's name, for its Close */
+  besideName: string | null;
+}>({
+  pageLabel: null,
+  viewLabel: null,
+  origin: null,
+  projectNames: {},
+  besideName: null,
+});
 
 export function setOrigin(
   sessionId: string,
