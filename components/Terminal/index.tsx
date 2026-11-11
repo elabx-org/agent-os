@@ -2055,10 +2055,15 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
           </div>
         )}
 
+        {/* A solid pill over the terminal's top, after a moment: a quick
+            reconnect shows nothing, and the text under it stays unmixed */}
         {connectionState === "reconnecting" && (
-          <div className="absolute top-4 left-4 flex items-center gap-2 rounded bg-amber-500/20 px-2 py-1 text-xs text-amber-400">
+          <div
+            role="status"
+            className="bg-card border-border text-foreground animate-in fade-in fill-mode-both pointer-events-none absolute top-3 left-1/2 z-20 flex -translate-x-1/2 items-center gap-2 rounded-full border px-3 py-1.5 text-sm shadow-lg delay-700 duration-300"
+          >
             <div className="h-2 w-2 animate-pulse rounded-full bg-amber-500" />
-            Reconnecting...
+            Reconnecting…
           </div>
         )}
 
