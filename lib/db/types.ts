@@ -46,6 +46,9 @@ export interface Session {
   effort: string | null;
   // 1 when the model was picked (sheet, handoff): --model even for "sonnet"
   model_pinned: number | null;
+  // Migration 35: the sub-agents' model (a Claude alias); NULL: the same
+  // as the session's
+  subagent_model: string | null;
   // Usage limit (migration 29, lib/limits): when it hit one (ms), when it
   // resets (ms, null when unknown), which one (LimitKind)
   limited_at: number | null;

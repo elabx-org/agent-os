@@ -7,6 +7,7 @@ import { getProject, getProjectSessions } from "./projects";
 import { readClaudeSessionMeta } from "./claude-transcript";
 import { parseProjectHooks } from "./project-hooks";
 import { withClaudeState, type HookGroup } from "./claude-state";
+import { isClaudeModelAlias } from "./handoff-types";
 import { proxyEnabled } from "./port-proxy-config";
 import { publicOrigin } from "./public-origin";
 
@@ -197,6 +198,17 @@ function sessionSettings(project: Project, session: Session) {
 }
 
 /**
+ * The sub-agents' model the user picked (lib/claude-models.ts). Claude reads
+ * it when it starts, and these settings win over the user's own, so a
+ * CLAUDE_CODE_SUBAGENT_MODEL there never overrides the pick
+ */
+function subagentEnv(session: Session): { env?: Record<string, string> } {
+  return isClaudeModelAlias(session.subagent_model)
+    ? { env: { CLAUDE_CODE_SUBAGENT_MODEL: session.subagent_model } }
+    : {};
+}
+
+/**
  * Writes what a Claude session starts with: its project note (null when it
  * has none) and its settings (the project's hooks, and the hooks and status
  * line that record Claude's state for every session)
@@ -219,7 +231,11 @@ export async function writeProjectContext(
     fs.mkdirSync(contextDir(), { recursive: true });
     fs.writeFileSync(
       settingsFile,
-      JSON.stringify(withClaudeState(session.id, {}), null, 2),
+      JSON.stringify(
+        withClaudeState(session.id, subagentEnv(session)),
+        null,
+        2
+      ),
       { mode: 0o600 }
     );
     return { file: null, settings: settingsFile };
@@ -243,7 +259,10 @@ export async function writeProjectContext(
   fs.writeFileSync(
     settingsFile,
     JSON.stringify(
-      withClaudeState(session.id, sessionSettings(project, session)),
+      withClaudeState(session.id, {
+        ...sessionSettings(project, session),
+        ...subagentEnv(session),
+      }),
       null,
       2
     ),

@@ -592,6 +592,15 @@ const migrations: Migration[] = [
       `);
     }),
   },
+  {
+    id: 35,
+    name: "add_subagent_model_to_sessions",
+    up: atomic((db) => {
+      // The sub-agents' model (a Claude alias, CLAUDE_CODE_SUBAGENT_MODEL
+      // at launch); NULL: the same as the session's (lib/claude-models.ts)
+      addColumnIfMissing(db, "sessions", "subagent_model", "TEXT");
+    }),
+  },
 ];
 
 export function runMigrations(db: Database.Database): void {

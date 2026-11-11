@@ -25,6 +25,7 @@ import {
   setHandoffFrom,
   setModelEffort,
 } from "./handoff-store";
+import { readClaudeModels, setSubagentModel } from "./claude-models-store";
 import {
   isClaudeModelAlias,
   isEffortLevel,
@@ -272,6 +273,18 @@ export function createSuccessor(
       setModelEffort(db, id, fields.model);
     }
     if (fields.effort) setModelEffort(db, id, undefined, fields.effort);
+    // A Claude successor: the source's sub-agents, else the default
+    if (fields.agentType === "claude") {
+      setSubagentModel(
+        db,
+        id,
+        (source.agent_type || "claude") === "claude"
+          ? isClaudeModelAlias(source.subagent_model)
+            ? source.subagent_model
+            : null
+          : readClaudeModels(db).subagents
+      );
+    }
     setHandoffFrom(db, id, source.id);
   })();
   return getSession(db, id)!;
@@ -311,11 +324,49 @@ export function createHandoff(deps: HandoffDeps) {
     if (request.effort !== undefined && !isEffortLevel(request.effort)) {
       throw new HandoffRefused(400, { error: "Unknown effort level" });
     }
-    if (model === undefined && request.effort === undefined) {
+    const subagents = request.subagents;
+    if (
+      subagents !== undefined &&
+      subagents !== "same" &&
+      !isClaudeModelAlias(subagents)
+    ) {
+      throw new HandoffRefused(400, { error: "Unknown sub-agent model" });
+    }
+    if (
+      model === undefined &&
+      request.effort === undefined &&
+      subagents === undefined
+    ) {
       throw new HandoffRefused(400, { error: "Pick a model or an effort" });
     }
     const effort = request.effort ?? null;
     setModelEffort(deps.db, session.id, model, request.effort);
+
+    // The sub-agents' model is read when Claude starts: everything picked
+    // goes with --model/--effort into the restart the caller makes
+    if (subagents !== undefined) {
+      const picked = subagents === "same" ? null : subagents;
+      setSubagentModel(deps.db, session.id, picked);
+      for (const stale of staleCommands(deps.listQueue(session.id))) {
+        const isModel = stale.text.startsWith("/model ");
+        if (isModel ? model !== undefined : effort !== null) {
+          deps.cancelItem(session.id, stale.id);
+        }
+      }
+      const running =
+        !isPaused(session) &&
+        !isSettled(session) &&
+        (await deps.isRunning(session));
+      return {
+        item: null,
+        queued: false,
+        model: model ?? null,
+        effort,
+        effortApplies: effort ? "next_launch" : null,
+        subagents: picked,
+        restart: running,
+      };
+    }
 
     // Running and taking queued commands: both go in at its next idle.
     // Otherwise they apply with --model/--effort when it next starts

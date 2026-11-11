@@ -275,6 +275,36 @@ describe("switchModel", () => {
     assert.equal(row("a")!.effort, "low");
   });
 
+  test("sub-agents: everything stored, nothing queued, restart when running", async () => {
+    const f = fakes();
+    const s = addSession("a");
+    f.running.add("a");
+    const h = mod.createHandoff(f.deps);
+    await h.switchModel(s, { model: "sonnet" });
+    const r = await h.switchModel(s, { model: "fable", subagents: "opus" });
+    assert.equal(r.queued, false);
+    assert.equal(r.restart, true);
+    assert.equal(r.subagents, "opus");
+    // The earlier /model is cancelled: the restart starts on --model fable
+    assert.equal(f.queue.filter((q) => q.status === "pending").length, 0);
+    assert.equal(row("a")!.model, "fable");
+    assert.equal(row("a")!.subagent_model, "opus");
+
+    const same = await h.switchModel(row("a")!, { subagents: "same" });
+    assert.equal(same.subagents, null);
+    assert.equal(row("a")!.subagent_model, null);
+
+    f.running.delete("a");
+    const stopped = await h.switchModel(row("a")!, { subagents: "haiku" });
+    assert.equal(stopped.restart, false);
+    await assert.rejects(
+      h.switchModel(row("a")!, {
+        subagents: "gpt" as unknown as "opus",
+      }),
+      /Unknown sub-agent model/
+    );
+  });
+
   test("queue off or stopped: stored for the next launch", async () => {
     const f = fakes({ queueOn: () => false });
     const s = addSession("a");
@@ -566,5 +596,46 @@ describe("preview", () => {
       plan: { done: 3, total: 5 },
       busy: false,
     });
+  });
+});
+
+describe("session models (Settings → Claude Code, sub-agents)", () => {
+  test("defaults: saved valid only, read back", async () => {
+    const models = await import("../../lib/claude-models-store");
+    const d = db.getDb();
+    assert.deepEqual(models.readClaudeModels(d), {
+      model: null,
+      subagents: null,
+    });
+    assert.deepEqual(
+      models.writeClaudeModels(d, { model: "fable", subagents: "gpt-5" }),
+      { model: "fable", subagents: null }
+    );
+    models.writeClaudeModels(d, { model: "fable", subagents: "opus" });
+    assert.deepEqual(models.readClaudeModels(d), {
+      model: "fable",
+      subagents: "opus",
+    });
+  });
+
+  test("launch settings carry the sub-agents' model, only when picked", async () => {
+    const { writeProjectContext } = await import("../../lib/project-context");
+    const log = console.error;
+    console.error = () => {};
+    try {
+      const picked = addSession("s1", { subagent_model: "opus" });
+      const a = await writeProjectContext(picked);
+      const settings = JSON.parse(fs.readFileSync(a.settings!, "utf8"));
+      assert.deepEqual(settings.env, { CLAUDE_CODE_SUBAGENT_MODEL: "opus" });
+
+      const same = addSession("s2");
+      const b = await writeProjectContext(same);
+      assert.equal(
+        JSON.parse(fs.readFileSync(b.settings!, "utf8")).env,
+        undefined
+      );
+    } finally {
+      console.error = log;
+    }
   });
 });

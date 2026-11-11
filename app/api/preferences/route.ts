@@ -3,6 +3,8 @@ import { db } from "@/lib/db";
 import { queries } from "@/lib/db/queries";
 import { FLAG_SESSIONS_PREFERENCE_KEY, FLAGS_PREFERENCE_KEY, setFlagSessions, setFlags, type FlagSessions, type Flags } from "@/lib/flags";
 import { requireUser } from "@/lib/user-proof";
+import { CLAUDE_MODELS_PREFERENCE_KEY } from "@/lib/claude-models";
+import { writeClaudeModels } from "@/lib/claude-models-store";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -54,6 +56,15 @@ export async function PUT(request: Request) {
       } catch (error) {
         return NextResponse.json({ error: (error as Error).message }, { status: 400 });
       }
+    }
+
+    // Which models new sessions run: the user's call too
+    if (key === CLAUDE_MODELS_PREFERENCE_KEY) {
+      const proof = requireUser(request);
+      if (!proof.ok) {
+        return NextResponse.json({ error: "user_only", reason: proof.reason }, { status: 403 });
+      }
+      return NextResponse.json({ success: true, value: writeClaudeModels(db, value) });
     }
 
     queries.upsertPreference(db).run(key, JSON.stringify(value));

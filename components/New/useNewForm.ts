@@ -10,6 +10,7 @@ import { useNewSessionForm } from "@/components/NewSessionDialog/hooks/useNewSes
 import { poll as refreshBackgroundAgents } from "@/components/BackgroundAgents";
 import { useEnsureTrusted } from "@/components/Projects/TrustConfigPrompt";
 import { useProjectConfig } from "@/hooks/useProjectConfig";
+import { useClaudeModels } from "@/data/claude-models";
 import type { Mode } from "@/lib/permission-mode";
 import {
   clearNewDraft,
@@ -93,6 +94,9 @@ export function useNewForm({
       // Not remembered
     }
   }, []);
+
+  // Settings → Claude Code: what "Default" starts a Claude session on
+  const { models: claudeDefaults } = useClaudeModels();
 
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
@@ -229,6 +233,8 @@ export function useNewForm({
       session.setWorkingDirectory(draft.workingDirectory);
     if (draft.agentType) session.setAgentType(draft.agentType);
     if (draft.model !== undefined) session.setModel(draft.model);
+    if (draft.subagentModel !== undefined)
+      session.setSubagentModel(draft.subagentModel);
     if (draft.permissionMode !== undefined)
       session.setPermissionMode(draft.permissionMode);
     if (draft.task !== undefined) session.setInitialPrompt(draft.task);
@@ -267,6 +273,10 @@ export function useNewForm({
       session.setModel(model);
       patchNewDraft({ model });
     },
+    setSubagentModel: (subagentModel: string) => {
+      session.setSubagentModel(subagentModel);
+      patchNewDraft({ subagentModel });
+    },
     setPermissionMode: (permissionMode: Mode | null) => {
       session.setPermissionMode(permissionMode);
       patchNewDraft({ permissionMode });
@@ -282,6 +292,9 @@ export function useNewForm({
     setWorktree,
     isGit,
     showModel,
+    claudeDefaults,
+    /** A Claude session's sub-agents (background agents run as they are) */
+    showSubagents: !background && session.agentType === "claude",
     showPermissions,
     /** The branch Own worktree makes, as the server will name it */
     branch,

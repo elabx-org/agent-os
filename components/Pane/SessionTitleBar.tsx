@@ -81,7 +81,11 @@ import {
   type HeaderInfo,
 } from "@/components/Session/SessionHeader";
 import { addedLines } from "@/components/Session/activity-format";
-import { canSwitch, ModelChip } from "@/components/Session/ModelChip";
+import {
+  canSwitch,
+  ModelChip,
+  useModelParts,
+} from "@/components/Session/ModelChip";
 import { SwitchSheet } from "@/components/Session/SwitchSheet";
 import { headerVariant } from "@/lib/session-views";
 import { openScripts } from "@/stores/scriptsSheet";
@@ -201,6 +205,7 @@ export function SessionTitleBar({
   // N-Switch: the header's model chip (or ⋯ where it has no room) opens it
   const [switchOpen, setSwitchOpen] = useState(false);
   const switchable = canSwitch(session);
+  const modelParts = useModelParts(session);
   // N-Worktree: git folders, not paused, shell or already in a worktree
   const movable = useCanOfferMove(session);
   const switcher = useMemo(
@@ -619,7 +624,7 @@ export function SessionTitleBar({
                   session={session}
                   open={switchOpen}
                   onOpen={switcher.onOpen}
-                  className="max-w-[220px] @max-[640px]/bar:hidden"
+                  className="max-w-[320px] @max-[640px]/bar:hidden"
                 />
               )}
               {/* The branch's PR; merged and still running, Settle */}
@@ -721,6 +726,21 @@ export function SessionTitleBar({
                 <span className={STATE_TEXT_CLASS[state]}>
                   {STATE_WORD[state]}
                 </span>
+              )}
+              {/* Which models it runs, always: a tap opens Agent and model */}
+              {switchable && modelParts.length > 0 && (
+                <>
+                  {" · "}
+                  <button
+                    type="button"
+                    onClick={switcher.onOpen}
+                    aria-haspopup="dialog"
+                    aria-label={`Agent and model: ${modelParts.join(", ")}`}
+                    className="hover:text-foreground underline-offset-2 hover:underline"
+                  >
+                    {modelParts.join(" · ")}
+                  </button>
+                </>
               )}
             </span>
           )}

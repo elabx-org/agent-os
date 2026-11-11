@@ -69,6 +69,7 @@ function session(over: Partial<Session> & { id: string }): Session {
     handoff_to_session_id: null,
     effort: null,
     model_pinned: null,
+    subagent_model: null,
     ...over,
   };
 }

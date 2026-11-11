@@ -34,9 +34,10 @@ const POLL_MS = 5000;
 
 export const MODELS = [
   { id: "", label: "Default" },
-  { id: "sonnet", label: "Sonnet" },
-  { id: "opus", label: "Opus" },
-  { id: "haiku", label: "Haiku" },
+  { id: "fable", label: "Fable 5.2" },
+  { id: "opus", label: "Opus 5.5" },
+  { id: "sonnet", label: "Sonnet 5.5" },
+  { id: "haiku", label: "Haiku 5.5" },
 ];
 
 export function stateWord(state: string): string {
