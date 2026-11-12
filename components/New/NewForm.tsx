@@ -606,7 +606,6 @@ export function NewForm({
     const choices = [
       form.showModel ? model : null,
       form.showSubagents ? `sub-agents ${subagents}` : null,
-      form.showPermissions && mode ? modeLabel : null,
     ]
       .filter(Boolean)
       .join(" · ");
@@ -626,7 +625,13 @@ export function NewForm({
           />
         )}
         {task}
-        <div className="grid grid-cols-3 gap-2.5">
+        {/* Permissions has a box of its own: two rows of two */}
+        <div
+          className={cn(
+            "grid gap-2.5",
+            form.showPermissions ? "grid-cols-2" : "grid-cols-3"
+          )}
+        >
           <button
             type="button"
             onClick={() => setProjectsOpen(!projectsOpen)}
@@ -637,7 +642,7 @@ export function NewForm({
             <span className="min-w-0 flex-1 truncate">{form.projectName}</span>
             <ChevronDown aria-hidden className={CHEVRON} />
           </button>
-          {form.showModel || form.showPermissions ? (
+          {form.showModel ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button
@@ -652,26 +657,13 @@ export function NewForm({
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="max-w-80 min-w-64">
-                {form.showModel && (
-                  <>
-                    <DropdownMenuLabel>Model</DropdownMenuLabel>
-                    <ModelItems form={form} />
-                  </>
-                )}
+                <DropdownMenuLabel>Model</DropdownMenuLabel>
+                <ModelItems form={form} />
                 {form.showSubagents && (
                   <>
                     <DropdownMenuSeparator />
                     <DropdownMenuLabel>Sub-agents</DropdownMenuLabel>
                     <SubagentItems form={form} />
-                  </>
-                )}
-                {form.showModel && form.showPermissions && (
-                  <DropdownMenuSeparator />
-                )}
-                {form.showPermissions && (
-                  <>
-                    <DropdownMenuLabel>Permissions</DropdownMenuLabel>
-                    <ModeItems form={form} />
                   </>
                 )}
               </DropdownMenuContent>
@@ -683,6 +675,36 @@ export function NewForm({
                 {form.agentLabel}&apos;s own settings
               </span>
             </div>
+          )}
+          {form.showPermissions && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className={cn(opt, "hover:bg-accent/50 text-left")}
+                >
+                  <Shield aria-hidden className={ROW_ICON} />
+                  <span className="min-w-0 flex-1 truncate">Permissions</span>
+                  <span
+                    className={cn(
+                      "min-w-0 truncate",
+                      mode === "bypassPermissions"
+                        ? "text-[var(--del)]"
+                        : mode
+                          ? MODE_SET
+                          : "text-muted-foreground"
+                    )}
+                  >
+                    {modeLabel}
+                  </span>
+                  <ChevronDown aria-hidden className={CHEVRON} />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="max-w-80 min-w-64">
+                <DropdownMenuLabel>Permissions</DropdownMenuLabel>
+                <ModeItems form={form} />
+              </DropdownMenuContent>
+            </DropdownMenu>
           )}
           <div className={opt}>
             <GitBranch aria-hidden className={ROW_ICON} />
