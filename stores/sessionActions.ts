@@ -9,12 +9,15 @@ import { proxy } from "valtio";
 export const sessionActionsStore = proxy<{
   /** The session in view, for Copy session ID */
   sessionId: string | null;
+  /** Its agent or models can be changed (N-Switch) */
+  model: boolean;
   /** Its project has scripts to run (not Uncategorized) */
   scripts: boolean;
   /** It can be settled (N-Settle) */
   settle: boolean;
 }>({
   sessionId: null,
+  model: false,
   scripts: false,
   settle: false,
 });

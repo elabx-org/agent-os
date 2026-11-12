@@ -15,6 +15,7 @@ import { useIsNative } from "@/hooks/useIsNative";
 import { interruptSession } from "@/components/DeckActions";
 import { useSettleActions } from "@/components/Session/settle-action";
 import { canSettle } from "@/lib/settle-views";
+import { canSwitch } from "@/components/Session/ModelChip";
 import { displayTitle, useListTitles } from "@/hooks/useSessionTitles";
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
 import { sessionActionsStore } from "@/stores/sessionActions";
@@ -71,10 +72,12 @@ export function usePaneChrome({
   const scripts =
     !!session?.project_id && session.project_id !== "uncategorized";
   const settleable = !!session && canSettle(session);
+  const switchable = canSwitch(session);
   useEffect(() => {
     if (!isFocused || !sessionId) return;
     Object.assign(sessionActionsStore, {
       sessionId,
+      model: switchable,
       scripts,
       settle: settleable,
     });
@@ -94,11 +97,12 @@ export function usePaneChrome({
       if (sessionActionsStore.sessionId === sessionId)
         Object.assign(sessionActionsStore, {
           sessionId: null,
+          model: false,
           scripts: false,
           settle: false,
         });
     };
-  }, [isFocused, sessionId, scripts, settleable]);
+  }, [isFocused, sessionId, scripts, settleable, switchable]);
 
   // The column's ⋯ offers "Move to a worktree" for the focused session
   useEffect(() => {

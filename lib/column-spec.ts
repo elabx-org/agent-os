@@ -384,6 +384,12 @@ const BASE = {
     icon: "CircleCheck",
     label: "Settle",
   },
+  model: {
+    id: "model",
+    symbol: "arrow.left.arrow.right",
+    icon: "ArrowRightLeft",
+    label: "Agent and model",
+  },
   copyId: {
     id: "copyId",
     symbol: "doc.on.doc",
@@ -674,8 +680,16 @@ export interface MoreSources {
   shown: NavAction[];
   /** Labs' Running is on */
   running: boolean;
+  /** Two pages (the open Duo, desktop): a session shows beside Now */
+  wide?: boolean;
   /** The focused session's ⋯ (stores/sessionActions.ts) */
-  session: { scripts: boolean; settle: boolean; copyId: boolean };
+  session: {
+    /** Its agent or models can be changed (N-Switch) */
+    model: boolean;
+    scripts: boolean;
+    settle: boolean;
+    copyId: boolean;
+  };
 }
 
 /**
@@ -691,6 +705,9 @@ export function moreExtras(src: MoreSources): Base[] {
     if (!src.shown.includes("chat")) out.push(BASE.chat);
     if (!src.shown.includes("terminal")) out.push(BASE.terminal);
   }
+  // Beside Now too: its header says the models in a line, not a button
+  if (src.session.model && (inSession || (src.wide && src.surface === "now")))
+    out.push(BASE.model);
   if (inSession) {
     if (src.session.scripts) out.push({ ...BASE.scripts, label: "Scripts" });
     if (src.session.settle) out.push(BASE.settle);

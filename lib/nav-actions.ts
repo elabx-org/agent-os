@@ -85,6 +85,7 @@ export const NAV_ACTIONS = [
   "mocks",
   "settle",
   "copyId",
+  "model",
 ] as const;
 
 /**
@@ -179,6 +180,8 @@ interface NavHandlers {
       registers them */
   settleSession: () => void;
   copySessionId: () => void;
+  /** More's Agent and model: the focused session's title bar opens its sheet */
+  openModel: () => void;
 }
 
 /**
@@ -260,6 +263,7 @@ export const navStore: NavHandlers = {
   uploadFile: () => {},
   settleSession: () => {},
   copySessionId: () => {},
+  openModel: () => {},
 };
 
 /**
@@ -621,6 +625,7 @@ export const NAV_ROUTES: Record<NavAction, (leftPage: boolean) => void> = {
   upload: () => navStore.uploadFile(),
   settle: () => navStore.settleSession(),
   copyId: () => navStore.copySessionId(),
+  model: () => navStore.openModel(),
   // M16, behind Labs: what sessions left running, with a preview
   // From a session, what it started; elsewhere everything
   running: () => {

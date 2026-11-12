@@ -175,7 +175,9 @@ function MoreMenu({ shown, ...props }: MoreProps) {
     viewMode,
     shown: [...shown],
     running,
+    wide,
     session: {
+      model: actions.model,
       scripts: actions.scripts,
       settle: actions.settle,
       copyId: !!actions.sessionId,
