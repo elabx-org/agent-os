@@ -695,7 +695,7 @@ test("More never offers the view showing (23)", () => {
 });
 
 test("moreExtras: the other view, the session's actions, Running, Mocks (21, DPD-13)", () => {
-  const session = { scripts: true, settle: true, copyId: true };
+  const session = { model: true, scripts: true, settle: true, copyId: true };
   const ids = (src: Partial<MoreSources>) =>
     moreExtras({
       surface: "session",
@@ -706,6 +706,7 @@ test("moreExtras: the other view, the session's actions, Running, Mocks (21, DPD
       ...src,
     }).map((i) => i.id);
   assert.deepEqual(ids({}), [
+    "model",
     "scripts",
     "settle",
     "copyId",
@@ -715,6 +716,7 @@ test("moreExtras: the other view, the session's actions, Running, Mocks (21, DPD
   // Files with the bar's Chat: Terminal too
   assert.deepEqual(ids({ viewMode: "files", shown: ["chat", "files"] }), [
     "terminal",
+    "model",
     "scripts",
     "settle",
     "copyId",
@@ -727,9 +729,14 @@ test("moreExtras: the other view, the session's actions, Running, Mocks (21, DPD
     "terminal",
   ]);
   assert.deepEqual(
-    ids({ session: { scripts: false, settle: false, copyId: true } }),
+    ids({
+      session: { model: false, scripts: false, settle: false, copyId: true },
+    }),
     ["copyId", "running", "mocks"]
   );
+  // The open Duo's Now has the session beside it: its models, nothing else
+  assert.deepEqual(ids({ surface: "now", wide: true }).slice(0, 1), ["model"]);
+  assert.ok(!ids({ surface: "now" }).includes("model"));
   // Off a session Running and Mocks, and neither on its own page
   assert.deepEqual(ids({ surface: "projects", viewMode: null }), [
     "running",

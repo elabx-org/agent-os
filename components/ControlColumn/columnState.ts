@@ -241,7 +241,9 @@ export function nativeColumn(): {
         viewMode: mobileNavStore.viewMode,
         shown: items.map((it) => it.id),
         running: runningStore.enabled,
+        wide: WIDE.includes(mode),
         session: {
+          model: sessionActionsStore.model,
           scripts: sessionActionsStore.scripts,
           settle: sessionActionsStore.settle,
           // Not from the app's menu: a nav message isn't a tap, so WebKit

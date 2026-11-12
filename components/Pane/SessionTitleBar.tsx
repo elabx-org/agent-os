@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { useSnapshot } from "valtio";
 import { toast } from "sonner";
@@ -44,7 +44,7 @@ import type { Session, Project } from "@/lib/db";
 import type { PaneViewMode } from "@/stores/mobileNav";
 import { mobileNavStore } from "@/stores/mobileNav";
 import { duoPreviewStore } from "@/stores/duoPreview";
-import { runNav } from "@/lib/nav-actions";
+import { registerNavHandlers, runNav } from "@/lib/nav-actions";
 import { focusStore } from "@/stores/focus";
 import { displayTitle, useListTitles } from "@/hooks/useSessionTitles";
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
@@ -212,6 +212,12 @@ export function SessionTitleBar({
     () => ({ open: switchOpen, onOpen: () => setSwitchOpen(true) }),
     [switchOpen]
   );
+  // The column's More (and the iOS app's) opens it: the closed Duo's header
+  // says the models in a line that doesn't look like a button
+  useEffect(() => {
+    if (!isFocused || !switchable) return;
+    return registerNavHandlers({ openModel: () => setSwitchOpen(true) });
+  }, [isFocused, switchable]);
   // The new session opens where this one was, as a restarted one does
   const openHandedOff = useCallback((next: Session) => {
     window.dispatchEvent(
