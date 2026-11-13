@@ -18,6 +18,7 @@ import { exec } from "child_process";
 import { promisify } from "util";
 import { parsePermissionPrompt } from "./permission-prompt";
 import { parseAskScreen } from "./ask-screen";
+import { resumeIfSuspended } from "./suspended";
 
 const execAsync = promisify(exec);
 
@@ -338,6 +339,9 @@ class SessionStatusDetector {
     const timestamp = this.getTimestamp(sessionName);
     const tracker = this.getTracker(sessionName, timestamp);
     const content = await this.capturePane(sessionName);
+
+    // Ctrl+Z left the agent paused with no shell to `fg` it: bring it back
+    void resumeIfSuspended(sessionName, content);
 
     // 1. Busy indicators in last 10 lines (highest priority - Claude is actively working)
     // No activity timestamp check needed since we only look at recent terminal lines
