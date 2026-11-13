@@ -16,12 +16,9 @@ import {
   MicOff,
   ImagePlus,
   FileText,
-  Plus,
-  Trash2,
   MousePointer2,
   Copy,
   Settings,
-  Upload,
   Ellipsis,
   Space,
   Image as ImageIcon,
@@ -52,6 +49,9 @@ import { useNarrowScreen } from "@/hooks/useNarrowScreen";
 import { adaptiveRow, type AdaptiveState } from "@/lib/adaptive-keys";
 import { SheetGrab } from "@/components/ui/sheet-grab";
 import { SHEET_OVERLAY } from "./sheet-overlay";
+import { SnippetsModal } from "@/components/Snippets/SnippetsModal";
+
+export { SnippetsModal };
 
 interface TerminalToolbarProps {
   onKeyPress: (key: string) => void;
@@ -112,217 +112,6 @@ const TOOL_KEYS = new Set<ToolbarButtonId>([
   "image",
   "snippets",
 ]);
-
-interface Snippet {
-  id: string;
-  name: string;
-  content: string;
-}
-
-const SNIPPETS_STORAGE_KEY = "terminal-snippets";
-
-const DEFAULT_SNIPPETS: Snippet[] = [
-  // Git shortcuts
-  { id: "default-1", name: "Git status", content: "git status" },
-  { id: "default-2", name: "Git diff", content: "git diff" },
-  { id: "default-3", name: "Git add all", content: "git add -A" },
-  { id: "default-4", name: "Git commit", content: 'git commit -m ""' },
-  { id: "default-5", name: "Git push", content: "git push" },
-  { id: "default-6", name: "Git pull", content: "git pull" },
-  // Claude Code prompts
-  { id: "default-7", name: "Continue", content: "continue" },
-  { id: "default-8", name: "Yes", content: "yes" },
-  { id: "default-9", name: "No", content: "no" },
-  {
-    id: "default-10",
-    name: "Explain this",
-    content: "explain what this code does",
-  },
-  { id: "default-11", name: "Fix errors", content: "fix the errors" },
-  {
-    id: "default-12",
-    name: "Run tests",
-    content: "run the tests and fix any failures",
-  },
-  {
-    id: "default-13",
-    name: "Commit changes",
-    content: "commit these changes with a descriptive message",
-  },
-  // Common commands
-  { id: "default-14", name: "List files", content: "ls -la" },
-  { id: "default-15", name: "NPM dev", content: "npm run dev" },
-  { id: "default-16", name: "NPM install", content: "npm install" },
-];
-
-function getStoredSnippets(): Snippet[] {
-  if (typeof window === "undefined") return DEFAULT_SNIPPETS;
-  try {
-    const stored = localStorage.getItem(SNIPPETS_STORAGE_KEY);
-    if (!stored) {
-      // First time - save defaults
-      saveSnippets(DEFAULT_SNIPPETS);
-      return DEFAULT_SNIPPETS;
-    }
-    return JSON.parse(stored);
-  } catch {
-    return DEFAULT_SNIPPETS;
-  }
-}
-
-function saveSnippets(snippets: Snippet[]) {
-  localStorage.setItem(SNIPPETS_STORAGE_KEY, JSON.stringify(snippets));
-}
-
-// Snippets modal for saving/inserting common commands
-export function SnippetsModal({
-  open,
-  onClose,
-  onInsert,
-  onPickFile,
-}: {
-  open: boolean;
-  onClose: () => void;
-  onInsert: (content: string) => void;
-  /** Adds an "Upload a file" row (the composer's "File or snippet") */
-  onPickFile?: () => void;
-}) {
-  const [snippets, setSnippets] = useState<Snippet[]>(() =>
-    getStoredSnippets()
-  );
-  const [isAdding, setIsAdding] = useState(false);
-  const [newName, setNewName] = useState("");
-  const [newContent, setNewContent] = useState("");
-
-  const handleAdd = () => {
-    if (newName.trim() && newContent.trim()) {
-      const newSnippet: Snippet = {
-        id: Date.now().toString(),
-        name: newName.trim(),
-        content: newContent.trim(),
-      };
-      const updated = [...snippets, newSnippet];
-      setSnippets(updated);
-      saveSnippets(updated);
-      setNewName("");
-      setNewContent("");
-      setIsAdding(false);
-    }
-  };
-
-  const handleDelete = (id: string) => {
-    const updated = snippets.filter((s) => s.id !== id);
-    setSnippets(updated);
-    saveSnippets(updated);
-  };
-
-  const handleInsert = (content: string) => {
-    onInsert(content);
-    onClose();
-  };
-
-  if (!open) return null;
-
-  return (
-    <div className={cn(SHEET_OVERLAY, "items-end")} onClick={onClose}>
-      <div
-        className="bg-background flex max-h-[70vh] w-full flex-col rounded-t-xl pb-[env(safe-area-inset-bottom)]"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <SheetGrab onClose={onClose} className="mx-0 mb-0 h-6" />
-        {/* Header */}
-        <div className="border-border flex items-center justify-between border-b px-4 pb-1">
-          <span className="text-sm font-medium">Snippets</span>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setIsAdding(!isAdding)}
-              aria-label="New snippet"
-              className="hover:bg-muted active:bg-muted grid size-11 place-items-center rounded-full"
-            >
-              <Plus className="h-5 w-5" />
-            </button>
-            <button
-              onClick={onClose}
-              aria-label="Close snippets"
-              className="hover:bg-muted active:bg-muted grid size-11 place-items-center rounded-full"
-            >
-              <X className="h-5 w-5" />
-            </button>
-          </div>
-        </div>
-
-        {/* Add new snippet form */}
-        {isAdding && (
-          <div className="border-border bg-muted/50 border-b px-4 py-3">
-            <input
-              type="text"
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              placeholder="Snippet name..."
-              className="bg-background focus:ring-primary mb-2 w-full rounded-lg px-3 py-2 text-sm focus:ring-2 focus:outline-none"
-            />
-            <textarea
-              value={newContent}
-              onChange={(e) => setNewContent(e.target.value)}
-              placeholder="Command or text..."
-              className="bg-background focus:ring-primary h-20 w-full resize-none rounded-lg px-3 py-2 font-mono text-sm focus:ring-2 focus:outline-none"
-            />
-            <button
-              onClick={handleAdd}
-              disabled={!newName.trim() || !newContent.trim()}
-              className="bg-primary text-primary-foreground mt-2 w-full rounded-lg py-2 font-medium disabled:opacity-50"
-            >
-              Save Snippet
-            </button>
-          </div>
-        )}
-
-        {/* Snippets list */}
-        <div className="flex-1 overflow-y-auto">
-          {onPickFile && (
-            <button
-              onClick={onPickFile}
-              className="border-border active:bg-muted flex w-full items-center gap-3 border-b px-4 py-3 text-left"
-            >
-              <Upload className="text-muted-foreground h-4 w-4" />
-              <span className="text-sm font-medium">Upload a file</span>
-            </button>
-          )}
-          {snippets.length === 0 ? (
-            <div className="text-muted-foreground px-4 py-8 text-center text-sm">
-              No snippets yet. Tap + to add one.
-            </div>
-          ) : (
-            snippets.map((snippet) => (
-              <div
-                key={snippet.id}
-                className="border-border active:bg-muted flex items-center gap-2 border-b px-4 py-3"
-              >
-                <button
-                  onClick={() => handleInsert(snippet.content)}
-                  className="min-w-0 flex-1 text-left"
-                >
-                  <div className="truncate text-sm font-medium">
-                    {snippet.name}
-                  </div>
-                  <div className="text-muted-foreground truncate font-mono text-xs">
-                    {snippet.content}
-                  </div>
-                </button>
-                <button
-                  onClick={() => handleDelete(snippet.id)}
-                  className="hover:bg-destructive/20 text-muted-foreground hover:text-destructive rounded-md p-2"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
 
 // Paste modal for when clipboard API isn't available
 function PasteModal({
