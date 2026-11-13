@@ -29,6 +29,7 @@ import { toast } from "sonner";
 import { ChatKeyRow } from "./ChatKeyRow";
 import { ComposerChips, useComposer } from "@/components/Composer";
 import { ComposerCard } from "@/components/Composer/ComposerCard";
+import { takeVideos } from "@/stores/videoUploads";
 import { PausedBar } from "@/components/Session/PausedBar";
 import { PausedHistory } from "@/components/Session/PausedHistory";
 import { SettledBar } from "@/components/Session/SettledBar";
@@ -1038,6 +1039,8 @@ export function ChatView({
               composer.insert(`${path} `, true);
               inputRef.current?.focus();
             }}
+            // A video becomes frames beside the box, as from the +
+            onVideos={(files) => takeVideos(files, session.id)}
             onClose={() => setPickingImage(false)}
           />
         )}
