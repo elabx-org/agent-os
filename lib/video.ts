@@ -268,7 +268,30 @@ export async function extract(job: VideoJob, preset: Preset) {
         "4",
         path.join(out, name),
       ]);
-      frames.push({ name, t });
+      // Sound that outlasts the picture puts the last moment past the final
+      // image: ffmpeg writes nothing and says it went fine. The last image
+      // there is, then; a moment with no image at all is left out
+      if (!fs.existsSync(path.join(out, name)))
+        await run(job, [
+          "-hide_banner",
+          "-nostdin",
+          "-v",
+          "error",
+          "-y",
+          "-sseof",
+          "-1",
+          "-i",
+          src,
+          "-an",
+          "-vf",
+          scale,
+          "-update",
+          "1",
+          "-q:v",
+          "4",
+          path.join(out, name),
+        ]).catch(() => {});
+      if (fs.existsSync(path.join(out, name))) frames.push({ name, t });
       job.progress = 0.7 + (0.3 * (i + 1)) / moments.length;
     }
     job.frames = frames;
@@ -287,7 +310,9 @@ export async function extract(job: VideoJob, preset: Preset) {
 export function finalize(job: VideoJob, exclude: string[]) {
   if (job.stage !== "ready" || !job.preset) throw new Error("Frames not ready");
   const from = path.join(jobDir(job.id), job.preset);
-  const kept = job.frames.filter((f) => !exclude.includes(f.name));
+  const kept = job.frames.filter(
+    (f) => !exclude.includes(f.name) && fs.existsSync(path.join(from, f.name))
+  );
   if (!kept.length) throw new Error("No frames chosen");
   const dir = path.join(jobDir(job.id), "send");
   fs.rmSync(dir, { recursive: true, force: true });
