@@ -13,7 +13,15 @@ import { createPortal } from "react-dom";
 import { useSnapshot } from "valtio";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { ArrowUp, History, ImagePlus, Loader2, Plus, X } from "lucide-react";
+import {
+  ArrowUp,
+  FileText,
+  History,
+  ImagePlus,
+  Loader2,
+  Plus,
+  X,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { uploadFilesToTemp } from "@/lib/file-upload";
 import { sendWithVideos, videoStore } from "@/stores/videoUploads";
@@ -26,6 +34,7 @@ import { VideoPills } from "./VideoPills";
 import { PutBackChip } from "./PutBackChip";
 import { ImageThumb } from "./ImagePill";
 import { imageName } from "./text";
+import { SnippetsModal } from "@/components/Snippets/SnippetsModal";
 import { useRecentImages } from "@/hooks/useRecentImages";
 import { SessionAttachChip } from "./SessionAttachChip";
 import { attachFooter, sessionRefs } from "./attach-model";
@@ -816,7 +825,7 @@ export function ComposerCard({
 
 /**
  * The chat's +: photos and videos (frames) or any file, uploaded and put in
- * the message
+ * the message, or a saved snippet
  */
 function AttachButton({
   composer,
@@ -829,8 +838,9 @@ function AttachButton({
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
-  // Recent uploads first, when there are any; otherwise straight to the
-  // device's picker
+  const [snippets, setSnippets] = useState(false);
+  // Recent uploads first, when there are any, then the device's picker and
+  // the snippets
   // Where the menu opens: above the + (the card clips what leaves it, so
   // the menu is on the page, at the button)
   const [menu, setMenu] = useState<DOMRect | null>(null);
@@ -859,13 +869,12 @@ function AttachButton({
         type="button"
         onMouseDown={(e) => e.preventDefault()}
         onClick={(e) => {
-          if (!recent.length) return fileRef.current?.click();
           const at = e.currentTarget.getBoundingClientRect();
           setMenu((m) => (m ? null : at));
         }}
-        aria-expanded={recent.length ? !!menu : undefined}
-        aria-label="Add photo, file or video"
-        title="Add photo, file or video"
+        aria-expanded={!!menu}
+        aria-label="Add photo, file, video or snippet"
+        title="Add photo, file, video or snippet"
         className={plusButtonClass(collapsed, inline)}
       >
         {uploading ? (
@@ -886,9 +895,23 @@ function AttachButton({
             setMenu(null);
             fileRef.current?.click();
           }}
+          onSnippets={() => {
+            setMenu(null);
+            setSnippets(true);
+          }}
           onClose={() => setMenu(null)}
         />
       )}
+      {/* On the page: the card clips what leaves it */}
+      {snippets &&
+        createPortal(
+          <SnippetsModal
+            open
+            onClose={() => setSnippets(false)}
+            onInsert={(text) => composer.insert(text, true)}
+          />,
+          document.body
+        )}
       <input
         ref={fileRef}
         type="file"
@@ -905,14 +928,15 @@ function AttachButton({
 }
 
 /**
- * The +'s menu when there are recent uploads: them, a tap each, then the
- * device's picker. Over the composer, from its left edge.
+ * The +'s menu: recent uploads when there are any, a tap each, then the
+ * device's picker and the snippets. Over the composer, from its left edge.
  */
 function RecentMenu({
   at,
   paths,
   onPick,
   onDevice,
+  onSnippets,
   onClose,
 }: {
   /** The +'s box */
@@ -920,6 +944,7 @@ function RecentMenu({
   paths: string[];
   onPick: (path: string) => void;
   onDevice: () => void;
+  onSnippets: () => void;
   onClose: () => void;
 }) {
   const keep = (e: { preventDefault: () => void }) => e.preventDefault();
@@ -943,36 +968,40 @@ function RecentMenu({
       />
       <div
         role="dialog"
-        aria-label="Add a picture"
+        aria-label="Add to the message"
         style={{
           left: Math.max(8, at.left),
           bottom: window.innerHeight - at.top + 8,
         }}
         className="glass fixed z-[71] flex w-[min(22rem,calc(100vw-2rem))] flex-col gap-2 rounded-2xl p-3 shadow-xl"
       >
-        <span className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
-          Recent
-        </span>
-        <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
-          {paths.map((path) => {
-            const name = imageName(path).replace(/\u2011/g, "-");
-            return (
-              <button
-                key={path}
-                type="button"
-                onMouseDown={keep}
-                onClick={() => onPick(path)}
-                aria-label={`Add ${name}`}
-                className="flex w-16 shrink-0 flex-col items-center gap-1"
-              >
-                <ImageThumb path={path} className="h-16 w-16 rounded-xl" />
-                <span className="text-muted-foreground w-full truncate text-[11px]">
-                  {name}
-                </span>
-              </button>
-            );
-          })}
-        </div>
+        {paths.length > 0 && (
+          <>
+            <span className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
+              Recent
+            </span>
+            <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
+              {paths.map((path) => {
+                const name = imageName(path).replace(/\u2011/g, "-");
+                return (
+                  <button
+                    key={path}
+                    type="button"
+                    onMouseDown={keep}
+                    onClick={() => onPick(path)}
+                    aria-label={`Add ${name}`}
+                    className="flex w-16 shrink-0 flex-col items-center gap-1"
+                  >
+                    <ImageThumb path={path} className="h-16 w-16 rounded-xl" />
+                    <span className="text-muted-foreground w-full truncate text-[11px]">
+                      {name}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </>
+        )}
         <button
           type="button"
           onMouseDown={keep}
@@ -981,6 +1010,15 @@ function RecentMenu({
         >
           <ImagePlus className="h-4 w-4" />
           Photo, file or video
+        </button>
+        <button
+          type="button"
+          onMouseDown={keep}
+          onClick={onSnippets}
+          className="bg-foreground/8 active:bg-foreground/15 flex min-h-11 items-center gap-2.5 rounded-xl px-3 text-sm font-medium"
+        >
+          <FileText className="h-4 w-4" />
+          Snippet
         </button>
       </div>
     </>,

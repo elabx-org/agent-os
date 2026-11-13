@@ -25,6 +25,7 @@ import {
   useToolbarPreferences,
 } from "@/components/Terminal/toolbar-config";
 import { ImagePicker } from "@/components/ImagePicker";
+import { SnippetsModal } from "@/components/Snippets/SnippetsModal";
 import { toast } from "sonner";
 import { ChatKeyRow } from "./ChatKeyRow";
 import { ComposerChips, useComposer } from "@/components/Composer";
@@ -377,6 +378,7 @@ export function ChatView({
   const { preferences: keyPrefs } = useToolbarPreferences();
   const chatKeys = chatRow(keyPrefs);
   const [pickingImage, setPickingImage] = useState(false);
+  const [pickingSnippet, setPickingSnippet] = useState(false);
   const pasteFromClipboard = useCallback(async () => {
     try {
       const text = await navigator.clipboard.readText();
@@ -396,6 +398,7 @@ export function ChatView({
         else if (event.type === "key" && isTextKey(event.key))
           composerRef.current.insert(event.key);
         else if (event.type === "image") setPickingImage(true);
+        else if (event.type === "snippets") setPickingSnippet(true);
         else if (event.type === "paste")
           composerRef.current.pasteText(event.text);
       }),
@@ -1031,6 +1034,14 @@ export function ChatView({
             }
           />
         )}
+        <SnippetsModal
+          open={pickingSnippet}
+          onClose={() => setPickingSnippet(false)}
+          onInsert={(text) => {
+            composer.insert(text, true);
+            inputRef.current?.focus();
+          }}
+        />
         {pickingImage && (
           <ImagePicker
             initialPath="~"
