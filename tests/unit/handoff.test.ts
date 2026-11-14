@@ -641,7 +641,7 @@ describe("session models (Settings → Claude Code, sub-agents)", () => {
     );
   });
 
-  test("launch settings carry the sub-agents' model, only when picked", async () => {
+  test("launch settings carry the sub-agents' model, forced, only when picked", async () => {
     const { writeProjectContext } = await import("../../lib/project-context");
     const log = console.error;
     console.error = () => {};
@@ -649,12 +649,16 @@ describe("session models (Settings → Claude Code, sub-agents)", () => {
       const picked = addSession("s1", { subagent_model: "opus" });
       const a = await writeProjectContext(picked);
       const settings = JSON.parse(fs.readFileSync(a.settings!, "utf8"));
-      assert.deepEqual(settings.env, { CLAUDE_CODE_SUBAGENT_MODEL: "opus" });
+      assert.deepEqual(settings.env, {
+        CLAUDE_CODE_SUBAGENT_MODEL: "opus",
+        CLAUDE_CODE_SUBAGENT_MODEL_FORCE: "1",
+      });
 
       const held = addSession("s3", { subagent_model: "claude-opus-4-8" });
       const c = await writeProjectContext(held);
       assert.deepEqual(JSON.parse(fs.readFileSync(c.settings!, "utf8")).env, {
         CLAUDE_CODE_SUBAGENT_MODEL: "claude-opus-4-8",
+        CLAUDE_CODE_SUBAGENT_MODEL_FORCE: "1",
       });
 
       const same = addSession("s2");

@@ -126,7 +126,7 @@ function ModelsGroup() {
         <ModelRow
           icon={Users}
           title="Sub-agents"
-          subtitle="Agents it starts"
+          subtitle="Every agent it starts"
           value={subagentModelName(models.subagents)}
           choices={[
             { id: NONE, label: subagentModelName(null) },
@@ -142,7 +142,7 @@ function ModelsGroup() {
       </SettingGroup>
       <p className="text-muted-foreground mr-[var(--settings-gutter-r,20px)] ml-[var(--settings-gutter-l,20px)] text-[13px]">
         {error ??
-          "Each session's header shows both. Change them for one session in its Agent and model sheet."}
+          "Each session's header shows both. Change them for one session in its Agent and model sheet. A sub-agents model applies to every agent, including agent types that name their own."}
       </p>
     </>
   );

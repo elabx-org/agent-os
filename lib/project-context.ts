@@ -200,11 +200,18 @@ function sessionSettings(project: Project, session: Session) {
 /**
  * The sub-agents' model the user picked (lib/claude-models.ts). Claude reads
  * it when it starts, and these settings win over the user's own, so a
- * CLAUDE_CODE_SUBAGENT_MODEL there never overrides the pick
+ * CLAUDE_CODE_SUBAGENT_MODEL there never overrides the pick. The force
+ * switch makes it hold for every agent: without it an agent type that names
+ * its own model (`model: sonnet` in its definition) runs on that instead
  */
 function subagentEnv(session: Session): { env?: Record<string, string> } {
   return isClaudeModel(session.subagent_model)
-    ? { env: { CLAUDE_CODE_SUBAGENT_MODEL: session.subagent_model } }
+    ? {
+        env: {
+          CLAUDE_CODE_SUBAGENT_MODEL: session.subagent_model,
+          CLAUDE_CODE_SUBAGENT_MODEL_FORCE: "1",
+        },
+      }
     : {};
 }
 
