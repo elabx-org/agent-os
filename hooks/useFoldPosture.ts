@@ -55,6 +55,34 @@ function markFold(fold: Fold | null) {
   }
 }
 
+/** The page's safe area on one side, in CSS pixels */
+function safeInset(side: "top" | "left"): number {
+  const probe = document.createElement("div");
+  probe.style.cssText = `position:fixed;visibility:hidden;pointer-events:none;padding-${side}:env(safe-area-inset-${side},0px)`;
+  document.body.appendChild(probe);
+  const inset =
+    parseFloat(getComputedStyle(probe).getPropertyValue(`padding-${side}`)) ||
+    0;
+  probe.remove();
+  return inset;
+}
+
+/**
+ * The iOS app measures the fold from the edge of its safe area (under the
+ * status strip), but the page runs to the screen's edge: without the inset
+ * the fold came out that much too high, and the deck's keys started above
+ * the hinge. A fold the page doesn't reach past (the keyboard covers the
+ * half below it) is no fold.
+ */
+function fromApp(fold: Fold | null): Fold | null {
+  if (!fold) return null;
+  const across = fold.axis === "horizontal";
+  const inset = safeInset(across ? "top" : "left");
+  const size = across ? window.innerHeight : window.innerWidth;
+  const end = fold.end + inset;
+  return end < size ? { ...fold, start: fold.start + inset, end } : null;
+}
+
 function applyFold(fold: Fold | null) {
   setFold(fold);
   markFold(fold);
@@ -64,10 +92,21 @@ function applyFold(fold: Fold | null) {
 export function useFoldPosture() {
   useEffect(() => {
     if (isNative() && !simulatedFold()) {
-      applyFold(window.agentosNative?.fold ?? null);
-      return onNativeEvent((event) => {
-        if (event.type === "posture") applyFold(event.fold);
+      // As the app last sent it; the page's own size decides again on a
+      // resize (the keyboard leaving reports the fold before the page grows)
+      let sent = window.agentosNative?.fold ?? null;
+      const place = () => applyFold(fromApp(sent));
+      place();
+      const stop = onNativeEvent((event) => {
+        if (event.type !== "posture") return;
+        sent = event.fold;
+        place();
       });
+      window.addEventListener("resize", place);
+      return () => {
+        stop();
+        window.removeEventListener("resize", place);
+      };
     }
     const update = () => applyFold(simulatedFold() ?? segmentsFold());
     update();
