@@ -24,6 +24,7 @@ import {
   dismissCard,
   jumpTo,
   replyContextStore,
+  setAsking,
   setTyping,
   useContextShownElsewhere,
 } from "./store";
@@ -71,6 +72,11 @@ export function ReplyContextBar({
     context?.kind === "ask" &&
     !!context.questions?.length &&
     !!context.onScreen;
+  useEffect(() => {
+    if (!sessionId || !asking) return;
+    setAsking(sessionId, true);
+    return () => setAsking(sessionId, false);
+  }, [sessionId, asking]);
   const elsewhere = useContextShownElsewhere(sessionId);
   const { dismissed } = useSnapshot(replyContextStore);
 

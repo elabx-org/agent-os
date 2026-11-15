@@ -62,6 +62,10 @@ import { SendMenu } from "./SendMenu";
 import { offeredSendItems, sendMenuAvailable } from "./send-menu-model";
 import { permissionModeKeys } from "@/hooks/usePermissionMode";
 import { PermissionChip } from "@/components/Session/PermissionChip";
+import {
+  ASKING_HOLD,
+  replyContextStore,
+} from "@/components/ReplyContext/store";
 import type { Session } from "@/lib/db";
 import type { EnqueueResult, QueueItem } from "@/lib/queue/types";
 import type {
@@ -218,6 +222,12 @@ export function ComposerCard({
           }
         }
       }
+      // Typed at Claude's open question, the text is dropped and its Enter
+      // picks an answer: the card above answers it
+      if (replyContextStore.asking[sessionId]) {
+        toast.error(ASKING_HOLD);
+        return false;
+      }
       try {
         await onSendDirect(text, options);
         markFreshUsed(sessionId);
@@ -353,7 +363,10 @@ export function ComposerCard({
         return;
       }
       if (!text.trim()) {
-        onEmptySend?.();
+        // Enter alone would pick an answer to Claude's open question
+        if (onEmptySend && replyContextStore.asking[sessionId])
+          toast.error(ASKING_HOLD);
+        else onEmptySend?.();
         return;
       }
       sendingRef.current = true;
@@ -371,7 +384,7 @@ export function ComposerCard({
         setSending(false);
       }
     },
-    [composer, editing, queue, videos, videoDraft, onEmptySend]
+    [composer, editing, queue, videos, videoDraft, onEmptySend, sessionId]
   );
   const send = useCallback(() => sendWith(viaDeliver), [sendWith, viaDeliver]);
 

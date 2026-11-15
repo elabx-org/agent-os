@@ -17,6 +17,8 @@ export const replyContextStore = proxy<{
   replyPage: Record<string, true>;
   /** Sessions whose composer is in use on a touch screen, keyboard up */
   typing: Record<string, true>;
+  /** Sessions whose question from Claude is open as a card (AskCard) */
+  asking: Record<string, true>;
   /** A chat item to scroll to, taken by that session's ChatView */
   jump: { sessionId: string; itemId: string; at: number } | null;
 }>({
@@ -24,6 +26,7 @@ export const replyContextStore = proxy<{
   shownElsewhere: {},
   replyPage: {},
   typing: {},
+  asking: {},
   jump: null,
 });
 
@@ -55,6 +58,19 @@ export function useReplyPage(sessionId: string | null | undefined): boolean {
   const { replyPage } = useSnapshot(replyContextStore);
   return !!sessionId && !!replyPage[sessionId];
 }
+
+/**
+ * Claude's question is open as a card: text typed at its screen would
+ * answer it (Enter picks the row the ❯ is on), so the composer holds back
+ */
+export function setAsking(sessionId: string, on: boolean) {
+  if (on) replyContextStore.asking[sessionId] = true;
+  else delete replyContextStore.asking[sessionId];
+}
+
+/** What the composer says instead of typing into Claude's question */
+export const ASKING_HOLD =
+  "Claude is asking a question: answer it in the card above. Nothing was sent.";
 
 export function setTyping(sessionId: string, on: boolean) {
   if (on) replyContextStore.typing[sessionId] = true;
