@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Check, ChevronDown, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -51,6 +51,14 @@ export function AskCard({ sessionId, questions, maxHeight }: AskCardProps) {
 
   const q = questions[step];
   const draft = drafts[step] ?? { picks: [], other: "" };
+  // Your own words grow the box, so a long answer can be read back
+  const otherRef = useRef<HTMLTextAreaElement>(null);
+  useLayoutEffect(() => {
+    const el = otherRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 132)}px`;
+  }, [draft.other, step, folded]);
   const last = step === questions.length - 1;
   const allAnswered = useMemo(() => drafts.every(answered), [drafts]);
 
@@ -232,18 +240,20 @@ export function AskCard({ sessionId, questions, maxHeight }: AskCardProps) {
             </button>
           );
         })}
-        <label className="border-border flex min-h-[48px] items-center gap-3 rounded-xl border border-dashed px-3 py-2">
+        <label className="border-border flex min-h-[48px] items-start gap-3 rounded-xl border border-dashed px-3 py-2">
           <span
             aria-hidden="true"
             className={cn(
-              "h-5 w-5 shrink-0 border-2 border-dashed",
+              "mt-1.5 h-5 w-5 shrink-0 border-2 border-dashed",
               q.multiSelect ? "rounded-md" : "rounded-full",
               draft.other.trim()
                 ? "border-primary"
                 : "border-muted-foreground/60"
             )}
           />
-          <input
+          <textarea
+            ref={otherRef}
+            rows={1}
             id={`ask-other-${step}`}
             value={draft.other}
             onChange={(e) => {
@@ -263,7 +273,7 @@ export function AskCard({ sessionId, questions, maxHeight }: AskCardProps) {
               if (!last) setStep(step + 1);
               else if (allAnswered && !sending) send();
             }}
-            className="placeholder:text-muted-foreground min-w-0 flex-1 bg-transparent text-[15px] outline-none"
+            className="placeholder:text-muted-foreground min-w-0 flex-1 resize-none self-center bg-transparent py-1 text-[15px] leading-snug outline-none"
           />
         </label>
       </div>

@@ -15,6 +15,9 @@
  *
  *   Review your answers … ❯ 1. Submit answers   after the last question
  *
+ * Left and Right step through the tabs, the review included; a question
+ * answered already shows its pick ("1. SQLite table ✔") and takes a new one.
+ *
  * Full screen ("tui": "fullscreen") draws a long question with a "│ " bar,
  * and a question taller than the pane loses its tab row (and the start of
  * the question) off the top.
@@ -216,11 +219,7 @@ export async function answerAsk(
     if (a.picks.some((p) => p < 0 || p >= q.optionCount))
       throw new AskError("No such option");
 
-    const screen = await waitFor(
-      io,
-      (s) => isQuestion(s, q.question),
-      "Claude isn't showing that question any more"
-    );
+    const screen = await showQuestion(io, questions, i);
     if (screen?.kind !== "question") throw new AskError("No question");
 
     if (!q.multiSelect) {
@@ -274,6 +273,34 @@ export async function answerAsk(
     await io.keys("1");
     await waitFor(io, (s) => s?.kind !== "review", "Claude didn't submit");
   }
+}
+
+/**
+ * Brings question `i` on screen. Claude may be on another of the set, or on
+ * the review: a key typed in the terminal answers the one showing and moves
+ * on. Left and Right step through the tabs, one checked step at a time
+ */
+async function showQuestion(
+  io: AskIO,
+  questions: AskQuestionSpec[],
+  i: number
+): Promise<AskScreen | null> {
+  const gone = "Claude isn't showing that question any more";
+  // Which of them shows; the review sits after the last; -1 for neither
+  const shown = (s: AskScreen | null) => {
+    // The one wanted first: a screen cut at the top can match several
+    if (isQuestion(s, questions[i].question)) return i;
+    if (s?.kind === "review") return questions.length;
+    return questions.findIndex((x) => isQuestion(s, x.question));
+  };
+  let screen = await waitFor(io, (s) => shown(s) >= 0, gone);
+  for (let step = 0; step <= questions.length; step++) {
+    const at = shown(screen);
+    if (at === i) return screen;
+    await io.keys(at > i ? "Left" : "Right");
+    screen = await waitFor(io, (s) => shown(s) >= 0 && shown(s) !== at, gone);
+  }
+  throw new AskError(gone);
 }
 
 /** Moves the ❯ with the arrows to a row or Submit, checking each step */

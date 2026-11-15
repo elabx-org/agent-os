@@ -130,6 +130,18 @@ class FakeClaude implements AskIO {
         this.stray.push(k);
         continue;
       }
+      // The tabs: Left and Right step through the questions and the review
+      if (k === "Left" || k === "Right") {
+        if (this.qs.length < 2) continue;
+        const at = this.review ? this.qs.length : this.i;
+        const to = Math.max(
+          0,
+          Math.min(this.qs.length, at + (k === "Left" ? -1 : 1))
+        );
+        this.review = to === this.qs.length;
+        if (!this.review) this.i = to;
+        continue;
+      }
       if (this.review) {
         if (k === "1") this.done = true;
         continue;
@@ -243,6 +255,40 @@ test("a different question on screen stops before any key", async () => {
     AskError
   );
   assert.deepEqual(claude.log, []);
+});
+
+const REFLECT = {
+  question: "Did you try it?",
+  multiSelect: false,
+  optionCount: 3,
+  labels: ["Yes", "No", "Later"],
+};
+
+test("Claude moved on by a key in the terminal: it goes back and answers all", async () => {
+  const claude = new FakeClaude([STORAGE, REFLECT, CHECKS]);
+  // Text sent to the terminal: its Enter picked the first row and moved on
+  await claude.keys("Enter");
+  assert.equal(claude.i, 1);
+  await answerAsk(
+    claude,
+    [STORAGE, REFLECT, CHECKS],
+    [{ picks: [2] }, { picks: [1] }, { picks: [0, 3] }]
+  );
+  assert.equal(claude.done, true);
+  assert.deepEqual([...claude.picks[0]], [3]);
+  assert.deepEqual([...claude.picks[1]], [2]);
+  assert.deepEqual([...claude.picks[2]].sort(), [1, 4]);
+  assert.deepEqual(claude.stray, []);
+});
+
+test("Claude on the review already: it goes back to the first question", async () => {
+  const claude = new FakeClaude([STORAGE, CHECKS]);
+  await claude.keys("Right", "Right");
+  assert.equal(claude.review, true);
+  await answerAsk(claude, [STORAGE, CHECKS], [{ picks: [1] }, { picks: [2] }]);
+  assert.equal(claude.done, true);
+  assert.deepEqual([...claude.picks[0]], [2]);
+  assert.deepEqual([...claude.picks[1]], [3]);
 });
 
 test("an unanswered question is refused up front", async () => {
