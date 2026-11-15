@@ -5,6 +5,7 @@
  */
 
 import { NATIVE_EVENT } from "@/lib/native-bridge";
+import { startTypingLog } from "@/lib/client-log-typing";
 
 const FLUSH_MS = 2000;
 
@@ -100,9 +101,11 @@ export function startClientLog(): () => void {
   window.addEventListener(NATIVE_EVENT, onNative);
   window.addEventListener("error", onError);
   document.addEventListener("visibilitychange", onVisibility);
+  const stopTyping = startTypingLog(add);
   const timer = setInterval(flush, FLUSH_MS);
 
   return () => {
+    stopTyping();
     flush();
     clearInterval(timer);
     if (addLine === add) addLine = null;
