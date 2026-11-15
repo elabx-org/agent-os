@@ -70,6 +70,7 @@ function session(over: Partial<Session> & { id: string }): Session {
     effort: null,
     model_pinned: null,
     subagent_model: null,
+    subagent_own_first: null,
     ...over,
   };
 }

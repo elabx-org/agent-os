@@ -38,13 +38,24 @@ export function writeClaudeModels(
   return models;
 }
 
-/** The sub-agents' model for the session's next start; null: the same */
+/**
+ * The sub-agents' model for the session's next start; null: the same.
+ * ownFirst (left out: kept as it is) lets agent types that name their own
+ * model keep it
+ */
 export function setSubagentModel(
   db: Database.Database,
   sessionId: string,
-  model: ClaudeModel | null
+  model: ClaudeModel | null,
+  ownFirst?: boolean
 ): void {
   db.prepare(
     `UPDATE sessions SET subagent_model = ?, updated_at = datetime('now') WHERE id = ?`
   ).run(model, sessionId);
+  if (ownFirst !== undefined) {
+    db.prepare(`UPDATE sessions SET subagent_own_first = ? WHERE id = ?`).run(
+      ownFirst ? 1 : 0,
+      sessionId
+    );
+  }
 }

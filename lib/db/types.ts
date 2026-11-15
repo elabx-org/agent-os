@@ -49,6 +49,9 @@ export interface Session {
   // Migration 35: the sub-agents' model (a Claude alias); NULL: the same
   // as the session's
   subagent_model: string | null;
+  // Migration 36: 1 when agent types that name their own model keep it;
+  // NULL/0: the sub-agents' model applies to every agent
+  subagent_own_first: number | null;
   // Usage limit (migration 29, lib/limits): when it hit one (ms), when it
   // resets (ms, null when unknown), which one (LimitKind)
   limited_at: number | null;

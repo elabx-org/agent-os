@@ -275,14 +275,17 @@ export function createSuccessor(
     if (fields.effort) setModelEffort(db, id, undefined, fields.effort);
     // A Claude successor: the source's sub-agents, else the default
     if (fields.agentType === "claude") {
+      const fromClaude = (source.agent_type || "claude") === "claude";
+      const defaults = readClaudeModels(db);
       setSubagentModel(
         db,
         id,
-        (source.agent_type || "claude") === "claude"
+        fromClaude
           ? isClaudeModel(source.subagent_model)
             ? source.subagent_model
             : null
-          : readClaudeModels(db).subagents
+          : defaults.subagents,
+        fromClaude ? !!source.subagent_own_first : defaults.ownFirst
       );
     }
     setHandoffFrom(db, id, source.id);
@@ -346,7 +349,11 @@ export function createHandoff(deps: HandoffDeps) {
     // goes with --model/--effort into the restart the caller makes
     if (subagents !== undefined) {
       const picked = subagents === "same" ? null : subagents;
-      setSubagentModel(deps.db, session.id, picked);
+      const ownFirst =
+        typeof request.ownFirst === "boolean"
+          ? request.ownFirst
+          : !!session.subagent_own_first;
+      setSubagentModel(deps.db, session.id, picked, ownFirst);
       for (const stale of staleCommands(deps.listQueue(session.id))) {
         const isModel = stale.text.startsWith("/model ");
         if (isModel ? model !== undefined : effort !== null) {
@@ -364,6 +371,7 @@ export function createHandoff(deps: HandoffDeps) {
         effort,
         effortApplies: effort ? "next_launch" : null,
         subagents: picked,
+        ownFirst,
         restart: running,
       };
     }
