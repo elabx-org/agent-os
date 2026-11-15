@@ -2,11 +2,11 @@
 
 import { ChevronDown } from "lucide-react";
 import type { Session } from "@/lib/db";
-import { isClaudeModel, isHandoffAgent } from "@/lib/handoff-types";
+import { isHandoffAgent } from "@/lib/handoff-types";
 import { cn } from "@/lib/utils";
 import { useClaudeState } from "@/hooks/useClaudeState";
 import { Avatar, agentAvatar, agentName } from "@/components/a/Avatar";
-import { claudeModelName } from "@/lib/claude-models";
+import { subagentSummary } from "@/lib/claude-models";
 import { currentModel } from "./switch-model";
 
 /** The sessions the sheet can switch: Claude, Codex, Gemini */
@@ -39,10 +39,11 @@ export function useModelParts(session: Session | null | undefined): string[] {
     status?.model ?? transcriptModel,
     session.model
   ).label;
-  const subagents = isClaudeModel(session.subagent_model)
-    ? claudeModelName(session.subagent_model)
-    : "same";
-  return [model, `sub-agents ${subagents}`].filter((p): p is string => !!p);
+  const subagents = subagentSummary(
+    session.subagent_model,
+    session.subagent_own_first
+  );
+  return [model, subagents].filter((p): p is string => !!p);
 }
 
 /**

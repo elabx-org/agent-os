@@ -601,6 +601,16 @@ const migrations: Migration[] = [
       addColumnIfMissing(db, "sessions", "subagent_model", "TEXT");
     }),
   },
+  {
+    id: 36,
+    name: "add_subagent_own_first_to_sessions",
+    up: atomic((db) => {
+      // 1: an agent type that names its own model keeps it (Claude Code's
+      // default); NULL/0: the sub-agents' model applies to every agent
+      // (CLAUDE_CODE_SUBAGENT_MODEL_FORCE at launch)
+      addColumnIfMissing(db, "sessions", "subagent_own_first", "INTEGER");
+    }),
+  },
 ];
 
 export function runMigrations(db: Database.Database): void {

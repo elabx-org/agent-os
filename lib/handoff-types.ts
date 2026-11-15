@@ -85,6 +85,11 @@ export interface ModelSwitchRequest {
    * caller restarts the session (result.restart)
    */
   subagents?: ClaudeModel | "same";
+  /**
+   * Sent with subagents: true lets agent types that name their own model
+   * keep it, false applies the pick to every agent; left out, as it was
+   */
+  ownFirst?: boolean;
 }
 
 /**
@@ -105,6 +110,8 @@ export interface ModelSwitchResult {
   effortApplies: EffortApplies | null;
   /** Sent with subagents: what it is now, null for the same as the session */
   subagents?: ClaudeModel | null;
+  /** Sent with subagents: whether agent types keep their own model */
+  ownFirst?: boolean;
   /** Sent with subagents and the session is running: restart it to apply */
   restart?: boolean;
 }

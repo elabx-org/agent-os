@@ -21,6 +21,7 @@ import {
   CLAUDE_MODEL_VERSION_CHOICES,
   claudeModelName,
   subagentModelName,
+  subagentScopeName,
 } from "@/lib/claude-models";
 import { isClaudeModel } from "@/lib/handoff-types";
 import { SettingGroup } from "./SettingGroup";
@@ -38,6 +39,7 @@ function ModelRow({
   current,
   disabled,
   onPick,
+  versions = true,
 }: {
   icon: typeof Layers;
   title: string;
@@ -47,6 +49,8 @@ function ModelRow({
   current: string;
   disabled: boolean;
   onPick: (id: string) => void;
+  /** The earlier model versions under the choices (model rows only) */
+  versions?: boolean;
 }) {
   return (
     <DropdownMenu>
@@ -79,12 +83,13 @@ function ModelRow({
             </DropdownMenuRadioItem>
           ))}
           {/* Held on that exact version; the ones above follow each family */}
-          <DropdownMenuLabel>Earlier versions</DropdownMenuLabel>
-          {CLAUDE_MODEL_VERSION_CHOICES.map((c) => (
-            <DropdownMenuRadioItem key={c.id} value={c.id}>
-              {c.name}
-            </DropdownMenuRadioItem>
-          ))}
+          {versions && <DropdownMenuLabel>Earlier versions</DropdownMenuLabel>}
+          {versions &&
+            CLAUDE_MODEL_VERSION_CHOICES.map((c) => (
+              <DropdownMenuRadioItem key={c.id} value={c.id}>
+                {c.name}
+              </DropdownMenuRadioItem>
+            ))}
         </DropdownMenuRadioGroup>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -126,7 +131,7 @@ function ModelsGroup() {
         <ModelRow
           icon={Users}
           title="Sub-agents"
-          subtitle="Every agent it starts"
+          subtitle="Agents it starts"
           value={subagentModelName(models.subagents)}
           choices={[
             { id: NONE, label: subagentModelName(null) },
@@ -139,10 +144,30 @@ function ModelsGroup() {
           disabled={!loaded || saving}
           onPick={(id) => void save({ subagents: pick(id) })}
         />
+        {models.subagents && (
+          <ModelRow
+            icon={Users}
+            title="Applies to"
+            subtitle={
+              models.ownFirst
+                ? "Agent types keep their own model"
+                : "Even agent types with their own model"
+            }
+            value={subagentScopeName(models.ownFirst)}
+            choices={[
+              { id: "every", label: subagentScopeName(false) },
+              { id: "own", label: subagentScopeName(true) },
+            ]}
+            current={models.ownFirst ? "own" : "every"}
+            disabled={!loaded || saving}
+            onPick={(id) => void save({ ownFirst: id === "own" })}
+            versions={false}
+          />
+        )}
       </SettingGroup>
       <p className="text-muted-foreground mr-[var(--settings-gutter-r,20px)] ml-[var(--settings-gutter-l,20px)] text-[13px]">
         {error ??
-          "Each session's header shows both. Change them for one session in its Agent and model sheet. A sub-agents model applies to every agent, including agent types that name their own."}
+          "Each session's header shows both. Change them for one session in its Agent and model sheet."}
       </p>
     </>
   );

@@ -24,9 +24,19 @@ export interface ClaudeModels {
   model: ClaudeModel | null;
   /** Their sub-agents' model; null: the same as the session's */
   subagents: ClaudeModel | null;
+  /**
+   * Whose model wins for an agent type that names its own (`model: sonnet`
+   * in its definition): false, the sub-agents' model above, for every
+   * agent; true, the agent type's own, Claude Code's default
+   */
+  ownFirst: boolean;
 }
 
-export const NO_CLAUDE_MODELS: ClaudeModels = { model: null, subagents: null };
+export const NO_CLAUDE_MODELS: ClaudeModels = {
+  model: null,
+  subagents: null,
+  ownFirst: false,
+};
 
 /** What a saved or sent value holds, anything unknown dropped */
 export function parseClaudeModels(value: unknown): ClaudeModels {
@@ -34,6 +44,7 @@ export function parseClaudeModels(value: unknown): ClaudeModels {
   return {
     model: isClaudeModel(v.model) ? v.model : null,
     subagents: isClaudeModel(v.subagents) ? v.subagents : null,
+    ownFirst: v.ownFirst === true,
   };
 }
 
@@ -110,4 +121,25 @@ export function subagentModelName(
 ): string {
   if (isClaudeModel(model)) return NAME[model];
   return short ? "Same" : "Same as the session";
+}
+
+/** Which agents the sub-agents' model applies to, as the two choices say it */
+export const SUBAGENT_SCOPE_EVERY = "Every agent";
+export const SUBAGENT_SCOPE_OWN_FIRST = "Agent's own first";
+
+export function subagentScopeName(ownFirst: boolean): string {
+  return ownFirst ? SUBAGENT_SCOPE_OWN_FIRST : SUBAGENT_SCOPE_EVERY;
+}
+
+/**
+ * The header's words for a session's sub-agents: "sub-agents Opus 5.5",
+ * "sub-agents Opus 5.5 by default" when agent types keep their own model,
+ * "sub-agents same" when none is picked
+ */
+export function subagentSummary(
+  model: string | null | undefined,
+  ownFirst: unknown
+): string {
+  if (!isClaudeModel(model)) return "sub-agents same";
+  return `sub-agents ${NAME[model]}${ownFirst ? " by default" : ""}`;
 }

@@ -46,7 +46,11 @@ import {
   type SubagentPick,
   type VersionChoice,
 } from "./switch-model";
-import { claudeModelFamily, subagentModelName } from "@/lib/claude-models";
+import {
+  claudeModelFamily,
+  subagentModelName,
+  subagentScopeName,
+} from "@/lib/claude-models";
 
 /**
  * N-Switch "Agent and model": Claude model + effort (between turns, queued
@@ -244,6 +248,9 @@ function SwitchBody({
   const [effort, setEffort] = useState<EffortLevel | null>(runningEffort);
   const storedSubagents = currentSubagents(session.subagent_model);
   const [subagents, setSubagents] = useState<SubagentPick>(storedSubagents);
+  // Whether agent types that name their own model keep it
+  const storedOwnFirst = !!session.subagent_own_first;
+  const [ownFirst, setOwnFirst] = useState(storedOwnFirst);
   const [sending, setSending] = useState(false);
 
   // The status line can land after the sheet opened: follow it until a pick
@@ -262,7 +269,10 @@ function SwitchBody({
   const effortOn = claude && agent === "claude";
   const modelChanged = !!model && model !== current.model;
   const effortChanged = !!effort && effort !== runningEffort;
-  const subagentsChanged = claude && subagents !== storedSubagents;
+  const subagentsChanged =
+    claude &&
+    (subagents !== storedSubagents ||
+      (subagents !== "same" && ownFirst !== storedOwnFirst));
   const modelLabel = picks.find((p) => p.alias === family)?.label ?? null;
   const action = switchAction({
     source,
@@ -294,8 +304,11 @@ function SwitchBody({
       ...(modelChanged && model ? { model } : {}),
       ...(effortChanged && effort ? { effort } : {}),
       subagents,
+      ownFirst,
     });
-    const what = `sub-agents on ${subagentModelName(result.subagents ?? null)}`;
+    const what = `sub-agents on ${subagentModelName(result.subagents ?? null)}${
+      result.subagents && result.ownFirst ? " by default" : ""
+    }`;
     if (!result.restart) {
       toast(`Saved: ${what} from the session's next start`);
       return;
@@ -511,6 +524,45 @@ function SwitchBody({
               setSubagents(id);
             }}
           />
+        )}
+        {subagents !== "same" && (
+          <div
+            className={cn(
+              "flex items-center gap-2.5 transition-opacity",
+              !effortOn && "opacity-40"
+            )}
+            aria-disabled={!effortOn || undefined}
+          >
+            <span className="text-muted-foreground w-[4.75rem] shrink-0 text-[13px] whitespace-nowrap">
+              Applies to
+            </span>
+            <div
+              role="group"
+              aria-label="Which agents the sub-agents' model applies to"
+              className="seg min-w-0 flex-1 justify-between rounded-3xl bg-[var(--sheet-fill)]"
+            >
+              {[false, true].map((own) => (
+                <button
+                  key={String(own)}
+                  type="button"
+                  aria-pressed={ownFirst === own}
+                  aria-label={
+                    own
+                      ? "Agent's own first: an agent type that names its own model keeps it"
+                      : "Every agent, even one that names its own model"
+                  }
+                  disabled={!effortOn || sending}
+                  onClick={() => {
+                    setTouched(true);
+                    setOwnFirst(own);
+                  }}
+                  className="h-11 min-w-0 flex-1 truncate rounded-[22px] px-1"
+                >
+                  {subagentScopeName(own)}
+                </button>
+              ))}
+            </div>
+          </div>
         )}
         {caption && (
           <p

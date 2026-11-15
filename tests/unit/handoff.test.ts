@@ -290,6 +290,20 @@ describe("switchModel", () => {
     assert.equal(row("a")!.model, "fable");
     assert.equal(row("a")!.subagent_model, "opus");
 
+    // Which agents it applies to is stored with it, and kept when left out
+    assert.equal(r.ownFirst, false);
+    const own = await h.switchModel(row("a")!, {
+      subagents: "opus",
+      ownFirst: true,
+    });
+    assert.equal(own.ownFirst, true);
+    assert.equal(row("a")!.subagent_own_first, 1);
+    const kept = await h.switchModel(row("a")!, { subagents: "sonnet" });
+    assert.equal(kept.ownFirst, true);
+    assert.equal(row("a")!.subagent_own_first, 1);
+    await h.switchModel(row("a")!, { subagents: "opus", ownFirst: false });
+    assert.equal(row("a")!.subagent_own_first, 0);
+
     const same = await h.switchModel(row("a")!, { subagents: "same" });
     assert.equal(same.subagents, null);
     assert.equal(row("a")!.subagent_model, null);
@@ -621,15 +635,17 @@ describe("session models (Settings → Claude Code, sub-agents)", () => {
     assert.deepEqual(models.readClaudeModels(d), {
       model: null,
       subagents: null,
+      ownFirst: false,
     });
     assert.deepEqual(
       models.writeClaudeModels(d, { model: "fable", subagents: "gpt-5" }),
-      { model: "fable", subagents: null }
+      { model: "fable", subagents: null, ownFirst: false }
     );
     models.writeClaudeModels(d, { model: "fable", subagents: "opus" });
     assert.deepEqual(models.readClaudeModels(d), {
       model: "fable",
       subagents: "opus",
+      ownFirst: false,
     });
     // Earlier versions are saved by their model id
     assert.deepEqual(
@@ -637,8 +653,25 @@ describe("session models (Settings → Claude Code, sub-agents)", () => {
         model: "claude-fable-5-1",
         subagents: "claude-sonnet-4-6",
       }),
-      { model: "claude-fable-5-1", subagents: "claude-sonnet-4-6" }
+      {
+        model: "claude-fable-5-1",
+        subagents: "claude-sonnet-4-6",
+        ownFirst: false,
+      }
     );
+    // Agent types keeping their own model is saved with them
+    assert.equal(
+      models.writeClaudeModels(d, { subagents: "opus", ownFirst: true })
+        .ownFirst,
+      true
+    );
+  });
+
+  test("the header says which agents the sub-agents' model covers", async () => {
+    const { subagentSummary } = await import("../../lib/claude-models");
+    assert.equal(subagentSummary("opus", 0), "sub-agents Opus 5.5");
+    assert.equal(subagentSummary("opus", 1), "sub-agents Opus 5.5 by default");
+    assert.equal(subagentSummary(null, 1), "sub-agents same");
   });
 
   test("launch settings carry the sub-agents' model, forced, only when picked", async () => {
@@ -659,6 +692,16 @@ describe("session models (Settings → Claude Code, sub-agents)", () => {
       assert.deepEqual(JSON.parse(fs.readFileSync(c.settings!, "utf8")).env, {
         CLAUDE_CODE_SUBAGENT_MODEL: "claude-opus-4-8",
         CLAUDE_CODE_SUBAGENT_MODEL_FORCE: "1",
+      });
+
+      // Agent's own first: the pick without the force switch
+      const own = addSession("s4", {
+        subagent_model: "opus",
+        subagent_own_first: 1,
+      });
+      const e = await writeProjectContext(own);
+      assert.deepEqual(JSON.parse(fs.readFileSync(e.settings!, "utf8")).env, {
+        CLAUDE_CODE_SUBAGENT_MODEL: "opus",
       });
 
       const same = addSession("s2");

@@ -278,8 +278,13 @@ export async function POST(request: NextRequest) {
 
     if (agentType === "claude" && (pickedModel || subagentModel)) {
       db.prepare(
-        "UPDATE sessions SET model_pinned = ?, subagent_model = ? WHERE id = ?"
-      ).run(pickedModel ? 1 : null, subagentModel, id);
+        "UPDATE sessions SET model_pinned = ?, subagent_model = ?, subagent_own_first = ? WHERE id = ?"
+      ).run(
+        pickedModel ? 1 : null,
+        subagentModel,
+        subagentModel && claudeModels.ownFirst ? 1 : null,
+        id
+      );
     }
 
     if (permissionMode) {

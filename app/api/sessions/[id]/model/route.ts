@@ -8,7 +8,7 @@ import {
   type ModelSwitchResult,
 } from "@/lib/handoff-types";
 
-// POST /api/sessions/[id]/model {model?, effort?, subagents?} - ModelSwitchResult.
+// POST /api/sessions/[id]/model {model?, effort?, subagents?, ownFirst?} - ModelSwitchResult.
 // The user's only. Claude sessions: `/model <alias>` and `/effort <level>`,
 // each only when picked, go through the queue as commands, sent only at
 // idle; with the queue off or the session stopped they apply at its next
@@ -65,6 +65,9 @@ export async function POST(
       model,
       effort,
       subagents,
+      ...(typeof body?.ownFirst === "boolean"
+        ? { ownFirst: body.ownFirst }
+        : {}),
     });
     return NextResponse.json(result);
   } catch (error) {
