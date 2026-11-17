@@ -22,6 +22,7 @@ import {
   parseCmdline,
   parseTpgid,
 } from "./lib/pty-foreground";
+import { isDarwin, terminalForeground } from "./lib/proc-darwin";
 import {
   authConfig,
   deny,
@@ -111,6 +112,11 @@ function foreground(session: PtySession): {
       return { shell: false, args: parseCmdline(cmdline), pid: tpgid };
     }
   } catch { /* no /proc: by name */ }
+  // macOS has no /proc: ps says the same
+  if (isDarwin()) {
+    const front = terminalForeground(pid);
+    if (front) return front;
+  }
   const name = session.pty.process;
   return { shell: isPlainShell(name), args: [name], pid: null };
 }

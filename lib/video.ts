@@ -50,6 +50,8 @@ export interface VideoJob {
   height?: number;
   frames: Frame[];
   error?: string;
+  /** Its folder (under os.tmpdir(): /var/folders/… on macOS, not /tmp) */
+  dir?: string;
 }
 
 // Uploads sit beside the pictures, so the image route can show the frames
@@ -98,6 +100,7 @@ export function createJob(name: string, size: number): VideoJob {
     received: 0,
     stage: "uploading",
     progress: 0,
+    dir: jobDir(id),
     frames: [],
   };
   fs.mkdirSync(jobDir(id), { recursive: true });

@@ -125,6 +125,14 @@ cmd_install() {
     echo "  agent-os status    Show URLs"
 }
 
+# npm start keeps its database in /config/.agent-os (the container's); a Mac
+# has no /config, so there it lives in AGENT_OS_HOME unless DB_PATH says
+use_home_db() {
+    if [[ "$OS" == "macos" ]]; then
+        export DB_PATH="${DB_PATH:-$AGENT_OS_HOME/agent-os.db}"
+    fi
+}
+
 cmd_start() {
     if is_running; then
         local pid
@@ -152,6 +160,7 @@ cmd_start() {
     fi
 
     # Start server in background
+    use_home_db
     nohup npm start >> "$LOG_FILE" 2>&1 &
     local pid=$!
     echo "$pid" > "$PID_FILE"
@@ -553,6 +562,7 @@ cmd_start_foreground() {
     # Create PID file before exec (PID stays the same after exec)
     echo "$$" > "$PID_FILE"
 
+    use_home_db
     exec npm start
 }
 

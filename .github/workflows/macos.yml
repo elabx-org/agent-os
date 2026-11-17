@@ -1,0 +1,67 @@
+name: macOS
+
+# AgentOS on a Mac (Apple Silicon): types, unit tests, a production build and
+# a smoke test of the built server with a fake agent in tmux
+# (scripts/smoke-macos.mjs)
+
+on:
+  push:
+    branches: [mac-compat]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: macos-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  macos:
+    name: macOS build and smoke test
+    # macos-latest sat queued in this org; xcode-27 is the hosted Apple
+    # Silicon image the iOS job already runs on (macOS 27, arm64)
+    runs-on: xcode-27
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Tools
+        run: |
+          uname -a
+          sw_vers
+          command -v tmux >/dev/null || brew install tmux
+          command -v rg >/dev/null || brew install ripgrep
+          tmux -V
+          bash --version | head -1
+          echo "SHELL=$SHELL"
+
+      - name: Install
+        run: npm ci --legacy-peer-deps
+
+      - name: Type check
+        run: npx tsc --noEmit -p .
+
+      - name: Unit tests
+        run: npm run -s test:unit
+
+      - name: Build
+        run: npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+
+      - name: Smoke test
+        run: node scripts/smoke-macos.mjs "$RUNNER_TEMP/smoke"
+
+      - name: Upload smoke logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-smoke-logs
+          path: ${{ runner.temp }}/smoke
+          if-no-files-found: ignore

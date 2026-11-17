@@ -9,6 +9,10 @@
 import { execFile } from "child_process";
 import fs from "fs";
 import { promisify } from "util";
+import {
+  foregroundGroup as darwinForegroundGroup,
+  isDarwin,
+} from "./proc-darwin";
 
 const execFileAsync = promisify(execFile);
 
@@ -75,7 +79,8 @@ export async function resumeIfSuspended(
     try {
       group = foregroundGroup(fs.readFileSync(`/proc/${pid}/stat`, "utf8"));
     } catch {
-      // No /proc (macOS): the terminal's own process is the agent
+      // No /proc (macOS): ps says, else the terminal's own process is the agent
+      if (isDarwin()) group = await darwinForegroundGroup(pid);
     }
     process.kill(group ? -group : pid, "SIGCONT");
     console.log(`[suspended] resumed ${tmuxName} after Ctrl+Z`);

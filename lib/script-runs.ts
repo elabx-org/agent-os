@@ -11,6 +11,7 @@ import fs from "fs";
 import path from "path";
 import { getDb } from "@/lib/db";
 import { LOGS_DIR, spawnDetached } from "@/lib/dev-servers";
+import { isDarwin, psSync } from "@/lib/proc-darwin";
 import type {
   ProjectScript,
   RunScriptResponse,
@@ -125,9 +126,29 @@ export function runProcessAlive(run: Pick<ScriptRun, "id" | "pid">): boolean {
   try {
     argv = fs.readFileSync(`/proc/${pid}/cmdline`, "utf-8").split("\0");
   } catch {
+    // macOS: ps prints the argv joined by spaces
+    if (isDarwin()) return darwinRunAlive(pid, run.id);
     return fs.existsSync("/proc/self/cmdline") ? false : pidAlive(pid);
   }
   return argv.includes("agentos-script") && argv.includes(exitPathFor(run.id));
+}
+
+/**
+ * The run's own process, from its command line as macOS ps prints it
+ * (argv joined by spaces): backgroundArgv's, ending in this run's exit file
+ */
+export function isRunCommandLine(args: string, runId: string): boolean {
+  return (
+    args.includes(" agentos-script ") && args.endsWith(` ${exitPathFor(runId)}`)
+  );
+}
+
+function darwinRunAlive(pid: number, runId: string): boolean {
+  const args = psSync([pid])[0]?.args;
+  if (args && isRunCommandLine(args, runId)) return true;
+  // ps is slow enough for the run to end meanwhile: its exit file, written
+  // just before, is read next time instead of failing it with no code
+  return readExitCode(runId) !== null;
 }
 
 /** Sets the final status, only while the row is still running */

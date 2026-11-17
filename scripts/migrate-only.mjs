@@ -27,8 +27,19 @@ if (!fs.existsSync(file)) {
 }
 
 const real = fs.realpathSync(file);
-const liveHome = path.join(os.homedir(), ".agent-os") + path.sep;
-if (real.startsWith(liveHome) || real.startsWith("/config/.agent-os/")) {
+const liveHome = path.join(os.homedir(), ".agent-os");
+// As given and where it really is (a home under a symlink, as macOS's
+// /var -> /private/var)
+const liveHomes = [liveHome];
+try {
+  liveHomes.push(fs.realpathSync(liveHome));
+} catch {
+  // No live home here
+}
+if (
+  liveHomes.some((home) => real.startsWith(home + path.sep)) ||
+  real.startsWith("/config/.agent-os/")
+) {
   console.error(`Refusing the live database: ${real}`);
   process.exit(2);
 }
