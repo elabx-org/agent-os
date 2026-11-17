@@ -55,6 +55,8 @@ interface PtySession {
   alive: boolean; // pong received tracking
   pingInterval: ReturnType<typeof setInterval> | null;
   shellQueue: Promise<unknown>; // shell commands run one after another
+  zsh: boolean; // the PTY's shell is zsh (a Mac's default)
+  lastOutputAt: number;
 }
 
 const sessions = new Map<string, PtySession>();
@@ -91,6 +93,8 @@ function detachSession(session: PtySession): void {
 
 const SHELL_LEAVE_MS = 2_000; // for a detached tmux client to exit
 const SHELL_WAIT_MS = 3_000; // for a login shell's profile to finish
+const ZSH_QUIET_MS = 150; // no output this long: zsh has drawn its prompt
+const ZSH_SETTLE_MS = 2_000;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -138,6 +142,16 @@ async function waitForShell(session: PtySession, ms: number): Promise<boolean> {
     await sleep(50);
   }
   return true;
+}
+
+// zsh takes a Ctrl+C that comes while it draws its prompt (just after tmux
+// detaches) as one for the line typed next, and drops its first key: let it
+// finish drawing first (only zsh: other shells don't wait)
+async function zshSettled(session: PtySession): Promise<void> {
+  const until = Date.now() + ZSH_SETTLE_MS;
+  while (Date.now() - session.lastOutputAt < ZSH_QUIET_MS && Date.now() < until) {
+    await sleep(25);
+  }
 }
 
 // A typed line has started its client (tmux, claude attach) for good, not
@@ -188,9 +202,11 @@ function runInShell(
       }
     }
     if (leave) {
+      if (session.zsh) await zshSettled(session);
       session.pty.write("\x03");
       // The tty drops input queued behind Ctrl+C
       await sleep(50);
+      if (session.zsh) await zshSettled(session);
       if (!foreground(session).shell) return false;
     }
     session.pty.write(command + "\r");
@@ -349,10 +365,13 @@ function createPtySession(ws: WebSocket): PtySession | null {
       alive: true,
       pingInterval: null,
       shellQueue: Promise.resolve(),
+      zsh: /(^|\/)zsh$/.test(shell),
+      lastOutputAt: 0,
     };
 
     // Always buffer PTY output (even during disconnect)
     ptyProcess.onData((data: string) => {
+      session.lastOutputAt = Date.now();
       appendToBuffer(session, data);
       if (session.ws?.readyState === WebSocket.OPEN) {
         session.ws.send(JSON.stringify({ type: "output", data }));
