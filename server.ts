@@ -57,6 +57,9 @@ interface PtySession {
   alive: boolean; // pong received tracking
   pingInterval: ReturnType<typeof setInterval> | null;
   shellQueue: Promise<unknown>; // shell commands run one after another
+  zsh: boolean; // the PTY's shell is zsh (a Mac's default)
+  zleStarts: number; // times zsh's line editor started reading (zsh only)
+  zleTail: string; // the output's last bytes, for a mark split across chunks
 }
 
 const sessions = new Map<string, PtySession>();
@@ -93,6 +96,9 @@ function detachSession(session: PtySession): void {
 
 const SHELL_LEAVE_MS = 2_000; // for a detached tmux client to exit
 const SHELL_WAIT_MS = 3_000; // for a login shell's profile to finish
+const ZLE_WAIT_MS = 2_000; // for zsh's line editor to start
+// zsh's line editor turns bracketed paste on each time it starts reading
+const ZLE_START = "\x1b[?2004h";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -142,6 +148,14 @@ async function waitForShell(session: PtySession, ms: number): Promise<boolean> {
   return true;
 }
 
+// zsh takes a Ctrl+C that comes before its line editor runs (while it
+// draws the prompt after tmux detaches) as one for the next line, and drops
+// that line after its first key: wait for the editor to start reading
+async function zshEditing(session: PtySession, after: number): Promise<void> {
+  const until = Date.now() + ZLE_WAIT_MS;
+  while (session.zleStarts <= after && Date.now() < until) await sleep(20);
+}
+
 // A typed line has started its client (tmux, claude attach) for good, not
 // an attach that fails over to `tmux new`; or it's back at the prompt, not
 // just between its setup commands
@@ -179,6 +193,7 @@ function runInShell(
 ): Promise<boolean> {
   const run = async () => {
     const front = foreground(session);
+    const edits = session.zleStarts;
     if (!front.shell) {
       const keys = leaveKeys(front.args);
       if (keys) {
@@ -190,9 +205,13 @@ function runInShell(
       }
     }
     if (leave) {
+      // Only zsh waits (other shells, bash in the container, don't)
+      if (session.zsh && !front.shell) await zshEditing(session, edits);
+      const cleared = session.zleStarts;
       session.pty.write("\x03");
       // The tty drops input queued behind Ctrl+C
       await sleep(50);
+      if (session.zsh) await zshEditing(session, cleared);
       if (!foreground(session).shell) return false;
     }
     session.pty.write(command + "\r");
@@ -351,10 +370,18 @@ function createPtySession(ws: WebSocket): PtySession | null {
       alive: true,
       pingInterval: null,
       shellQueue: Promise.resolve(),
+      zsh: /(^|\/)zsh$/.test(shell),
+      zleStarts: 0,
+      zleTail: "",
     };
 
     // Always buffer PTY output (even during disconnect)
     ptyProcess.onData((data: string) => {
+      if (session.zsh) {
+        const seen = session.zleTail + data;
+        session.zleStarts += seen.split(ZLE_START).length - 1;
+        session.zleTail = seen.slice(-(ZLE_START.length - 1));
+      }
       appendToBuffer(session, data);
       if (session.ws?.readyState === WebSocket.OPEN) {
         session.ws.send(JSON.stringify({ type: "output", data }));
