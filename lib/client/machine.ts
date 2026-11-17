@@ -14,10 +14,12 @@ import {
   MACHINE_HEADER,
   MACHINE_STORAGE_KEY,
   MACHINES_USED_KEY,
+  MACHINE_QUERY,
   cookieAssignment,
   headerFor,
   isMachineGone,
   isMachineId,
+  linkTarget,
   markedSocketUrl,
   readCookie,
   switchHref,
@@ -121,12 +123,36 @@ function wrap() {
   window.WebSocket = MarkedWebSocket;
 }
 
+/**
+ * "?machine=<id>" on the page's own address (a notification's link): the
+ * tab starts on that machine
+ */
+function adoptLinkedMachine() {
+  let url: URL;
+  try {
+    url = new URL(window.location.href);
+  } catch {
+    return;
+  }
+  // Taken off the address once the app is up (MachineGate): the router
+  // would put it back if it went now
+  const target = linkTarget(url.searchParams.get(MACHINE_QUERY));
+  if (!target) return;
+  if (target === HUB_TARGET) {
+    storage("session")?.removeItem(MACHINE_STORAGE_KEY);
+  } else {
+    storage("session")?.setItem(MACHINE_STORAGE_KEY, target);
+    storage("local")?.setItem(MACHINES_USED_KEY, "1");
+  }
+}
+
 let installed = false;
 
 /** Once, before the app's first call; does nothing on the server */
 export function installMachineMarker() {
   if (installed || typeof window === "undefined") return;
   installed = true;
+  adoptLinkedMachine();
   syncCookie();
   // Another tab may have moved the cookie while this one was away
   window.addEventListener("focus", syncCookie);
@@ -159,6 +185,54 @@ export function switchMachine(machine: string | null, open?: SwitchOpen) {
   }
   document.cookie = cookieAssignment(machine);
   window.location.assign(switchHref(open));
+}
+
+/**
+ * Where a session lives when it isn't on the tab's machine: another linked
+ * machine's id, "hub", or null when nothing reachable has it. Only asked
+ * for a link whose session wasn't found here.
+ */
+export async function findSessionElsewhere(
+  sessionId: string
+): Promise<string | null> {
+  try {
+    const res = await hubFetch("/api/machines");
+    if (!res.ok) return null;
+    const data = (await res.json()) as {
+      enabled?: boolean;
+      machines?: { id: string; status: string; presence: string }[];
+    };
+    if (!data.enabled) return null;
+    const mine = tabMachine();
+    const targets = (data.machines ?? [])
+      .filter(
+        (m) =>
+          m.status === "approved" && m.presence === "online" && m.id !== mine
+      )
+      .map((m) => m.id);
+    if (mine) targets.unshift(HUB_TARGET);
+    const found = await Promise.all(
+      targets.map(async (target) => {
+        try {
+          const list = await fetchOn(target, "/api/sessions");
+          if (!list.ok) return false;
+          const body = (await list.json()) as { sessions?: { id: string }[] };
+          return !!body.sessions?.some((s) => s.id === sessionId);
+        } catch {
+          return false;
+        }
+      })
+    );
+    const at = found.indexOf(true);
+    return at < 0 ? null : targets[at];
+  } catch {
+    return null;
+  }
+}
+
+/** The tab onto where a link points ("hub" or a machine), on its session */
+export function followLink(target: string, sessionId: string) {
+  switchMachine(target === HUB_TARGET ? null : target, { session: sessionId });
 }
 
 /** A call answered by this server, whichever machine the tab is on */

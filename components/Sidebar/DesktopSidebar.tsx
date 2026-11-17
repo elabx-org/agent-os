@@ -1,6 +1,12 @@
 "use client";
 
 import { MachineChip } from "@/components/Machines/MachineChip";
+import { MachineTag } from "@/components/Machines/MachineTag";
+import {
+  openOnMachine,
+  useOtherMachinesNow,
+} from "@/components/Machines/useOtherMachinesNow";
+import type { TaggedAgent, TaggedSession } from "@/lib/machine-now";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useSnapshot } from "valtio";
 import {
@@ -114,6 +120,60 @@ function SessionRows({
   });
 }
 
+/** Rows from the other linked machines: tagged, a click moves the tab there */
+function OtherRows({
+  sessions,
+  agents,
+  state,
+}: {
+  sessions: TaggedSession[];
+  agents: TaggedAgent[];
+  state: "needs" | "work";
+}) {
+  const row = (
+    key: string,
+    title: string,
+    tag: TaggedSession["tag"],
+    hint: string | undefined,
+    onClick: () => void
+  ) => (
+    <button
+      key={key}
+      type="button"
+      onClick={onClick}
+      aria-label={`${title}, ${STATE_LABEL[state]}, on ${tag.name}`}
+      title={hint}
+      className="srow hover:bg-foreground/5 w-full flex-none text-left"
+    >
+      <StateDot state={state} />
+      <span className="min-w-0 flex-1 truncate">{title}</span>
+      <MachineTag tag={tag} className="h-5 max-w-[6.5rem] px-1.5 text-[11px]" />
+    </button>
+  );
+  return (
+    <>
+      {sessions.map((item) =>
+        row(
+          `${item.tag.target}:${item.session.id}`,
+          displayTitle(item.session, {}).title,
+          item.tag,
+          item.line,
+          () => openOnMachine(item.tag, { session: item.session.id })
+        )
+      )}
+      {agents.map((item) =>
+        row(
+          `${item.tag.target}:${item.agent.id}`,
+          item.agent.name,
+          item.tag,
+          "Background agent",
+          () => openOnMachine(item.tag, {})
+        )
+      )}
+    </>
+  );
+}
+
 /**
  * The desktop's home (Desk-Chat, D-New): the logo and New pill, Find ⌘K,
  * Needs you / Working / Projects (first 5, "N more"), the usage card at
@@ -141,6 +201,11 @@ export function DesktopSidebar({
   // A paused (handed-off) or settled session neither needs you nor works
   const active = useMemo(() => withoutPaused(sessions), [sessions]);
   const { waiting } = useNeedsYou(active, sessionStatuses);
+  // The other linked machines' sessions and agents, tagged
+  const others = useOtherMachinesNow();
+  const otherNeeds = others.needs.length + others.blocked.length;
+  const otherWorking = others.working.length + others.agents.length;
+  const needsCount = waiting.length + otherNeeds;
   // At a usage limit (M6): their own section, oldest limit first
   const limited = useMemo(
     () =>
@@ -254,7 +319,7 @@ export function DesktopSidebar({
         aria-label="Sessions"
         className="-mx-1 flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-1"
       >
-        {waiting.length > 0 && (
+        {needsCount > 0 && (
           <>
             <SectionLabel first onClick={() => runNav("inbox")}>
               Needs you
@@ -266,11 +331,16 @@ export function DesktopSidebar({
               selectedId={selectedId}
               onOpenSession={onOpenSession}
             />
+            <OtherRows
+              sessions={others.needs}
+              agents={others.blocked}
+              state="needs"
+            />
           </>
         )}
         {limited.length > 0 && (
           <>
-            <SectionLabel first={waiting.length === 0}>Limited</SectionLabel>
+            <SectionLabel first={needsCount === 0}>Limited</SectionLabel>
             <SessionRows
               sessions={limited}
               state="limited"
@@ -280,9 +350,9 @@ export function DesktopSidebar({
             />
           </>
         )}
-        {working.length > 0 && (
+        {working.length + otherWorking > 0 && (
           <>
-            <SectionLabel first={waiting.length + limited.length === 0}>
+            <SectionLabel first={needsCount + limited.length === 0}>
               Working
             </SectionLabel>
             <SessionRows
@@ -292,12 +362,20 @@ export function DesktopSidebar({
               selectedId={selectedId}
               onOpenSession={onOpenSession}
             />
+            <OtherRows
+              sessions={others.working}
+              agents={others.agents}
+              state="work"
+            />
           </>
         )}
         {!newOpen && shown.length > 0 && (
           <>
             <SectionLabel
-              first={waiting.length + limited.length + working.length === 0}
+              first={
+                needsCount + limited.length + working.length + otherWorking ===
+                0
+              }
             >
               Projects
             </SectionLabel>

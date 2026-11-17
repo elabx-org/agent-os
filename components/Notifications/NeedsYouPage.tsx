@@ -65,6 +65,15 @@ import { backPage, openPage, workspacePageStore } from "@/stores/workspacePage";
 import type { BackgroundAgent } from "@/lib/claude-background";
 import type { Session } from "@/lib/db";
 import type { PermissionPrompt } from "@/lib/permission-prompt";
+import { MachineTag } from "@/components/Machines/MachineTag";
+import {
+  openOnMachine,
+  useOtherMachinesNow,
+} from "@/components/Machines/useOtherMachinesNow";
+import { OtherNeedsCard } from "@/components/MissionControl/NowSections";
+import { useMachines, useTabMachineId } from "@/data/machines";
+import { switchMachine } from "@/lib/client/machine";
+import { othersNeedCount, type OtherMachinesNow } from "@/lib/machine-now";
 import { HistoryCard } from "./HistoryCard";
 import { askLine, historyDays } from "./history-rows";
 
@@ -120,6 +129,8 @@ function useNeedsYouList(view: ViewProps) {
   const titles = useListTitles(needs.waiting);
   const agentsByProject = useBackgroundAgentsByProject(projects);
   const { history, unread, markRead, clearHistory } = needs;
+  // What waits on the other linked machines: listed, answered there
+  const others = useOtherMachinesNow();
 
   const groups = useMemo(() => {
     const named = new Map(
@@ -205,6 +216,8 @@ function useNeedsYouList(view: ViewProps) {
   const waitingIds = new Set<string>([
     ...needs.waiting.map((s) => s.id),
     ...needs.blocked.map((a) => a.id),
+    ...others.needs.map((i) => i.session.id),
+    ...others.blocked.map((i) => i.agent.id),
   ]);
   const earlier = history
     .filter(
@@ -218,8 +231,9 @@ function useNeedsYouList(view: ViewProps) {
     .slice(0, EARLIER_MAX);
 
   return {
-    count: needs.count,
+    count: needs.count + othersNeedCount(others),
     waiting,
+    others,
     titles,
     agents: needs.agents,
     finished,
@@ -340,6 +354,56 @@ function Title({
         )}
       </header>
     </div>
+  );
+}
+
+/**
+ * What waits on the other linked machines: it answers there, so each is a
+ * way over. Rows beside a detail page, cards in the one column
+ */
+function OtherMachines({
+  others,
+  rows,
+}: {
+  others: OtherMachinesNow;
+  rows?: boolean;
+}) {
+  if (othersNeedCount(others) === 0) return null;
+  const items = [
+    ...others.needs.map((item) => ({
+      key: `${item.tag.target}:${item.session.id}`,
+      tag: item.tag,
+      title: displayTitle(item.session, {}).title,
+      detail: item.project,
+      avatar: agentAvatar(item.session.agent_type),
+      onOpen: () => openOnMachine(item.tag, { session: item.session.id }),
+    })),
+    ...others.blocked.map((item) => ({
+      key: `${item.tag.target}:${item.agent.id}`,
+      tag: item.tag,
+      title: item.agent.name,
+      detail: "Background agent" as string | undefined,
+      avatar: agentAvatar("claude"),
+      onOpen: () => openOnMachine(item.tag, {}),
+    })),
+  ];
+  if (!rows)
+    return items.map(({ key, avatar: _avatar, ...item }) => (
+      <OtherNeedsCard key={key} {...item} />
+    ));
+  return (
+    <GroupCard aria-label="Waiting on your other machines">
+      {items.map((item) => (
+        <GroupRow
+          key={item.key}
+          leading={<Avatar {...item.avatar} />}
+          title={item.title}
+          subtitle={[item.detail, "Your turn"].filter(Boolean).join(" · ")}
+          trailing={<MachineTag tag={item.tag} />}
+          onClick={item.onOpen}
+        />
+      ))}
+    </GroupCard>
   );
 }
 
@@ -612,7 +676,26 @@ function History({
   onOpenSession: (session: Session) => void;
   onOpenAgent: (agent: BackgroundAgent, entry: NotificationEntry) => void;
 }) {
+  const mine = useTabMachineId();
+  const { data: machines } = useMachines();
   const openFor = (entry: NotificationEntry) => {
+    // The history is this server's, whichever machine the tab is on: an
+    // entry from somewhere else opens there
+    const where = entry.machineId ?? null;
+    if (where !== mine) {
+      const reachable =
+        !where ||
+        machines?.machines.some(
+          (m) =>
+            m.id === where && m.status === "approved" && m.presence === "online"
+        );
+      if (!reachable) return undefined;
+      return () =>
+        switchMachine(
+          where,
+          entry.sessionId ? { session: entry.sessionId } : undefined
+        );
+    }
     if (entry.agentId) {
       const agent = list.agents.find((a) => a.id === entry.agentId);
       return agent && (() => onOpenAgent(agent, entry));
@@ -810,7 +893,7 @@ function PickList({
     >
       {title}
       {list.waiting.length === 0 ? (
-        <NothingNeedsYou quiet={quiet} />
+        othersNeedCount(list.others) === 0 && <NothingNeedsYou quiet={quiet} />
       ) : (
         <GroupCard aria-label="Waiting on you">
           {list.waiting.map((w, i) =>
@@ -841,6 +924,7 @@ function PickList({
           )}
         </GroupCard>
       )}
+      <OtherMachines others={list.others} rows />
       <History
         list={list}
         sessions={view.sessions}
@@ -956,7 +1040,9 @@ function PickedDetail({
     );
   return (
     <div className="text-muted-foreground grid min-h-0 flex-1 place-items-center p-6 text-center text-sm">
-      Nothing needs you
+      {othersNeedCount(list.others)
+        ? "What's waiting runs on another machine. Pick it to answer it there."
+        : "Nothing needs you"}
     </div>
   );
 }
@@ -1105,7 +1191,7 @@ function OneColumn({
         )}
       >
         {title}
-        {list.waiting.length === 0 && <NothingNeedsYou quiet={quiet} />}
+        {list.count === 0 && <NothingNeedsYou quiet={quiet} />}
         {list.waiting.map((w, i) =>
           w.kind === "session" ? (
             <AskCard
@@ -1125,6 +1211,7 @@ function OneColumn({
             />
           )
         )}
+        <OtherMachines others={list.others} />
         <History
           list={list}
           sessions={view.sessions}

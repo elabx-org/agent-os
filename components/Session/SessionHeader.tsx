@@ -159,7 +159,10 @@ export function PageHeader({
         </div>
       ) : (
         <div className="flex min-w-0 items-center gap-1.5 text-[13px]">
-          <MachineChip className="mr-0.5 h-6 text-[12px]" />
+          <MachineChip
+            compact={size === "compact"}
+            className="mr-0.5 h-6 text-[12px]"
+          />
           {cards && (
             <Avatar
               {...agentAvatar(session.agent_type)}

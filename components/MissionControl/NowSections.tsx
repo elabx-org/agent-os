@@ -32,7 +32,10 @@ import { openOnMachine } from "@/components/Machines/useOtherMachinesNow";
 import {
   EMPTY_OTHERS,
   mergeQuiet,
+  othersNeedCount,
+  othersWorkingCount,
   type OtherMachinesNow,
+  type TaggedAgent,
   type TaggedSession,
 } from "@/lib/machine-now";
 import { shortAge } from "./now-summary";
@@ -63,6 +66,9 @@ const openOther = ({ tag, session }: TaggedSession) =>
 
 const otherTitle = ({ session }: TaggedSession) =>
   displayTitle(session, {}).title;
+
+/** A background agent on another machine: its home there lists it */
+const openOtherAgent = ({ tag }: TaggedAgent) => openOnMachine(tag, {});
 
 const projectOf = (
   projectNames: Record<string, string>,
@@ -101,7 +107,7 @@ export function NeedsSection({
   const agents = now.blocked.flatMap((group) =>
     group.agents.map((agent) => ({ agent, projectName: group.projectName }))
   );
-  if (now.waiting.length + agents.length + others.needs.length === 0)
+  if (now.waiting.length + agents.length + othersNeedCount(others) === 0)
     return null;
 
   if (wide)
@@ -139,6 +145,16 @@ export function NeedsSection({
               onClick={() => openOther(item)}
             />
           ))}
+          {others.blocked.map((item) => (
+            <GroupRow
+              key={`${item.tag.target}:${item.agent.id}`}
+              leading={<Avatar {...agentAvatar("claude")} />}
+              title={item.agent.name}
+              subtitle="Background agent waiting"
+              trailing={<MachineTag tag={item.tag} />}
+              onClick={() => openOtherAgent(item)}
+            />
+          ))}
         </GroupCard>
       </>
     );
@@ -163,19 +179,43 @@ export function NeedsSection({
       {others.needs.map((item) => (
         <OtherNeedsCard
           key={`${item.tag.target}:${item.session.id}`}
-          item={item}
+          tag={item.tag}
+          title={otherTitle(item)}
+          detail={item.project}
+          onOpen={() => openOther(item)}
+        />
+      ))}
+      {others.blocked.map((item) => (
+        <OtherNeedsCard
+          key={`${item.tag.target}:${item.agent.id}`}
+          tag={item.tag}
+          title={item.agent.name}
+          detail="Background agent"
+          onOpen={() => openOtherAgent(item)}
         />
       ))}
     </>
   );
 }
 
-/** A session waiting on another machine: it answers there, a tap away */
-function OtherNeedsCard({ item }: { item: TaggedSession }) {
+/** A session or agent waiting on another machine: it answers there, a tap
+    away */
+export function OtherNeedsCard({
+  tag,
+  title,
+  detail,
+  onOpen,
+}: {
+  tag: TaggedSession["tag"];
+  title: string;
+  /** Its project, or what it is */
+  detail?: string;
+  onOpen: () => void;
+}) {
   return (
     <button
       type="button"
-      onClick={() => openOther(item)}
+      onClick={onOpen}
       className="bg-card border-needs/40 flex flex-col gap-1.5 rounded-[22px] border p-3.5 text-left active:opacity-80"
     >
       <span className="text-muted-foreground flex w-full min-w-0 items-center gap-2 text-[13px]">
@@ -184,13 +224,13 @@ function OtherNeedsCard({ item }: { item: TaggedSession }) {
           Waiting
         </span>
         <span className="min-w-0 flex-1 truncate">
-          {item.project ? `· ${item.project}` : ""}
+          {detail ? `· ${detail}` : ""}
         </span>
-        <MachineTag tag={item.tag} />
+        <MachineTag tag={tag} />
       </span>
-      <span className="t-head w-full truncate">{otherTitle(item)}</span>
+      <span className="t-head w-full truncate">{title}</span>
       <span className="text-foreground/75">
-        Open it to answer on {item.tag.name}.
+        Open it to answer on {tag.name}.
       </span>
     </button>
   );
@@ -335,7 +375,7 @@ export function WorkingSection({
 }: SectionProps) {
   const { working } = now;
   const { settle } = useSettle();
-  if (now.workingCount + others.working.length === 0) return null;
+  if (now.workingCount + othersWorkingCount(others) === 0) return null;
 
   // A working row: ask first (its turn ends with the tmux window), then it
   // moves to Settled with a few seconds to undo before the settle is sent
@@ -468,6 +508,17 @@ export function WorkingSection({
             />
           );
         })}
+        {others.agents.map((item) => (
+          <GroupRow
+            key={`${item.tag.target}:${item.agent.id}`}
+            leading={<Avatar {...agentAvatar("claude")} />}
+            title={item.agent.name}
+            subtitle="Background agent working"
+            trailing={<MachineTag tag={item.tag} />}
+            chevron={!wide}
+            onClick={() => openOtherAgent(item)}
+          />
+        ))}
       </GroupCard>
     </section>
   );
@@ -648,7 +699,12 @@ export function QuietSection({
     QUIET_SHOWN
   );
   const loose = now.loose.slice(0, QUIET_SHOWN - projects.length);
-  if (!projects.length && !loose.length) return null;
+  // The other machines' own loose sessions, in what room is left
+  const otherLoose = others.loose.slice(
+    0,
+    QUIET_SHOWN - projects.length - loose.length
+  );
+  if (!projects.length && !loose.length && !otherLoose.length) return null;
   const quietRow = (label: string) => (
     <span className="text-muted-foreground font-normal">{label}</span>
   );
@@ -657,7 +713,11 @@ export function QuietSection({
       <SectionTitle
         action={{ label: "All projects", onClick: () => runNav("projects") }}
       >
-        Quiet · {now.quiet.length + now.loose.length + others.quiet.length}
+        Quiet ·{" "}
+        {now.quiet.length +
+          now.loose.length +
+          others.quiet.length +
+          others.loose.length}
       </SectionTitle>
       <GroupCard aria-label="Quiet">
         {projects.map((entry) =>
@@ -710,6 +770,19 @@ export function QuietSection({
             />
           );
         })}
+        {otherLoose.map((item) => (
+          <GroupRow
+            key={`${item.tag.target}:${item.session.id}`}
+            leading={
+              <Avatar {...agentAvatar(item.session.agent_type)} size="sm" />
+            }
+            title={quietRow(otherTitle(item))}
+            trailing={<MachineTag tag={item.tag} />}
+            chevron
+            onClick={() => openOther(item)}
+            className="min-h-12 py-2.5"
+          />
+        ))}
       </GroupCard>
     </section>
   );

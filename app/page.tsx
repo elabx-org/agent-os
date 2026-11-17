@@ -42,6 +42,8 @@ import { useViewport } from "@/hooks/useViewport";
 import { useViewportHeight } from "@/hooks/useViewportHeight";
 import { useNativeBridge } from "@/hooks/useNativeBridge";
 import { useSessionLinks } from "@/hooks/useSessionLinks";
+import { useOtherMachinesNow } from "@/components/Machines/useOtherMachinesNow";
+import { othersNeedCount } from "@/lib/machine-now";
 import { usePresence } from "@/hooks/usePresence";
 import { useFoldPosture } from "@/hooks/useFoldPosture";
 import { useViewShortcuts } from "@/hooks/useViewShortcuts";
@@ -705,10 +707,12 @@ function HomeContent() {
   // One count for the column badge, the iOS app and the Now hero: waiting
   // sessions plus blocked background agents
   const needs = useNeedsYou(sessions, sessionStatuses);
+  // With what waits on the other linked machines: one number everywhere
+  const needsCount = needs.count + othersNeedCount(useOtherMachinesNow());
   useEffect(() => {
-    mobileNavStore.needsYou = needs.count;
-  }, [needs.count]);
-  useNativeBridge({ waitingCount: needs.count });
+    mobileNavStore.needsYou = needsCount;
+  }, [needsCount]);
+  useNativeBridge({ waitingCount: needsCount });
 
   // Background agents only reach the browser through the server's history
   const agents = needs.agents;

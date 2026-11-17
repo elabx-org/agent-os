@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Laptop } from "lucide-react";
 import { useMachines, useTabMachineId } from "@/data/machines";
 import { MACHINE_GONE_EVENT, switchMachine } from "@/lib/client/machine";
+import { MACHINE_QUERY } from "@/lib/machine-marker";
 import { openPage } from "@/stores/workspacePage";
 
 /**
@@ -19,7 +20,9 @@ export function MachineGate() {
 }
 
 function Gate({ id }: { id: string }) {
-  const { data, refetch } = useMachines(3000);
+  // A call that fails says so at once (below): this only catches a machine
+  // that went away while the tab sat idle
+  const { data, refetch } = useMachines(15000);
   const [checking, setChecking] = useState(false);
   const retry = async () => {
     setChecking(true);
@@ -89,9 +92,13 @@ function useProjectLink() {
   useEffect(() => {
     const url = new URL(window.location.href);
     const projectId = url.searchParams.get("project");
-    if (!projectId) return;
+    // "?machine=" (a notification's link) was taken by the tab before the
+    // app started; off the address here, once the router has settled it
+    const linked = url.searchParams.has(MACHINE_QUERY);
+    if (!projectId && !linked) return;
     url.searchParams.delete("project");
-    window.history.replaceState(null, "", url);
-    openPage({ kind: "project", projectId });
+    url.searchParams.delete(MACHINE_QUERY);
+    window.history.replaceState(window.history.state, "", url);
+    if (projectId) openPage({ kind: "project", projectId });
   }, []);
 }

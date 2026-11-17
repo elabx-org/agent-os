@@ -128,6 +128,7 @@ final class AppModel {
     let browser = Browser()
     /// A session to open once the page has loaded (a notification or link launched the app)
     @ObservationIgnored private var pendingSession: String?
+    @ObservationIgnored private var pendingMachine: String?
     /// A column action to run once the page is listening (a tapped agent notification)
     @ObservationIgnored private var pendingNav: String?
     /// The page has reported its state, so its nav listener is up
@@ -202,8 +203,9 @@ final class AppModel {
         send(["type": "posture", "fold": fold?.json ?? NSNull()], keep: "fold")
     }
 
-    /// agentos://session/<id>, from an ntfy notification or anywhere else,
-    /// or a file shared to the app
+    /// agentos://session/<id>, from an ntfy notification or anywhere else
+    /// (?machine=<id> when it runs on a linked machine), or a file shared
+    /// to the app
     func handle(url: URL) {
         if url.isFileURL {
             share(file: url)
@@ -215,7 +217,9 @@ final class AppModel {
         }
         guard url.scheme == "agentos", url.host == "session",
               let id = url.pathComponents.dropFirst().first, !id.isEmpty else { return }
-        openSession(id)
+        let machine = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+            .queryItems?.first { $0.name == "machine" }?.value
+        openSession(id, machine: machine)
     }
 
     /// A nav action that may arrive before the page has started (cold launch)
@@ -248,8 +252,10 @@ final class AppModel {
         UserDefaults.standard.set(present, forKey: Self.duoKey)
     }
 
-    func openSession(_ id: String) {
+    /// `machine`: the linked machine the session runs on, or "hub"
+    func openSession(_ id: String, machine: String? = nil) {
         pendingSession = id
+        pendingMachine = machine
         if webView?.isLoading == false { flushPending() }
     }
 
@@ -293,8 +299,15 @@ final class AppModel {
     private func flushPending() {
         if let id = pendingSession {
             pendingSession = nil
-            // Kept on agentosNative too, for a page still starting up
-            send(["type": "open", "sessionId": id], keep: "open")
+            // Kept on agentosNative too ("<machine>/<id>", or the id), for
+            // a page still starting up
+            var event: [String: Any] = ["type": "open", "sessionId": id, "open": id]
+            if let machine = pendingMachine, !machine.isEmpty {
+                event["machineId"] = machine
+                event["open"] = "\(machine)/\(id)"
+            }
+            pendingMachine = nil
+            send(event, keep: "open")
         }
         if let file = pendingFile {
             pendingFile = nil

@@ -94,6 +94,39 @@ export function cookieAssignment(machine: string | null): string {
     : `${MACHINE_COOKIE}=; Path=/; Max-Age=0; SameSite=Strict`;
 }
 
+/**
+ * Where a link says its session lives: a machine's id, "hub" for this
+ * server, or null when it doesn't say (an older app, a plain link)
+ */
+export function linkTarget(value: unknown): string | null {
+  return value === HUB_TARGET || isMachineId(value) ? value : null;
+}
+
+/**
+ * A link the app kept for a page still starting: "<machine>/<session>", or
+ * just the session
+ */
+export function parseKeptLink(kept: string): {
+  session: string;
+  target: string | null;
+} {
+  const slash = kept.indexOf("/");
+  if (slash < 0) return { session: kept, target: null };
+  return {
+    session: kept.slice(slash + 1),
+    target: linkTarget(kept.slice(0, slash)),
+  };
+}
+
+/** Whether a link's target is somewhere other than where the tab is */
+export function isElsewhere(
+  target: string | null,
+  tabMachine: string | null
+): boolean {
+  if (!target) return false;
+  return target === HUB_TARGET ? !!tabMachine : target !== tabMachine;
+}
+
 /** What to open once the tab is on the other machine */
 export interface SwitchOpen {
   session?: string;

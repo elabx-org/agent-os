@@ -5,7 +5,7 @@ import { useQueries, useQuery } from "@tanstack/react-query";
 import type { Session } from "@/lib/db";
 import { fetchOn, tabMachine } from "@/lib/client/machine";
 import { HUB_TARGET } from "@/lib/machine-marker";
-import type { MachineSource, MachineTag } from "@/lib/machine-now";
+import type { AgentLike, MachineSource, MachineTag } from "@/lib/machine-now";
 import type { SessionStatus } from "@/components/views/types";
 import type { ProjectWithRepositories } from "@/lib/projects";
 
@@ -110,6 +110,10 @@ async function readJson<T>(target: string, path: string): Promise<T> {
 
 const LISTS_MS = 15000;
 const STATUS_MS = 5000;
+/** Each read may start the CLI on that machine */
+const AGENTS_MS = 30000;
+/** Reads per machine in useMachineSources */
+const PER_TAG = 4;
 
 /**
  * Sessions, statuses and projects on each of `tags`: Now's rows from the
@@ -145,17 +149,30 @@ export function useMachineSources(tags: MachineTag[]): MachineSource[] {
         refetchInterval: LISTS_MS * 2,
         staleTime: LISTS_MS,
       },
+      {
+        queryKey: machineKeys.on(tag.target, "agents"),
+        queryFn: () =>
+          readJson<{ agents?: AgentLike[] }>(
+            tag.target,
+            "/api/background-agents"
+          ),
+        refetchInterval: AGENTS_MS,
+        staleTime: AGENTS_MS / 2,
+      },
     ]),
   });
   return tags.flatMap((tag, i) => {
-    const sessions = queries[i * 3].data as
+    const sessions = queries[i * PER_TAG].data as
       | { sessions?: Session[] }
       | undefined;
-    const statuses = queries[i * 3 + 1].data as
+    const statuses = queries[i * PER_TAG + 1].data as
       | { statuses?: Record<string, SessionStatus> }
       | undefined;
-    const projects = queries[i * 3 + 2].data as
+    const projects = queries[i * PER_TAG + 2].data as
       | { projects?: ProjectWithRepositories[] }
+      | undefined;
+    const agents = queries[i * PER_TAG + 3].data as
+      | { agents?: AgentLike[] }
       | undefined;
     // Shown once its sessions are in; the rest fill in
     if (!sessions?.sessions) return [];
@@ -165,6 +182,7 @@ export function useMachineSources(tags: MachineTag[]): MachineSource[] {
         sessions: sessions.sessions,
         statuses: statuses?.statuses ?? {},
         projects: projects?.projects ?? [],
+        agents: agents?.agents ?? [],
       },
     ];
   });
