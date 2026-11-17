@@ -232,6 +232,9 @@ server.on("exit", (code, signal) => {
 
 const created = new Set();
 let ws = null;
+// Everything the browser terminal received
+let output = "";
+const plain = (text) => text.replace(/\x1b\[[0-9;?]*[ -\/]*[@-~]/g, "").replace(/\r/g, "");
 
 async function cleanup() {
   try {
@@ -341,12 +344,14 @@ try {
     });
 
     // --- the browser's terminal ---
-    let output = "";
     const messages = [];
     const send = (msg) => ws.send(JSON.stringify(msg));
     const reply = (type, id, ms = 15000) =>
       until(`${type} ${id}`, () => messages.find((m) => m.type === type && m.id === id), Boolean, ms);
-    const sawOutput = (text, ms) => until(`terminal output "${text}"`, () => output, (o) => o.includes(text), ms);
+    const sawOutput = (text, ms) =>
+      until(`terminal output "${text}"`, () => output, (o) => o.includes(text), ms).catch((error) => {
+        throw new Error(`${error.message.split("; last:")[0]}; the terminal's last lines:\n${plain(output).split("\n").slice(-25).join("\n")}`);
+      });
 
     const wsUp = await check("/ws/terminal opens a PTY (node-pty)", async () => {
       ws = new WebSocket(`ws://127.0.0.1:${PORT}/ws/terminal`, {
@@ -524,6 +529,7 @@ try {
   console.log(`smoke: aborted: ${error?.stack || error}`);
   results.push({ name: "aborted", ok: false });
 } finally {
+  fs.writeFileSync(path.join(ARTIFACTS, "terminal.txt"), output);
   await cleanup();
 }
 
