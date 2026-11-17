@@ -8,9 +8,12 @@ import {
   cookieAssignment,
   headerFor,
   inviteHasSignIn,
+  isElsewhere,
   isMachineGone,
+  linkTarget,
   markedSocketUrl,
   markerFor,
+  parseKeptLink,
   readCookie,
   shortCommand,
   switchHref,
@@ -19,6 +22,8 @@ import {
   lastUsedByProject,
   mergeQuiet,
   otherMachinesNow,
+  othersNeedCount,
+  othersWorkingCount,
   type MachineSource,
   type MachineTag,
 } from "../../lib/machine-now";
@@ -234,6 +239,98 @@ describe("Now's rows from another machine", () => {
       now.quiet.map((q) => q.project.id),
       ["p3", "p4"]
     );
+  });
+});
+
+describe("Now's agents and loose sessions from another machine", () => {
+  const now = otherMachinesNow([
+    {
+      tag: macTag,
+      sessions: [
+        session("waits", { project_id: "p1" }),
+        session("loose", { updated_at: "2026-11-17T07:00:00Z" }),
+        session("stray", {
+          project_id: "u",
+          updated_at: "2026-11-17T07:30:00Z",
+        }),
+        session("filed", { project_id: "p1" }),
+        session("handed", { paused_at: 1 }),
+      ],
+      statuses: { waits: { status: "waiting" }, loose: { status: "idle" } },
+      projects: [
+        { id: "p1", name: "one" },
+        { id: "u", name: "Uncategorized", is_uncategorized: 1 },
+      ],
+      agents: [
+        { id: "a1", name: "asks", cwd: "/x", state: "blocked", startedAt: 1 },
+        { id: "a2", name: "builds", cwd: "/x", state: "working" },
+        { id: "a3", name: "done", cwd: "/x", state: "done" },
+        {
+          id: "a4",
+          name: "parked",
+          cwd: "/x",
+          state: "blocked",
+          agentOsSessionId: "waits",
+        },
+      ],
+    },
+  ]);
+
+  test("blocked and working agents, not finished or parked ones", () => {
+    assert.deepEqual(
+      now.blocked.map((a) => [a.agent.id, a.tag.name]),
+      [["a1", "MacBook"]]
+    );
+    assert.deepEqual(
+      now.agents.map((a) => a.agent.id),
+      ["a2"]
+    );
+  });
+
+  test("the one count: waiting sessions and blocked agents", () => {
+    assert.equal(othersNeedCount(now), 2);
+    assert.equal(othersWorkingCount(now), 1);
+  });
+
+  test("idle sessions outside every project, most recent first", () => {
+    assert.deepEqual(
+      now.loose.map((r) => r.session.id),
+      ["stray", "loose"]
+    );
+  });
+});
+
+describe("a link that says where its session runs", () => {
+  test("a machine, this server, or nothing", () => {
+    assert.equal(linkTarget(MAC), MAC);
+    assert.equal(linkTarget("hub"), "hub");
+    assert.equal(linkTarget("m_nope"), null);
+    assert.equal(linkTarget(undefined), null);
+  });
+
+  test("what the app kept for a starting page", () => {
+    assert.deepEqual(parseKeptLink("abc"), { session: "abc", target: null });
+    assert.deepEqual(parseKeptLink(`${MAC}/abc`), {
+      session: "abc",
+      target: MAC,
+    });
+    assert.deepEqual(parseKeptLink("hub/abc"), {
+      session: "abc",
+      target: "hub",
+    });
+    assert.deepEqual(parseKeptLink("junk/abc"), {
+      session: "abc",
+      target: null,
+    });
+  });
+
+  test("moves the tab only when it's somewhere else", () => {
+    assert.equal(isElsewhere(null, null), false);
+    assert.equal(isElsewhere(null, MAC), false);
+    assert.equal(isElsewhere("hub", null), false);
+    assert.equal(isElsewhere("hub", MAC), true);
+    assert.equal(isElsewhere(MAC, null), true);
+    assert.equal(isElsewhere(MAC, MAC), false);
   });
 });
 

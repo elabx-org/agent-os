@@ -32,7 +32,12 @@ export type NativeEvent =
   /** The fold while half open, in the page's CSS pixels */
   | { type: "posture"; fold: Fold | null }
   /** Open a session: a tapped notification or an agentos://session/<id> link */
-  | { type: "open"; sessionId: string }
+  | {
+      type: "open";
+      sessionId: string;
+      /** The linked machine it runs on, or "hub"; unset from older apps */
+      machineId?: string;
+    }
   /** A file shared to the app ("Open in AgentOS"), for the focused session */
   | { type: "file"; file: SharedFile }
   /** The minimised Safari pages changed; `closed`: one just closed (Undo) */
@@ -103,7 +108,8 @@ declare global {
       fold?: Fold | null;
       /** Running on an iPhone Duo (app builds that say; else guessed by size) */
       duo?: boolean;
-      /** A session to open, set when a link launched the app */
+      /** A session to open, set when a link launched the app: its id, or
+          "<machine>/<id>" when the link says where it runs */
       open?: string;
       /** A file shared to the app before the page was ready */
       file?: SharedFile;

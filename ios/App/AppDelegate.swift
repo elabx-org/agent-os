@@ -42,9 +42,12 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         _ center: UNUserNotificationCenter,
         didReceive response: UNNotificationResponse
     ) async {
-        let id = response.notification.request.content.userInfo["sessionId"] as? String
+        let info = response.notification.request.content.userInfo
+        let id = info["sessionId"] as? String
+        // The linked machine it runs on, or "hub"; unset from older servers
+        let machine = info["machineId"] as? String
         await MainActor.run {
-            if let id { model.openSession(id) } else { model.openNav("inbox") }
+            if let id { model.openSession(id, machine: machine) } else { model.openNav("inbox") }
         }
     }
 }

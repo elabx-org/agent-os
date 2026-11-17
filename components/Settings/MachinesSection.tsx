@@ -436,9 +436,9 @@ function expiresIn(expiresAt: number, now: number): string | null {
 }
 
 /**
- * The three steps. The one-time command is asked for when this screen
- * opens (POST /api/machines/pair, the user's own call) and again on "New
- * command" once it runs out.
+ * The three steps. The one-time command is only made when asked for ("Get
+ * the command": POST /api/machines/pair, the user's own call), and again
+ * on "New command" once it runs out. Nothing is made by opening Settings.
  */
 function AddMac() {
   const [pairing, setPairing] = useState<Pairing | null>(null);
@@ -462,10 +462,6 @@ function AddMac() {
       setLoading(false);
     }
   }, []);
-
-  useEffect(() => {
-    void ask();
-  }, [ask]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 15000);
@@ -492,6 +488,15 @@ function AddMac() {
       <Step n={1} title="On the Mac, paste this into Terminal">
         {error ? (
           <p className="mt-2 text-[14px] text-red-500">{error}</p>
+        ) : !pairing ? (
+          <button
+            type="button"
+            disabled={loading}
+            onClick={() => void ask()}
+            className="pill pill-secondary pill-sm mt-2.5 active:opacity-80 disabled:opacity-60"
+          >
+            {loading ? "Making a command…" : "Get the command"}
+          </button>
         ) : (
           <div
             className={cn(
@@ -517,11 +522,13 @@ function AddMac() {
         )}
         <p className="text-muted-foreground mt-2 flex items-center gap-2 text-[13px]">
           <span>
-            {loading
-              ? "Making a command…"
-              : expired
-                ? "This command has run out"
-                : (left ?? "")}
+            {!pairing && !error
+              ? "It works once, for 10 minutes"
+              : loading
+                ? "Making a command…"
+                : expired
+                  ? "This command has run out"
+                  : (left ?? "")}
           </span>
           {(expired || error || (pairing && !loading)) && (
             <button

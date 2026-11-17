@@ -28,11 +28,23 @@ export interface ProjectLike {
   sort_order?: number;
 }
 
+/** Only what the model reads of a background agent */
+export interface AgentLike {
+  id: string;
+  name: string;
+  cwd: string;
+  state: string;
+  startedAt?: number;
+  /** Set when it's a session sent to the background: listed as that session */
+  agentOsSessionId?: string;
+}
+
 export interface MachineSource {
   tag: MachineTag;
   sessions: Session[];
   statuses: Record<string, StatusLike>;
   projects: ProjectLike[];
+  agents?: AgentLike[];
 }
 
 export interface TaggedSession {
@@ -51,17 +63,39 @@ export interface TaggedProject {
   lastUsed: string;
 }
 
+export interface TaggedAgent {
+  tag: MachineTag;
+  agent: AgentLike;
+}
+
 export interface OtherMachinesNow {
   needs: TaggedSession[];
   working: TaggedSession[];
   quiet: TaggedProject[];
+  /** Background agents waiting on you there */
+  blocked: TaggedAgent[];
+  /** Background agents working there */
+  agents: TaggedAgent[];
+  /** Idle sessions outside every project there, most recent first */
+  loose: TaggedSession[];
 }
 
 export const EMPTY_OTHERS: OtherMachinesNow = {
   needs: [],
   working: [],
   quiet: [],
+  blocked: [],
+  agents: [],
+  loose: [],
 };
+
+/** What needs you on the other machines: sessions and blocked agents */
+export const othersNeedCount = (others: OtherMachinesNow) =>
+  others.needs.length + others.blocked.length;
+
+/** What's working on the other machines: sessions and agents */
+export const othersWorkingCount = (others: OtherMachinesNow) =>
+  others.working.length + others.agents.length;
 
 const newestFirst = (a: TaggedSession, b: TaggedSession) =>
   b.session.updated_at.localeCompare(a.session.updated_at);
@@ -91,8 +125,18 @@ export function otherMachinesNow(
   const needs: TaggedSession[] = [];
   const working: TaggedSession[] = [];
   const quiet: TaggedProject[] = [];
-  for (const { tag, sessions, statuses, projects } of sources) {
-    const names = new Map(projects.map((p) => [p.id, p.name]));
+  const blocked: TaggedAgent[] = [];
+  const agents: TaggedAgent[] = [];
+  const loose: TaggedSession[] = [];
+  for (const source of sources) {
+    const { tag, sessions, statuses, projects } = source;
+    // Uncategorized isn't a project to name
+    const names = new Map(
+      projects.filter((p) => !p.is_uncategorized).map((p) => [p.id, p.name])
+    );
+    const uncategorized = new Set(
+      projects.filter((p) => p.is_uncategorized).map((p) => p.id)
+    );
     const busy = new Set<string>();
     for (const session of sessions) {
       if (session.conductor_session_id || isEnded(session)) continue;
@@ -109,8 +153,19 @@ export function otherMachinesNow(
       };
       if (status?.status === "waiting") needs.push(row);
       else if (status?.status === "running") working.push(row);
-      else continue;
+      else {
+        // Idle and outside every project: no quiet project lists it
+        if (!session.project_id || uncategorized.has(session.project_id))
+          loose.push(row);
+        continue;
+      }
       if (session.project_id) busy.add(session.project_id);
+    }
+    for (const agent of source.agents ?? []) {
+      // A session sent to the background is listed as that session
+      if (agent.agentOsSessionId) continue;
+      if (agent.state === "blocked") blocked.push({ tag, agent });
+      else if (agent.state === "working") agents.push({ tag, agent });
     }
     const lastUsed = lastUsedByProject(sessions);
     for (const project of projects) {
@@ -125,7 +180,12 @@ export function otherMachinesNow(
       b.lastUsed.localeCompare(a.lastUsed) ||
       (a.project.sort_order ?? 0) - (b.project.sort_order ?? 0)
   );
-  return { needs, working, quiet };
+  loose.sort(newestFirst);
+  const newestAgent = (a: TaggedAgent, b: TaggedAgent) =>
+    (b.agent.startedAt ?? 0) - (a.agent.startedAt ?? 0);
+  blocked.sort(newestAgent);
+  agents.sort(newestAgent);
+  return { needs, working, quiet, blocked, agents, loose };
 }
 
 /** A quiet row on Now: this server's project, or another machine's */

@@ -2,12 +2,22 @@
 
 import { useEffect, useRef } from "react";
 import { onNativeEvent } from "@/lib/native-bridge";
+import {
+  findSessionElsewhere,
+  followLink,
+  tabMachine,
+} from "@/lib/client/machine";
+import { isElsewhere, linkTarget, parseKeptLink } from "@/lib/machine-marker";
 import type { Session } from "@/lib/db";
+
+/** How long a link waits for its session here before asking elsewhere */
+const ELSEWHERE_MS = 2000;
 
 /**
  * Opens the session a notification points at: `?session=<id>` in a browser,
  * or an `open` event from the iOS app (agentos://session/<id>). Waits for the
- * session list when the link arrives before it has loaded.
+ * session list when the link arrives before it has loaded. A session on a
+ * linked machine (the link says which, or it's found there) moves the tab.
  */
 export function useSessionLinks(
   sessions: Session[],
@@ -37,6 +47,24 @@ export function useSessionLinks(
   sessionsRef.current = sessions;
 
   useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    // A link to a session, perhaps saying where it runs
+    const follow = (id: string | null | undefined, target: string | null) => {
+      if (!id) return;
+      if (isElsewhere(target, tabMachine())) return followLink(target!, id);
+      pending.current = id;
+      tryOpen.current(sessionsRef.current);
+      // Not here: it may be on another linked machine (or back on this
+      // server, when the tab is on one)
+      clearTimeout(timer);
+      timer = setTimeout(async () => {
+        if (pending.current !== id) return;
+        if (sessionsRef.current.some((s) => s.id === id)) return;
+        const where = await findSessionElsewhere(id);
+        if (where && pending.current === id) followLink(where, id);
+      }, ELSEWHERE_MS);
+    };
+
     const url = new URL(window.location.href);
     const fromUrl = url.searchParams.get("session");
     if (fromUrl) {
@@ -44,16 +72,25 @@ export function useSessionLinks(
       window.history.replaceState(null, "", url);
     }
     // A link that launched the app arrives before the page could listen
-    pending.current = window.agentosNative?.open ?? fromUrl;
+    const kept = window.agentosNative?.open;
     if (window.agentosNative) window.agentosNative.open = undefined;
-    tryOpen.current(sessionsRef.current);
+    if (kept) {
+      const link = parseKeptLink(kept);
+      follow(link.session, link.target);
+    } else {
+      // "?machine=" was already taken by the tab (lib/client/machine.ts)
+      follow(fromUrl, null);
+    }
 
-    return onNativeEvent((event) => {
+    const off = onNativeEvent((event) => {
       if (event.type !== "open") return;
-      pending.current = event.sessionId;
       if (window.agentosNative) window.agentosNative.open = undefined;
-      tryOpen.current(sessionsRef.current);
+      follow(event.sessionId, linkTarget(event.machineId));
     });
+    return () => {
+      clearTimeout(timer);
+      off();
+    };
   }, []);
 
   useEffect(() => {

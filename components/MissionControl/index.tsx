@@ -29,7 +29,11 @@ import { useAutoSettleToasts } from "./useAutoSettleToasts";
 import { useNowItems } from "./useNowItems";
 import { MachineChip } from "@/components/Machines/MachineChip";
 import { useOtherMachinesNow } from "@/components/Machines/useOtherMachinesNow";
-import { lastUsedByProject } from "@/lib/machine-now";
+import {
+  lastUsedByProject,
+  othersNeedCount,
+  othersWorkingCount,
+} from "@/lib/machine-now";
 
 /** The mocks' page padding per posture (Main, E-iPhone, Open-Now) */
 /** The Undo toasts' sides: the page's gutters (narrow pages) */
@@ -118,8 +122,8 @@ export function MissionControl({
   const behindTitle = behind ? displayTitle(behind, now.titles).title : null;
   // The needs count is useNeedsYou's, as on the column badge
   const counts = {
-    needs: now.needsCount + others.needs.length,
-    working: now.workingCount + others.working.length,
+    needs: now.needsCount + othersNeedCount(others),
+    working: now.workingCount + othersWorkingCount(others),
     limited: now.limited.length,
     settledToday: now.settled.length,
   };
@@ -240,7 +244,10 @@ export function MissionControl({
             <div className="px-1 py-2">
               <p className="font-medium">Nothing running</p>
               <p className="text-muted-foreground text-sm">
-                {now.quiet.length + now.loose.length + others.quiet.length
+                {now.quiet.length +
+                now.loose.length +
+                others.quiet.length +
+                others.loose.length
                   ? "Start a session, or pick up one below."
                   : "Start a session."}
               </p>

@@ -26,12 +26,25 @@ export const presenceWord = (m: MachineView) =>
  * and the name. Tapping it lists this server and each machine; picking one
  * reloads the app there. Nothing on this server.
  */
-export function MachineChip({ className }: { className?: string }) {
+export function MachineChip({
+  className,
+  compact,
+}: {
+  className?: string;
+  /** Just the glyph, where the row has no room for the name */
+  compact?: boolean;
+}) {
   if (!useTabMachineId()) return null;
-  return <Chip className={className} />;
+  return <Chip className={className} compact={compact} />;
 }
 
-function Chip({ className }: { className?: string }) {
+function Chip({
+  className,
+  compact,
+}: {
+  className?: string;
+  compact?: boolean;
+}) {
   const { id, machine } = useTabMachine();
   const { data } = useMachines();
   const linked = data?.machines.filter((m) => m.status === "approved") ?? [];
@@ -41,13 +54,17 @@ function Chip({ className }: { className?: string }) {
         <button
           type="button"
           aria-label={`On ${machine?.name ?? "another machine"}. Switch machine`}
+          title={compact ? machine?.name : undefined}
           className={cn(
             "relative inline-flex h-7 max-w-[11rem] shrink-0 items-center gap-1 rounded-full bg-violet-500/15 pr-2 pl-2.5 text-[13px] font-semibold text-violet-700 after:absolute after:inset-x-0 after:-inset-y-2 after:content-[''] active:opacity-70 dark:text-violet-300",
+            compact && "gap-0.5 pr-1.5 pl-2",
             className
           )}
         >
           <Laptop aria-hidden className="h-3.5 w-3.5 shrink-0" />
-          <span className="truncate">{machine?.name ?? "Mac"}</span>
+          {!compact && (
+            <span className="truncate">{machine?.name ?? "Mac"}</span>
+          )}
           <ChevronDown
             aria-hidden
             className="h-3.5 w-3.5 shrink-0 opacity-70"

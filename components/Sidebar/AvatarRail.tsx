@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { Plus, Sun, Terminal } from "lucide-react";
+import { Laptop, Plus, Server, Sun, Terminal } from "lucide-react";
 import type { Session } from "@/lib/db";
 import type { SessionStatus } from "@/components/views/types";
 import { Avatar, agentAvatar } from "@/components/a/Avatar";
@@ -10,6 +10,10 @@ import { sessionState } from "@/lib/paused";
 import { displayTitle, useListTitles } from "@/hooks/useSessionTitles";
 import { runNav } from "@/lib/nav-actions";
 import { cn } from "@/lib/utils";
+import {
+  openOnMachine,
+  useOtherMachinesNow,
+} from "@/components/Machines/useOtherMachinesNow";
 import { railSessions } from "./model";
 
 export interface AvatarRailProps {
@@ -67,6 +71,12 @@ export function AvatarRail({
     [sessions, sessionStatuses, shownIds]
   );
   const titles = useListTitles(live);
+  // What needs you or works on the other linked machines, after this one's
+  const others = useOtherMachinesNow();
+  const elsewhere = [
+    ...others.needs.map((item) => ({ item, state: "needs" as const })),
+    ...others.working.map((item) => ({ item, state: "work" as const })),
+  ];
 
   return (
     <nav
@@ -123,6 +133,40 @@ export function AvatarRail({
                 top={project ?? title}
                 sub={project ? title : undefined}
               />
+            </button>
+          );
+        })}
+        {elsewhere.map(({ item, state }) => {
+          const title = displayTitle(item.session, {}).title;
+          const Where = item.tag.kind === "server" ? Server : Laptop;
+          return (
+            <button
+              key={`${item.tag.target}:${item.session.id}`}
+              type="button"
+              onClick={() =>
+                openOnMachine(item.tag, { session: item.session.id })
+              }
+              aria-label={`${title}, ${STATE_WORD[state].toLowerCase()}, on ${item.tag.name}`}
+              title={`${title} · ${item.tag.name}`}
+              className="flex flex-none flex-col items-center gap-1 active:opacity-80"
+            >
+              <span className="relative rounded-xl">
+                <Avatar {...agentAvatar(item.session.agent_type)} />
+                <span
+                  aria-hidden
+                  className="border-page absolute -top-1 -left-1 grid h-[18px] w-[18px] place-items-center rounded-full border-2 bg-violet-500 text-white"
+                >
+                  <Where className="h-2.5 w-2.5" strokeWidth={2.6} />
+                </span>
+                <span
+                  aria-hidden
+                  className={cn(
+                    "border-page absolute -right-0.5 -bottom-0.5 h-3 w-3 rounded-full border-2",
+                    STATE_DOT_CLASS[state]
+                  )}
+                />
+              </span>
+              <RailCaption top={item.tag.name} sub={title} />
             </button>
           );
         })}

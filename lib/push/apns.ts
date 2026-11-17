@@ -102,7 +102,8 @@ export async function sendApns(
         : "active",
     },
     sessionId: message.sessionId,
-    machineId: message.machineId,
+    // "hub": this server, so the app can leave a linked machine for it
+    machineId: message.machineId ?? "hub",
   });
   const headers = {
     authorization: `bearer ${jwt(apns)}`,
