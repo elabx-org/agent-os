@@ -1,5 +1,6 @@
 "use client";
 
+import { MachineChip } from "@/components/Machines/MachineChip";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { useSnapshot } from "valtio";
@@ -846,6 +847,7 @@ export function SessionTitleBar({
       >
         {pageSlim && info ? (
           <div className="flex items-center gap-2 pt-2 pb-1.5">
+            <MachineChip className="h-6 text-[12px]" />
             <div className="flex min-w-0 flex-1 flex-col">
               <Crumb info={info} className="text-[13px] leading-tight" />
               <span className="truncate text-[15px] leading-snug font-semibold">

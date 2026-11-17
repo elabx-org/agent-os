@@ -1,5 +1,6 @@
 "use client";
 
+import { MachineChip } from "@/components/Machines/MachineChip";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useSnapshot } from "valtio";
 import {
@@ -218,6 +219,8 @@ export function DesktopSidebar({
           </button>
         )}
       </div>
+      {/* On a linked machine: which, and the way back */}
+      <MachineChip className="mx-1.5 self-start" />
 
       {newOpen ? (
         <div className="srow sel flex-none">

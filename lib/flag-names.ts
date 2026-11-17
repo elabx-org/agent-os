@@ -18,6 +18,7 @@ export const FLAG_NAMES = [
   "bgSendCleanup",
   "running",
   "claudeFullscreen",
+  "machines",
 ] as const;
 
 export type FlagName = (typeof FLAG_NAMES)[number];
@@ -58,6 +59,9 @@ export const FLAG_DEFAULTS: Flags = {
   // back is a round trip per row; normal mode leaves it to tmux, scrolled
   // on the device
   claudeFullscreen: false,
+  // Linked machines (lib/link): another AgentOS, e.g. on a Mac, that dials
+  // out to this one. Off: nothing can link and no request leaves this server
+  machines: false,
 };
 
 export const FLAGS_PREFERENCE_KEY = "flags";
@@ -149,6 +153,10 @@ export const FLAG_LABELS: Record<FlagName, { label: string; hint: string }> = {
   claudeFullscreen: {
     label: "Claude full screen",
     hint: "Claude's own full-screen view, with its pinned prompt. Off scrolls smoothly on touch. Sessions started or restarted after",
+  },
+  machines: {
+    label: "Linked machines",
+    hint: "Run sessions on another computer, such as a Mac, from here. Adds Machines to Settings",
   },
 };
 
