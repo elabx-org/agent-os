@@ -29,6 +29,23 @@ for dir in "$HOME/.local/bin" /opt/homebrew/bin /opt/homebrew/sbin /usr/local/bi
 done
 export PATH
 
+# A Node this AgentOS's native modules have builds for (20 to 24). A newer
+# default (Homebrew's is the latest) can't compile them: use node@22 beside
+# it when it's there. The installer and the service decide the same way.
+node_ok() {
+  local major
+  major=$(node -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0)
+  [ "$major" -ge 20 ] && [ "$major" -le 24 ]
+}
+use_node22() {
+  local dir
+  for dir in /opt/homebrew/opt/node@22/bin /usr/local/opt/node@22/bin; do
+    [ -x "$dir/node" ] && PATH="$dir:$PATH" && export PATH && return 0
+  done
+  return 1
+}
+node_ok || use_node22 || true
+
 say() { printf '%s\n' "$*"; }
 die() { printf '%s\n' "$*" >&2; exit 1; }
 is_mac() { [ "$(uname -s)" = Darwin ]; }
