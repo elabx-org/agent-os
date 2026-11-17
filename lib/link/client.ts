@@ -132,6 +132,11 @@ export class LinkClient {
     try {
       headers = (await this.options.authHeaders?.()) ?? {};
     } catch (error) {
+      if (error instanceof Error && error.name === "SignInNeeded") {
+        // Nothing to retry with until the user signs in again
+        this.setState({ status: "signin", httpStatus: 0 });
+        return this.again(true);
+      }
       this.setState({
         status: "offline",
         reason: error instanceof Error ? error.message : "sign-in failed",
