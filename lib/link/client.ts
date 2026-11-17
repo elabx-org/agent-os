@@ -19,6 +19,7 @@ import {
   proofText,
   type Headers,
   type HubFrame,
+  type LinkNotice,
   type MachineFrame,
 } from "./protocol";
 
@@ -103,6 +104,14 @@ export class LinkClient {
     if (this.quiet) clearTimeout(this.quiet);
     this.ws?.close(1000);
     this.dropAll();
+  }
+
+  /** Tells the hub; false when there's no link to tell it over */
+  notify(notice: LinkNotice): boolean {
+    if (this.state.status !== "linked") return false;
+    if (this.ws?.readyState !== WebSocket.OPEN) return false;
+    this.ws.send(JSON.stringify({ t: "notify", ...notice } as MachineFrame));
+    return true;
   }
 
   private setState(state: LinkState): void {

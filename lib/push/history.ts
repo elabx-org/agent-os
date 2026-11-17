@@ -21,6 +21,8 @@ export interface NotificationEntry {
   sessionId?: string;
   agentId?: string;
   projectName?: string;
+  /** The linked machine it came from; unset for this one */
+  machineId?: string;
   /** ms since epoch */
   at: number;
   /** What each channel did; empty when nothing was sent */

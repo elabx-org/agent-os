@@ -11,6 +11,7 @@ import fs from "fs";
 import path from "path";
 import { USER_PROOF_COOKIE, userSecret } from "../user-proof";
 import { LinkClient, type LinkState } from "./client";
+import type { LinkNotice } from "./protocol";
 import { generateMachineKey, isPublicKey, type MachineKey } from "./keys";
 import { home, readSecret, writeSecret } from "./secrets";
 import { ownSha } from "./server";
@@ -128,6 +129,15 @@ function matchHub(sha: string): void {
 }
 
 let running: LinkClient | null = null;
+
+/**
+ * A linked machine has no phone of its own: what its sessions want to say
+ * goes to the hub, which notifies the way the user set it up there.
+ * False when this isn't a linked machine or the link is down.
+ */
+export function notifyHub(notice: LinkNotice): boolean {
+  return running?.notify(notice) ?? false;
+}
 
 /** server.ts, once listening: dials the hub when this is a linked machine */
 export function startMachineLink(localPort: number): LinkClient | null {

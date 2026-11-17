@@ -38,7 +38,19 @@ export type MachineFrame =
   | { t: "ws-open"; id: number }
   | { t: "ws-msg"; id: number; data: string }
   | { t: "ws-close"; id: number; code?: number }
-  | { t: "pong" };
+  | { t: "pong" }
+  /** Something the user should hear about (a session needs them, finished) */
+  | {
+      t: "notify";
+      kind: string;
+      title: string;
+      body: string;
+      sessionId?: string;
+      agentId?: string;
+      projectName?: string;
+    };
+
+export type LinkNotice = Omit<Extract<MachineFrame, { t: "notify" }>, "t">;
 
 export type HubFrame =
   | { t: "challenge"; nonce: string }

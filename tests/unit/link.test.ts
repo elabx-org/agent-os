@@ -348,3 +348,34 @@ test("a machine that can't sign its key is refused", async () => {
   c.stop();
   await r.close();
 });
+
+test("a machine's notice is checked and clipped before the hub shows it", async () => {
+  const { checkedNotice } = await import("../../lib/link/notices");
+  const mac = { id: "m_0123456789ab", name: "Studio Mac" };
+  const ok = checkedNotice(mac, {
+    kind: "needsYou",
+    title: "Needs you · api",
+    body: "x".repeat(900),
+    sessionId: "abc-123",
+    agentId: "../../etc",
+  });
+  assert.ok(ok);
+  assert.equal(ok.title, "Needs you · api · Studio Mac");
+  assert.equal(ok.body.length, 300);
+  assert.equal(ok.sessionId, "abc-123");
+  assert.equal(ok.agentId, undefined);
+  assert.equal(ok.machineId, mac.id);
+  // Only the kinds a session can raise; never a made-up one or "test"
+  assert.equal(
+    checkedNotice(mac, { kind: "test", title: "t", body: "" }),
+    null
+  );
+  assert.equal(
+    checkedNotice(mac, { kind: "__proto__", title: "t", body: "" }),
+    null
+  );
+  assert.equal(
+    checkedNotice(mac, { kind: "finished", title: "", body: "b" }),
+    null
+  );
+});

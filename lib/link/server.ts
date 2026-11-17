@@ -11,6 +11,7 @@ import type { Duplex } from "stream";
 import { getFlag } from "../flags";
 import { requireUser } from "../user-proof";
 import { LinkHub } from "./hub";
+import { receiveNotice } from "./notices";
 import { LINK_PATH } from "./protocol";
 import * as store from "./store";
 
@@ -41,7 +42,11 @@ export function ownSha(): string | null {
 }
 
 export function linkHub(): LinkHub {
-  shared.__agentosLinkHub ??= new LinkHub({ ...store, sha: ownSha });
+  shared.__agentosLinkHub ??= new LinkHub({
+    ...store,
+    sha: ownSha,
+    onNotice: receiveNotice,
+  });
   return shared.__agentosLinkHub;
 }
 

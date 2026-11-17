@@ -102,6 +102,7 @@ export async function sendApns(
         : "active",
     },
     sessionId: message.sessionId,
+    machineId: message.machineId,
   });
   const headers = {
     authorization: `bearer ${jwt(apns)}`,

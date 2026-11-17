@@ -21,6 +21,8 @@ export interface PushMessage {
   appUrl?: string;
   /** Opens the session in a browser */
   webUrl?: string;
+  /** The linked machine the session runs on; unset for this one */
+  machineId?: string;
 }
 
 /** Kinds that want an answer, so they ring louder */

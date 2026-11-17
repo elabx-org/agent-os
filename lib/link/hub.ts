@@ -20,6 +20,7 @@ import {
   requestHeadersForLink,
   responseHeadersFromLink,
   type HubFrame,
+  type LinkNotice,
   type MachineFrame,
 } from "./protocol";
 import type { MachineRow } from "./store";
@@ -42,6 +43,8 @@ export interface HubDeps {
   removeMachine(id: string): boolean;
   /** This hub's commit, sent to machines so they can match it */
   sha(): string | null;
+  /** An approved, connected machine has something to tell the user */
+  onNotice?(machine: MachineRow, notice: LinkNotice): void;
 }
 
 interface PendingResponse {
@@ -348,6 +351,15 @@ export class LinkHub {
       case "pong":
         tunnel.alive = true;
         return;
+      case "notify": {
+        const { t: _t, ...notice } = frame;
+        // Re-read: only a machine that is still approved gets a say
+        const machine = this.deps.machineById(tunnel.machineId);
+        if (machine?.status === "approved") {
+          this.deps.onNotice?.(machine, notice);
+        }
+        return;
+      }
       case "res": {
         const pending = tunnel.requests.get(frame.id);
         if (!pending || pending.res.headersSent) return;
