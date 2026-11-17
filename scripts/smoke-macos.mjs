@@ -367,8 +367,10 @@ try {
       send({ type: "resize", cols: 120, rows: 40 });
       // The login shell's prompt is up when it echoes a marker back
       await sleep(500);
-      send({ type: "input", data: "echo pty-$((40+2))-ready\r" });
-      await sawOutput("pty-42-ready", 20000);
+      send({ type: "input", data: 'echo "pty-$((40+2))-tmuxdir=$TMUX_TMPDIR=$TMUX="\r' });
+      // Its tmux must be the throwaway one, or the attach below could reach
+      // another tmux server: stop here if the profile didn't take
+      await sawOutput(`pty-42-tmuxdir=${TMUX_DIR}==`, 20000);
       return `pty ${hello.sessionId}`;
     });
 
