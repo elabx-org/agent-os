@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   isLoopbackReachable,
+  parseLsofListen,
   parseProcNetTcp,
   parseSs,
 } from "../../lib/listening-ports";
@@ -65,4 +66,49 @@ test("parseProcNetTcp: LISTEN rows only, little-endian IPv4", () => {
     { port: 3011, addresses: ["0.0.0.0"], processes: [] },
     { port: 5173, addresses: ["127.0.0.1"], processes: [] },
   ]);
+});
+
+// `lsof -nP -iTCP -sTCP:LISTEN -Fpcn` as macOS prints it
+const LSOF = `p512
+cControlCe
+f9
+n*:7000
+f10
+n*:7000
+p4242
+cnode
+f23
+n127.0.0.1:5173
+f24
+n[::1]:5173
+f25
+n192.168.1.20:9000
+p4300
+cpython3.12
+f3
+n*:8790
+f4
+n127.0.0.1:51000->127.0.0.1:5173
+garbage
+`;
+
+test("parseLsofListen: loopback-reachable ports with their processes", () => {
+  assert.deepEqual(parseLsofListen(LSOF), [
+    {
+      port: 5173,
+      addresses: ["127.0.0.1", "[::1]"],
+      processes: [{ name: "node", pid: 4242 }],
+    },
+    {
+      port: 7000,
+      addresses: ["*"],
+      processes: [{ name: "ControlCe", pid: 512 }],
+    },
+    {
+      port: 8790,
+      addresses: ["*"],
+      processes: [{ name: "python3.12", pid: 4300 }],
+    },
+  ]);
+  assert.deepEqual(parseLsofListen(""), []);
 });

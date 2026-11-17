@@ -1,0 +1,53 @@
+name: Linked machine
+
+# Linking a Mac to an AgentOS, as the user does it: the real installer with
+# the command the hub hands out, approval, use, off, on, remove
+# (scripts/smoke-machine.mjs)
+
+on:
+  push:
+    branches: [machines-link, machines]
+  workflow_dispatch:
+
+concurrency:
+  group: machine-link-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  link:
+    name: Link a Mac end to end
+    runs-on: xcode-27
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Tools
+        run: |
+          sw_vers
+          command -v tmux >/dev/null || brew install tmux
+          command -v rg >/dev/null || brew install ripgrep
+
+      - name: Install
+        run: npm ci --legacy-peer-deps
+
+      - name: Build
+        run: npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+
+      - name: Link this Mac to a hub and back out
+        run: node scripts/smoke-machine.mjs "$RUNNER_TEMP/machine-link"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: machine-link
+          path: ${{ runner.temp }}/machine-link
+          if-no-files-found: ignore

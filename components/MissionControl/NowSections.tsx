@@ -27,12 +27,21 @@ import type { SessionStatus } from "@/components/views/types";
 import type { BackgroundAgent } from "@/lib/claude-background";
 import type { Session } from "@/lib/db";
 import { cn } from "@/lib/utils";
+import { MachineTag } from "@/components/Machines/MachineTag";
+import { openOnMachine } from "@/components/Machines/useOtherMachinesNow";
+import {
+  EMPTY_OTHERS,
+  mergeQuiet,
+  type OtherMachinesNow,
+  type TaggedSession,
+} from "@/lib/machine-now";
 import { shortAge } from "./now-summary";
 import { settleCaption } from "./settle-model";
 import type { NowItems } from "./useNowItems";
 
 /** Quiet projects listed on Now; the rest are under Projects */
 const QUIET_SHOWN = 3;
+const NO_LAST_USED: ReadonlyMap<string, string> = new Map();
 /** Done today rows on the wide page; the rest are a tap away */
 const DONE_SHOWN = 3;
 
@@ -44,7 +53,16 @@ export interface SectionProps {
   sessionStatuses: Record<string, SessionStatus>;
   selectedId?: string;
   onOpenSession: (session: Session) => void;
+  /** Rows from the other linked machines, tagged with where they live */
+  others?: OtherMachinesNow;
 }
+
+/** A row from another machine: the tab moves there and opens it */
+const openOther = ({ tag, session }: TaggedSession) =>
+  openOnMachine(tag, { session: session.id });
+
+const otherTitle = ({ session }: TaggedSession) =>
+  displayTitle(session, {}).title;
 
 const projectOf = (
   projectNames: Record<string, string>,
@@ -78,11 +96,13 @@ export function NeedsSection({
   onOpenSession,
   /** On a table the first card is on the base instead */
   skipFirst,
+  others = EMPTY_OTHERS,
 }: SectionProps & { skipFirst?: boolean }) {
   const agents = now.blocked.flatMap((group) =>
     group.agents.map((agent) => ({ agent, projectName: group.projectName }))
   );
-  if (now.waiting.length + agents.length === 0) return null;
+  if (now.waiting.length + agents.length + others.needs.length === 0)
+    return null;
 
   if (wide)
     return (
@@ -109,6 +129,16 @@ export function NeedsSection({
               onClick={() => openBackgroundAgent(agent)}
             />
           ))}
+          {others.needs.map((item) => (
+            <GroupRow
+              key={`${item.tag.target}:${item.session.id}`}
+              leading={<Avatar {...agentAvatar(item.session.agent_type)} />}
+              title={otherTitle(item)}
+              subtitle={joined(item.project, "Your turn")}
+              trailing={<MachineTag tag={item.tag} />}
+              onClick={() => openOther(item)}
+            />
+          ))}
         </GroupCard>
       </>
     );
@@ -130,7 +160,39 @@ export function NeedsSection({
       {agents.map(({ agent, projectName }) => (
         <BlockedCard key={agent.id} agent={agent} projectName={projectName} />
       ))}
+      {others.needs.map((item) => (
+        <OtherNeedsCard
+          key={`${item.tag.target}:${item.session.id}`}
+          item={item}
+        />
+      ))}
     </>
+  );
+}
+
+/** A session waiting on another machine: it answers there, a tap away */
+function OtherNeedsCard({ item }: { item: TaggedSession }) {
+  return (
+    <button
+      type="button"
+      onClick={() => openOther(item)}
+      className="bg-card border-needs/40 flex flex-col gap-1.5 rounded-[22px] border p-3.5 text-left active:opacity-80"
+    >
+      <span className="text-muted-foreground flex w-full min-w-0 items-center gap-2 text-[13px]">
+        <StateDot state="needs" />
+        <span className={cn("font-semibold", STATE_TEXT_CLASS.needs)}>
+          Waiting
+        </span>
+        <span className="min-w-0 flex-1 truncate">
+          {item.project ? `· ${item.project}` : ""}
+        </span>
+        <MachineTag tag={item.tag} />
+      </span>
+      <span className="t-head w-full truncate">{otherTitle(item)}</span>
+      <span className="text-foreground/75">
+        Open it to answer on {item.tag.name}.
+      </span>
+    </button>
   );
 }
 
@@ -269,10 +331,11 @@ export function WorkingSection({
   sessionStatuses,
   selectedId,
   onOpenSession,
+  others = EMPTY_OTHERS,
 }: SectionProps) {
   const { working } = now;
   const { settle } = useSettle();
-  if (now.workingCount === 0) return null;
+  if (now.workingCount + others.working.length === 0) return null;
 
   // A working row: ask first (its turn ends with the tmux window), then it
   // moves to Settled with a few seconds to undo before the settle is sent
@@ -382,6 +445,29 @@ export function WorkingSection({
             className="row min-h-14 gap-3 rounded-none px-3.5 py-3"
           />
         ))}
+        {others.working.map((item) => {
+          const { subtitle, trailing } = row(
+            item.project,
+            item.line ?? "Working",
+            shortAge(item.session.updated_at)
+          );
+          return (
+            <GroupRow
+              key={`${item.tag.target}:${item.session.id}`}
+              leading={<Avatar {...agentAvatar(item.session.agent_type)} />}
+              title={otherTitle(item)}
+              subtitle={subtitle}
+              trailing={
+                <span className="flex items-center gap-2">
+                  <MachineTag tag={item.tag} />
+                  {trailing}
+                </span>
+              }
+              chevron={!wide}
+              onClick={() => openOther(item)}
+            />
+          );
+        })}
       </GroupCard>
     </section>
   );
@@ -551,8 +637,16 @@ export function QuietSection({
   now,
   wide,
   onOpenSession,
-}: Pick<SectionProps, "now" | "wide" | "onOpenSession">) {
-  const projects = now.quiet.slice(0, QUIET_SHOWN);
+  others = EMPTY_OTHERS,
+  lastUsed = NO_LAST_USED,
+}: Pick<SectionProps, "now" | "wide" | "onOpenSession" | "others"> & {
+  /** This server's projects' last use, to place the other machines' */
+  lastUsed?: ReadonlyMap<string, string>;
+}) {
+  const projects = mergeQuiet(now.quiet, lastUsed, others.quiet).slice(
+    0,
+    QUIET_SHOWN
+  );
   const loose = now.loose.slice(0, QUIET_SHOWN - projects.length);
   if (!projects.length && !loose.length) return null;
   const quietRow = (label: string) => (
@@ -563,19 +657,37 @@ export function QuietSection({
       <SectionTitle
         action={{ label: "All projects", onClick: () => runNav("projects") }}
       >
-        Quiet · {now.quiet.length + now.loose.length}
+        Quiet · {now.quiet.length + now.loose.length + others.quiet.length}
       </SectionTitle>
       <GroupCard aria-label="Quiet">
-        {projects.map((project) => (
-          <GroupRow
-            key={project.id}
-            leading={<Avatar label={project.name} size="sm" />}
-            title={quietRow(project.name)}
-            chevron
-            onClick={() => openPage({ kind: "project", projectId: project.id })}
-            className="min-h-12 py-2.5"
-          />
-        ))}
+        {projects.map((entry) =>
+          entry.kind === "local" ? (
+            <GroupRow
+              key={entry.project.id}
+              leading={<Avatar label={entry.project.name} size="sm" />}
+              title={quietRow(entry.project.name)}
+              chevron
+              onClick={() =>
+                openPage({ kind: "project", projectId: entry.project.id })
+              }
+              className="min-h-12 py-2.5"
+            />
+          ) : (
+            <GroupRow
+              key={`${entry.item.tag.target}:${entry.item.project.id}`}
+              leading={<Avatar label={entry.item.project.name} size="sm" />}
+              title={quietRow(entry.item.project.name)}
+              trailing={<MachineTag tag={entry.item.tag} />}
+              chevron
+              onClick={() =>
+                openOnMachine(entry.item.tag, {
+                  project: entry.item.project.id,
+                })
+              }
+              className="min-h-12 py-2.5"
+            />
+          )
+        )}
         {loose.map((session) => {
           // Paused (handed off): its own state word and where it went
           const handoff = now.handoffs[session.id];

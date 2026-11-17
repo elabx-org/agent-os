@@ -105,6 +105,32 @@ export function parseProcNetTcp(text: string): ListeningPort[] {
   return [...byPort.values()].sort((a, b) => a.port - b.port);
 }
 
+/**
+ * Parses `lsof -nP -iTCP -sTCP:LISTEN -Fpcn` (macOS, which has no ss or
+ * /proc): a p line per process, its c (command) and an n line per socket
+ * ("*:3011", "127.0.0.1:5173", "[::1]:5173")
+ */
+export function parseLsofListen(text: string): ListeningPort[] {
+  const byPort = new Map<number, ListeningPort>();
+  let proc: { name: string; pid: number } | null = null;
+  for (const line of text.split("\n")) {
+    const value = line.slice(1);
+    if (line.startsWith("p")) {
+      const pid = Number(value);
+      proc = Number.isInteger(pid) && pid > 0 ? { name: "", pid } : null;
+    } else if (line.startsWith("c") && proc) {
+      proc.name = value;
+    } else if (line.startsWith("n") && proc) {
+      // A connection would read "local->remote"; only listening sockets
+      if (value.includes("->")) continue;
+      const local = splitLocal(value);
+      if (!local || !isLoopbackReachable(local[0])) continue;
+      addTo(byPort, local[1], local[0], [proc]);
+    }
+  }
+  return [...byPort.values()].sort((a, b) => a.port - b.port);
+}
+
 function mergePorts(lists: ListeningPort[][]): ListeningPort[] {
   const byPort = new Map<number, ListeningPort>();
   for (const list of lists) {
@@ -139,6 +165,16 @@ export function listListeningPorts(): Promise<ListeningPort[]> {
   const cached = shared.__agentosListeningPorts;
   if (cached && Date.now() - cached.at < CACHE_MS) return cached.ports;
   const ports = new Promise<ListeningPort[]>((resolve) => {
+    if (process.platform === "darwin") {
+      // This user's processes only, as ss shows processes; exits 1 on none
+      execFile(
+        "lsof",
+        ["-nP", "-iTCP", "-sTCP:LISTEN", "-Fpcn"],
+        { timeout: 3000, env: { ...process.env, LC_ALL: "C" } },
+        (_error, stdout) => resolve(parseLsofListen(stdout || ""))
+      );
+      return;
+    }
     execFile("ss", ["-ltnpH"], { timeout: 3000 }, (error, stdout) => {
       resolve(error ? fromProc() : parseSs(stdout));
     });

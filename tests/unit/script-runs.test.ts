@@ -31,7 +31,8 @@ after(() => {
   fs.rmSync(tmp, { recursive: true, force: true });
 });
 
-const cwd = fs.mkdtempSync(path.join(tmp, "cwd-"));
+// As the shell reports it: macOS's tmpdir is a symlink into /private
+const cwd = fs.realpathSync(fs.mkdtempSync(path.join(tmp, "cwd-")));
 const P = "project-a";
 
 const script = (id: string, command: string, extra = {}) => ({
@@ -71,6 +72,19 @@ describe("pure helpers", () => {
     assert.ok(line.endsWith(`sr_x.exit'`));
     assert.equal(runs.isRunId("sr_abc123"), true);
     assert.equal(runs.isRunId("../etc"), false);
+  });
+
+  test("isRunCommandLine: backgroundArgv as macOS ps prints it", () => {
+    const line = (id: string, command = "npm run dev") =>
+      runs.backgroundArgv(command, id).join(" ");
+    assert.equal(runs.isRunCommandLine(line("sr_a"), "sr_a"), true);
+    // Another run's process, or anything else on a reused pid
+    assert.equal(runs.isRunCommandLine(line("sr_b"), "sr_a"), false);
+    assert.equal(runs.isRunCommandLine("sleep 5", "sr_a"), false);
+    assert.equal(
+      runs.isRunCommandLine(`vim ${runs.exitPathFor("sr_a")}`, "sr_a"),
+      false
+    );
   });
 });
 

@@ -1,5 +1,7 @@
 "use client";
 
+// First: the tab's machine is on every call, the app's very first included
+import "@/lib/client/machine-install";
 import { useState, useEffect } from "react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { ThemeProvider as NextThemesProvider, useTheme } from "next-themes";
@@ -8,6 +10,7 @@ import { ConfirmHost } from "@/components/ui/confirm";
 import { BrowserUndo } from "@/components/BrowserUndo";
 import { BrowserOpenListener } from "@/components/BrowserOpenListener";
 import { VideoReview } from "@/components/Composer/VideoReview";
+import { MachineGate } from "@/components/Machines/MachineGate";
 import { createQueryClient } from "@/lib/query-client";
 import { THEMES } from "@/lib/theme-config";
 import {
@@ -65,6 +68,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
             <BrowserUndo />
             <BrowserOpenListener />
             <VideoReview />
+            <MachineGate />
           </TooltipProvider>
         </ThemeClassHandler>
       </NextThemesProvider>

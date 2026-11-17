@@ -11,6 +11,7 @@ export type SettingsSection =
   | "sessions"
   | "uploads"
   | "server"
+  | "machines"
   | "labs";
 
 /** Settings as its own layer over the app: the gear, ⌘, or the iOS app's nav */

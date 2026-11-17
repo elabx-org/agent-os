@@ -25,6 +25,7 @@ import {
 } from "../claude-background";
 import { isWatching, readPushConfig } from "./config";
 import { sendPush, type PushMessage } from "./send";
+import { notifyHub } from "../link/machine";
 import { recordNotification, setDelivered } from "./history";
 import { tickersDisabled } from "../flags";
 import { isEnded } from "../settle-types";
@@ -157,6 +158,8 @@ function announce(msg: Event, push: boolean) {
     agentId,
     projectName,
   });
+  // A linked machine has no phone of its own: the hub notifies
+  if (notifyHub({ kind, title, body, sessionId, agentId, projectName })) return;
   if (!push) return;
   sendPush(msg).then((report) => {
     console.log(`[push] ${title}:`, JSON.stringify(report));

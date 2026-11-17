@@ -25,6 +25,7 @@ import { useSettleActions } from "./settle-action";
 import { formatAge, workingLine } from "./activity-format";
 import { useBackLabel } from "@/components/ControlColumn/columnState";
 import { IN_BACKGROUND_CLASS } from "./InBackground";
+import { MachineChip } from "@/components/Machines/MachineChip";
 
 /** What every header says about the session */
 export interface HeaderInfo {
@@ -142,6 +143,8 @@ export function PageHeader({
     >
       {chip && switcher ? (
         <div className="flex min-w-0 items-center gap-2 text-[13px]">
+          {/* On a linked machine: which, and the way back */}
+          <MachineChip className="h-6 text-[12px]" />
           <ModelChip
             session={session}
             open={switcher.open}
@@ -156,6 +159,7 @@ export function PageHeader({
         </div>
       ) : (
         <div className="flex min-w-0 items-center gap-1.5 text-[13px]">
+          <MachineChip className="mr-0.5 h-6 text-[12px]" />
           {cards && (
             <Avatar
               {...agentAvatar(session.agent_type)}
@@ -313,7 +317,10 @@ export function FoldHeader({
         </span>
         <Crumb info={info} className="text-xs leading-tight" />
       </div>
-      <div className="ml-auto flex shrink-0 items-center gap-1.5">{menu}</div>
+      <div className="ml-auto flex shrink-0 items-center gap-1.5">
+        <MachineChip />
+        {menu}
+      </div>
     </header>
   );
 }
@@ -372,6 +379,7 @@ export function DesktopHeader({
           className="text-[13px]"
         />
       </div>
+      <MachineChip />
       {/* A narrow bar keeps Chat | Terminal (Changes is the ⋯'s drawer) */}
       <ViewSeg
         viewMode={viewMode}
