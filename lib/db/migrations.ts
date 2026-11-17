@@ -611,6 +611,29 @@ const migrations: Migration[] = [
       addColumnIfMissing(db, "sessions", "subagent_own_first", "INTEGER");
     }),
   },
+  {
+    id: 37,
+    name: "add_machines_table",
+    up: atomic((db) => {
+      // Linked machines (lib/link): another AgentOS that dials out to this
+      // one. public_key is the machine's Ed25519 key (raw, base64url);
+      // status pending|approved; times in epoch ms
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS machines (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          public_key TEXT NOT NULL UNIQUE,
+          status TEXT NOT NULL DEFAULT 'pending',
+          platform TEXT,
+          sha TEXT,
+          signed_in_as TEXT,
+          created_at INTEGER NOT NULL,
+          approved_at INTEGER,
+          last_seen INTEGER
+        );
+      `);
+    }),
+  },
 ];
 
 export function runMigrations(db: Database.Database): void {

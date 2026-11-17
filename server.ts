@@ -13,6 +13,8 @@ import { issueUserProof } from "./lib/user-proof";
 import { registerMcp } from "./lib/register-mcp";
 import { proxyRequest, proxyUpgrade } from "./lib/port-proxy";
 import { applyOriginGate, originGateRefusesUpgrade } from "./lib/origin-gate";
+import { linkDialIn, linkRequest, linkUpgrade } from "./lib/link/server";
+import { isMachineMode, startMachineLink } from "./lib/link/machine";
 import {
   isPlainShell,
   isTmuxClient,
@@ -387,6 +389,8 @@ app.prepare().then(() => {
         deny(req, res);
         return;
       }
+      // Headed to a linked machine: it answers, not this server
+      if (linkRequest(req, res, url)) return;
       if (await proxyRequest(req, res, url, "path")) return;
       issueUserProof(req, res);
       await handle(req, res, parsedUrl);
@@ -403,12 +407,17 @@ app.prepare().then(() => {
     if (proxyUpgrade(request, socket, head, "host")) return;
     const parsed = parse(request.url || "", true);
     if (proxyUpgrade(request, socket, head, "path")) return;
+    // A linked machine dialing in proves itself with its own key, not a cookie
+    if (linkDialIn(request, socket, head, parsed.pathname || "")) return;
     // A terminal runs commands: signed in, and only from our own pages
     if (!isAllowed(request, parsed.pathname || "/") || !isSameOrigin(request) || originGateRefusesUpgrade(request)) {
       socket.write("HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n");
       socket.destroy();
       return;
     }
+
+    // A socket headed to a linked machine
+    if (linkUpgrade(request, socket, head)) return;
 
     if (parsed.pathname === "/ws/terminal") {
       terminalWss.handleUpgrade(request, socket, head, (ws) => {
@@ -443,8 +452,11 @@ app.prepare().then(() => {
     attachSession(session, ws);
   });
 
-  server.listen(port, () => {
-    console.log(`> AgentOS ready on http://${hostname}:${port}`);
+  // A linked machine is reached through its hub only: loopback, nothing on the network
+  const bind = process.env.AGENTOS_BIND || (isMachineMode() ? "127.0.0.1" : undefined);
+  server.listen(port, bind, () => {
+    console.log(`> AgentOS ready on http://${bind ?? hostname}:${port}`);
+    startMachineLink(port);
     scheduleStoreSync();
     startPushWatcher();
     startTickers();

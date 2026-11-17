@@ -29,6 +29,8 @@ export function isGatedPath(pathname: string): boolean {
     pathname === "/api" ||
     pathname.startsWith("/api/") ||
     pathname.startsWith("/ws/") ||
+    // A linked machine's API and sockets, reached through this server
+    pathname.startsWith("/m/") ||
     pathname === "/auth/logout"
   );
 }
