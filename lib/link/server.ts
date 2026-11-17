@@ -59,6 +59,11 @@ export const MACHINE_COOKIE = "agentos_machine";
 export const MACHINE_QUERY = "machine";
 
 const MACHINE_ID = /^m_[0-9a-f]{12}$/;
+/**
+ * A tab's way of saying "this server", whatever the cookie (shared by all
+ * tabs) names. Reserved: never a machine's id.
+ */
+export const HUB_MARKER = "hub";
 
 /**
  * API areas that are about the hub or this device, whichever machine the
@@ -108,7 +113,7 @@ export function machineTarget(
       ? { machineId: explicit[1], path: explicit[2] + search }
       : null;
   }
-  if (!marker || !MACHINE_ID.test(marker)) return null;
+  if (!marker || marker === HUB_MARKER || !MACHINE_ID.test(marker)) return null;
   if (!pathname.startsWith("/api/") && !pathname.startsWith("/ws/")) {
     return null;
   }
