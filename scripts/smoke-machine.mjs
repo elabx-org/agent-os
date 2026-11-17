@@ -53,7 +53,16 @@ function ok(name, pass, detail = "") {
 
 const HUB_PORT = await freePort();
 const MAC_PORT = await freePort();
-const HUB = `http://127.0.0.1:${HUB_PORT}`;
+// The hub won't hand out a command for a loopback address (a Mac couldn't
+// reach it), so it is opened at this machine's network address
+const LAN = Object.values(os.networkInterfaces())
+  .flat()
+  .find((i) => i && i.family === "IPv4" && !i.internal)?.address;
+if (!LAN) {
+  console.error("smoke-machine: no network address");
+  process.exit(2);
+}
+const HUB = `http://${LAN}:${HUB_PORT}`;
 const HUB_HOME = path.join(ROOT, "hub");
 const MAC_HOME = path.join(ROOT, "machine");
 fs.mkdirSync(HUB_HOME, { recursive: true });
@@ -177,21 +186,18 @@ try {
 
     const direct = await fetch(`http://127.0.0.1:${MAC_PORT}/api/build`).then((r) => r.status);
     ok("the Mac's copy answers on this Mac only", direct === 200, String(direct));
-    const lan = Object.values(os.networkInterfaces()).flat().find((i) => i && i.family === "IPv4" && !i.internal)?.address;
-    if (lan) {
-      const outside = await fetch(`http://${lan}:${MAC_PORT}/api/build`, { signal: AbortSignal.timeout(4000) }).then(
-        (r) => `answered ${r.status}`,
-        () => "refused"
-      );
-      ok("nothing listens on the network", outside === "refused", `${lan}: ${outside}`);
-    }
+    const outside = await fetch(`http://${LAN}:${MAC_PORT}/api/build`, { signal: AbortSignal.timeout(4000) }).then(
+      (r) => `answered ${r.status}`,
+      () => "refused"
+    );
+    ok("nothing listens on the network", outside === "refused", `${LAN}: ${outside}`);
     const keychain = await run("/usr/bin/security", ["find-generic-password", "-s", "agentos-link"]).then(() => true, () => false);
     ok("the key is in the Keychain, not in a file", keychain && !fs.existsSync(path.join(MAC_HOME, "link.key")));
     const saved = fs.readFileSync(path.join(MAC_HOME, "link.json"), "utf8");
     ok("the one-time code isn't kept", !/"code"/.test(saved));
 
     const status = await link("status");
-    ok("status says linked", /^Linked to 127\.0\.0\.1/.test(status.out), status.out.trim());
+    ok("status says linked", status.out.startsWith(`Linked to ${LAN}`), status.out.trim());
 
     const offResult = await link("off");
     ok("off: one command", offResult.code === 0, offResult.out.trim());
