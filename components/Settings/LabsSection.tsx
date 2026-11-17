@@ -1,5 +1,6 @@
 "use client";
 
+import { machineKeys } from "@/data/machines";
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Switch } from "@/components/ui/switch";
@@ -52,6 +53,14 @@ export function LabsSection() {
             ? "Reload to confirm it's you"
             : "Couldn't save the change"
         );
+      }
+      // Settings' Machines row follows this switch: the list is read once
+      // while it's off, so ask again now and once the server has caught up
+      if (name === "machines") {
+        const refresh = () =>
+          queryClient.invalidateQueries({ queryKey: machineKeys.all });
+        void refresh();
+        window.setTimeout(refresh, 5500);
       }
     } catch (e) {
       queryClient.setQueryData(key, previous);
