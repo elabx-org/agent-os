@@ -6,6 +6,7 @@
  * for the command line.
  */
 
+import { spawn } from "child_process";
 import fs from "fs";
 import path from "path";
 import { USER_PROOF_COOKIE, userSecret } from "../user-proof";
@@ -107,6 +108,25 @@ function writeState(config: LinkConfig, state: LinkState): void {
   }
 }
 
+let updating = false;
+
+/** The hub runs another commit: switch this copy to it (scripts/agentos-machine.sh) */
+function matchHub(sha: string): void {
+  if (updating || !/^[0-9a-f]{40}$/.test(sha)) return;
+  if (process.env.AGENTOS_LINK_NO_UPDATE === "1") return;
+  updating = true;
+  const script = path.join(process.cwd(), "scripts", "agentos-machine.sh");
+  try {
+    spawn("/bin/bash", [script, "update", sha], {
+      detached: true,
+      stdio: "ignore",
+    }).unref();
+    console.log(`[link] updating to the hub's version ${sha.slice(0, 7)}`);
+  } catch {
+    updating = false;
+  }
+}
+
 let running: LinkClient | null = null;
 
 /** server.ts, once listening: dials the hub when this is a linked machine */
@@ -133,6 +153,10 @@ export function startMachineLink(localPort: number): LinkClient | null {
       console.log(
         `[link] ${state.status}${"reason" in state ? `: ${state.reason}` : ""}${state.status === "pending" ? ` (code ${state.code})` : ""}`
       );
+      if (state.status === "linked" && state.hubSha) {
+        const mine = ownSha();
+        if (mine && mine !== state.hubSha) matchHub(state.hubSha);
+      }
       // The one-time code has done its job
       if (
         (state.status === "pending" || state.status === "linked") &&

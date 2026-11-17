@@ -77,6 +77,8 @@ case "${1:-}" in
     logs)             cmd_logs ;;
     # AgentOS as tools for AI agents (stdio MCP server); nothing may print first
     mcp)              exec node "$SCRIPT_DIR/agentos-mcp.mjs" ;;
+    # This computer as a linked machine of another AgentOS
+    link)             shift; exec /bin/bash "$SCRIPT_DIR/agentos-machine.sh" "$@" ;;
     update)           cmd_update ;;
     deploy)           cmd_deploy "${2:-}" ;;
     enable)           cmd_enable ;;

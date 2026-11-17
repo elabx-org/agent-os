@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { hubSignIn, installCommand } from "@/lib/link/hub-config";
-import { linkHub, machinesOn } from "@/lib/link/server";
+import { linkHub, machinesOn, ownSha } from "@/lib/link/server";
 import { requestOrigin } from "@/lib/public-origin";
 import { requireUser } from "@/lib/user-proof";
 
@@ -37,7 +37,12 @@ export async function POST(request: Request) {
     {
       code,
       expiresAt,
-      command: installCommand({ hubUrl, code, signIn: hubSignIn() }),
+      command: installCommand({
+        hubUrl,
+        code,
+        signIn: hubSignIn(),
+        sha: ownSha(),
+      }),
     },
     { headers: { "Cache-Control": "no-store" } }
   );

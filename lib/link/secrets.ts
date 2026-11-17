@@ -92,7 +92,9 @@ export function deleteSecret(account: string): void {
       string
     >;
     delete all[account];
-    fs.writeFileSync(keyFilePath(), JSON.stringify(all), { mode: 0o600 });
+    if (Object.keys(all).length === 0)
+      fs.rmSync(keyFilePath(), { force: true });
+    else fs.writeFileSync(keyFilePath(), JSON.stringify(all), { mode: 0o600 });
   } catch {
     // wasn't there
   }

@@ -16,6 +16,8 @@ export interface Invite {
   hubUrl: string;
   code: string;
   signIn?: SignInConfig;
+  /** The hub's commit, so the machine installs the same version */
+  sha?: string | null;
 }
 
 export function hubSignIn(): SignInConfig | undefined {
