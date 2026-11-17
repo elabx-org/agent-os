@@ -428,6 +428,27 @@ try {
           assert(clients.stdout.trim() === "", `still attached: ${clients.stdout}`);
           assert(!(await pane(session.tmux)).includes("back-at-"), "the line reached the agent");
         });
+
+        // Switching sessions in one terminal does this every time: the
+        // attach line typed with leave, from tmux, again and again
+        await check("re-attach and leave, five times over", async () => {
+          for (let i = 1; i <= 5; i++) {
+            const attach = `tmux attach -t ${session.tmux} 2>/dev/null || tmux new -s ${session.tmux}`;
+            send({ type: "shell-command", id: `r${i}`, data: attach, leave: true });
+            const a = await reply("shell-command-result", `r${i}`, 20000);
+            assert(a.ok === true, `attach ${i}: ${JSON.stringify(a)}`);
+            await until(
+              `client ${i}`,
+              () => tmux("list-clients", "-t", `=${session.tmux}`, "-F", "#{client_tty}"),
+              (r) => r.stdout.trim().length > 0
+            );
+            send({ type: "shell-command", id: `l${i}`, data: `echo round-$((${i}*10))-done`, leave: true });
+            const l = await reply("shell-command-result", `l${i}`, 20000);
+            assert(l.ok === true, `leave ${i}: ${JSON.stringify(l)}`);
+            await sawOutput(`round-${i * 10}-done`);
+          }
+          assert(!(await pane(session.tmux)).includes("round-"), "a line reached the agent");
+        });
       }
     }
 
