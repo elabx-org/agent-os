@@ -20,6 +20,7 @@ import {
   FlaskConical,
   Globe,
   Keyboard,
+  Laptop,
   PanelRight,
   Terminal,
   Video,
@@ -65,6 +66,8 @@ import { ClaudeCodeSection } from "./ClaudeCodeSection";
 import { SessionsSection } from "./SessionsSection";
 import { UploadsSection } from "./UploadsSection";
 import { LabsSection } from "./LabsSection";
+import { MachinesSection, machinesSummary } from "./MachinesSection";
+import { useMachines } from "@/data/machines";
 import { Chevron, SettingGroup } from "./SettingGroup";
 import { PageEdge } from "@/components/ui/page-edge";
 
@@ -79,6 +82,7 @@ const SECTION_TITLE: Record<SettingsSection, string> = {
   sessions: "Sessions",
   uploads: "Uploads",
   server: "Server",
+  machines: "Machines",
   labs: "Labs",
 };
 
@@ -94,6 +98,7 @@ const SECTION_TILE = {
   sessions: { icon: Terminal, color: "#3F3F46" },
   uploads: { icon: Video, color: "#047857" },
   server: { icon: Globe, color: "#0284C7" },
+  machines: { icon: Laptop, color: "#475569" },
   labs: { icon: FlaskConical, color: "#A16207" },
 } satisfies Record<
   SettingsSection,
@@ -237,6 +242,8 @@ function SettingsLayer(props: NotificationsSectionProps) {
     (navRef.current ?? layerRef.current)?.focus({ preventScroll: true });
   }, [detail, section, split]);
 
+  const { data: machines } = useMachines();
+
   // The list. Usage is the card above it; iPhone Duo and Server are the iOS
   // app's (Server in its column once it has one); Keys are touch keys
   const rows: SettingsSection[] = [
@@ -249,6 +256,8 @@ function SettingsLayer(props: NotificationsSectionProps) {
     "uploads",
     "sessions",
     ...(native && !serverInColumn ? (["server"] as const) : []),
+    // Linked machines: only while the Labs flag is on
+    ...(machines?.enabled ? (["machines"] as const) : []),
     ...(labs ? (["labs"] as const) : []),
   ];
   const sections: SettingsSection[] = [...rows, "usage"];
@@ -271,6 +280,7 @@ function SettingsLayer(props: NotificationsSectionProps) {
     sessions: <SessionsSection />,
     uploads: <UploadsSection />,
     labs: <LabsSection />,
+    machines: <MachinesSection />,
     server: (
       <SettingGroup className="divide-y-0 p-1">
         <ServerRow />
@@ -288,6 +298,7 @@ function SettingsLayer(props: NotificationsSectionProps) {
     uploads: PRESETS[preset].label,
     sessions: running === null ? undefined : `${running} running`,
     server: typeof window !== "undefined" ? window.location.host : undefined,
+    machines: machines ? machinesSummary(machines.machines) : undefined,
   };
 
   const open = (s: SettingsSection) => {

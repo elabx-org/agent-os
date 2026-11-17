@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, type ReactNode } from "react";
+import { useMemo, useRef, type ReactNode } from "react";
 import { ChevronLeft, MonitorPlay, Plus } from "lucide-react";
 import { FoldSplit } from "@/components/FoldSplit";
 import { AppLogo } from "@/components/SessionList/SessionListHeader";
@@ -27,6 +27,9 @@ import { SettledSection } from "./SettledSection";
 import { SettleToasts, useSettleToastsRoom } from "./SettleToasts";
 import { useAutoSettleToasts } from "./useAutoSettleToasts";
 import { useNowItems } from "./useNowItems";
+import { MachineChip } from "@/components/Machines/MachineChip";
+import { useOtherMachinesNow } from "@/components/Machines/useOtherMachinesNow";
+import { lastUsedByProject } from "@/lib/machine-now";
 
 /** The mocks' page padding per posture (Main, E-iPhone, Open-Now) */
 /** The Undo toasts' sides: the page's gutters (narrow pages) */
@@ -100,6 +103,9 @@ export function MissionControl({
   const { homeTab } = useSnapshot(mobileNavStore);
   const wide = isWide(mode);
   const now = useNowItems(sessions, sessionStatuses);
+  // The other linked machines' rows, tagged with where they live
+  const others = useOtherMachinesNow();
+  const lastUsed = useMemo(() => lastUsedByProject(sessions), [sessions]);
   useAutoSettleToasts(
     sessions,
     (session) => displayTitle(session, now.titles).title
@@ -112,8 +118,8 @@ export function MissionControl({
   const behindTitle = behind ? displayTitle(behind, now.titles).title : null;
   // The needs count is useNeedsYou's, as on the column badge
   const counts = {
-    needs: now.needsCount,
-    working: now.workingCount,
+    needs: now.needsCount + others.needs.length,
+    working: now.workingCount + others.working.length,
     limited: now.limited.length,
     settledToday: now.settled.length,
   };
@@ -127,6 +133,7 @@ export function MissionControl({
     sessionStatuses,
     selectedId,
     onOpenSession,
+    others,
   };
 
   // On a table the list stays above the fold and the base answers the
@@ -181,10 +188,14 @@ export function MissionControl({
         )}
         <header className="flex items-end justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-primary mb-1 flex items-center gap-1.5 text-[15px] font-semibold">
-              <AppLogo className="h-5 w-5 shrink-0" />
-              AgentOS
-            </p>
+            <div className="mb-1 flex min-w-0 items-center gap-2.5">
+              <p className="text-primary flex items-center gap-1.5 text-[15px] font-semibold">
+                <AppLogo className="h-5 w-5 shrink-0" />
+                AgentOS
+              </p>
+              {/* On a linked machine: which, and the way back */}
+              <MachineChip />
+            </div>
             <h1 className="t-large">Now</h1>
             {/* One line: a count that doesn't fit wraps out of sight, so
                 the line drops whole counts from the end, never cuts a word;
@@ -223,13 +234,13 @@ export function MissionControl({
         <NeedsSection {...sectionProps} skipFirst={cardOnBase} />
         <LimitedSection {...sectionProps} />
         <WorkingSection {...sectionProps} />
-        {now.needsCount === 0 &&
-          now.workingCount === 0 &&
+        {counts.needs === 0 &&
+          counts.working === 0 &&
           now.limited.length === 0 && (
             <div className="px-1 py-2">
               <p className="font-medium">Nothing running</p>
               <p className="text-muted-foreground text-sm">
-                {now.quiet.length + now.loose.length
+                {now.quiet.length + now.loose.length + others.quiet.length
                   ? "Start a session, or pick up one below."
                   : "Start a session."}
               </p>
@@ -237,7 +248,7 @@ export function MissionControl({
           )}
         <SettledSection {...sectionProps} />
         <DoneTodaySection {...sectionProps} />
-        <QuietSection {...sectionProps} />
+        <QuietSection {...sectionProps} lastUsed={lastUsed} />
 
         {/* Agents outside every project, once they've stopped working:
             listed nowhere else, so open and remove them from here */}
