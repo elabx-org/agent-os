@@ -36,6 +36,7 @@ jobs:
           uname -a
           sw_vers
           command -v tmux >/dev/null || brew install tmux
+          command -v rg >/dev/null || brew install ripgrep
           tmux -V
           bash --version | head -1
           echo "SHELL=$SHELL"

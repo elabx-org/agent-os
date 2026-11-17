@@ -145,7 +145,10 @@ export function isRunCommandLine(args: string, runId: string): boolean {
 
 function darwinRunAlive(pid: number, runId: string): boolean {
   const args = psSync([pid])[0]?.args;
-  return !!args && isRunCommandLine(args, runId);
+  if (args && isRunCommandLine(args, runId)) return true;
+  // ps is slow enough for the run to end meanwhile: its exit file, written
+  // just before, is read next time instead of failing it with no code
+  return readExitCode(runId) !== null;
 }
 
 /** Sets the final status, only while the row is still running */

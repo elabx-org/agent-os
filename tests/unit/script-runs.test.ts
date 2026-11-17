@@ -31,7 +31,8 @@ after(() => {
   fs.rmSync(tmp, { recursive: true, force: true });
 });
 
-const cwd = fs.mkdtempSync(path.join(tmp, "cwd-"));
+// As the shell reports it: macOS's tmpdir is a symlink into /private
+const cwd = fs.realpathSync(fs.mkdtempSync(path.join(tmp, "cwd-")));
 const P = "project-a";
 
 const script = (id: string, command: string, extra = {}) => ({
