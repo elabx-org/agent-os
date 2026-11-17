@@ -17,7 +17,9 @@ concurrency:
 jobs:
   macos:
     name: macOS build and smoke test
-    runs-on: macos-latest
+    # macos-latest sat queued in this org; xcode-27 is the hosted Apple
+    # Silicon image the iOS job already runs on (macOS 27, arm64)
+    runs-on: xcode-27
     timeout-minutes: 45
     permissions:
       contents: read
