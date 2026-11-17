@@ -72,6 +72,19 @@ describe("pure helpers", () => {
     assert.equal(runs.isRunId("sr_abc123"), true);
     assert.equal(runs.isRunId("../etc"), false);
   });
+
+  test("isRunCommandLine: backgroundArgv as macOS ps prints it", () => {
+    const line = (id: string, command = "npm run dev") =>
+      runs.backgroundArgv(command, id).join(" ");
+    assert.equal(runs.isRunCommandLine(line("sr_a"), "sr_a"), true);
+    // Another run's process, or anything else on a reused pid
+    assert.equal(runs.isRunCommandLine(line("sr_b"), "sr_a"), false);
+    assert.equal(runs.isRunCommandLine("sleep 5", "sr_a"), false);
+    assert.equal(
+      runs.isRunCommandLine(`vim ${runs.exitPathFor("sr_a")}`, "sr_a"),
+      false
+    );
+  });
 });
 
 describe("background runs", () => {

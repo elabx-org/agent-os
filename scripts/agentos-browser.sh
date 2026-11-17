@@ -53,7 +53,10 @@ if [ -n "$open_url" ] && [ "$open_url" != "$url" ]; then
   echo "(It reaches $url through Agent-OS's port proxy.)"
   echo ""
 elif [ -z "$open_url" ]; then
-  port_path=$(printf '%s' "$url" | sed -n 's#^https\{0,1\}://\(localhost\|127\.0\.0\.1\):\([0-9][0-9]*\)\(.*\)$#\2\3#p')
+  # One expression per host: BSD sed (macOS) has no \| in basic regexes
+  port_path=$(printf '%s' "$url" | sed -n \
+    -e 's#^https\{0,1\}://localhost:\([0-9][0-9]*\)\(.*\)$#\1\2#p' \
+    -e 's#^https\{0,1\}://127\.0\.0\.1:\([0-9][0-9]*\)\(.*\)$#\1\2#p')
   if [ -n "$port_path" ]; then
     echo "If it doesn't load, open <your Agent-OS address>/proxy/$port_path"
     echo ""

@@ -84,6 +84,8 @@ export interface VideoUpload {
   height?: number;
   preset: Preset;
   frames: Frame[];
+  /** The server's folder for it (os.tmpdir() there) */
+  dir?: string;
   exclude: string[];
   /** Looked over in the review sheet (or not asked to be) */
   reviewed: boolean;
@@ -115,7 +117,7 @@ export const videosFor = (draft: string) =>
 
 /** The frames' folder for the preset made */
 export const frameDir = (v: VideoUpload) =>
-  `/tmp/agent-os-screenshots/video/${v.job}/${v.preset}`;
+  `${v.dir ?? `/tmp/agent-os-screenshots/video/${v.job}`}/${v.preset}`;
 
 export const keptFrames = (v: VideoUpload) =>
   v.frames.filter((f) => !v.exclude.includes(f.name));
@@ -290,6 +292,7 @@ export async function makeFrames(key: string, preset: Preset) {
       v.height = job.height;
       if (job.stage === "ready" && job.preset === preset) {
         v.frames = job.frames;
+        v.dir = job.dir;
         v.stage = "ready";
         v.file = undefined;
         afterReady(v.draft);

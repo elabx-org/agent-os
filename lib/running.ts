@@ -17,6 +17,7 @@ import { stopScriptRun } from "@/lib/script-runs";
 import { stopServer } from "@/lib/dev-servers";
 import { publicOrigin } from "@/lib/public-origin";
 import { proxyUrlFor } from "@/lib/proxy-url";
+import { cwds, isDarwin, ps, type PsRow } from "@/lib/proc-darwin";
 
 const execFileAsync = promisify(execFile);
 
@@ -107,8 +108,17 @@ type Owner =
   | { devServer: DevServer }
   | null;
 
+function procParent(pid: number): number | null {
+  const stat = read(`/proc/${pid}/stat`);
+  return stat ? parentOf(stat) : null;
+}
+
 /** What started a process: its nearest ancestor AgentOS knows */
-function ownerOf(pid: number, owners: Owners): Owner {
+function ownerOf(
+  pid: number,
+  owners: Owners,
+  parent: (pid: number) => number | null = procParent
+): Owner {
   let at: number | null = pid;
   for (let hops = 0; at && at > 1 && hops < 64; hops++) {
     const pane = owners.panes.get(at);
@@ -117,10 +127,20 @@ function ownerOf(pid: number, owners: Owners): Owner {
     if (script) return { script };
     const devServer = owners.devServers.get(at);
     if (devServer) return { devServer };
-    const stat = read(`/proc/${at}/stat`);
-    at = stat ? parentOf(stat) : null;
+    at = parent(at);
   }
   return null;
+}
+
+/** What /proc gives on Linux, from ps and lsof on macOS */
+interface DarwinProcs {
+  rows: Map<number, PsRow>;
+  cwds: Map<number, string>;
+}
+
+async function darwinProcs(pids: number[]): Promise<DarwinProcs> {
+  const [all, folders] = await Promise.all([ps(), cwds(pids)]);
+  return { rows: new Map(all.map((r) => [r.pid, r])), cwds: folders };
 }
 
 /** Script runs and dev servers running now, by their own pid */
@@ -146,7 +166,12 @@ export async function listRunning(): Promise<RunningServer[]> {
   const sessions = queries.getAllSessions(getDb()).all() as Session[];
   const byTmux = new Map(sessions.map((s) => [s.tmux_name, s]));
   const owners: Owners = { panes, ...agentosPids() };
-  const boot = bootTime();
+  const darwin = isDarwin()
+    ? await darwinProcs(
+        ports.flatMap((p) => (p.processes[0] ? [p.processes[0].pid] : []))
+      )
+    : null;
+  const boot = darwin ? null : bootTime();
   const origin = publicOrigin();
   const out: RunningServer[] = [];
   for (const entry of ports) {
@@ -155,21 +180,36 @@ export async function listRunning(): Promise<RunningServer[]> {
       continue;
     const proc = entry.processes[0];
     const pid = proc?.pid ?? null;
-    const stat = pid ? read(`/proc/${pid}/stat`) : null;
-    const ticks = stat ? startTicks(stat) : null;
-    const command = pid
-      ? (read(`/proc/${pid}/cmdline`) ?? "")
-          .split("\0")
-          .filter(Boolean)
-          .join(" ")
-      : "";
+    let command = "";
     let cwd: string | null = null;
-    try {
-      cwd = pid ? fs.readlinkSync(`/proc/${pid}/cwd`) : null;
-    } catch {
-      cwd = null;
+    let startedAt: number | null = null;
+    let owner: Owner = null;
+    if (darwin) {
+      const row = pid ? darwin.rows.get(pid) : undefined;
+      command = row?.args ?? "";
+      cwd = (pid && darwin.cwds.get(pid)) || null;
+      startedAt = row?.elapsed != null ? Date.now() - row.elapsed * 1000 : null;
+      owner = pid
+        ? ownerOf(pid, owners, (at) => darwin.rows.get(at)?.ppid ?? null)
+        : null;
+    } else {
+      const stat = pid ? read(`/proc/${pid}/stat`) : null;
+      const ticks = stat ? startTicks(stat) : null;
+      command = pid
+        ? (read(`/proc/${pid}/cmdline`) ?? "")
+            .split("\0")
+            .filter(Boolean)
+            .join(" ")
+        : "";
+      try {
+        cwd = pid ? fs.readlinkSync(`/proc/${pid}/cwd`) : null;
+      } catch {
+        cwd = null;
+      }
+      // Clock ticks are 100 a second on Linux
+      startedAt = boot !== null && ticks !== null ? boot + ticks * 10 : null;
+      owner = pid ? ownerOf(pid, owners) : null;
     }
-    const owner = pid ? ownerOf(pid, owners) : null;
     const tmux = owner && "tmux" in owner ? owner.tmux : null;
     const session = tmux ? (byTmux.get(tmux) ?? null) : null;
     const run = owner && "script" in owner ? owner.script : null;
@@ -183,8 +223,7 @@ export async function listRunning(): Promise<RunningServer[]> {
           ? `${command.slice(0, MAX_COMMAND - 1)}…`
           : command,
       cwd,
-      // Clock ticks are 100 a second on Linux
-      startedAt: boot !== null && ticks !== null ? boot + ticks * 10 : null,
+      startedAt,
       sessionId: session?.id ?? null,
       sessionName: session?.name ?? null,
       url: `/proxy/${entry.port}/`,
