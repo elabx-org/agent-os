@@ -21,6 +21,8 @@ export interface MachineView {
   createdAt: number;
   lastSeen: number | null;
   sameVersion: boolean | null;
+  /** Sessions on this server may use it through AgentOS's tools */
+  agents?: boolean;
 }
 
 export interface MachinesResponse {

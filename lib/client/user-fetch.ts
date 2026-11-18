@@ -11,7 +11,7 @@ const PROOF_TIMEOUT_MS = 5000;
 let proving: Promise<void> | null = null;
 
 /** Loads the proof page as an iframe navigation, so server.ts re-issues the cookie */
-function reprove(): Promise<void> {
+export function reprove(): Promise<void> {
   proving ??= new Promise<void>((resolve) => {
     const frame = document.createElement("iframe");
     frame.hidden = true;

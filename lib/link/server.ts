@@ -9,7 +9,7 @@ import { execFileSync } from "child_process";
 import type { IncomingMessage, ServerResponse } from "http";
 import type { Duplex } from "stream";
 import { getFlag } from "../flags";
-import { requireUser } from "../user-proof";
+import { hasUserCookie, requireUser } from "../user-proof";
 import { LinkHub } from "./hub";
 import { receiveNotice } from "./notices";
 import { LINK_PATH } from "./protocol";
@@ -150,9 +150,46 @@ function isUser(req: IncomingMessage): boolean {
   return requireUser(new Request("http://hub/", { headers })).ok;
 }
 
-function approved(machineId: string): boolean {
-  return store.machineById(machineId)?.status === "approved";
+/** Carries this boot's proof cookie: the user's own browser, not a tool */
+function fromBrowser(req: IncomingMessage): boolean {
+  const headers = new Headers();
+  for (const name of ["cookie", "x-agentos-origin"]) {
+    const value = req.headers[name];
+    if (value !== undefined) {
+      headers.set(name, Array.isArray(value) ? value.join("; ") : value);
+    }
+  }
+  return hasUserCookie(new Request("http://hub/", { headers }));
 }
+
+type Entry = "ok" | "unknown" | "agents_off";
+
+/**
+ * Whether a request may go to a machine: it must be approved, and anything
+ * that isn't the user's browser (a session's tool, a script on this server)
+ * only when the user has let this server's sessions use that machine
+ */
+export function machineEntry(
+  machine: Pick<store.MachineRow, "status" | "agents"> | null,
+  browser: boolean
+): Entry {
+  if (machine?.status !== "approved") return "unknown";
+  return browser || machine.agents === 1 ? "ok" : "agents_off";
+}
+
+const entryOf = (machineId: string, req: IncomingMessage) =>
+  machineEntry(store.machineById(machineId), fromBrowser(req));
+
+/**
+ * "no_proof" is what the page's own calls retry on after fetching a fresh
+ * proof cookie (it goes stale when this server restarts)
+ */
+const AGENTS_OFF = JSON.stringify({
+  error:
+    "Sessions on this server aren't allowed to use this machine. The user can allow it in AgentOS: Settings, Machines.",
+  code: "machine_agents_off",
+  reason: "no_proof",
+});
 
 /**
  * server.ts, after the sign-in check: answers from a machine when the
@@ -166,7 +203,8 @@ export function linkRequest(
   if (!machinesOn()) return false;
   const target = targetOf(req, url);
   if (!target) return false;
-  if (!approved(target.machineId)) {
+  const entry = entryOf(target.machineId, req);
+  if (entry === "unknown") {
     res.writeHead(404, {
       "Content-Type": "application/json",
       "Cache-Control": "no-store",
@@ -174,6 +212,14 @@ export function linkRequest(
     res.end(
       JSON.stringify({ error: "No such machine", code: "machine_unknown" })
     );
+    return true;
+  }
+  if (entry === "agents_off") {
+    res.writeHead(403, {
+      "Content-Type": "application/json",
+      "Cache-Control": "no-store",
+    });
+    res.end(AGENTS_OFF);
     return true;
   }
   linkHub().forwardRequest(target.machineId, req, res, {
@@ -211,8 +257,13 @@ export function linkUpgrade(
   const url = new URL(request.url ?? "/", "http://hub");
   const target = targetOf(request, url);
   if (!target) return false;
-  if (!approved(target.machineId)) {
-    socket.write("HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n");
+  const entry = entryOf(target.machineId, request);
+  if (entry !== "ok") {
+    socket.write(
+      entry === "unknown"
+        ? "HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n"
+        : "HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n"
+    );
     socket.destroy();
     return true;
   }

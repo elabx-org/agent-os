@@ -12,8 +12,14 @@
  * agent's (x-agentos-origin: agent, plus x-agentos-actor: its own tmux
  * session), and the server refuses an agent's answer to a permission
  * request, its auto-approve and any change to a permission mode.
+ *
+ * Linked machines (another AgentOS, e.g. a Mac, linked to this one): the
+ * session tools take `machine`, and the call goes there through this
+ * server (/m/<id>/...). This server refuses unless the user has let its
+ * sessions use that machine (Settings, Machines).
  */
 
+import { AsyncLocalStorage } from "node:async_hooks";
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
@@ -26,22 +32,33 @@ const BASE = process.env.AGENTOS_URL || "http://localhost:3011";
 const PERMISSION_USER_ONLY =
   "Permission requests can only be answered by the user in AgentOS. Ask the user.";
 
+/** The linked machine a tool call is for ({ id, name }); unset: this one */
+const where = new AsyncLocalStorage();
+
+/** This server's own answer, whatever machine the tool call is for */
+const here = (fn) => where.run(undefined, fn);
+
 async function api(path, options = {}) {
   // Changing a session's permission mode is the user's, not a tool
   if (/\/permission-mode(\/|\?|$)/.test(path)) {
     throw new Error(PERMISSION_USER_ONLY);
   }
-  const res = await fetch(`${BASE}${path}`, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options.headers,
-      "X-AgentOS-Origin": "agent",
-      // Who is asking, for the user's record of what agents tried
-      ...(ownTmux ? { "X-AgentOS-Actor": ownTmux } : {}),
-    },
-    body: options.body === undefined ? undefined : JSON.stringify(options.body),
-  });
+  const machine = where.getStore();
+  const res = await fetch(
+    `${BASE}${machine ? `/m/${machine.id}` : ""}${path}`,
+    {
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options.headers,
+        "X-AgentOS-Origin": "agent",
+        // Who is asking, for the user's record of what agents tried
+        ...(ownTmux ? { "X-AgentOS-Actor": ownTmux } : {}),
+      },
+      body:
+        options.body === undefined ? undefined : JSON.stringify(options.body),
+    }
+  );
   const text = await res.text();
   let data;
   try {
@@ -50,10 +67,67 @@ async function api(path, options = {}) {
     data = { raw: text };
   }
   if (!res.ok) {
+    if (machine && data.code === "machine_agents_off") {
+      throw new Error(
+        `The user hasn't let sessions on this server use ${machine.name}. They can turn it on in AgentOS: Settings, Machines.`
+      );
+    }
+    if (machine && String(data.code).startsWith("machine_")) {
+      throw new Error(
+        `${machine.name} can't be reached right now (${data.error}).`
+      );
+    }
     throw new Error(data.error || `${res.status} ${res.statusText} on ${path}`);
   }
   return data;
 }
+
+async function machines() {
+  const data = await here(() => api("/api/machines"));
+  return (data.machines ?? []).filter((m) => m.status === "approved");
+}
+
+/** A linked machine by id or name */
+async function findMachine(ref) {
+  const list = await machines();
+  const key = ref.trim().toLowerCase();
+  const found =
+    list.find((m) => m.id === ref) ||
+    list.find((m) => m.name.toLowerCase() === key) ||
+    list.filter((m) => m.name.toLowerCase().includes(key));
+  const one = Array.isArray(found)
+    ? found.length === 1
+      ? found[0]
+      : null
+    : found;
+  if (!one) {
+    throw new Error(
+      list.length
+        ? `No one linked machine matches "${ref}". Linked: ${list.map((m) => m.name).join(", ")}`
+        : "No machine is linked to this AgentOS."
+    );
+  }
+  if (one.presence !== "online") throw new Error(`${one.name} is offline.`);
+  return one;
+}
+
+const MACHINE = z
+  .string()
+  .optional()
+  .describe(
+    "A linked machine (name or id from list_machines) to do this on, instead of this server"
+  );
+
+/** A tool that takes `machine`: its calls go to that machine */
+const onMachine = (fn) => async (args) => {
+  if (!args.machine) return fn(args);
+  const machine = await findMachine(args.machine);
+  return where.run({ id: machine.id, name: machine.name }, () => fn(args));
+};
+
+/** ~ is the machine's home there, not this server's */
+const homePath = (dir) =>
+  where.getStore() ? dir : dir.replace(/^~(?=$|\/)/, os.homedir());
 
 /** The tmux session this server's own agent runs in, if any */
 const ownTmux = (() => {
@@ -116,6 +190,8 @@ async function findSession(ref) {
 }
 
 function notSelf(session, verb) {
+  // Another machine's sessions are never this one
+  if (where.getStore()) return;
   if (ownTmux && tmuxOf(session) === ownTmux) {
     throw new Error(`That is this session; it can't ${verb} itself`);
   }
@@ -204,9 +280,31 @@ const server = new McpServer(
       "Permission requests are the user's: you can't answer them (answer_prompt and send_message refuse) or start sessions that skip them. When a session is waiting for permission, tell the user and let them answer it in AgentOS.",
       "You can't control your own session. Don't stop, interrupt or answer prompts in sessions you didn't start unless the user asks.",
       "The user is on their phone, not this machine: a server you start (a dev server, a preview, a test page) is reachable only through AgentOS's port proxy. When you start one, give the user its preview_url link, never a localhost or 0.0.0.0 address, and don't open ports to the network. Bind to 127.0.0.1 or 0.0.0.0 on any free port. list_servers shows what runs; stop_server stops only servers your own session started.",
+      "Linked machines (list_machines), e.g. the user's Mac: pass `machine` to the project and session tools to work there, for what only that machine can do (Xcode, the iOS simulator, macOS-only tools). A session there is its own agent on that machine with its own files: give it a complete task, and move code between machines with git. It only works when the user has allowed it for that machine in Settings, Machines; if it's refused, tell the user.",
       "When the user approves, rejects or drops a mock you published, record it with set_mock_status (with the PR once it's built).",
     ].join("\n"),
   }
+);
+
+server.registerTool(
+  "list_machines",
+  {
+    description:
+      "List the machines linked to this AgentOS (e.g. the user's Mac): name, id, platform, whether each is online and whether the user lets sessions here use it. Pass a machine's name as `machine` to the project and session tools to work there.",
+    inputSchema: {},
+  },
+  tool(async () =>
+    (await machines()).map((m) => ({
+      id: m.id,
+      name: m.name,
+      platform: m.platform,
+      online: m.presence === "online",
+      usable_by_sessions: !!m.agents,
+      note: m.agents
+        ? undefined
+        : "The user hasn't allowed sessions here to use it (Settings, Machines)",
+    }))
+  )
 );
 
 server.registerTool(
@@ -214,16 +312,18 @@ server.registerTool(
   {
     description:
       "List AgentOS projects: name, id, directory, default agent and model.",
-    inputSchema: {},
+    inputSchema: { machine: MACHINE },
   },
-  tool(async () =>
-    (await projects()).map((p) => ({
-      id: p.id,
-      name: p.name,
-      directory: p.working_directory,
-      agent: p.agent_type,
-      model: p.default_model,
-    }))
+  tool(
+    onMachine(async () =>
+      (await projects()).map((p) => ({
+        id: p.id,
+        name: p.name,
+        directory: p.working_directory,
+        agent: p.agent_type,
+        model: p.default_model,
+      }))
+    )
   )
 );
 
@@ -244,26 +344,35 @@ server.registerTool(
         .optional()
         .describe("Default agent for new sessions (default claude)"),
       model: z.string().optional().describe("Default model, e.g. opus, sonnet"),
+      machine: MACHINE,
     },
   },
-  tool(async ({ name, directory, create_directory, agent, model }) => {
-    const path = directory.replace(/^~(?=$|\/)/, os.homedir());
-    if (create_directory) fs.mkdirSync(path, { recursive: true });
-    const { project } = await api("/api/projects", {
-      method: "POST",
-      body: {
-        name,
-        workingDirectory: path,
-        agentType: agent,
-        defaultModel: model,
-      },
-    });
-    return {
-      id: project.id,
-      name: project.name,
-      directory: project.working_directory,
-    };
-  })
+  tool(
+    onMachine(async ({ name, directory, create_directory, agent, model }) => {
+      const path = homePath(directory);
+      if (create_directory) {
+        if (where.getStore())
+          throw new Error(
+            "create_directory only works on this server. On a linked machine, have a session there create it."
+          );
+        fs.mkdirSync(path, { recursive: true });
+      }
+      const { project } = await api("/api/projects", {
+        method: "POST",
+        body: {
+          name,
+          workingDirectory: path,
+          agentType: agent,
+          defaultModel: model,
+        },
+      });
+      return {
+        id: project.id,
+        name: project.name,
+        directory: project.working_directory,
+      };
+    })
+  )
 );
 
 server.registerTool(
@@ -277,37 +386,41 @@ server.registerTool(
         .boolean()
         .optional()
         .describe("Only sessions that are running"),
+      machine: MACHINE,
     },
   },
-  tool(async ({ project, running_only }) => {
-    const [{ sessions }, live, list] = await Promise.all([
-      api("/api/sessions"),
-      running(),
-      projects(),
-    ]);
-    const only = project ? findProject(list, project) : null;
-    const names = new Map(list.map((p) => [p.id, p.name]));
-    const picked = sessions.filter(
-      (s) =>
-        (!only || s.project_id === only.id) &&
-        (!running_only || live.has(tmuxOf(s)))
-    );
-    return Promise.all(
-      picked.map(async (s) => {
-        const { state } = await inspect(s, live);
-        return {
-          id: s.id,
-          name: s.name,
-          project: names.get(s.project_id) ?? s.project_id,
-          agent: s.agent_type,
-          directory: s.worktree_path || s.working_directory,
-          branch: s.branch_name || undefined,
-          state,
-          this_session: ownTmux === tmuxOf(s) || undefined,
-        };
-      })
-    );
-  })
+  tool(
+    onMachine(async ({ project, running_only }) => {
+      const [{ sessions }, live, list] = await Promise.all([
+        api("/api/sessions"),
+        running(),
+        projects(),
+      ]);
+      const only = project ? findProject(list, project) : null;
+      const names = new Map(list.map((p) => [p.id, p.name]));
+      const picked = sessions.filter(
+        (s) =>
+          (!only || s.project_id === only.id) &&
+          (!running_only || live.has(tmuxOf(s)))
+      );
+      return Promise.all(
+        picked.map(async (s) => {
+          const { state } = await inspect(s, live);
+          return {
+            id: s.id,
+            name: s.name,
+            project: names.get(s.project_id) ?? s.project_id,
+            agent: s.agent_type,
+            directory: s.worktree_path || s.working_directory,
+            branch: s.branch_name || undefined,
+            state,
+            this_session:
+              (!where.getStore() && ownTmux === tmuxOf(s)) || undefined,
+          };
+        })
+      );
+    })
+  )
 );
 
 server.registerTool(
@@ -345,38 +458,41 @@ server.registerTool(
         .describe(
           "Work on a new branch in its own worktree, so it doesn't disturb the checkout"
         ),
+      machine: MACHINE,
     },
   },
-  tool(async ({ task, project, directory, name, agent, model, branch }) => {
-    const p = project ? findProject(await projects(), project) : null;
-    const cwd = (directory || p?.working_directory || "~").replace(
-      /^~(?=$|\/)/,
-      os.homedir()
-    );
-    const { session, error } = await api("/api/sessions", {
-      method: "POST",
-      body: {
-        name,
-        workingDirectory: cwd,
-        projectId: p?.id ?? "uncategorized",
-        agentType: agent || p?.agent_type || "claude",
-        model: model || p?.default_model || undefined,
-        autoApprove: false,
-        useWorktree: !!branch,
-        featureName: branch || null,
-        initialPrompt: task || null,
-        launch: true,
-      },
-    });
-    if (error) throw new Error(error);
-    return {
-      id: session.id,
-      name: session.name,
-      directory: session.worktree_path || session.working_directory,
-      branch: session.branch_name || undefined,
-      started: true,
-    };
-  })
+  tool(
+    onMachine(
+      async ({ task, project, directory, name, agent, model, branch }) => {
+        const p = project ? findProject(await projects(), project) : null;
+        const cwd = homePath(directory || p?.working_directory || "~");
+        const { session, error } = await api("/api/sessions", {
+          method: "POST",
+          body: {
+            name,
+            workingDirectory: cwd,
+            projectId: p?.id ?? "uncategorized",
+            agentType: agent || p?.agent_type || "claude",
+            model: model || p?.default_model || undefined,
+            autoApprove: false,
+            useWorktree: !!branch,
+            featureName: branch || null,
+            initialPrompt: task || null,
+            launch: true,
+          },
+        });
+        if (error) throw new Error(error);
+        return {
+          id: session.id,
+          name: session.name,
+          directory: session.worktree_path || session.working_directory,
+          branch: session.branch_name || undefined,
+          machine: where.getStore()?.name,
+          started: true,
+        };
+      }
+    )
+  )
 );
 
 server.registerTool(
@@ -386,18 +502,21 @@ server.registerTool(
       "Type a message into a running session and press Enter, as if you sent it from AgentOS. Refused while the session is waiting for permission (only the user can answer that), and for a session with full access unless yours has it too.",
     inputSchema: {
       session: z.string().describe("Session id, id prefix or name"),
+      machine: MACHINE,
       text: z.string().describe("The message"),
     },
   },
-  tool(async ({ session, text }) => {
-    const s = await findSession(session);
-    notSelf(s, "message");
-    await api(`/api/sessions/${s.id}/send-keys`, {
-      method: "POST",
-      body: { text, pressEnter: true },
-    });
-    return `Sent to ${s.name}`;
-  })
+  tool(
+    onMachine(async ({ session, text }) => {
+      const s = await findSession(session);
+      notSelf(s, "message");
+      await api(`/api/sessions/${s.id}/send-keys`, {
+        method: "POST",
+        body: { text, pressEnter: true },
+      });
+      return `Sent to ${s.name}`;
+    })
+  )
 );
 
 server.registerTool(
@@ -407,6 +526,7 @@ server.registerTool(
       "What a session is doing: its state, Claude's last message (or the question it's asking, with options), and the end of its terminal.",
     inputSchema: {
       session: z.string().describe("Session id, id prefix or name"),
+      machine: MACHINE,
       terminal_lines: z
         .number()
         .int()
@@ -416,27 +536,29 @@ server.registerTool(
         .describe("Lines of terminal to include (default 20, max 50)"),
     },
   },
-  tool(async ({ session, terminal_lines = 20 }) => {
-    const s = await findSession(session);
-    const live = await running();
-    const { state, user_only, context, question, options } = await inspect(
-      s,
-      live
-    );
-    const preview =
-      live.has(tmuxOf(s)) && terminal_lines > 0
-        ? ((await get(`/api/sessions/${s.id}/preview`)).lines ?? [])
-        : [];
-    return {
-      name: s.name,
-      state,
-      note: user_only ? PERMISSION_USER_ONLY : undefined,
-      question,
-      options,
-      last_message: context?.text ?? undefined,
-      terminal: preview.slice(-terminal_lines).join("\n") || undefined,
-    };
-  })
+  tool(
+    onMachine(async ({ session, terminal_lines = 20 }) => {
+      const s = await findSession(session);
+      const live = await running();
+      const { state, user_only, context, question, options } = await inspect(
+        s,
+        live
+      );
+      const preview =
+        live.has(tmuxOf(s)) && terminal_lines > 0
+          ? ((await get(`/api/sessions/${s.id}/preview`)).lines ?? [])
+          : [];
+      return {
+        name: s.name,
+        state,
+        note: user_only ? PERMISSION_USER_ONLY : undefined,
+        question,
+        options,
+        last_message: context?.text ?? undefined,
+        terminal: preview.slice(-terminal_lines).join("\n") || undefined,
+      };
+    })
+  )
 );
 
 server.registerTool(
@@ -446,6 +568,7 @@ server.registerTool(
       "Wait until a session stops working (finished, asking a question or waiting for permission), then return what read_session would. A permission request is for the user to answer, not you.",
     inputSchema: {
       session: z.string().describe("Session id, id prefix or name"),
+      machine: MACHINE,
       timeout_seconds: z
         .number()
         .int()
@@ -455,31 +578,33 @@ server.registerTool(
         .describe("Give up after this long (default 300)"),
     },
   },
-  tool(async ({ session, timeout_seconds = 300 }) => {
-    const s = await findSession(session);
-    notSelf(s, "wait for");
-    const end = Date.now() + timeout_seconds * 1000;
-    // A turn just sent may not show as working for a moment
-    await new Promise((r) => setTimeout(r, 4000));
-    for (;;) {
-      const { state, user_only, context, question, options } = await inspect(
-        s,
-        await running()
-      );
-      if (!busy(state) || Date.now() > end) {
-        return {
-          name: s.name,
-          state,
-          timed_out: busy(state) || undefined,
-          note: user_only ? PERMISSION_USER_ONLY : undefined,
-          question,
-          options,
-          last_message: context?.text ?? undefined,
-        };
+  tool(
+    onMachine(async ({ session, timeout_seconds = 300 }) => {
+      const s = await findSession(session);
+      notSelf(s, "wait for");
+      const end = Date.now() + timeout_seconds * 1000;
+      // A turn just sent may not show as working for a moment
+      await new Promise((r) => setTimeout(r, 4000));
+      for (;;) {
+        const { state, user_only, context, question, options } = await inspect(
+          s,
+          await running()
+        );
+        if (!busy(state) || Date.now() > end) {
+          return {
+            name: s.name,
+            state,
+            timed_out: busy(state) || undefined,
+            note: user_only ? PERMISSION_USER_ONLY : undefined,
+            question,
+            options,
+            last_message: context?.text ?? undefined,
+          };
+        }
+        await new Promise((r) => setTimeout(r, 3000));
       }
-      await new Promise((r) => setTimeout(r, 3000));
-    }
-  })
+    })
+  )
 );
 
 server.registerTool(
@@ -489,6 +614,7 @@ server.registerTool(
       "Answer a question a session's Claude is asking (AskUserQuestion) by picking an option, by its index and label from read_session. Permission requests can't be answered here: only the user can, in AgentOS.",
     inputSchema: {
       session: z.string().describe("Session id, id prefix or name"),
+      machine: MACHINE,
       index: z
         .number()
         .int()
@@ -498,23 +624,25 @@ server.registerTool(
         .describe("The option's label, so a changed prompt isn't answered"),
     },
   },
-  tool(async ({ session, index, label }) => {
-    const s = await findSession(session);
-    notSelf(s, "answer");
-    // Only a question: anything else, or unclear, is a permission request
-    const { user_only, context } = await inspect(s, await running());
-    if (user_only || context?.kind !== "ask")
-      throw new Error(PERMISSION_USER_ONLY);
-    const { prompt } = await api(`/api/sessions/${s.id}/prompt`);
-    const option = prompt?.options.find((o) => o.label === label);
-    if (!option)
-      throw new Error("No such option on screen; read the session again");
-    await api(`/api/sessions/${s.id}/prompt`, {
-      method: "POST",
-      body: { index: prompt.options.indexOf(option), label },
-    });
-    return `Answered "${label}" in ${s.name} (index ${index})`;
-  })
+  tool(
+    onMachine(async ({ session, index, label }) => {
+      const s = await findSession(session);
+      notSelf(s, "answer");
+      // Only a question: anything else, or unclear, is a permission request
+      const { user_only, context } = await inspect(s, await running());
+      if (user_only || context?.kind !== "ask")
+        throw new Error(PERMISSION_USER_ONLY);
+      const { prompt } = await api(`/api/sessions/${s.id}/prompt`);
+      const option = prompt?.options.find((o) => o.label === label);
+      if (!option)
+        throw new Error("No such option on screen; read the session again");
+      await api(`/api/sessions/${s.id}/prompt`, {
+        method: "POST",
+        body: { index: prompt.options.indexOf(option), label },
+      });
+      return `Answered "${label}" in ${s.name} (index ${index})`;
+    })
+  )
 );
 
 server.registerTool(
@@ -523,14 +651,17 @@ server.registerTool(
     description: "Press Esc in a session, stopping its agent mid-turn.",
     inputSchema: {
       session: z.string().describe("Session id, id prefix or name"),
+      machine: MACHINE,
     },
   },
-  tool(async ({ session }) => {
-    const s = await findSession(session);
-    notSelf(s, "interrupt");
-    await api(`/api/sessions/${s.id}/interrupt`, { method: "POST" });
-    return `Interrupted ${s.name}`;
-  })
+  tool(
+    onMachine(async ({ session }) => {
+      const s = await findSession(session);
+      notSelf(s, "interrupt");
+      await api(`/api/sessions/${s.id}/interrupt`, { method: "POST" });
+      return `Interrupted ${s.name}`;
+    })
+  )
 );
 
 server.registerTool(
@@ -540,16 +671,19 @@ server.registerTool(
       "End a session's agent and terminal. The session stays in AgentOS; opening it starts it again.",
     inputSchema: {
       session: z.string().describe("Session id, id prefix or name"),
+      machine: MACHINE,
     },
   },
-  tool(async ({ session }) => {
-    const s = await findSession(session);
-    notSelf(s, "stop");
-    const { stopped } = await api(`/api/sessions/${s.id}/stop`, {
-      method: "POST",
-    });
-    return stopped ? `Stopped ${s.name}` : `${s.name} wasn't running`;
-  })
+  tool(
+    onMachine(async ({ session }) => {
+      const s = await findSession(session);
+      notSelf(s, "stop");
+      const { stopped } = await api(`/api/sessions/${s.id}/stop`, {
+        method: "POST",
+      });
+      return stopped ? `Stopped ${s.name}` : `${s.name} wasn't running`;
+    })
+  )
 );
 
 async function servers() {

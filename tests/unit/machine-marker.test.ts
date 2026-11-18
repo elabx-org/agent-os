@@ -425,3 +425,17 @@ describe("the server agrees", () => {
     });
   });
 });
+
+describe("who may reach a linked machine", () => {
+  test("the user's browser always; a tool only when the user allowed it", async () => {
+    const { machineEntry } = await import("../../lib/link/server");
+    const mac = (agents: number, status: "approved" | "pending" = "approved") =>
+      ({ status, agents }) as const;
+    assert.equal(machineEntry(mac(0), true), "ok");
+    assert.equal(machineEntry(mac(0), false), "agents_off");
+    assert.equal(machineEntry(mac(1), false), "ok");
+    assert.equal(machineEntry(mac(1, "pending"), true), "unknown");
+    assert.equal(machineEntry(mac(1, "pending"), false), "unknown");
+    assert.equal(machineEntry(null, true), "unknown");
+  });
+});

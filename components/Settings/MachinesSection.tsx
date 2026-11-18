@@ -11,6 +11,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { confirmAction } from "@/components/ui/confirm";
+import { Switch } from "@/components/ui/switch";
 import {
   isOnline,
   machineKeys,
@@ -192,6 +193,19 @@ function LinkedRow({
     if (machine.id === tab) switchMachine(null);
   };
 
+  const allowAgents = async (allowed: boolean) => {
+    const res = await fetchAsUser(`/api/machines/${machine.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ agents: allowed }),
+    });
+    if (!res.ok) {
+      toast.error(refusalText(await res.json().catch(() => ({}))));
+      return;
+    }
+    onChange();
+  };
+
   if (renaming) {
     return (
       <RenameRow
@@ -205,37 +219,85 @@ function LinkedRow({
   }
 
   return (
-    <MachineRow
-      kind="mac"
-      name={machine.name}
-      online={online}
-      detail={detail}
-      current={machine.id === tab}
-      onOpen={online ? () => switchMachine(machine.id) : undefined}
-      menu={
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
-              type="button"
-              aria-label={`${machine.name}: more`}
-              className="text-muted-foreground active:bg-accent relative grid h-9 w-9 shrink-0 place-items-center rounded-full after:absolute after:-inset-1 after:content-['']"
-            >
-              <MoreHorizontal className="h-5 w-5" />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onSelect={() => setRenaming(true)}>
-              <Pencil className="h-4 w-4" />
-              Rename
-            </DropdownMenuItem>
-            <DropdownMenuItem variant="destructive" onSelect={remove}>
-              <Trash2 className="h-4 w-4" />
-              Remove
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      }
-    />
+    <>
+      <MachineRow
+        kind="mac"
+        name={machine.name}
+        online={online}
+        detail={detail}
+        current={machine.id === tab}
+        onOpen={online ? () => switchMachine(machine.id) : undefined}
+        menu={
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                aria-label={`${machine.name}: more`}
+                className="text-muted-foreground active:bg-accent relative grid h-9 w-9 shrink-0 place-items-center rounded-full after:absolute after:-inset-1 after:content-['']"
+              >
+                <MoreHorizontal className="h-5 w-5" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={() => setRenaming(true)}>
+                <Pencil className="h-4 w-4" />
+                Rename
+              </DropdownMenuItem>
+              <DropdownMenuItem variant="destructive" onSelect={remove}>
+                <Trash2 className="h-4 w-4" />
+                Remove
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        }
+      />
+      <AgentsRow
+        name={machine.name}
+        allowed={!!machine.agents}
+        onChange={allowAgents}
+      />
+    </>
+  );
+}
+
+/**
+ * Whether sessions on this server may start and drive sessions on the
+ * machine (AgentOS's tools). Off: only you, in the app, reach it
+ */
+function AgentsRow({
+  name,
+  allowed,
+  onChange,
+}: {
+  name: string;
+  allowed: boolean;
+  onChange: (allowed: boolean) => Promise<void>;
+}) {
+  const [saving, setSaving] = useState(false);
+  const id = `machine-agents-${name}`;
+  return (
+    <div className="row items-start gap-3 py-3 pl-[68px]">
+      <label htmlFor={id} className="min-w-0 flex-1">
+        <span className="block text-[15px]">
+          Let sessions on this server use it
+        </span>
+        <span className="text-muted-foreground block text-[13px]">
+          {allowed
+            ? `Agents here can start sessions on ${name} and give them work.`
+            : `Off: only you can reach ${name}, from the app.`}
+        </span>
+      </label>
+      <Switch
+        id={id}
+        checked={allowed}
+        disabled={saving}
+        onCheckedChange={async (next) => {
+          setSaving(true);
+          await onChange(next);
+          setSaving(false);
+        }}
+      />
+    </div>
   );
 }
 
