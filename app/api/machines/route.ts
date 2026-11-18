@@ -28,6 +28,8 @@ export async function GET() {
         createdAt: m.created_at,
         lastSeen: m.last_seen,
         sameVersion: !sha || !m.sha ? null : m.sha === sha,
+        // Sessions on this server may use it (the user's switch)
+        agents: m.agents === 1,
       })),
     },
     { headers: { "Cache-Control": "no-store" } }

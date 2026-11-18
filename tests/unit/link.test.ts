@@ -37,6 +37,7 @@ function memoryDeps(): HubDeps & { rows: Map<string, MachineRow> } {
         created_at: 1,
         approved_at: null,
         last_seen: null,
+        agents: 0,
       };
       rows.set(row.id, row);
       return row;

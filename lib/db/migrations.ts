@@ -634,6 +634,15 @@ const migrations: Migration[] = [
       `);
     }),
   },
+  {
+    id: 38,
+    name: "add_machines_agents",
+    up: atomic((db) => {
+      // 1: sessions on this server may use the machine through AgentOS's
+      // tools (start and drive sessions there). Off until the user says so
+      db.exec(`ALTER TABLE machines ADD COLUMN agents INTEGER NOT NULL DEFAULT 0`);
+    }),
+  },
 ];
 
 export function runMigrations(db: Database.Database): void {

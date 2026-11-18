@@ -19,6 +19,8 @@ export interface MachineRow {
   created_at: number;
   approved_at: number | null;
   last_seen: number | null;
+  /** 1: sessions on this server may use it through AgentOS's tools */
+  agents: number;
 }
 
 const clean = (value: string, max: number) =>
@@ -89,6 +91,13 @@ export function renameMachine(id: string, name: string): MachineRow | null {
     getDb().prepare(`UPDATE machines SET name = ? WHERE id = ?`).run(value, id);
   }
   return machineById(id);
+}
+
+/** Whether sessions on this server may use the machine */
+export function setMachineAgents(id: string, allowed: boolean): void {
+  getDb()
+    .prepare(`UPDATE machines SET agents = ? WHERE id = ?`)
+    .run(allowed ? 1 : 0, id);
 }
 
 export function removeMachine(id: string): boolean {

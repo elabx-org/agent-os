@@ -25,6 +25,26 @@ import {
   switchHref,
   type SwitchOpen,
 } from "@/lib/machine-marker";
+import { reprove } from "@/lib/client/user-fetch";
+
+/**
+ * A call to a machine the server took for a tool's, not this page's: the
+ * proof cookie went stale (the server restarted). A fresh one, then once
+ * more. Nothing else answers 403 with this code.
+ */
+async function withProof(
+  res: Response,
+  again: () => Promise<Response>
+): Promise<Response> {
+  if (res.status !== 403) return res;
+  const body = (await res
+    .clone()
+    .json()
+    .catch(() => null)) as { code?: string } | null;
+  if (body?.code !== "machine_agents_off") return res;
+  await reprove();
+  return again();
+}
 
 /** Sent on window when a call says the tab's machine is gone or offline */
 export const MACHINE_GONE_EVENT = "agentos:machine-gone";
@@ -86,8 +106,13 @@ function wrap() {
     );
     // A caller that names a target itself (hubFetch) keeps it
     if (!headers.has(MACHINE_HEADER)) headers.set(MACHINE_HEADER, value);
-    const sent = originalFetch.call(window, input, { ...init, headers });
-    if (!mine || headers.get(MACHINE_HEADER) !== mine) return sent;
+    const send = () => originalFetch.call(window, input, { ...init, headers });
+    if (!mine || headers.get(MACHINE_HEADER) !== mine) return send();
+    // A Request's body can only be sent once: those aren't retried
+    const sent =
+      input instanceof Request
+        ? send()
+        : send().then((res) => withProof(res, send));
     return sent.then((res) => {
       if (res.status === 404 || res.status === 502 || res.status === 503) {
         res
@@ -248,7 +273,7 @@ export function fetchOn(
   path: string,
   init?: RequestInit
 ): Promise<Response> {
-  return target === HUB_TARGET
-    ? hubFetch(path, init)
-    : fetch(`/m/${target}${path}`, init);
+  if (target === HUB_TARGET) return hubFetch(path, init);
+  const send = () => fetch(`/m/${target}${path}`, init);
+  return send().then((res) => withProof(res, send));
 }
