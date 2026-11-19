@@ -64,6 +64,8 @@ function session(over: Partial<Session> & { id: string }): Session {
     pr_checks: null,
     pr_title: null,
     pr_merged_at: null,
+    moved_to: null,
+    moved_from: null,
     paused_at: null,
     handoff_from_session_id: null,
     handoff_to_session_id: null,

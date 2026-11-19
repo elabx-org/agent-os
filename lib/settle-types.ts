@@ -7,6 +7,7 @@
 
 import type { Session } from "./db/types";
 import type { PRChecks, PRState } from "./git-types";
+import { parseMovedTo } from "./session-move-types";
 
 /** Why a session settled (sessions.settled_reason) */
 export const SETTLE_REASONS = [
@@ -16,6 +17,8 @@ export const SETTLE_REASONS = [
   "pr_merged",
   /** Its PR was merged from Agent-OS (app/api/git/pr/[number]/merge) */
   "pr_merged_here",
+  /** It went on to another machine (lib/session-move.ts) */
+  "moved",
 ] as const;
 export type SettleReason = (typeof SETTLE_REASONS)[number];
 
@@ -207,8 +210,13 @@ export function prChipLabel(pr: SessionPr, baseBranch?: string | null): string {
 
 /** The subline of a settled row: "Settled automatically · PR #106 merged" */
 export function settledLine(
-  session: Pick<Session, "settled_reason" | "pr_number" | "pr_status">
+  session: Pick<Session, "settled_reason" | "pr_number" | "pr_status"> &
+    Partial<Pick<Session, "moved_to">>
 ): string {
+  if (session.settled_reason === "moved") {
+    const to = parseMovedTo(session.moved_to);
+    return to ? `Continued on ${to.name}` : "Paused to move";
+  }
   const pr =
     session.pr_number != null && session.pr_status === "merged"
       ? `PR #${session.pr_number} merged`

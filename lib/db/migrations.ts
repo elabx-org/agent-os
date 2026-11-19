@@ -643,6 +643,16 @@ const migrations: Migration[] = [
       db.exec(`ALTER TABLE machines ADD COLUMN agents INTEGER NOT NULL DEFAULT 0`);
     }),
   },
+  {
+    id: 39,
+    name: "add_session_moved_columns",
+    up: atomic((db) => {
+      // Continue on another machine (lib/session-move.ts): JSON MovedTo on
+      // the settled row it left, JSON MovedFrom on the one that took over
+      addColumnIfMissing(db, "sessions", "moved_to", "TEXT");
+      addColumnIfMissing(db, "sessions", "moved_from", "TEXT");
+    }),
+  },
 ];
 
 export function runMigrations(db: Database.Database): void {
