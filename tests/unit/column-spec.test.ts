@@ -290,6 +290,16 @@ test("columnFor: a sheet over the closed session (E-Live, N-Undo)", () => {
     columnFor("session", "duo-closed", move)[1].label,
     "Move session"
   );
+  // Continue on another machine has its own button, not "Move session"
+  const cont = { ...CTX, sheet: "continue" as const };
+  assert.equal(
+    columnFor("session", "duo-closed", cont)[1].label,
+    "Continue there"
+  );
+  assert.equal(
+    fmt(columnFor("session", "duo-open", { ...cont, sheetAction: "none" })),
+    "closeSheet"
+  );
   // On the open Duo too (the sheet stops at the web column)
   assert.equal(
     fmt(columnFor("session", "duo-open", move)),

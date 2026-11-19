@@ -90,7 +90,7 @@ export const claudeProvider: AgentProvider = {
     // Native worktree isolation (Claude 2.1.50+)
     if (options.worktreeName !== undefined && def.worktreeFlag) {
       flags.push(options.worktreeName
-        ? `${def.worktreeFlag} ${options.worktreeName}`
+        ? `${def.worktreeFlag} '${options.worktreeName.replace(/'/g, "'\\''")}'`
         : def.worktreeFlag);
     }
 
@@ -516,7 +516,7 @@ export const minimaxProvider: AgentProvider = {
     // Native worktree isolation
     if (options.worktreeName !== undefined && def.worktreeFlag) {
       flags.push(options.worktreeName
-        ? `${def.worktreeFlag} ${options.worktreeName}`
+        ? `${def.worktreeFlag} '${options.worktreeName.replace(/'/g, "'\\''")}'`
         : def.worktreeFlag);
     }
 

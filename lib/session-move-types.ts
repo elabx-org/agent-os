@@ -6,6 +6,7 @@
  * No server imports.
  */
 
+import { capForAgent, normalizeMode } from "./permission-mode";
 import type { MoveSnapshot } from "./worktree-move-git";
 
 /** "hub" or a machine id, as the hub names them */
@@ -19,6 +20,8 @@ export interface MovedTo {
   at: number;
   /** What its folder held when it left, to tell an untouched folder later */
   head: string;
+  /** The branch its folder was on (null detached; absent on older rows) */
+  branch?: string | null;
   snapshot: MoveSnapshot | null;
 }
 
@@ -39,6 +42,48 @@ export function parseMovedTo(value: string | null | undefined): MovedTo | null {
   }
 }
 
+export function parseMovedFrom(
+  value: string | null | undefined
+): MovedFrom | null {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(value) as MovedFrom;
+    return typeof parsed?.machine === "string" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+/** A move's id, as both machines and the hub accept it */
+export const MOVE_ID = /^[0-9a-f]{16}$/;
+
+/**
+ * Branch names a move carries over: plain ones only, since the name ends
+ * up in git and launch commands on another machine
+ */
+export const safeBranch = (name: unknown): name is string =>
+  typeof name === "string" &&
+  name.length <= 200 &&
+  /^[A-Za-z0-9_][A-Za-z0-9_./+@-]*$/.test(name) &&
+  !name.includes("..");
+
+/** A repository-relative path that stays inside the repository */
+export function safeRepoPath(value: unknown): value is string {
+  if (typeof value !== "string" || value === "" || value.length > 4096) {
+    return false;
+  }
+  if (/[\0\\]/.test(value) || value.startsWith("/")) return false;
+  return value
+    .split("/")
+    .every(
+      (part) =>
+        part !== "" &&
+        part !== "." &&
+        part !== ".." &&
+        part.toLowerCase() !== ".git"
+    );
+}
+
 /** Everything the other machine needs to take a session over */
 export interface MoveManifest {
   v: 1;
@@ -54,6 +99,8 @@ export interface MoveManifest {
   subagentModel: string | null;
   subagentOwnFirst: boolean;
   systemPrompt: string | null;
+  /** Claude already trusts the folder it leaves (its trust screen) */
+  sourceTrusted?: boolean;
   repo: {
     /** The repository folder's name */
     name: string;
@@ -73,6 +120,7 @@ export interface MoveManifest {
 export type MoveOutRefusal =
   | "not_claude"
   | "paused"
+  | "moved"
   | "busy"
   | "no_conversation"
   | "not_git"
@@ -81,6 +129,8 @@ export type MoveOutRefusal =
 export const MOVE_OUT_ERRORS: Record<MoveOutRefusal, string> = {
   not_claude: "Only Claude sessions can continue on another machine",
   paused: "This session was handed off; continue the one it went to",
+  moved:
+    "This copy already continued on another machine. Open it there, or bring it back",
   busy: "It's working or has queued messages. Wait for it to finish, or stop it, then try again",
   no_conversation: "There's no conversation to continue yet",
   not_git:
@@ -107,6 +157,17 @@ export interface MoveInResult {
   renamedFrom?: string;
   /** Untracked files too large to bring (they stayed behind) */
   leftBehind: string[];
+  /** It left with full access; here it starts asking again */
+  fullAccessOff?: boolean;
+  /** Claude is asking whether to trust the folder on that machine */
+  needsTrust?: boolean;
+}
+
+/** DELETE /api/session-moves/[move] */
+export interface MoveInCancel {
+  /** False when it was already being put in place: poll for how it ends */
+  stopped: boolean;
+  phase: MoveInState["phase"];
 }
 
 /** POST /api/machines/move body */
@@ -132,16 +193,30 @@ export interface MoveJob {
   from: MachineRef;
   to: MachineRef;
   toName: string;
+  fromName: string;
   step: MoveStep;
+  /** The step it failed in */
+  failedAt?: MoveStep;
   error?: string;
+  /**
+   * After a failure: true when it runs again where it was, false when it
+   * stays paused there (nobody could confirm the other machine stopped)
+   */
+  restored?: boolean;
+  /** It moved, but something the user should know went wrong after */
+  warning?: string;
   result?: MoveInResult;
 }
 
 /** What the user reads while it moves */
-export function moveStepText(step: MoveStep, toName: string): string {
+export function moveStepText(
+  step: MoveStep,
+  toName: string,
+  fromName?: string
+): string {
   switch (step) {
     case "pausing":
-      return "Pausing it here";
+      return fromName ? `Pausing it on ${fromName}` : "Pausing it here";
     case "preparing":
       return `Getting ${toName} ready`;
     case "code":
@@ -167,11 +242,12 @@ export function arrivedNoticeText(
 ): string {
   const lines = [
     `[AgentOS] This session now runs on ${toName} (${platform}). It was moved here from ${fromName} with the same conversation, branch and uncommitted changes.`,
-    `Its folder is now ${folder}. Paths, running processes, servers and installed tools from earlier in this conversation were on ${fromName}; check before relying on them.`,
+    `Its folder is now ${folder}. Paths (including saved tool outputs and checkpoints), running processes, servers and installed tools from earlier in this conversation were on ${fromName}; check before relying on them.`,
+    `Files git ignores (such as .env or local config) and changes inside submodules did not come along; they are still on ${fromName}.`,
   ];
   if (leftBehind.length > 0) {
     lines.push(
-      `These untracked files were too large to bring and stayed on ${fromName}: ${leftBehind.join(", ")}`
+      `These files were not brought (large untracked files or submodule changes) and stayed on ${fromName}: ${leftBehind.join(", ")}`
     );
   }
   lines.push("No reply is needed; carry on when asked.");
@@ -191,4 +267,39 @@ export function sameRemote(a: string | null, b: string | null): boolean {
       .replace(/\.git$/i, "")
       .toLowerCase();
   return norm(a) === norm(b);
+}
+
+/**
+ * The row a moved session gets here. A session placed in a worktree works
+ * in that worktree (never the main checkout), and AgentOS owns it
+ */
+export function arrivalRow(
+  placed: { top: string; branch: string | null; worktree: boolean },
+  folder: string,
+  existingBranch: string | null
+): {
+  working_directory: string;
+  worktree_path: string | null;
+  branch_name: string | null;
+} {
+  return {
+    working_directory: folder,
+    worktree_path: placed.worktree ? placed.top : null,
+    branch_name: placed.worktree ? placed.branch : existingBranch,
+  };
+}
+
+/** What a moved session may do on arrival: never full access unasked */
+export function arrivalMode(
+  m: Pick<MoveManifest, "permissionMode" | "autoApprove">
+): {
+  mode: string | null;
+  fullAccessOff: boolean;
+} {
+  const stored = normalizeMode(m.permissionMode);
+  const full =
+    stored === "bypassPermissions" || (stored === null && !!m.autoApprove);
+  if (full)
+    return { mode: capForAgent("bypassPermissions"), fullAccessOff: true };
+  return { mode: stored, fullAccessOff: false };
 }

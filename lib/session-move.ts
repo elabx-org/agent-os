@@ -24,21 +24,28 @@ import fs from "fs";
 import fsp from "fs/promises";
 import os from "os";
 import path from "path";
-import { Readable } from "stream";
+import { Readable, Transform } from "stream";
 import { pipeline } from "stream/promises";
 import { promisify } from "util";
+import zlib from "zlib";
 import { claudeDir, projectDirFor } from "./claude-transcript";
 import { getDb, queries, type Project, type Session } from "./db";
 import { flagOnFor } from "./flags";
 import { slugify } from "./git";
 import { isPaused } from "./handoff-types";
 import { queueStore } from "./queue/store";
-import { launchSession } from "./session-launch";
+import { launchSession, tmuxNameOf } from "./session-launch";
 import {
+  MOVE_ID,
   MOVE_OUT_ERRORS,
+  arrivalMode,
+  arrivalRow,
   arrivedNoticeText,
   parseMovedTo,
+  safeBranch,
+  safeRepoPath,
   sameRemote,
+  type MoveInCancel,
   type MoveInResult,
   type MoveInState,
   type MoveManifest,
@@ -59,6 +66,7 @@ import {
   verifyMaterialised,
   type MoveSnapshot,
 } from "./worktree-move-git";
+import { TRUST_SCREEN, folderTrusted } from "./worktree-move";
 import { getWorktreesDir } from "./worktrees";
 
 const execFileAsync = promisify(execFile);
@@ -66,7 +74,10 @@ const execFileAsync = promisify(execFile);
 const LONG_MS = 15 * 60_000;
 const SHA = /^[0-9a-f]{40}$/;
 const CLAUDE_SID = /^[0-9a-f-]{36}$/;
-const MOVE_ID = /^[0-9a-f]{16}$/;
+/** The most either file may be: a tampered or runaway sender can't fill the disk */
+const BUNDLE_MAX = 8 * 1024 ** 3;
+const TRANSCRIPT_MAX = 2 * 1024 ** 3;
+const UNPACKED_MAX = 8 * 1024 ** 3;
 const SESSION_ID = /^[\w-]+$/;
 /** How many of its commits a machine names, so the bundle leaves them out */
 const HAVE_MAX = 400;
@@ -85,6 +96,7 @@ interface Leaving {
   top: string;
   wasSettled: boolean;
   head: string;
+  branch: string | null;
   headRef: string;
   snapshot: MoveSnapshot | null;
   transcript: string;
@@ -100,6 +112,10 @@ interface Arriving {
   state: MoveInState;
   repo?: string;
   mode?: "return" | "existing" | "cloned" | "empty";
+  /** The hub called it off while it was being put in place */
+  cancelled?: boolean;
+  /** What placing it created here, undone when it fails */
+  made?: { worktree: string; branch: string | null };
 }
 
 // Route handlers may load this module more than once: one set of moves
@@ -156,6 +172,9 @@ export async function beginMoveOut(session: Session): Promise<MoveManifest> {
     throw new MoveRefused("not_claude");
   }
   if (isPaused(session)) throw new MoveRefused("paused");
+  // The copy left behind: the live one is on the machine it went to
+  if (parseMovedTo(session.moved_to)) throw new MoveRefused("moved");
+  if (isLeaving(session.id)) throw new MoveRefused("busy");
   if (!SESSION_ID.test(session.id)) throw new MoveRefused("no_conversation");
   const cwd = sessionCwd(session);
   const before = await readWorkingTree(cwd);
@@ -197,6 +216,7 @@ export async function beginMoveOut(session: Session): Promise<MoveManifest> {
       top: state.toplevel,
       wasSettled,
       head,
+      branch: state.branch,
       headRef,
       snapshot,
       transcript: located.file,
@@ -217,6 +237,7 @@ export async function beginMoveOut(session: Session): Promise<MoveManifest> {
       subagentModel: fresh.subagent_model,
       subagentOwnFirst: !!fresh.subagent_own_first,
       systemPrompt: fresh.system_prompt,
+      sourceTrusted: await folderTrusted(cwd).catch(() => false),
       repo: {
         name: path.basename(state.toplevel),
         remote: await originOf(state.toplevel),
@@ -239,6 +260,14 @@ export async function beginMoveOut(session: Session): Promise<MoveManifest> {
     }
     throw error;
   }
+}
+
+/** A move of this session is under way from this machine */
+export function isLeaving(sessionId: string): boolean {
+  for (const out of leaving.values()) {
+    if (out.sessionId === sessionId) return true;
+  }
+  return false;
 }
 
 function leavingOf(sessionId: string, moveId: string): Leaving {
@@ -327,14 +356,20 @@ export async function finishMoveOut(
     name: to.name,
     at: Date.now(),
     head: out.head,
+    branch: out.branch,
     snapshot: out.snapshot,
   };
-  getDb()
+  const { changes } = getDb()
     .prepare(
       `UPDATE sessions SET moved_to = ?, settled_reason = 'moved',
-         updated_at = datetime('now') WHERE id = ?`
+         updated_at = datetime('now')
+       WHERE id = ? AND settled_at IS NOT NULL`
     )
     .run(JSON.stringify(moved), sessionId);
+  if (changes !== 1) {
+    await forget(out, moveId);
+    throw new Error("It was resumed here while it moved");
+  }
   // The snapshot ref stays: it is how a return tells the folder is untouched
   await forget(out, moveId);
 }
@@ -351,6 +386,27 @@ export async function abortMoveOut(
   if (session && !out.wasSettled && isSettled(session)) {
     await unsettleSession(session);
   }
+}
+
+/**
+ * Calls off whatever move this session has pending here (the hub lost the
+ * answer to its first call, so it has no move id). Starts it again
+ */
+export async function abortPendingMoveOut(sessionId: string): Promise<void> {
+  for (const [moveId, out] of [...leaving]) {
+    if (out.sessionId === sessionId) await abortMoveOut(sessionId, moveId);
+  }
+}
+
+/**
+ * Lets go of a move nobody could confirm either way: the session stays
+ * paused here (the other machine may be running it) and the user decides
+ */
+export async function releaseMoveOut(
+  sessionId: string,
+  moveId: string
+): Promise<void> {
+  await forget(leavingOf(sessionId, moveId), moveId);
 }
 
 // --- Arriving ---
@@ -375,13 +431,22 @@ function validManifest(value: unknown): value is MoveManifest {
     SHA.test(m.repo.head) &&
     typeof m.repo.name === "string" &&
     typeof m.repo.subdir === "string" &&
-    !path.isAbsolute(m.repo.subdir) &&
-    !m.repo.subdir.split(/[\\/]/).includes("..") &&
+    (m.repo.subdir === "" || safeRepoPath(m.repo.subdir)) &&
+    (m.repo.branch === null || typeof m.repo.branch === "string") &&
+    (m.repo.remote === null || typeof m.repo.remote === "string") &&
     (m.snapshot === null ||
       (SHA.test(m.snapshot.commit) &&
         SHA.test(m.snapshot.tree) &&
         m.snapshot.head === m.repo.head &&
-        Array.isArray(m.snapshot.paths)))
+        Array.isArray(m.snapshot.paths) &&
+        m.snapshot.paths.every(
+          (p) =>
+            !!p &&
+            safeRepoPath(p.path) &&
+            ["added", "modified", "deleted"].includes(p.change)
+        ) &&
+        Array.isArray(m.snapshot.skipped) &&
+        m.snapshot.skipped.every((file) => typeof file === "string")))
   );
 }
 
@@ -409,6 +474,13 @@ async function findCheckout(remote: string): Promise<string | null> {
   return tops.find((top) => top !== null) ?? null;
 }
 
+/**
+ * https, ssh, scp-style and plain absolute-path remotes only: never a
+ * transport that runs a command (ext::) or something read as an option
+ */
+const cloneable = (remote: string) =>
+  /^(https:\/\/|ssh:\/\/|[\w.-]+@[\w.-]+:|\/)[\w./~:@%+-]+$/.test(remote);
+
 async function cloneOrInit(
   m: MoveManifest
 ): Promise<{ repo: string; mode: "existing" | "cloned" | "empty" }> {
@@ -427,17 +499,21 @@ async function cloneOrInit(
     }
     dir = path.join(base, `${name}-${n}`);
   }
-  if (m.repo.remote) {
+  if (m.repo.remote && cloneable(m.repo.remote)) {
     try {
-      await execFileAsync("git", ["clone", "--quiet", m.repo.remote, dir], {
-        timeout: LONG_MS,
-        // Never waits at a password prompt nobody sees
-        env: {
-          ...process.env,
-          GIT_TERMINAL_PROMPT: "0",
-          GIT_SSH_COMMAND: "ssh -oBatchMode=yes",
-        },
-      });
+      await execFileAsync(
+        "git",
+        ["clone", "--quiet", "--", m.repo.remote, dir],
+        {
+          timeout: LONG_MS,
+          // Never waits at a password prompt nobody sees
+          env: {
+            ...process.env,
+            GIT_TERMINAL_PROMPT: "0",
+            GIT_SSH_COMMAND: "ssh -oBatchMode=yes",
+          },
+        }
+      );
       return { repo: fs.realpathSync(dir), mode: "cloned" };
     } catch (error) {
       console.error("[session-move] clone:", message(error));
@@ -447,7 +523,7 @@ async function cloneOrInit(
   // No remote, or this machine can't read it: the whole history comes over
   await fsp.mkdir(dir, { recursive: true });
   await git(["init", "--quiet"], { cwd: dir });
-  if (m.repo.remote) {
+  if (m.repo.remote && cloneable(m.repo.remote)) {
     await git(["remote", "add", "origin", m.repo.remote], { cwd: dir });
   }
   return { repo: fs.realpathSync(dir), mode: "empty" };
@@ -457,8 +533,18 @@ async function prepare(inn: Arriving): Promise<void> {
   const m = inn.manifest;
   const existing = getSession(m.sessionId);
   if (existing) {
-    if (!isSettled(existing) || !parseMovedTo(existing.moved_to)) {
+    const went = parseMovedTo(existing.moved_to);
+    if (!isSettled(existing) || !went) {
       throw new Error("This session is already on this machine");
+    }
+    if (
+      went.machine !== inn.from.machine ||
+      (existing.claude_session_id &&
+        existing.claude_session_id !== m.claudeSessionId)
+    ) {
+      throw new Error(
+        `This session went to ${went.name}; it can only come back from there`
+      );
     }
     const top = await topOf(sessionCwd(existing));
     if (top) {
@@ -548,20 +634,43 @@ export async function receiveMoveFile(
   const file = path.join(inn.dir, kind);
   await pipeline(
     Readable.fromWeb(body as import("stream/web").ReadableStream),
+    capped(kind === "bundle" ? BUNDLE_MAX : TRANSCRIPT_MAX),
     fs.createWriteStream(file)
   );
   return (await fsp.stat(file)).size;
 }
 
-/** Drops a move that didn't finish; what a clone fetched stays */
-export async function cancelMoveIn(moveId: string): Promise<void> {
+/** Passes bytes through until there are more than `max` */
+function capped(max: number): Transform {
+  let seen = 0;
+  return new Transform({
+    transform(chunk: Buffer, _enc, done) {
+      seen += chunk.length;
+      done(seen > max ? new Error("Too large to move") : null, chunk);
+    },
+  });
+}
+
+/**
+ * Calls a move off; what a clone fetched stays. One that is already being
+ * put in place stops at its next safe point, or finishes: `stopped` false
+ * means poll moveInState for which ("failed" is stopped and undone)
+ */
+export async function cancelMoveIn(moveId: string): Promise<MoveInCancel> {
   const inn = arrivingOf(moveId);
-  if (inn.state.phase === "importing" || inn.state.phase === "done") return;
+  const phase = inn.state.phase;
+  if (phase === "importing") {
+    inn.cancelled = true;
+    return { stopped: false, phase };
+  }
+  if (phase === "done") return { stopped: false, phase };
   arriving.delete(moveId);
   await fsp.rm(inn.dir, { recursive: true, force: true });
+  return { stopped: true, phase };
 }
 
 async function branchValid(top: string, name: string): Promise<boolean> {
+  if (!safeBranch(name)) return false;
   try {
     await git(["check-ref-format", "--branch", name], { cwd: top });
     return true;
@@ -607,7 +716,16 @@ async function reuseFolder(
   const top = inn.repo!;
   const state = await readWorkingTree(top);
   if (!state || state.staged) return null;
-  const left = parseMovedTo(existing.moved_to)?.snapshot ?? null;
+  const went = parseMovedTo(existing.moved_to);
+  // Someone switched branches in it since
+  if (went?.branch !== undefined && state.branch !== went.branch) return null;
+  if (
+    state.head !== m.repo.head &&
+    !(await isAncestor(top, state.head, m.repo.head))
+  ) {
+    return null;
+  }
+  const left = went?.snapshot ?? null;
   if (state.uncommitted.length > 0) {
     // Only the changes it left with: they went along, and come back newer
     if (!left || left.skipped.length > 0 || state.head !== left.head) {
@@ -619,7 +737,6 @@ async function reuseFolder(
     if ((await cleanSource(top, left)).length > 0) return null;
   }
   if (state.head !== m.repo.head) {
-    if (!(await isAncestor(top, state.head, m.repo.head))) return null;
     try {
       await git(
         state.branch
@@ -654,11 +771,13 @@ async function newWorktree(inn: Arriving): Promise<Placed> {
       timeoutMs: LONG_MS,
     });
   if (!wanted) {
+    inn.made = { worktree: dir, branch: null };
     await add(["--detach", dir, m.repo.head]);
     return { top: fs.realpathSync(dir), branch: null, worktree: true };
   }
   const local = await revOf(repo, `refs/heads/${wanted}`);
   if (!local) {
+    inn.made = { worktree: dir, branch: wanted };
     await add(["-b", wanted, dir, m.repo.head]);
     if (await revOf(repo, `refs/remotes/origin/${wanted}`)) {
       await git(
@@ -673,6 +792,7 @@ async function newWorktree(inn: Arriving): Promise<Placed> {
   const list = await git(["worktree", "list", "--porcelain"], { cwd: repo });
   const checkedOut = list.split("\n").includes(`branch refs/heads/${wanted}`);
   if (!checkedOut && (await isAncestor(repo, local, m.repo.head))) {
+    inn.made = { worktree: dir, branch: null };
     await add([dir, wanted]);
     await git(["merge", "--ff-only", "--quiet", m.repo.head], {
       cwd: dir,
@@ -686,6 +806,7 @@ async function newWorktree(inn: Arriving): Promise<Placed> {
   for (let n = 2; await revOf(repo, `refs/heads/${name}`); n++) {
     name = `${stem}-${n}`;
   }
+  inn.made = { worktree: dir, branch: name };
   await add(["-b", name, dir, m.repo.head]);
   return {
     top: fs.realpathSync(dir),
@@ -742,6 +863,19 @@ async function placeTranscript(inn: Arriving, folder: string): Promise<void> {
   if (!names.includes(`${sid}.jsonl`) || !names.every(safe)) {
     throw new Error("The conversation didn't arrive as expected");
   }
+  // Its real size, before anything is written out
+  await pipeline(
+    fs.createReadStream(file),
+    zlib.createGunzip(),
+    capped(UNPACKED_MAX),
+    async (source: AsyncIterable<Buffer>) => {
+      for await (const _chunk of source) void _chunk;
+    }
+  );
+  const owner = (queries.getAllSessions(getDb()).all() as Session[]).find(
+    (s) => s.claude_session_id === sid && s.id !== inn.manifest.sessionId
+  );
+  if (owner) throw new Error("That conversation belongs to another session");
   const out = path.join(inn.dir, "conversation");
   await fsp.mkdir(out);
   await execFileAsync("tar", ["-xzf", file, "-C", out]);
@@ -784,9 +918,87 @@ function projectFor(top: string, repo: string): string {
   return "uncategorized";
 }
 
+/** Removes the worktree and branch a failed arrival made here */
+async function undoPlace(inn: Arriving, transcriptIn: string | null) {
+  const made = inn.made;
+  if (!made || !inn.repo) return;
+  inn.made = undefined;
+  if (transcriptIn) {
+    // That folder was made for this move: so was its Claude project
+    const sid = inn.manifest.claudeSessionId;
+    const dst = path.join(claudeDir(), "projects", projectDirFor(transcriptIn));
+    await fsp.rm(path.join(dst, `${sid}.jsonl`), { force: true });
+    await fsp.rm(path.join(dst, sid), { recursive: true, force: true });
+  }
+  await git(["worktree", "remove", "--force", made.worktree], {
+    cwd: inn.repo,
+  }).catch(() => fsp.rm(made.worktree, { recursive: true, force: true }));
+  await git(["worktree", "prune"], { cwd: inn.repo }).catch(() => {});
+  if (made.branch) {
+    await git(["branch", "-D", "--quiet", made.branch], {
+      cwd: inn.repo,
+    }).catch(() => {});
+  }
+}
+
+/**
+ * Claude's "trust this folder?" screen in a folder new to this machine:
+ * answered when the folder it left was trusted, else reported
+ */
+async function trustScreen(
+  session: Session,
+  sourceTrusted: boolean
+): Promise<boolean> {
+  const pane = `=${tmuxNameOf(session)}:`;
+  for (let i = 0; i < 16; i++) {
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    let bottom: string;
+    try {
+      const { stdout } = await execFileAsync("tmux", [
+        "capture-pane",
+        "-p",
+        "-t",
+        pane,
+      ]);
+      bottom = String(stdout).trimEnd().split("\n").slice(-20).join("\n");
+    } catch {
+      return false;
+    }
+    if (!TRUST_SCREEN.test(bottom)) continue;
+    if (!sourceTrusted) return true;
+    await execFileAsync("tmux", ["send-keys", "-t", pane, "Enter"]).catch(
+      () => {}
+    );
+    return false;
+  }
+  return false;
+}
+
+const SESSION_COLUMNS = [
+  "name",
+  "claude_session_id",
+  "model",
+  "model_pinned",
+  "effort",
+  "permission_mode",
+  "auto_approve",
+  "subagent_model",
+  "subagent_own_first",
+  "working_directory",
+  "worktree_path",
+  "branch_name",
+  "moved_to",
+  "moved_from",
+  "settled_at",
+  "settled_reason",
+] as const;
+
 async function runImport(inn: Arriving): Promise<MoveInResult> {
   const m = inn.manifest;
   const repo = inn.repo!;
+  const stopIfCancelled = () => {
+    if (inn.cancelled) throw new Error("The move was called off");
+  };
   const bundle = path.join(inn.dir, "bundle");
   if (fs.existsSync(bundle) && (await fsp.stat(bundle)).size > 0) {
     await git(
@@ -806,93 +1018,143 @@ async function runImport(inn: Arriving): Promise<MoveInResult> {
   ) {
     throw new Error("The code didn't arrive complete");
   }
+  stopIfCancelled();
 
   const existing = getSession(m.sessionId);
-  const placed = await place(inn, existing);
-  if (m.snapshot) {
-    await materialise(m.snapshot, "", placed.top);
-    if (!(await verifyMaterialised(m.snapshot, placed.top))) {
-      throw new Error("The uncommitted changes didn't arrive complete");
-    }
-  }
-  const wantedFolder = path.join(placed.top, m.repo.subdir);
-  await fsp.mkdir(wantedFolder, { recursive: true });
-  const folder = fs.realpathSync(wantedFolder);
-  await placeTranscript(inn, folder);
-
+  let transcriptIn: string | null = null;
+  let wrote = false;
   const db = getDb();
-  const from: MovedFrom = { ...inn.from, at: Date.now() };
-  const atTop = m.repo.subdir === "";
-  const worktreePath = placed.worktree && atTop ? placed.top : null;
-  const workingDirectory = worktreePath ? repo : folder;
-  db.transaction(() => {
-    if (!existing) {
-      queries
-        .createSession(db)
-        .run(
-          m.sessionId,
-          m.name,
-          `claude-${m.sessionId}`,
-          workingDirectory,
-          null,
-          m.model,
-          m.systemPrompt,
-          "sessions",
-          "claude",
-          m.autoApprove ? 1 : 0,
-          0,
-          projectFor(placed.top, repo)
-        );
+  try {
+    const placed = await place(inn, existing);
+    if (m.snapshot) {
+      await materialise(m.snapshot, "", placed.top);
+      if (!(await verifyMaterialised(m.snapshot, placed.top))) {
+        throw new Error("The uncommitted changes didn't arrive complete");
+      }
     }
-    db.prepare(
-      `UPDATE sessions SET name = ?, claude_session_id = ?, model = ?,
-         model_pinned = ?, effort = ?, permission_mode = ?, auto_approve = ?,
-         subagent_model = ?, subagent_own_first = ?, working_directory = ?,
-         worktree_path = ?, branch_name = ?, moved_to = NULL, moved_from = ?,
-         settled_at = NULL, settled_reason = ?, updated_at = datetime('now')
-       WHERE id = ?`
-    ).run(
-      m.name,
-      m.claudeSessionId,
-      m.model,
-      m.modelPinned ? 1 : null,
-      m.effort,
-      m.permissionMode,
-      m.autoApprove ? 1 : 0,
-      m.subagentModel,
-      m.subagentOwnFirst ? 1 : null,
-      workingDirectory,
-      worktreePath,
-      placed.worktree ? placed.branch : (existing?.branch_name ?? null),
-      JSON.stringify(from),
-      existing ? UNSETTLED_REASON : null,
-      m.sessionId
-    );
-  })();
+    const wantedFolder = path.join(placed.top, m.repo.subdir);
+    await fsp.mkdir(wantedFolder, { recursive: true });
+    const folder = fs.realpathSync(wantedFolder);
+    if (folder !== placed.top && !folder.startsWith(placed.top + path.sep)) {
+      throw new Error("Its folder isn't inside the repository");
+    }
+    await placeTranscript(inn, folder);
+    if (inn.made) transcriptIn = folder;
 
-  const leftBehind = m.snapshot?.skipped ?? [];
-  const session = getSession(m.sessionId)!;
-  if (flagOnFor("queue", session.id)) {
-    queueStore(db).enqueueFirst(session.id, {
-      text: arrivedNoticeText(
-        inn.self.name,
-        platformName(),
-        folder,
-        inn.from.name,
-        leftBehind
-      ),
-      kind: "message",
-      origin: "system",
-    });
+    const from: MovedFrom = { ...inn.from, at: Date.now() };
+    const row = arrivalRow(placed, folder, existing?.branch_name ?? null);
+    const access = arrivalMode(m);
+    // Past here it is this machine's session: the hub can no longer call
+    // it off, only a failed start undoes it
+    stopIfCancelled();
+    db.transaction(() => {
+      if (!existing) {
+        queries
+          .createSession(db)
+          .run(
+            m.sessionId,
+            m.name,
+            `claude-${m.sessionId}`,
+            row.working_directory,
+            null,
+            m.model,
+            m.systemPrompt,
+            "sessions",
+            "claude",
+            0,
+            0,
+            projectFor(placed.top, repo)
+          );
+      }
+      db.prepare(
+        `UPDATE sessions SET name = ?, claude_session_id = ?, model = ?,
+           model_pinned = ?, effort = ?, permission_mode = ?, auto_approve = 0,
+           subagent_model = ?, subagent_own_first = ?, working_directory = ?,
+           worktree_path = ?, branch_name = ?, moved_to = NULL, moved_from = ?,
+           settled_at = NULL, settled_reason = ?, updated_at = datetime('now')
+         WHERE id = ?`
+      ).run(
+        m.name,
+        m.claudeSessionId,
+        m.model,
+        m.modelPinned ? 1 : null,
+        m.effort,
+        access.mode,
+        m.subagentModel,
+        m.subagentOwnFirst ? 1 : null,
+        row.working_directory,
+        row.worktree_path,
+        row.branch_name,
+        JSON.stringify(from),
+        existing ? UNSETTLED_REASON : null,
+        m.sessionId
+      );
+    })();
+    wrote = true;
+
+    const leftBehind = m.snapshot?.skipped ?? [];
+    const session = getSession(m.sessionId)!;
+    const notice = arrivedNoticeText(
+      inn.self.name,
+      platformName(),
+      folder,
+      inn.from.name,
+      leftBehind
+    );
+    // Claude must learn it moved either way: queued when this machine
+    // queues messages, else as the first thing it is told
+    const queued = flagOnFor("queue", session.id);
+    await launchSession(session, queued ? undefined : notice);
+    if (queued) {
+      queueStore(db).enqueueFirst(session.id, {
+        text: notice,
+        kind: "message",
+        origin: "system",
+      });
+    }
+    const needsTrust = inn.made
+      ? await trustScreen(session, m.sourceTrusted === true).catch(() => false)
+      : false;
+    inn.made = undefined;
+    await git(
+      ["update-ref", "-d", `refs/agent-os/${m.sessionId}/out-${m.moveId}`],
+      { cwd: repo }
+    ).catch(() => {});
+    return {
+      sessionId: m.sessionId,
+      folder,
+      branch: placed.branch,
+      renamedFrom: placed.renamedFrom,
+      leftBehind,
+      fullAccessOff: access.fullAccessOff || undefined,
+      needsTrust: needsTrust || undefined,
+    };
+  } catch (error) {
+    if (wrote) {
+      // It never started: this machine's row goes back to what it was
+      try {
+        if (existing) {
+          db.prepare(
+            `UPDATE sessions SET ${SESSION_COLUMNS.map((c) => `${c} = ?`).join(", ")},
+               updated_at = datetime('now') WHERE id = ?`
+          ).run(
+            ...SESSION_COLUMNS.map(
+              (c) => (existing as unknown as Record<string, unknown>)[c] ?? null
+            ),
+            m.sessionId
+          );
+        } else {
+          db.prepare("DELETE FROM sessions WHERE id = ?").run(m.sessionId);
+        }
+      } catch (e) {
+        console.error("[session-move] undoing the row:", e);
+      }
+    }
+    await undoPlace(inn, transcriptIn).catch((e) =>
+      console.error("[session-move] undoing the folder:", e)
+    );
+    throw error;
   }
-  await launchSession(session);
-  return {
-    sessionId: m.sessionId,
-    folder,
-    branch: placed.branch,
-    renamedFrom: placed.renamedFrom,
-    leftBehind,
-  };
 }
 
 /** Unpacks and resumes; poll moveInState for "done" */
@@ -917,8 +1179,8 @@ export function importMove(moveId: string): MoveInState {
     })
     .finally(() => {
       fsp.rm(inn.dir, { recursive: true, force: true }).catch(() => {});
-      // Its state stays readable for the hub's last poll
-      setTimeout(() => arriving.delete(moveId), 10 * 60_000).unref();
+      // Its state stays readable for the hub's last polls
+      setTimeout(() => arriving.delete(moveId), 60 * 60_000).unref();
     });
   return inn.state;
 }

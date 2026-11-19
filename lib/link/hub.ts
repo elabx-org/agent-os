@@ -73,6 +73,15 @@ export type MachinePresence = "online" | "offline" | "waiting";
 const HANDSHAKE_MS = 10_000;
 const PING_MS = 25_000;
 const HEAD_MS = 120_000;
+/**
+ * A session's code and conversation moving between machines
+ * (lib/link/move.ts): the answer comes once the whole file is across, or
+ * once git has packed it
+ */
+const MOVE_HEAD_MS = 45 * 60_000;
+const MOVE_PATH = /^\/api\/(session-moves\/|sessions\/[^/]+\/move-out)/;
+/** Past this much unsent on the link, a body waits for it to drain */
+const BUFFER_HIGH = 4 * 1024 * 1024;
 const CODE_MS = 10 * 60_000;
 /** A relay may hold this much before the machine's socket opens */
 const QUEUE_MAX = 256;
@@ -212,6 +221,9 @@ export class LinkHub {
 
     ws.on("message", (data, isBinary) => {
       if (stage === "open" && tunnel) {
+        // Anything it sends shows it is there: a pong can wait behind a
+        // large body on the same socket
+        tunnel.alive = true;
         this.fromMachine(tunnel, data, isBinary);
         return;
       }
@@ -466,12 +478,15 @@ export class LinkHub {
     };
     const pending: PendingResponse = {
       res,
-      timer: setTimeout(() => {
-        if (tunnel.requests.delete(id)) {
-          send({ t: "abort", id });
-          this.failResponse(pending, 504, "The machine took too long");
-        }
-      }, HEAD_MS),
+      timer: setTimeout(
+        () => {
+          if (tunnel.requests.delete(id)) {
+            send({ t: "abort", id });
+            this.failResponse(pending, 504, "The machine took too long");
+          }
+        },
+        MOVE_PATH.test(options.path) ? MOVE_HEAD_MS : HEAD_MS
+      ),
     };
     tunnel.requests.set(id, pending);
     send({
@@ -483,8 +498,19 @@ export class LinkHub {
       user: options.user,
     });
     req.on("data", (chunk: Buffer) => {
-      if (tunnel.ws.readyState === WebSocket.OPEN) {
-        tunnel.ws.send(encodeBinary(id, BIN_BODY, chunk));
+      if (tunnel.ws.readyState !== WebSocket.OPEN) return;
+      tunnel.ws.send(encodeBinary(id, BIN_BODY, chunk));
+      if (tunnel.ws.bufferedAmount > BUFFER_HIGH) {
+        req.pause();
+        const drain = setInterval(() => {
+          if (
+            tunnel.ws.readyState !== WebSocket.OPEN ||
+            tunnel.ws.bufferedAmount < BUFFER_HIGH / 4
+          ) {
+            clearInterval(drain);
+            req.resume();
+          }
+        }, 50);
       }
     });
     req.on("end", () => send({ t: "req-end", id }));

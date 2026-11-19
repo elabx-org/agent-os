@@ -1203,7 +1203,7 @@ export function inRepository(folder: string, toplevel: string): boolean {
 }
 
 /** Claude's folder trust screen (lib/session-ready.ts CLAUDE_DIALOGS) */
-const TRUST_SCREEN =
+export const TRUST_SCREEN =
   /trust (the files in |the contents of )?this (folder|directory|project)|Is this a project you created or one you trust/i;
 
 /**

@@ -28,13 +28,13 @@ export async function POST(request: Request, { params }: Context) {
   }
 }
 
-// DELETE /api/session-moves/[move] - the move was called off
+// DELETE /api/session-moves/[move] - the move was called off; answers
+// whether it stopped (MoveInCancel)
 export async function DELETE(request: Request, { params }: Context) {
   const no = userOnly(request);
   if (no) return no;
   try {
-    await cancelMoveIn((await params).move);
-    return NextResponse.json({ success: true });
+    return NextResponse.json(await cancelMoveIn((await params).move));
   } catch (error) {
     return moveError(error);
   }

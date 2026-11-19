@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSnapshot } from "valtio";
 import { useQueryClient } from "@tanstack/react-query";
-import { Check, Laptop, Loader2, Server } from "lucide-react";
+import { Check, Laptop, Loader2, Server, X } from "lucide-react";
 import type { Session } from "@/lib/db";
 import { cn } from "@/lib/utils";
 import { haptic } from "@/lib/haptics";
@@ -14,6 +14,7 @@ import { HUB_TARGET } from "@/lib/machine-marker";
 import { isPaused } from "@/lib/handoff-types";
 import {
   moveStepText,
+  parseMovedTo,
   type MoveJob,
   type MoveStep,
 } from "@/lib/session-move-types";
@@ -29,7 +30,7 @@ import {
 } from "@/components/ui/sheet";
 
 /** The column's sheet id while this is up: × and its confirm */
-const SHEET_ID = "move";
+const SHEET_ID = "continue";
 const STEPS: MoveStep[] = [
   "pausing",
   "preparing",
@@ -52,7 +53,11 @@ interface Target {
  * handed off
  */
 export function useCanContinueElsewhere(
-  session: Pick<Session, "agent_type" | "paused_at"> | null | undefined
+  session:
+    | (Pick<Session, "agent_type" | "paused_at"> &
+        Partial<Pick<Session, "moved_to">>)
+    | null
+    | undefined
 ): boolean {
   const { data } = useMachines();
   const mine = useTabMachineId();
@@ -60,6 +65,8 @@ export function useCanContinueElsewhere(
   if ((session.agent_type || "claude") !== "claude" || isPaused(session)) {
     return false;
   }
+  // The copy left behind: its bar brings the live one back
+  if (parseMovedTo(session.moved_to)) return false;
   return mine !== null || data.machines.some((m) => m.status === "approved");
 }
 
@@ -98,6 +105,7 @@ function Body({
   name,
   from,
   prefer,
+  back,
   onClose,
   confirmRef,
   busyRef,
@@ -107,12 +115,22 @@ function Body({
   from: string;
   /** The machine picked to begin with (bringing one back: this one) */
   prefer?: string;
+  /** Opened from "Bring it back" */
+  back: boolean;
   onClose: () => void;
   confirmRef: React.MutableRefObject<(() => void) | null>;
   busyRef: React.MutableRefObject<boolean>;
 }) {
   const queryClient = useQueryClient();
   const targets = useTargets(from);
+  const mine = useTabMachineId() ?? HUB_TARGET;
+  const { data: machines } = useMachines();
+  const fromName =
+    from === HUB_TARGET
+      ? "the server"
+      : (machines?.machines.find((m) => m.id === from)?.name ?? "that machine");
+  /** "here" only when this tab looks at the machine it leaves */
+  const fromHere = from === mine;
   const [picked, setPicked] = useState<string | null>(prefer ?? null);
   const [job, setJob] = useState<MoveJob | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -123,7 +141,8 @@ function Body({
     targets.find((t) => !t.blocked) ??
     null;
   const running = !!job && job.step !== "done" && job.step !== "failed";
-  busyRef.current = starting || running;
+  // A move in flight runs on the server: closing the sheet doesn't stop it
+  busyRef.current = starting;
 
   const start = useCallback(async () => {
     if (!target || starting || running) return;
@@ -154,12 +173,30 @@ function Body({
   const jobId = job?.id;
   useEffect(() => {
     if (!jobId || !running) return;
+    let misses = 0;
+    const lost = () =>
+      setJob((was) =>
+        was && was.step !== "done" && was.step !== "failed"
+          ? {
+              ...was,
+              failedAt: was.step,
+              step: "failed",
+              error: "Lost track of the move (the server may have restarted).",
+            }
+          : was
+      );
     const timer = setInterval(async () => {
       try {
         const res = await hubFetch(`/api/machines/move?id=${jobId}`);
-        if (res.ok) setJob((await res.json()) as MoveJob);
+        if (res.ok) {
+          misses = 0;
+          setJob((await res.json()) as MoveJob);
+        } else if (res.status === 404 || ++misses >= 20) {
+          lost();
+        }
       } catch {
-        // The next tick asks again
+        // The next tick asks again, for a while
+        if (++misses >= 20) lost();
       }
     }, 700);
     return () => clearInterval(timer);
@@ -178,13 +215,25 @@ function Body({
   }, [done, queryClient]);
 
   const toName = job?.toName ?? target?.name ?? "";
-  const at = job ? STEPS.indexOf(job.step) : -1;
+  const failed = job?.step === "failed";
+  const at = job ? STEPS.indexOf(failed ? job.failedAt! : job.step) : -1;
+  const stepText = (step: MoveStep) =>
+    moveStepText(step, toName, fromHere ? undefined : fromName);
+  const afterFailure =
+    job?.restored === true
+      ? fromHere
+        ? "Nothing was lost; it runs here again, as it was."
+        : `Nothing was lost; it runs on ${fromName} again, as it was.`
+      : job?.restored === false
+        ? `Nothing was lost, but it stays paused on ${fromName}.`
+        : `It may be paused on ${fromName}: check where it runs before resuming it.`;
+  const folder = job?.result?.folder.replace(/^\/(Users|home)\/[^/]+/, "~");
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 pt-1 [html[data-fold=horizontal]_&]:gap-2.5">
       <div className="min-w-0">
         <SheetTitle className="t-title text-[20px] leading-tight font-bold tracking-normal">
-          Continue on another machine
+          {back ? "Bring it back" : "Continue on another machine"}
         </SheetTitle>
         <p className="text-muted-foreground mt-1 truncate text-[13px]">
           {name}
@@ -241,10 +290,15 @@ function Body({
               The same conversation, branch and uncommitted changes go
               {target ? ` to ${target.name}` : " along"}.
             </li>
-            <li>It pauses here, so only one copy ever runs.</li>
             <li>
-              Servers and terminals it started here stay here. You can bring it
-              back the same way.
+              It pauses {fromHere ? "here" : `on ${fromName}`}, so only one copy
+              ever runs.
+            </li>
+            <li>
+              Servers and terminals it started{" "}
+              {fromHere ? "here stay here" : `on ${fromName} stay there`}, and
+              so do files git ignores, like .env.
+              {back ? "" : " You can bring it back the same way."}
             </li>
           </ul>
         </>
@@ -257,7 +311,13 @@ function Body({
         >
           {STEPS.map((step, i) => {
             const state =
-              done || (at >= 0 && i < at) ? "done" : i === at ? "now" : "todo";
+              done || (at >= 0 && i < at)
+                ? "done"
+                : i === at
+                  ? failed
+                    ? "failed"
+                    : "now"
+                  : "todo";
             return (
               <li
                 key={step}
@@ -271,6 +331,8 @@ function Body({
                     <Check aria-hidden className="text-primary h-4 w-4" />
                   ) : state === "now" ? (
                     <Loader2 aria-hidden className="h-4 w-4 animate-spin" />
+                  ) : state === "failed" ? (
+                    <X aria-hidden className="h-4 w-4 text-[var(--del)]" />
                   ) : (
                     <span
                       aria-hidden
@@ -278,15 +340,51 @@ function Body({
                     />
                   )}
                 </span>
-                {moveStepText(step, toName)}
+                {stepText(step)}
+                <span className="sr-only">
+                  {state === "done"
+                    ? ", done"
+                    : state === "now"
+                      ? ", in progress"
+                      : state === "failed"
+                        ? ", failed"
+                        : ""}
+                </span>
               </li>
             );
           })}
         </ol>
       )}
 
+      {running && (
+        <p
+          aria-live="polite"
+          className="text-muted-foreground px-1 text-[13px]"
+        >
+          <span className="sr-only">{stepText(job!.step)}. </span>
+          You can close this. The move carries on, and the session shows where
+          it ended up.
+        </p>
+      )}
+
       {done && job?.result && (
         <div className="text-muted-foreground flex flex-col gap-1 px-1 text-[13px]">
+          <p className="break-words">
+            It&apos;s in {folder} on {toName}.
+          </p>
+          {job.warning && <p className="text-[var(--del)]">{job.warning}.</p>}
+          {job.result.needsTrust && (
+            <p>
+              Claude is asking whether to trust that folder. Open it on {toName}{" "}
+              and answer.
+            </p>
+          )}
+          {job.result.fullAccessOff && (
+            <p>
+              Full access didn&apos;t travel with it: on {toName} it asks before
+              risky actions. You can turn it back on there.
+            </p>
+          )}
           {job.result.renamedFrom && (
             <p>
               Its branch is called {job.result.branch} there:{" "}
@@ -296,8 +394,8 @@ function Body({
           {job.result.leftBehind.length > 0 && (
             <p>
               {job.result.leftBehind.length === 1
-                ? "One large untracked file stayed"
-                : `${job.result.leftBehind.length} large untracked files stayed`}{" "}
+                ? "One file was too large to bring, or is in a submodule, and stayed"
+                : `${job.result.leftBehind.length} files were too large to bring, or are in a submodule, and stayed`}{" "}
               behind: {job.result.leftBehind.join(", ")}
             </p>
           )}
@@ -308,7 +406,8 @@ function Body({
         {(error || job?.step === "failed") && (
           <p role="alert" className="text-center text-[13px] text-[var(--del)]">
             {error ?? job?.error}
-            {job?.step === "failed" && " Nothing was lost; it's as it was."}
+            {error ? "" : job?.error?.endsWith(".") ? " " : ". "}
+            {failed && !error && afterFailure}
           </p>
         )}
         {done ? (
@@ -334,11 +433,13 @@ function Body({
             )}
             <span className="truncate">
               {running
-                ? moveStepText(job!.step, toName)
-                : job?.step === "failed"
+                ? stepText(job!.step)
+                : failed
                   ? "Try again"
                   : target
-                    ? `Continue on ${target.name}`
+                    ? back && target.id === mine
+                      ? "Bring it back here"
+                      : `Continue on ${target.name}`
                     : "Continue"}
             </span>
           </button>
@@ -380,7 +481,7 @@ export function ContinueOnSheetHost() {
   const beside = besideRight > 0;
 
   const confirmRef = useRef<(() => void) | null>(null);
-  // A move in flight keeps running on the hub; the sheet stays to show it
+  // Only the moment it is being asked for holds the sheet open
   const busyRef = useRef(false);
   const close = useCallback(() => {
     if (!busyRef.current) closeContinueSheet();
@@ -439,6 +540,7 @@ export function ContinueOnSheetHost() {
             name={current.name}
             from={current.from ?? mine ?? HUB_TARGET}
             prefer={current.from ? (mine ?? HUB_TARGET) : undefined}
+            back={!!current.from}
             onClose={closeContinueSheet}
             confirmRef={confirmRef}
             busyRef={busyRef}

@@ -60,7 +60,7 @@ function MovedBar({
           <button
             type="button"
             onClick={() => followLink(to.machine, session.id)}
-            className="pill pill-primary pill-sm min-w-0 flex-1 active:opacity-80"
+            className="pill pill-primary h-11 min-w-0 flex-1 active:opacity-80"
           >
             <span className="truncate">Open it there</span>
           </button>
@@ -69,7 +69,7 @@ function MovedBar({
             onClick={() =>
               openContinueSheet(session.id, session.name, to.machine)
             }
-            className="pill pill-secondary pill-sm min-w-0 flex-1 active:opacity-80"
+            className="pill pill-secondary h-11 min-w-0 flex-1 active:opacity-80"
           >
             <span className="truncate">Bring it back</span>
           </button>
@@ -117,11 +117,18 @@ export function SettledBar({ session, className }: SettledBarProps) {
     );
   }
 
+  // Paused for a move with nowhere recorded: it is under way (the server
+  // refuses Resume until it ends), or it ended without an answer
+  const midMove = session.settled_reason === "moved";
   return (
     <div role="status" className={cn("glass composer-card", className)}>
       <div className="text-muted-foreground flex min-w-0 items-center gap-2 px-1 text-[13px]">
         <CircleCheck className="h-4 w-4 flex-none" aria-hidden />
-        <span className="min-w-0 flex-1 truncate">{settledLine(session)}</span>
+        <span className="min-w-0 flex-1">
+          {midMove
+            ? "Paused to move to another machine. Before resuming it here, check it isn't running there."
+            : settledLine(session)}
+        </span>
       </div>
       <button
         type="button"
