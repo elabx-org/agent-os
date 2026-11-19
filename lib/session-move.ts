@@ -631,15 +631,8 @@ async function reuseFolder(
       return null;
     }
   }
-  return {
-    top,
-    branch: state.branch,
-    worktree: !!existing.worktree_path,
-    renamedFrom:
-      m.repo.branch && state.branch && m.repo.branch !== state.branch
-        ? m.repo.branch
-        : undefined,
-  };
+  // Back on the branch it left from, whatever it was called elsewhere
+  return { top, branch: state.branch, worktree: !!existing.worktree_path };
 }
 
 async function newWorktree(inn: Arriving): Promise<Placed> {
@@ -688,7 +681,7 @@ async function newWorktree(inn: Arriving): Promise<Placed> {
     return { top: fs.realpathSync(dir), branch: wanted, worktree: true };
   }
   // The branch is in use here, or went another way: its own name
-  const stem = `${wanted}-${slugify(inn.from.name) || "moved"}`;
+  const stem = `${wanted}-${slugify(inn.from.name).replace(/^the-/, "") || "moved"}`;
   let name = stem;
   for (let n = 2; await revOf(repo, `refs/heads/${name}`); n++) {
     name = `${stem}-${n}`;

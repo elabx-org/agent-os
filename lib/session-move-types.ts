@@ -187,8 +187,8 @@ export function sameRemote(a: string | null, b: string | null): boolean {
       .replace(/^[a-z+]+:\/\//i, "")
       .replace(/^[^@/]+@/, "")
       .replace(/:(?!\d+\/)/, "/")
-      .replace(/\.git$/i, "")
       .replace(/\/+$/, "")
+      .replace(/\.git$/i, "")
       .toLowerCase();
   return norm(a) === norm(b);
 }

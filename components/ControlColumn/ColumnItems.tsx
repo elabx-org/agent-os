@@ -20,6 +20,7 @@ import { mobileNavStore } from "@/stores/mobileNav";
 import { focusStore } from "@/stores/focus";
 import { gitMenuStore } from "@/stores/gitMenu";
 import { moveSheetStore, openMoveSheet } from "@/stores/moveSheet";
+import { continueSheetStore, openContinueSheet } from "@/stores/continueSheet";
 import { runningStore } from "@/stores/running";
 import { sessionActionsStore } from "@/stores/sessionActions";
 import { useSurface } from "@/stores/surface";
@@ -147,6 +148,7 @@ function MoreMenu({ shown, ...props }: MoreProps) {
   const { on: focus } = useSnapshot(focusStore);
   const { actions: git } = useSnapshot(gitMenuStore);
   const { offer: movable } = useSnapshot(moveSheetStore);
+  const { offer: portable } = useSnapshot(continueSheetStore);
   const { enabled: running } = useSnapshot(runningStore);
   const actions = useSnapshot(sessionActionsStore);
   const inSession = surface === "session" || surface === "beside";
@@ -245,6 +247,15 @@ function MoreMenu({ shown, ...props }: MoreProps) {
         {movable && (inSession || (surface === "now" && wide)) && (
           <DropdownMenuItem onSelect={() => openMoveSheet(movable)}>
             Move to a worktree
+          </DropdownMenuItem>
+        )}
+        {portable && (inSession || (surface === "now" && wide)) && (
+          <DropdownMenuItem
+            onSelect={() =>
+              openContinueSheet(portable.sessionId, portable.name)
+            }
+          >
+            Continue on another machine
           </DropdownMenuItem>
         )}
         {ownFind && (
