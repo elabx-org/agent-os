@@ -171,7 +171,9 @@ cmd_update() {
     cd "$AGENT_OS_HOME" || exit 1
     rm -rf repo-next
     git clone -q "$REPO_URL" repo-next && cd repo-next && git checkout -q "$sha" || { echo "that commit isn't on GitHub"; exit 1; }
-    npm install --legacy-peer-deps >/dev/null 2>&1 || npm install --legacy-peer-deps || { echo "install failed"; exit 1; }
+    # The service runs with NODE_ENV=production, where npm leaves out the
+    # packages the build needs (TypeScript): ask for them
+    npm install --include=dev --legacy-peer-deps >/dev/null 2>&1 || npm install --include=dev --legacy-peer-deps || { echo "install failed"; exit 1; }
     NODE_ENV=production npm run build >/dev/null 2>&1 || NODE_ENV=production npm run build || { echo "build failed"; exit 1; }
     cd "$AGENT_OS_HOME" || exit 1
     rm -rf repo-prev
