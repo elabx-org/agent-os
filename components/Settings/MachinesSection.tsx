@@ -20,13 +20,18 @@ import {
   useTabMachineId,
   type MachineView,
 } from "@/data/machines";
-import { fetchAsUser, refusalText } from "@/lib/client/user-fetch";
-import { switchMachine } from "@/lib/client/machine";
+import { fetchAsUser, refusalText, reprove } from "@/lib/client/user-fetch";
+import { fetchOn, switchMachine } from "@/lib/client/machine";
 import {
   HUB_TARGET,
   inviteHasSignIn,
   shortCommand,
 } from "@/lib/machine-marker";
+import {
+  DEFAULT_REPOS_DIR,
+  REPOS_DIR_PREFERENCE_KEY,
+  normalizeReposDir,
+} from "@/lib/repos-dir";
 import { cn } from "@/lib/utils";
 import { Chevron } from "./SettingGroup";
 
@@ -143,14 +148,17 @@ function ServerRow() {
   const tab = useTabMachineId();
   const { data: count } = useSessionCount(HUB_TARGET, true);
   return (
-    <MachineRow
-      kind="server"
-      name="This server"
-      online
-      detail={count == null ? "Online" : `Online · ${sessionsWord(count)}`}
-      current={!tab}
-      onOpen={() => switchMachine(null)}
-    />
+    <>
+      <MachineRow
+        kind="server"
+        name="This server"
+        online
+        detail={count == null ? "Online" : `Online · ${sessionsWord(count)}`}
+        current={!tab}
+        onOpen={() => switchMachine(null)}
+      />
+      <ReposFolderRow target={HUB_TARGET} name="this server" />
+    </>
   );
 }
 
@@ -256,6 +264,7 @@ function LinkedRow({
         allowed={!!machine.agents}
         onChange={allowAgents}
       />
+      {online && <ReposFolderRow target={machine.id} name={machine.name} />}
     </>
   );
 }
@@ -350,6 +359,115 @@ function MachineRow({
         <span className="flex min-w-0 flex-1 items-center gap-3">{body}</span>
       )}
       {menu}
+    </div>
+  );
+}
+
+/**
+ * The folder a machine keeps repositories in: a session that continues
+ * there looks for its repository in it, and clones it there otherwise
+ */
+function ReposFolderRow({ target, name }: { target: string; name: string }) {
+  const [folder, setFolder] = useState<string | null>(null);
+  const [draft, setDraft] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const path = `/api/preferences?key=${REPOS_DIR_PREFERENCE_KEY}`;
+  useEffect(() => {
+    let gone = false;
+    fetchOn(target, path)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((body: { value?: unknown } | null) => {
+        if (gone || !body) return;
+        setFolder(normalizeReposDir(body.value) ?? DEFAULT_REPOS_DIR);
+      })
+      .catch(() => {});
+    return () => {
+      gone = true;
+    };
+  }, [target, path]);
+  if (folder === null) return null;
+
+  const save = async () => {
+    const next = normalizeReposDir(draft);
+    if (!next) {
+      toast.error("Give a full path, like ~/code or /srv/code");
+      return;
+    }
+    if (next === folder) return setDraft(null);
+    setSaving(true);
+    const send = () =>
+      fetchOn(target, "/api/preferences", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: REPOS_DIR_PREFERENCE_KEY, value: next }),
+      });
+    let res = await send();
+    if (res.status === 403) {
+      await reprove();
+      res = await send();
+    }
+    setSaving(false);
+    if (!res.ok) {
+      toast.error(refusalText(await res.json().catch(() => ({}))));
+      return;
+    }
+    setFolder(next);
+    setDraft(null);
+  };
+
+  if (draft !== null) {
+    return (
+      <form
+        className="row gap-2 py-3 pl-[68px]"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void save();
+        }}
+      >
+        <input
+          autoFocus
+          value={draft}
+          maxLength={1024}
+          autoCapitalize="off"
+          autoCorrect="off"
+          spellCheck={false}
+          aria-label={`Repositories folder on ${name}`}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") {
+              e.stopPropagation();
+              setDraft(null);
+            }
+          }}
+          className="bg-foreground/[0.07] min-w-0 flex-1 rounded-lg px-3 py-2 font-mono text-[15px] outline-none"
+        />
+        <button
+          type="submit"
+          disabled={saving}
+          className="pill pill-primary pill-sm shrink-0 disabled:opacity-60"
+        >
+          Save
+        </button>
+      </form>
+    );
+  }
+  return (
+    <div className="row items-start gap-3 py-3 pl-[68px]">
+      <div className="min-w-0 flex-1">
+        <span className="block text-[15px]">Repositories folder</span>
+        <span className="block font-mono text-[13px] break-all">{folder}</span>
+        <span className="text-muted-foreground block text-[13px]">
+          A session that continues on {name} uses its repository from here, or
+          clones it here.
+        </span>
+      </div>
+      <button
+        type="button"
+        onClick={() => setDraft(folder)}
+        className="pill pill-sm shrink-0"
+      >
+        Change
+      </button>
     </div>
   );
 }
