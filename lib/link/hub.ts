@@ -40,6 +40,7 @@ export interface HubDeps {
     seen: { platform: string; sha: string | null; signedInAs: string | null }
   ): void;
   approveMachine(id: string): MachineRow | null;
+  setMachineAgents(id: string, allowed: boolean): void;
   removeMachine(id: string): boolean;
   /** This hub's commit, sent to machines so they can match it */
   sha(): string | null;
@@ -147,6 +148,15 @@ export class LinkHub {
     return row;
   }
 
+  /** Tells a connected machine whether this hub's sessions may use it */
+  tellAgents(id: string): void {
+    const tunnel = this.tunnels.get(id);
+    const machine = this.deps.machineById(id);
+    if (!tunnel || !machine) return;
+    const frame: HubFrame = { t: "agents", allowed: machine.agents === 1 };
+    tunnel.ws.send(JSON.stringify(frame));
+  }
+
   /** Cuts a machine off and forgets its key */
   remove(id: string): boolean {
     this.waiting.get(id)?.ws.close(4403, "removed");
@@ -216,6 +226,7 @@ export class LinkHub {
         status: "approved",
         sha: this.deps.sha(),
         code: matchCode(machine.public_key),
+        agents: machine.agents === 1,
       });
     };
 
@@ -370,6 +381,16 @@ export class LinkHub {
         if (machine?.status === "approved") {
           this.deps.onNotice?.(machine, notice);
         }
+        return;
+      }
+      case "agents": {
+        // Its owner changed it on the machine: only its own switch, and
+        // only while it is still approved
+        const machine = this.deps.machineById(tunnel.machineId);
+        if (machine?.status !== "approved") return;
+        if (typeof frame.allowed !== "boolean") return;
+        this.deps.setMachineAgents(machine.id, frame.allowed);
+        this.tellAgents(machine.id);
         return;
       }
       case "res": {

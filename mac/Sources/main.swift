@@ -61,7 +61,8 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
       menu.addItem(label(snap.sessions.isEmpty ? "No sessions running on this Mac" : "Sessions on this Mac"))
       for session in snap.sessions.prefix(12) {
         let word = ["waiting": "Needs you", "running": "Working", "idle": "Idle"][session.state] ?? session.state
-        let row = action("\(session.name)  —  \(word)", #selector(openApp))
+        let row = action("\(session.name)  —  \(word)", #selector(openSession(_:)))
+        row.representedObject = session.id
         let dot = ["waiting": "exclamationmark.circle.fill", "running": "circle.fill", "idle": "circle"][session.state] ?? "circle"
         row.image = NSImage(systemSymbolName: dot, accessibilityDescription: word)
         menu.addItem(row)
@@ -88,6 +89,24 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
       toggle.isEnabled = busy == nil
       menu.addItem(toggle)
       if snap.on { menu.addItem(label("Off: nothing can reach this Mac. Running sessions keep running.")) }
+    }
+
+    if snap.on {
+      menu.addItem(.separator())
+      if let agents = snap.agents {
+        let allow = action("Let server sessions use this Mac", #selector(toggleAgents))
+        allow.state = agents ? .on : .off
+        allow.isEnabled = busy == nil
+        menu.addItem(allow)
+      }
+      let folder = snap.reposDir ?? "~/AgentOS"
+      let repos = NSMenuItem(title: "Repositories folder: \(folder)", action: nil, keyEquivalent: "")
+      let sub = NSMenu()
+      sub.addItem(action("Show in Finder", #selector(showRepos)))
+      sub.addItem(action("Choose another folder…", #selector(chooseRepos)))
+      if folder != "~/AgentOS" { sub.addItem(action("Use ~/AgentOS again", #selector(defaultRepos))) }
+      repos.submenu = sub
+      menu.addItem(repos)
     }
 
     menu.addItem(.separator())
@@ -146,6 +165,87 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
   @objc private func openApp() {
     if let url = URL(string: "http://localhost:\(Backend.port)/") { NSWorkspace.shared.open(url) }
+  }
+
+  @objc private func openSession(_ sender: NSMenuItem) {
+    guard let id = sender.representedObject as? String,
+      let query = id.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+      let url = URL(string: "http://localhost:\(Backend.port)/?session=\(query)")
+    else { return openApp() }
+    NSWorkspace.shared.open(url)
+  }
+
+  /// Runs a change only the user may make, and says so when it's refused
+  private func change(_ text: String, _ job: @escaping () -> String?) {
+    busy = text
+    render()
+    queue.async { [weak self] in
+      let problem = job()
+      DispatchQueue.main.async {
+        self?.busy = nil
+        self?.refresh()
+        guard let problem else { return }
+        NSApp.activate(ignoringOtherApps: true)
+        let alert = NSAlert()
+        alert.messageText = "That didn’t change"
+        alert.informativeText = problem
+        alert.runModal()
+      }
+    }
+  }
+
+  @objc private func toggleAgents() {
+    guard let now = snap.agents else { return }
+    if !now {
+      guard confirm(
+        "Let server sessions use this Mac?",
+        "Sessions running on \(snap.hub ?? "your server") will be able to start sessions on this Mac and give them work, without asking you each time. You can turn this off here or in AgentOS (Settings, Machines).",
+        button: "Allow", destructive: false)
+      else { return }
+    }
+    change(now ? "Turning that off…" : "Allowing…") {
+      let problem = Backend.setAgents(!now)
+      // The server answers over the link a moment later
+      if problem == nil { Thread.sleep(forTimeInterval: 1) }
+      return problem
+    }
+  }
+
+  private var reposURL: URL {
+    let folder = snap.reposDir ?? "~/AgentOS"
+    return URL(fileURLWithPath: (folder as NSString).expandingTildeInPath, isDirectory: true)
+  }
+
+  @objc private func showRepos() {
+    let url = reposURL
+    if FileManager.default.fileExists(atPath: url.path) {
+      NSWorkspace.shared.open(url)
+    } else {
+      NSApp.activate(ignoringOtherApps: true)
+      let alert = NSAlert()
+      alert.messageText = "That folder isn’t there yet"
+      alert.informativeText = "AgentOS makes \(snap.reposDir ?? "~/AgentOS") the first time it puts a repository on this Mac."
+      alert.runModal()
+    }
+  }
+
+  @objc private func chooseRepos() {
+    NSApp.activate(ignoringOtherApps: true)
+    let panel = NSOpenPanel()
+    panel.canChooseFiles = false
+    panel.canChooseDirectories = true
+    panel.canCreateDirectories = true
+    panel.allowsMultipleSelection = false
+    panel.directoryURL = FileManager.default.fileExists(atPath: reposURL.path) ? reposURL : Backend.home
+    panel.message = "Where AgentOS finds your repositories on this Mac, and puts the ones it clones."
+    panel.prompt = "Use This Folder"
+    guard panel.runModal() == .OK, let url = panel.url else { return }
+    let folder = Backend.tilde(url)
+    change("Changing the folder…") { Backend.setReposDir(folder) }
+  }
+
+  @objc private func defaultRepos() {
+    change("Changing the folder…") { Backend.setReposDir(nil) }
   }
 
   @objc private func stopSession(_ sender: NSMenuItem) {

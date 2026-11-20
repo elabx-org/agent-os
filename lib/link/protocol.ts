@@ -39,6 +39,8 @@ export type MachineFrame =
   | { t: "ws-msg"; id: number; data: string }
   | { t: "ws-close"; id: number; code?: number }
   | { t: "pong" }
+  /** The machine's owner, from the machine itself: may the hub's sessions use it */
+  | { t: "agents"; allowed: boolean }
   /** Something the user should hear about (a session needs them, finished) */
   | {
       t: "notify";
@@ -62,7 +64,11 @@ export type HubFrame =
       sha: string | null;
       /** Shown on both sides while pending, to match by eye */
       code: string;
+      /** Approved only: whether the hub's sessions may use this machine */
+      agents?: boolean;
     }
+  /** That setting, when it changes on either side */
+  | { t: "agents"; allowed: boolean }
   | { t: "refused"; reason: string }
   | {
       t: "req";

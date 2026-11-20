@@ -49,6 +49,10 @@ function memoryDeps(): HubDeps & { rows: Map<string, MachineRow> } {
       return row ?? null;
     },
     removeMachine: (id) => rows.delete(id),
+    setMachineAgents: (id, allowed) => {
+      const row = rows.get(id);
+      if (row) row.agents = allowed ? 1 : 0;
+    },
     sha: () => "hubsha",
   };
 }
@@ -379,4 +383,36 @@ test("a machine's notice is checked and clipped before the hub shows it", async 
     checkedNotice(mac, { kind: "finished", title: "", body: "b" }),
     null
   );
+});
+
+test("a machine learns and changes whether the hub's sessions may use it", async () => {
+  const r = await rig();
+  const c = r.client(r.hub.createPairingCode().code);
+  const wait = async (want: boolean | null) => {
+    for (let i = 0; i < 200 && c.agents !== want; i++) {
+      await new Promise((done) => setTimeout(done, 10));
+    }
+    assert.equal(c.agents, want);
+  };
+  // Not linked: nothing to ask over
+  assert.equal(c.setAgents(true), false);
+  c.start();
+  await r.until("pending");
+  assert.equal(c.agents, null);
+  r.hub.approve("m_1");
+  await r.until("linked");
+  await wait(false);
+
+  // From the machine
+  assert.equal(c.setAgents(true), true);
+  await wait(true);
+  assert.equal(r.deps.rows.get("m_1")!.agents, 1);
+
+  // From the hub's Settings
+  r.deps.setMachineAgents("m_1", false);
+  r.hub.tellAgents("m_1");
+  await wait(false);
+
+  c.stop();
+  await r.close();
 });
