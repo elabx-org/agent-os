@@ -338,7 +338,8 @@ function Body({
                     <span className="text-foreground font-mono text-[12px]">
                       {landing.folder}
                     </span>
-                    .
+                    , working in its own folder so your files there aren&apos;t
+                    touched.
                   </>
                 )}
               </li>
