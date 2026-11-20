@@ -19,6 +19,7 @@ import {
   type MoveRequest,
   type MoveStep,
 } from "../session-move-types";
+import type { MovePlan } from "../repos-dir";
 import { HUB_MARKER, MACHINE_HEADER, linkHub, ownSha } from "./server";
 import { machineById } from "./store";
 
@@ -466,3 +467,39 @@ export function startMove(request: Request, body: MoveRequest): MoveJob {
 }
 
 export const moveJob = (id: string): MoveJob | null => jobs.get(id) ?? null;
+
+/** Where a session would land on the other machine; null when unknown */
+export async function planMove(
+  request: Request,
+  body: MoveRequest
+): Promise<MovePlan | null> {
+  const call = caller(userHeaders(request));
+  try {
+    const repo = await (
+      await call(body.from, `/api/sessions/${body.sessionId}/move-out/repo`, {
+        timeoutMs: 15_000,
+      })
+    ).json<{ name: string; remote: string | null }>();
+    const plan = await (
+      await call(body.to, "/api/session-moves/plan", {
+        json: {
+          sessionId: body.sessionId,
+          name: String(repo.name).slice(0, 300),
+          remote: typeof repo.remote === "string" ? repo.remote : null,
+        },
+        timeoutMs: 15_000,
+      })
+    ).json<MovePlan>();
+    return ["return", "existing", "clone"].includes(plan?.mode) &&
+      typeof plan.folder === "string" &&
+      typeof plan.reposDir === "string"
+      ? {
+          mode: plan.mode,
+          folder: plan.folder.slice(0, 1024),
+          reposDir: plan.reposDir.slice(0, 1024),
+        }
+      : null;
+  } catch {
+    return null;
+  }
+}

@@ -34,6 +34,14 @@ import { flagOnFor } from "./flags";
 import { slugify } from "./git";
 import { isPaused } from "./handoff-types";
 import { queueStore } from "./queue/store";
+import {
+  DEFAULT_REPOS_DIR,
+  REPOS_DIR_PREFERENCE_KEY,
+  expandReposDir,
+  normalizeReposDir,
+  tildePath,
+  type MovePlan,
+} from "./repos-dir";
 import { launchSession, tmuxNameOf } from "./session-launch";
 import {
   MOVE_ID,
@@ -472,10 +480,40 @@ function validManifest(value: unknown): value is MoveManifest {
   );
 }
 
+/** This machine's repositories folder as the user set it ("~/code") */
+export function reposDirSetting(): string {
+  try {
+    const row = queries.getPreference(getDb()).get(REPOS_DIR_PREFERENCE_KEY) as
+      | { value: string }
+      | undefined;
+    const stored = normalizeReposDir(row ? JSON.parse(row.value) : null);
+    if (stored) return stored;
+  } catch {
+    // The default below
+  }
+  return DEFAULT_REPOS_DIR;
+}
+
+const reposBase = () => expandReposDir(reposDirSetting(), os.homedir());
+
+/** The repositories folder's own folders: where the user keeps their code */
+function reposFolders(): string[] {
+  const base = reposBase();
+  try {
+    return fs
+      .readdirSync(base, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory() && !entry.name.startsWith("."))
+      .slice(0, 200)
+      .map((entry) => path.join(base, entry.name));
+  } catch {
+    return [];
+  }
+}
+
 /** Folders this machine's projects and sessions work in */
 function knownFolders(): string[] {
   const db = getDb();
-  const dirs = new Set<string>();
+  const dirs = new Set<string>(reposFolders());
   for (const p of queries.getAllProjects(db).all() as Project[]) {
     if (p.working_directory) dirs.add(expandHome(p.working_directory));
   }
@@ -486,7 +524,7 @@ function knownFolders(): string[] {
 }
 
 async function findCheckout(remote: string): Promise<string | null> {
-  const folders = knownFolders().slice(0, 80);
+  const folders = knownFolders().slice(0, 280);
   const tops = await Promise.all(
     folders.map(async (dir) => {
       const top = await topOf(dir);
@@ -503,24 +541,34 @@ async function findCheckout(remote: string): Promise<string | null> {
 const cloneable = (remote: string) =>
   /^(https:\/\/|ssh:\/\/|[\w.-]+@[\w.-]+:|\/)[\w./~:@%+-]+$/.test(remote);
 
-async function cloneOrInit(
-  m: MoveManifest
-): Promise<{ repo: string; mode: "existing" | "cloned" | "empty" }> {
-  const base = path.join(os.homedir(), "AgentOS");
-  await fsp.mkdir(base, { recursive: true });
-  const name = slugify(m.repo.name) || "project";
+/**
+ * Where a repository this machine doesn't know goes: a copy of it already
+ * in the repositories folder, else a free folder there named after it
+ */
+async function cloneTarget(
+  repoName: string,
+  remote: string | null
+): Promise<{ existing: string } | { dir: string }> {
+  const base = reposBase();
+  const name = slugify(repoName) || "project";
   let dir = path.join(base, name);
   for (let n = 2; fs.existsSync(dir); n++) {
     const top = await topOf(dir);
-    if (
-      top &&
-      m.repo.remote &&
-      sameRemote(await originOf(top), m.repo.remote)
-    ) {
-      return { repo: top, mode: "existing" };
+    if (top && remote && sameRemote(await originOf(top), remote)) {
+      return { existing: top };
     }
     dir = path.join(base, `${name}-${n}`);
   }
+  return { dir };
+}
+
+async function cloneOrInit(
+  m: MoveManifest
+): Promise<{ repo: string; mode: "existing" | "cloned" | "empty" }> {
+  const target = await cloneTarget(m.repo.name, m.repo.remote);
+  if ("existing" in target) return { repo: target.existing, mode: "existing" };
+  const dir = target.dir;
+  await fsp.mkdir(path.dirname(dir), { recursive: true });
   if (m.repo.remote && cloneable(m.repo.remote)) {
     try {
       await execFileAsync(
@@ -549,6 +597,39 @@ async function cloneOrInit(
     await git(["remote", "add", "origin", m.repo.remote], { cwd: dir });
   }
   return { repo: fs.realpathSync(dir), mode: "empty" };
+}
+
+/** The repository a session works in, for the machine it may move to */
+export async function moveRepoOf(
+  session: Session
+): Promise<{ name: string; remote: string | null } | null> {
+  const top = await topOf(sessionCwd(session));
+  return top ? { name: path.basename(top), remote: await originOf(top) } : null;
+}
+
+/** Where a session would land here, without changing anything */
+export async function planMoveIn(
+  sessionId: string,
+  repoName: string,
+  remote: string | null
+): Promise<MovePlan> {
+  const home = os.homedir();
+  const plan = (mode: MovePlan["mode"], folder: string): MovePlan => ({
+    mode,
+    folder: tildePath(folder, home),
+    reposDir: reposDirSetting(),
+  });
+  const existing = getSession(sessionId);
+  if (existing && isSettled(existing) && parseMovedTo(existing.moved_to)) {
+    const top = await topOf(sessionCwd(existing));
+    if (top) return plan("return", sessionCwd(existing));
+  }
+  const found = remote ? await findCheckout(remote) : null;
+  if (found) return plan("existing", found);
+  const target = await cloneTarget(repoName, remote);
+  return "existing" in target
+    ? plan("existing", target.existing)
+    : plan("clone", target.dir);
 }
 
 async function prepare(inn: Arriving): Promise<void> {

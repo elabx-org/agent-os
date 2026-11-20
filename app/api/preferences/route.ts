@@ -5,6 +5,7 @@ import { FLAG_SESSIONS_PREFERENCE_KEY, FLAGS_PREFERENCE_KEY, setFlagSessions, se
 import { requireUser } from "@/lib/user-proof";
 import { CLAUDE_MODELS_PREFERENCE_KEY } from "@/lib/claude-models";
 import { writeClaudeModels } from "@/lib/claude-models-store";
+import { DEFAULT_REPOS_DIR, REPOS_DIR_PREFERENCE_KEY, normalizeReposDir } from "@/lib/repos-dir";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -65,6 +66,20 @@ export async function PUT(request: Request) {
         return NextResponse.json({ error: "user_only", reason: proof.reason }, { status: 403 });
       }
       return NextResponse.json({ success: true, value: writeClaudeModels(db, value) });
+    }
+
+    // Where this machine keeps repositories (and clones them): the user's call
+    if (key === REPOS_DIR_PREFERENCE_KEY) {
+      const proof = requireUser(request);
+      if (!proof.ok) {
+        return NextResponse.json({ error: "user_only", reason: proof.reason }, { status: 403 });
+      }
+      const folder = value === null || value === "" ? null : normalizeReposDir(value);
+      if (value !== null && value !== "" && !folder) {
+        return NextResponse.json({ error: "Give a full path, like ~/code or /srv/code" }, { status: 400 });
+      }
+      queries.upsertPreference(db).run(key, JSON.stringify(folder));
+      return NextResponse.json({ success: true, value: folder ?? DEFAULT_REPOS_DIR });
     }
 
     queries.upsertPreference(db).run(key, JSON.stringify(value));

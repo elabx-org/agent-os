@@ -18,6 +18,7 @@ import {
   type MoveJob,
   type MoveStep,
 } from "@/lib/session-move-types";
+import type { MovePlan } from "@/lib/repos-dir";
 import { isOnline, useMachines, useTabMachineId } from "@/data/machines";
 import { mobileNavStore } from "@/stores/mobileNav";
 import { closeContinueSheet, continueSheetStore } from "@/stores/continueSheet";
@@ -140,6 +141,28 @@ function Body({
     targets.find((t) => t.id === picked && !t.blocked) ??
     targets.find((t) => !t.blocked) ??
     null;
+  // Where it would land there, asked before it moves (changes nothing)
+  const targetId = target?.id;
+  const [plan, setPlan] = useState<{ to: string; plan: MovePlan } | null>(null);
+  const asking = !job;
+  useEffect(() => {
+    if (!targetId || !asking) return;
+    let gone = false;
+    fetchAsUser("/api/machines/move/plan", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId, from, to: targetId }),
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((body: MovePlan | null) => {
+        if (!gone && body) setPlan({ to: targetId, plan: body });
+      })
+      .catch(() => {});
+    return () => {
+      gone = true;
+    };
+  }, [targetId, sessionId, from, asking]);
+  const landing = plan && plan.to === targetId ? plan.plan : null;
   const running = !!job && job.step !== "done" && job.step !== "failed";
   // A move in flight runs on the server: closing the sheet doesn't stop it
   busyRef.current = starting;
@@ -290,6 +313,36 @@ function Body({
               The same conversation, branch and uncommitted changes go
               {target ? ` to ${target.name}` : " along"}.
             </li>
+            {landing && target && (
+              <li className="break-words">
+                {landing.mode === "clone" ? (
+                  <>
+                    {cap(target.name)} doesn&apos;t have this repository yet: it
+                    will be put in{" "}
+                    <span className="text-foreground font-mono text-[12px]">
+                      {landing.folder}
+                    </span>
+                    . Change the folder in Settings, Machines.
+                  </>
+                ) : landing.mode === "return" ? (
+                  <>
+                    It goes back to its folder,{" "}
+                    <span className="text-foreground font-mono text-[12px]">
+                      {landing.folder}
+                    </span>
+                    .
+                  </>
+                ) : (
+                  <>
+                    It will use the repository already on {target.name}, in{" "}
+                    <span className="text-foreground font-mono text-[12px]">
+                      {landing.folder}
+                    </span>
+                    .
+                  </>
+                )}
+              </li>
+            )}
             <li>
               It pauses {fromHere ? "here" : `on ${fromName}`}, so only one copy
               ever runs.
