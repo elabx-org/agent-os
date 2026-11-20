@@ -37,6 +37,8 @@ import { queueStore } from "./queue/store";
 import {
   DEFAULT_REPOS_DIR,
   REPOS_DIR_PREFERENCE_KEY,
+  SESSIONS_FOLDER,
+  SESSIONS_MARKER,
   expandReposDir,
   normalizeReposDir,
   tildePath,
@@ -75,7 +77,6 @@ import {
   type MoveSnapshot,
 } from "./worktree-move-git";
 import { TRUST_SCREEN, folderTrusted } from "./worktree-move";
-import { getWorktreesDir } from "./worktrees";
 
 const execFileAsync = promisify(execFile);
 
@@ -862,8 +863,16 @@ async function newWorktree(inn: Arriving): Promise<Placed> {
     m.repo.branch && (await branchValid(repo, m.repo.branch))
       ? m.repo.branch
       : null;
-  const base = getWorktreesDir();
+  // Beside the user's repositories, where they can find it
+  const base = path.join(reposBase(), SESSIONS_FOLDER);
   await fsp.mkdir(base, { recursive: true });
+  await fsp
+    .writeFile(
+      path.join(base, SESSIONS_MARKER),
+      "AgentOS keeps the working folders of sessions that continued on this machine here.\n",
+      { flag: "wx" }
+    )
+    .catch(() => {});
   const dir = path.join(
     base,
     `${slugify(m.repo.name) || "project"}-${slugify(wanted ?? "moved") || "moved"}-${m.moveId.slice(0, 6)}`

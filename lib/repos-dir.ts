@@ -7,6 +7,14 @@
 export const REPOS_DIR_PREFERENCE_KEY = "repos_dir";
 export const DEFAULT_REPOS_DIR = "~/AgentOS";
 
+/**
+ * Inside the repositories folder: the working folders of sessions that
+ * continued on this machine (each a git worktree of a repository there)
+ */
+export const SESSIONS_FOLDER = ".sessions";
+/** Marks a SESSIONS_FOLDER as AgentOS's own, so its folders may be removed */
+export const SESSIONS_MARKER = ".agentos";
+
 /** A folder the setting accepts ("~", "~/code", "/srv/code"), else null */
 export function normalizeReposDir(value: unknown): string | null {
   if (typeof value !== "string") return null;

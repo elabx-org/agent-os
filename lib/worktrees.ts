@@ -14,6 +14,7 @@ import {
   slugify,
   generateBranchName,
 } from "./git";
+import { SESSIONS_FOLDER, SESSIONS_MARKER } from "./repos-dir";
 
 const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
@@ -376,7 +377,14 @@ export async function listWorktrees(projectPath: string): Promise<
  */
 export function isAgentOSWorktree(worktreePath: string): boolean {
   const resolvedPath = resolvePath(worktreePath);
-  return resolvedPath.startsWith(WORKTREES_DIR);
+  if (resolvedPath.startsWith(WORKTREES_DIR)) return true;
+  // A session that continued here: its folder sits in a repositories
+  // folder's .sessions, which AgentOS marked as its own when it made it
+  const parent = path.dirname(resolvedPath);
+  return (
+    path.basename(parent) === SESSIONS_FOLDER &&
+    fs.existsSync(path.join(parent, SESSIONS_MARKER))
+  );
 }
 
 /**

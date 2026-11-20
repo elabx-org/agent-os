@@ -23,3 +23,24 @@ test("expandReposDir and tildePath are each other's inverse at home", () => {
   assert.equal(tildePath("/config/workspace/gh", "/config"), "~/workspace/gh");
   assert.equal(tildePath("/srv/code", "/config"), "/srv/code");
 });
+
+test("isAgentOSWorktree: a marked .sessions folder's children count", async () => {
+  const fs = await import("node:fs");
+  const os = await import("node:os");
+  const path = await import("node:path");
+  const { isAgentOSWorktree } = await import("../../lib/worktrees");
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), "repos-"));
+  const sessions = path.join(base, ".sessions");
+  fs.mkdirSync(path.join(sessions, "app-main-abc123"), { recursive: true });
+  fs.mkdirSync(path.join(base, "app"));
+  // Unmarked: someone else's folder that happens to share the name
+  assert.equal(
+    isAgentOSWorktree(path.join(sessions, "app-main-abc123")),
+    false
+  );
+  fs.writeFileSync(path.join(sessions, ".agentos"), "");
+  assert.equal(isAgentOSWorktree(path.join(sessions, "app-main-abc123")), true);
+  assert.equal(isAgentOSWorktree(path.join(base, "app")), false);
+  assert.equal(isAgentOSWorktree(sessions), false);
+  fs.rmSync(base, { recursive: true, force: true });
+});
