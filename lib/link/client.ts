@@ -90,6 +90,8 @@ export class LinkClient {
   private sockets = new Map<number, WebSocket>();
   private hub: URL;
   state: LinkState = { status: "connecting" };
+  /** Whether the hub's sessions may use this machine; null when unknown */
+  agents: boolean | null = null;
 
   constructor(private options: LinkClientOptions) {
     this.hub = new URL(options.hubUrl);
@@ -113,6 +115,14 @@ export class LinkClient {
     if (this.state.status !== "linked") return false;
     if (this.ws?.readyState !== WebSocket.OPEN) return false;
     this.ws.send(JSON.stringify({ t: "notify", ...notice } as MachineFrame));
+    return true;
+  }
+
+  /** This machine's owner allows or stops the hub's sessions using it */
+  setAgents(allowed: boolean): boolean {
+    if (this.state.status !== "linked") return false;
+    if (this.ws?.readyState !== WebSocket.OPEN) return false;
+    this.ws.send(JSON.stringify({ t: "agents", allowed } as MachineFrame));
     return true;
   }
 
@@ -199,8 +209,15 @@ export class LinkClient {
               proofText(this.hub.host, frame.nonce)
             ),
           });
+        case "agents":
+          this.agents = frame.allowed === true;
+          return;
         case "welcome":
           this.attempt = 0;
+          this.agents =
+            frame.status === "approved" && typeof frame.agents === "boolean"
+              ? frame.agents
+              : null;
           return this.setState(
             frame.status === "approved"
               ? {
@@ -240,6 +257,7 @@ export class LinkClient {
     ws.on("close", (code) => {
       if (this.quiet) clearTimeout(this.quiet);
       if (this.ws === ws) this.ws = null;
+      this.agents = null;
       this.dropAll();
       if (this.stopped) return;
       if (code === 4403) {

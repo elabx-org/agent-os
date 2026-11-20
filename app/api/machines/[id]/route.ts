@@ -39,7 +39,10 @@ export async function PATCH(request: Request, { params }: Context) {
     agents?: unknown;
   };
   if (typeof body.name === "string") renameMachine(id, body.name);
-  if (typeof body.agents === "boolean") setMachineAgents(id, body.agents);
+  if (typeof body.agents === "boolean") {
+    setMachineAgents(id, body.agents);
+    linkHub().tellAgents(id);
+  }
   if (body.approve === true) linkHub().approve(id);
   const row = machineById(id)!;
   return NextResponse.json({

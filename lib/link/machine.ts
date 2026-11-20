@@ -128,6 +128,20 @@ function matchHub(sha: string): void {
   }
 }
 
+// server.ts and the Next route bundles are separate module graphs in one
+// process: the link lives on globalThis so routes can reach it
+const shared = globalThis as typeof globalThis & {
+  __agentosLinkClient?: LinkClient | null;
+};
+
+/** Whether the hub's sessions may use this machine; null when not linked */
+export const hubAgents = (): boolean | null =>
+  shared.__agentosLinkClient?.agents ?? null;
+
+/** Asks the hub to change it; false when there's no link to ask over */
+export const setHubAgents = (allowed: boolean): boolean =>
+  shared.__agentosLinkClient?.setAgents(allowed) ?? false;
+
 let running: LinkClient | null = null;
 
 /**
@@ -182,6 +196,7 @@ export function startMachineLink(localPort: number): LinkClient | null {
     },
   });
   running = client;
+  shared.__agentosLinkClient = client;
   client.start();
   return client;
 }
