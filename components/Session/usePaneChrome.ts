@@ -9,6 +9,8 @@ import { headerShowsActivity, headerVariant } from "@/lib/session-views";
 import { mobileNavStore } from "@/stores/mobileNav";
 import { duoPreviewStore, loadDuoPreview } from "@/stores/duoPreview";
 import { moveSheetStore } from "@/stores/moveSheet";
+import { continueSheetStore } from "@/stores/continueSheet";
+import { useCanContinueElsewhere } from "./ContinueOnSheet";
 import { useCanOfferMove } from "@/hooks/useWorktreeMove";
 import { useLayoutMode } from "@/hooks/useLayoutMode";
 import { useIsNative } from "@/hooks/useIsNative";
@@ -44,6 +46,8 @@ export function usePaneChrome({
   const sessionId = session?.id;
   const working = !!sessionId && statuses[sessionId]?.status === "running";
   const movable = useCanOfferMove(session);
+  const portable = useCanContinueElsewhere(session);
+  const sessionName = session?.name ?? "";
 
   useEffect(() => {
     if (!isFocused) return;
@@ -112,6 +116,17 @@ export function usePaneChrome({
       if (moveSheetStore.offer === sessionId) moveSheetStore.offer = null;
     };
   }, [isFocused, movable, sessionId]);
+
+  // And "Continue on another machine"
+  useEffect(() => {
+    if (!isFocused || !portable || !sessionId) return;
+    continueSheetStore.offer = { sessionId, name: sessionName };
+    return () => {
+      if (continueSheetStore.offer?.sessionId === sessionId) {
+        continueSheetStore.offer = null;
+      }
+    };
+  }, [isFocused, portable, sessionId, sessionName]);
 
   const variant = headerVariant({
     hasSession: !!session,

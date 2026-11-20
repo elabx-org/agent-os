@@ -5,6 +5,7 @@ import {
   Copy,
   FolderInput,
   GitBranchPlus,
+  Laptop,
   Pencil,
   Pin,
   PinOff,
@@ -18,6 +19,8 @@ import { ActionSheet, type SheetAction } from "@/components/ui/action-sheet";
 import type { useSessionListMutations } from "@/components/SessionList/hooks/useSessionListMutations";
 import { useCanOfferMove } from "@/hooks/useWorktreeMove";
 import { openMoveSheet } from "@/stores/moveSheet";
+import { openContinueSheet } from "@/stores/continueSheet";
+import { useCanContinueElsewhere } from "@/components/Session/ContinueOnSheet";
 
 type Mutations = ReturnType<typeof useSessionListMutations>;
 
@@ -42,6 +45,7 @@ export function SessionRowActions({
   const [open, setOpen] = useState(false);
   // N-Worktree: the page's MoveToWorktreeSheetPageHost draws it
   const movable = useCanOfferMove(session);
+  const portable = useCanContinueElsewhere(session);
 
   const pinned = session.pinned_order != null;
   const claude = session.agent_type === "claude";
@@ -88,6 +92,15 @@ export function SessionRowActions({
             label: "Move to a worktree",
             icon: GitBranchPlus,
             onSelect: () => openMoveSheet(session.id),
+          },
+        ]
+      : [],
+    portable
+      ? [
+          {
+            label: "Continue on another machine",
+            icon: Laptop,
+            onSelect: () => openContinueSheet(session.id, title),
           },
         ]
       : [],

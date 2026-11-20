@@ -69,6 +69,10 @@ export interface Session {
   pr_checks: string | null;
   pr_title: string | null;
   pr_merged_at: number | null;
+  // Migration 39 (lib/session-move.ts): JSON MovedTo when it went on to
+  // another machine (it is settled here); JSON MovedFrom when it came from one
+  moved_to: string | null;
+  moved_from: string | null;
 }
 
 /** What an agent tried on a session's permissions (lib/agent-actions.ts) */

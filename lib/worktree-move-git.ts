@@ -468,9 +468,18 @@ async function writeFromTree(
 /** Unlinks repository-relative files, then the folders they leave empty */
 async function removeFiles(top: string, files: string[]): Promise<void> {
   const dirs = new Set<string>();
+  const root = await fs.promises.realpath(top);
   for (const rel of files) {
-    const abs = path.join(top, rel);
+    const abs = path.resolve(root, rel);
+    if (!abs.startsWith(root + path.sep)) {
+      throw new Error("A path outside the worktree");
+    }
     try {
+      // Through no symlinked folder: the file itself must be in the worktree
+      const parent = await fs.promises.realpath(path.dirname(abs));
+      if (parent !== root && !parent.startsWith(root + path.sep)) {
+        throw new Error("A path outside the worktree");
+      }
       const st = await fs.promises.lstat(abs);
       if (st.isDirectory()) continue;
       await fs.promises.unlink(abs);
@@ -483,7 +492,7 @@ async function removeFiles(top: string, files: string[]): Promise<void> {
   const ordered = [...dirs].sort((a, b) => b.length - a.length);
   for (const start of ordered) {
     let dir = start;
-    while (dir.startsWith(top + path.sep)) {
+    while (dir.startsWith(root + path.sep)) {
       try {
         await fs.promises.rmdir(dir);
       } catch {

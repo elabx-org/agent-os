@@ -1,3 +1,4 @@
+import { isLeaving } from "@/lib/session-move";
 import { NextRequest, NextResponse } from "next/server";
 import { getDb, queries, type Session } from "@/lib/db";
 import { requireUser } from "@/lib/user-proof";
@@ -57,6 +58,13 @@ export async function POST(request: NextRequest, { params }: Params) {
 export async function DELETE(request: NextRequest, { params }: Params) {
   const session = await target(request, params);
   if (session instanceof NextResponse) return session;
+  // Mid-move it may already be starting on the other machine
+  if (isLeaving(session.id)) {
+    return NextResponse.json(
+      { error: "It's moving to another machine. Wait for that to finish" },
+      { status: 409 }
+    );
+  }
   try {
     const result: UnsettleResult = await unsettleSession(session);
     return NextResponse.json(result);

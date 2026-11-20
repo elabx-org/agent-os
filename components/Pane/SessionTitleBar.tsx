@@ -11,6 +11,7 @@ import {
   Workflow,
   GitBranch,
   GitBranchPlus,
+  Laptop,
   SquareTerminal,
   Copy,
   Unplug,
@@ -99,6 +100,8 @@ import { bgSendStore } from "@/stores/bgSend";
 import { isAutoSessionName } from "@/lib/session-names";
 import { useCanOfferMove } from "@/hooks/useWorktreeMove";
 import { openMoveSheet } from "@/stores/moveSheet";
+import { openContinueSheet } from "@/stores/continueSheet";
+import { useCanContinueElsewhere } from "@/components/Session/ContinueOnSheet";
 import type { BackgroundAgent } from "@/lib/claude-background";
 import { AgentCrumb } from "@/components/BackgroundAgents/AgentDetail";
 import {
@@ -209,6 +212,7 @@ export function SessionTitleBar({
   const modelParts = useModelParts(session);
   // N-Worktree: git folders, not paused, shell or already in a worktree
   const movable = useCanOfferMove(session);
+  const portable = useCanContinueElsewhere(session);
   const switcher = useMemo(
     () => ({ open: switchOpen, onOpen: () => setSwitchOpen(true) }),
     [switchOpen]
@@ -434,6 +438,14 @@ export function SessionTitleBar({
                 Move to a worktree
               </DropdownMenuItem>
             )}
+            {portable && variant !== "desktop" && (
+              <DropdownMenuItem
+                onSelect={() => openContinueSheet(session.id, title)}
+              >
+                <Laptop className="h-4 w-4" />
+                Continue on another machine
+              </DropdownMenuItem>
+            )}
             {variant === "card" && (
               <>
                 {/* No rail beside two panes, nor a strip under them */}
@@ -562,6 +574,16 @@ export function SessionTitleBar({
             <DropdownMenuItem onSelect={() => openMoveSheet(session.id)}>
               <GitBranchPlus className="h-4 w-4" />
               Move to a worktree
+            </DropdownMenuItem>
+          )}
+        {session &&
+          portable &&
+          (variant === "classic" || variant === "desktop") && (
+            <DropdownMenuItem
+              onSelect={() => openContinueSheet(session.id, title)}
+            >
+              <Laptop className="h-4 w-4" />
+              Continue on another machine
             </DropdownMenuItem>
           )}
         {session && (

@@ -54,6 +54,7 @@ export interface ColumnContext {
     | "permissions"
     | "scripts"
     | "move"
+    | "continue"
     | "mock"
     | null;
   /**
@@ -276,6 +277,12 @@ const BASE = {
     icon: "GitBranch",
     label: "Move session",
   },
+  continueSession: {
+    id: "done",
+    symbol: "laptopcomputer",
+    icon: "Laptop",
+    label: "Continue there",
+  },
   cancelMove: {
     id: "done",
     symbol: "arrow.uturn.backward",
@@ -491,6 +498,15 @@ function sheetColumn(ctx: ColumnContext): ColumnItem[] | null {
       action === "cancel"
         ? item(BASE.cancelMove, sep)
         : item(BASE.moveSession, { prominent: true, ...sep }),
+    ];
+  }
+  // Continue on another machine: close | Continue there; the close alone
+  // while it moves (the sheet says the hub carries on)
+  if (ctx.sheet === "continue") {
+    if ((ctx.sheetAction ?? "move") === "none") return [item(BASE.closeSheet)];
+    return [
+      item(BASE.closeSheet),
+      item(BASE.continueSession, { prominent: true, ...sep }),
     ];
   }
   if (ctx.liveOpen)
@@ -959,7 +975,7 @@ export function columnFor(
   // N-Worktree from a project page's row: × | Move session there too; on
   // the open Duo the sheet stops at the column, which offers the same
   if (
-    ctx.sheet === "move" &&
+    (ctx.sheet === "move" || ctx.sheet === "continue") &&
     ((mode === "duo-closed" && !inSession) ||
       mode === "duo-open" ||
       mode === "book")
