@@ -379,6 +379,13 @@ function Body({
               and answer.
             </p>
           )}
+          {job.result.noRemoteAccess && (
+            <p>
+              {toName} couldn&apos;t reach this repository&apos;s remote, so
+              Claude can&apos;t push or pull there yet. Sign in to git or GitHub
+              on {toName} (for example, gh auth login).
+            </p>
+          )}
           {job.result.fullAccessOff && (
             <p>
               Full access didn&apos;t travel with it: on {toName} it asks before

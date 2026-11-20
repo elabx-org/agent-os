@@ -151,6 +151,28 @@ async function originOf(top: string): Promise<string | null> {
   }
 }
 
+/**
+ * Whether this machine can read the repository's remote, without ever
+ * waiting at a prompt. True with no remote: there is nothing to reach
+ */
+async function remoteReachable(top: string): Promise<boolean> {
+  if (!(await originOf(top))) return true;
+  try {
+    await execFileAsync("git", ["ls-remote", "--quiet", "origin", "HEAD"], {
+      cwd: top,
+      timeout: 20_000,
+      env: {
+        ...process.env,
+        GIT_TERMINAL_PROMPT: "0",
+        GIT_SSH_COMMAND: "ssh -oBatchMode=yes -oConnectTimeout=10",
+      },
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function topOf(dir: string): Promise<string | null> {
   try {
     return (
@@ -1094,12 +1116,14 @@ async function runImport(inn: Arriving): Promise<MoveInResult> {
 
     const leftBehind = m.snapshot?.skipped ?? [];
     const session = getSession(m.sessionId)!;
+    const noRemoteAccess = !(await remoteReachable(repo));
     const notice = arrivedNoticeText(
       inn.self.name,
       platformName(),
       folder,
       inn.from.name,
-      leftBehind
+      leftBehind,
+      noRemoteAccess
     );
     // Claude must learn it moved either way: queued when this machine
     // queues messages, else as the first thing it is told
@@ -1128,6 +1152,7 @@ async function runImport(inn: Arriving): Promise<MoveInResult> {
       leftBehind,
       fullAccessOff: access.fullAccessOff || undefined,
       needsTrust: needsTrust || undefined,
+      noRemoteAccess: noRemoteAccess || undefined,
     };
   } catch (error) {
     if (wrote) {

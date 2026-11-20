@@ -161,6 +161,8 @@ export interface MoveInResult {
   fullAccessOff?: boolean;
   /** Claude is asking whether to trust the folder on that machine */
   needsTrust?: boolean;
+  /** That machine couldn't reach the repository's remote (not signed in?) */
+  noRemoteAccess?: boolean;
 }
 
 /** DELETE /api/session-moves/[move] */
@@ -238,7 +240,8 @@ export function arrivedNoticeText(
   platform: string,
   folder: string,
   fromName: string,
-  leftBehind: string[]
+  leftBehind: string[],
+  noRemoteAccess = false
 ): string {
   const lines = [
     `[AgentOS] This session now runs on ${toName} (${platform}). It was moved here from ${fromName} with the same conversation, branch and uncommitted changes.`,
@@ -248,6 +251,11 @@ export function arrivedNoticeText(
   if (leftBehind.length > 0) {
     lines.push(
       `These files were not brought (large untracked files or submodule changes) and stayed on ${fromName}: ${leftBehind.join(", ")}`
+    );
+  }
+  if (noRemoteAccess) {
+    lines.push(
+      `${toName} could not reach this repository's remote just now (it may not be signed in to git or GitHub here). Pushing, pulling and gh may fail until the user signs in on ${toName}; say so instead of retrying.`
     );
   }
   lines.push("No reply is needed; carry on when asked.");

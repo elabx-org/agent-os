@@ -93,6 +93,16 @@ test("the words of a move name the machine", () => {
   assert.match(notice, /big\.bin/);
 });
 
+test("arrivedNoticeText: says when the machine can't reach the remote", () => {
+  const say = (off?: boolean) =>
+    arrivedNoticeText("Mac Studio", "macOS", "/r", "the server", [], off);
+  assert.doesNotMatch(say(), /could not reach/);
+  assert.match(
+    say(true),
+    /Mac Studio could not reach this repository's remote/
+  );
+});
+
 test("arrivalRow: a session placed in a worktree works in that worktree", () => {
   const wt = {
     top: "/wt/app-main-abc123",
