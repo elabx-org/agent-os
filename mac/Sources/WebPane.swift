@@ -36,10 +36,23 @@ final class WebPane: NSView, WKNavigationDelegate, WKUIDelegate, WKDownloadDeleg
 
   var overlay: OfflineView.Kind? { offline.isHidden ? nil : offline.kind }
 
-  /// The fixed code that opens a session in place; `id` arrives as an argument
+  /// The fixed code that opens a session in place; `id` arrives as an argument.
+  /// The page focuses the session's terminal a moment after it opens, so the
+  /// blur repeats for 1.5 s, until the person clicks or types in the page.
   static let openScript = """
-    window.dispatchEvent(new CustomEvent('agentos-native',{detail:{type:'open',sessionId:id}})); \
-    if (document.activeElement && document.activeElement.closest('.xterm')) document.activeElement.blur();
+    window.dispatchEvent(new CustomEvent('agentos-native',{detail:{type:'open',sessionId:id}}));
+    let touched = false;
+    const mark = () => { touched = true; };
+    window.addEventListener('pointerdown', mark, { capture: true, once: true });
+    window.addEventListener('keydown', mark, { capture: true, once: true });
+    const blur = () => {
+      const a = document.activeElement;
+      if (!touched && a && a.closest && a.closest('.xterm')) a.blur();
+    };
+    blur();
+    for (let i = 0; i < 15 && !touched; i++) { await new Promise(r => setTimeout(r, 100)); blur(); }
+    window.removeEventListener('pointerdown', mark, { capture: true });
+    window.removeEventListener('keydown', mark, { capture: true });
     """
 
   init(port: Int, persistent: Bool, inspectable: Bool) {

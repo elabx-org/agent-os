@@ -235,7 +235,8 @@ final class SelfTestRunner: WindowHost {
       guard let id = sessionId else { return .skip("no sessions") }
       _ = await js("window.__agentosMarker = 1; return true;")
       pane?.open(.session(id))
-      await sleep(1)
+      // The open script keeps focus out of the terminal for 1.5 s
+      await sleep(2)
       let marker = await jsBool("return window.__agentosMarker === 1;")
       let path = await js("return location.pathname;") as? String
       let inTerm = await jsBool(
