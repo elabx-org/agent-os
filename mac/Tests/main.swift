@@ -337,6 +337,11 @@ check("title too long: allow disabled", titled(longTitle, "Yes")?.enabled == fal
 for (name, scalar) in [("ALM", "\u{061C}"), ("WJ", "\u{2060}"), ("tag", "\u{E0041}"), ("IAA", "\u{FFF9}")] {
   check("unsafe \(name)", TextSafety.hasUnsafe("ls \(scalar)x"))
 }
+var oddName = session("idle")
+oddName.name = "\u{202E}evil\n\tname " + String(repeating: "x", count: 120)
+let oddRow = MenuModel.build(MenuSnapshot(on: true, sessions: [oddName], features: true))[1].title
+check("odd name: one line", !oddRow.contains("\n") && !oddRow.contains("\t") && !oddRow.contains("\u{202E}"), oddRow)
+check("odd name: cut to 60", oddRow.hasPrefix("\u{FFFD}evil name x") && oddRow.hasSuffix("…  —  Idle"), oddRow)
 let oldServer = rows(session(prompt: prompt()), features: false)
 check("no features: every option disabled", oldServer.filter { if case .answerPrompt? = $0.action { return true }; return false }
   .allSatisfy { !$0.enabled })

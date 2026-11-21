@@ -61,7 +61,7 @@ enum MenuModel {
     for session in s.sessions.prefix(maxRows) {
       out.append(
         MenuEntry(
-          title: Strings.sessionRow(TextSafety.clean(session.name), session.state), action: .open(id: session.id),
+          title: Strings.sessionRow(TextSafety.oneLine(TextSafety.clean(session.name), max: 60), session.state), action: .open(id: session.id),
           children: children(session, features: s.features)))
     }
     if s.sessions.count > maxRows {
