@@ -17,13 +17,17 @@ const BUILD_ID = (() => {
   }
 })();
 
-// GET /api/build - { id, version }, so an open page can tell a deploy
-// happened and say what it runs
+// What this server's routes understand, so a client can turn on what needs
+// them (the Mac app's menu answers need all three)
+const FEATURES = ["promptFingerprint", "replyGuard", "askLabels"];
+
+// GET /api/build - { id, version, features }, so an open page can tell a
+// deploy happened and say what it runs
 export async function GET(request: Request) {
   // The page asks every so often: where the user is, for agents' links
   rememberPublicOrigin(request);
   return NextResponse.json(
-    { id: BUILD_ID, version: VERSION },
+    { id: BUILD_ID, version: VERSION, features: FEATURES },
     { headers: { "Cache-Control": "no-store" } }
   );
 }

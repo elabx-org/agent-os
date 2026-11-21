@@ -14,6 +14,7 @@ import {
   recordRefusal,
 } from "@/lib/agent-actions";
 import { requester } from "@/lib/permission-guard";
+import { promptBlocksReply } from "@/lib/session-guards";
 import { effectiveMode } from "@/lib/permission-mode";
 import { isRunning, tmuxNameOf } from "@/lib/session-launch";
 import { sendText } from "@/lib/tmux-send";
@@ -105,6 +106,27 @@ export async function POST(
       return NextResponse.json(
         { error: "Tmux session not running" },
         { status: 400 }
+      );
+    }
+
+    // A reply meant for a session that isn't asking anything: refused while
+    // a prompt is up, so it can't pick an option (another machine's body
+    // never carries the flag)
+    if (
+      !from &&
+      body?.onlyIfNoPrompt === true &&
+      promptBlocksReply(
+        true,
+        await readScreenPrompt(tmuxSessionName).catch(() => null)
+      )
+    ) {
+      log("REFUSED: a reply while a prompt is up (onlyIfNoPrompt)");
+      return NextResponse.json(
+        {
+          error: "It's asking for permission now. Answer that first.",
+          prompt: true,
+        },
+        { status: 409 }
       );
     }
 
