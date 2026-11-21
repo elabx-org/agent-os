@@ -721,12 +721,12 @@ server.registerTool(
       let busyNow = false;
       if (target) {
         // Across machines: say where it came from, unless it answers a
-        // prompt on screen
+        // prompt on screen. A shell would run that line: it gets the text alone
         const [{ prompt }, { state }] = await Promise.all([
           get(`/api/sessions/${s.id}/prompt`),
           running().then((live) => inspect(s, live)),
         ]);
-        if (!prompt) {
+        if (!prompt && s.agent_type !== "shell") {
           message = `[Message from a session on ${await ownName()}, sent with AgentOS. No reply is needed unless it asks for one.]\n${text}`;
         }
         busyNow = busy(state);
