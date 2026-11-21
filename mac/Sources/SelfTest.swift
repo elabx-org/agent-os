@@ -190,6 +190,15 @@ final class SelfTestRunner: WindowHost {
     self.controller = controller
     placeWindow(controller.window)
 
+    // Checks on the page need it loaded, even when "load" wasn't asked for
+    let pageChecks: Set<String> = [
+      "proof", "no-bridge", "desktop-layout", "visible", "open-in-place", "open-by-url", "links", "rate-limit",
+      "foreign-alert", "copy", "hidden",
+    ]
+    if !only.isEmpty, !only.contains("load"), !only.isDisjoint(with: pageChecks) {
+      _ = await loadAndWait(SessionLink.home(port: port))
+    }
+
     await check("load") {
       guard await loadAndWait(SessionLink.home(port: port)) else { return .fail("no didFinish in 20 s") }
       let url = pane?.webView.url?.absoluteString ?? "nil"
