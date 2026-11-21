@@ -11,6 +11,9 @@
 //   v2: the same prompt with its options in another order, same fingerprint
 //   v3: another prompt, fingerprint f2
 //   none: no prompt on screen
+//   long: a detail the server cut at 600 characters ("…"), fingerprint f3
+//   bidi: a detail holding U+202E, fingerprint f4
+// GET /__stub?name=<text> sets the session's name (odd names for dump-menu)
 
 import http from "node:http";
 import fs from "node:fs";
@@ -23,6 +26,7 @@ const SESSION = "stub-a";
 
 let mode = "normal";
 let promptVariant = "v1";
+let sessionName = "Stub A";
 let refusedOnce = false;
 let log = [];
 
@@ -45,6 +49,14 @@ const prompts = {
     fingerprint: "f2f2f2f2f2f2f2f2",
   },
   none: { prompt: null, fingerprint: null },
+  long: {
+    prompt: { ...base, detail: "echo ok; ".repeat(70).slice(0, 600) + "…", options: numbered([yes, no]) },
+    fingerprint: "f3f3f3f3f3f3f3f3",
+  },
+  bidi: {
+    prompt: { ...base, detail: "rm -rf \u202Etxt.x", options: numbered([yes, no]) },
+    fingerprint: "f4f4f4f4f4f4f4f4",
+  },
 };
 
 function save() {
@@ -85,6 +97,7 @@ const server = http.createServer((req, res) => {
         refusedOnce = false;
       }
       if (url.searchParams.get("prompt")) promptVariant = url.searchParams.get("prompt");
+      if (url.searchParams.get("name") !== null) sessionName = url.searchParams.get("name");
       if (url.searchParams.get("clear")) log = [];
       save();
       return send(res, 200, { mode, prompt: promptVariant, count: log.length });
@@ -125,7 +138,7 @@ const server = http.createServer((req, res) => {
       return reply(200, { ok: nav }, nav ? { "set-cookie": "agentos_u=stub; HttpOnly; Path=/; SameSite=Strict" } : {});
     }
     if (p === "/api/sessions" && req.method === "GET") {
-      return reply(200, { sessions: [{ id: SESSION, name: "Stub A", project_id: "p1", updated_at: "2026-11-21" }] });
+      return reply(200, { sessions: [{ id: SESSION, name: sessionName, project_id: "p1", updated_at: "2026-11-21" }] });
     }
     if (p === "/api/sessions" && req.method === "POST") {
       return reply(201, { session: { id: "stub-new", name: "New" } });
