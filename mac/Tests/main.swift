@@ -578,9 +578,9 @@ bare.worktrees = []
 let bareBody = UninstallText.dialogText(bare, home: "/Users/me").body
 check("uninstall dialog without sessions or worktrees", !bareBody.contains("Running sessions") && !bareBody.contains("Worktrees"))
 let doneResult = UninstallPlan.decode(Data(#"{"kept":"/Users/me/AgentOS/Kept from AgentOS","done":{"stopped":1,"kept":2,"removed":[],"left":[]}}"#.utf8))
-let done = UninstallText.doneText(doneResult ?? UninstallPlan(), home: "/Users/me")
-equal("uninstall done title", done.title, "AgentOS was removed from this Mac")
-check("uninstall done body kept", done.body.hasSuffix("Work not yet pushed is kept in ~/AgentOS/Kept from AgentOS."))
+let doneText = UninstallText.doneText(doneResult ?? UninstallPlan(), home: "/Users/me")
+equal("uninstall done title", doneText.title, "AgentOS was removed from this Mac")
+check("uninstall done body kept", doneText.body.hasSuffix("Work not yet pushed is kept in ~/AgentOS/Kept from AgentOS."))
 let doneNone = UninstallText.doneText(UninstallPlan.decode(Data(#"{"done":{"stopped":0,"kept":0}}"#.utf8)) ?? UninstallPlan(), home: "/Users/me")
 equal("uninstall done body plain", doneNone.body, Strings.uninstallDoneBody)
 let partly = UninstallText.partlyText(UninstallPlan.decode(Data(#"{"done":{"stopped":0,"kept":0,"left":[{"path":"/Users/me/.agent-os","reason":"worktrees are still in it"}]}}"#.utf8)), home: "/Users/me", fallback: "x")
