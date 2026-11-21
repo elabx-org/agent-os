@@ -113,11 +113,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WindowHost, StatusMenu
 
   /// Today's turn-on action, off the main thread
   func turnOn(then: (() -> Void)?) {
-    work.async {
+    work.async { [weak self] in
       _ = Backend.machine("on")
       // The server takes a few seconds to answer
       for _ in 0..<20 where Backend.request("/api/build", timeout: 2) == nil { Thread.sleep(forTimeInterval: 1) }
-      DispatchQueue.main.async { [weak self] in
+      DispatchQueue.main.async {
         then?()
         self?.poller.refreshNow()
       }

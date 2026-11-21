@@ -42,9 +42,9 @@ final class Poller {
     }
     inFlight = true
     let downSince = snapshot.facts.answering ? nil : snapshot.facts.downSince
-    queue.async {
+    queue.async { [weak self] in
       let next = Backend.snapshot(downSince: downSince)
-      DispatchQueue.main.async { [weak self] in
+      DispatchQueue.main.async {
         guard let self else { return }
         self.snapshot = next
         self.inFlight = false

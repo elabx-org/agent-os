@@ -190,9 +190,9 @@ final class StatusMenu: NSObject, NSMenuDelegate {
   private func work(_ text: String, _ job: @escaping @Sendable () -> Void) {
     busy = text
     render()
-    queue.async {
+    queue.async { [weak self] in
       job()
-      DispatchQueue.main.async { [weak self] in
+      DispatchQueue.main.async {
         self?.busy = nil
         self?.host?.refreshNow()
       }
@@ -203,9 +203,9 @@ final class StatusMenu: NSObject, NSMenuDelegate {
   private func change(_ text: String, _ job: @escaping @Sendable () -> String?) {
     busy = text
     render()
-    queue.async {
+    queue.async { [weak self] in
       let problem = job()
-      DispatchQueue.main.async { [weak self] in
+      DispatchQueue.main.async {
         self?.busy = nil
         self?.host?.refreshNow()
         guard let problem else { return }
