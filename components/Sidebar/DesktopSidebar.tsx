@@ -10,7 +10,6 @@ import type { TaggedAgent, TaggedSession } from "@/lib/machine-now";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useSnapshot } from "valtio";
 import {
-  ChevronLeft,
   Folder,
   GalleryVerticalEnd,
   MonitorPlay,
@@ -247,18 +246,7 @@ export function DesktopSidebar({
         aria-label="Projects"
         className="bg-page flex h-full flex-col border-r border-[var(--hair)]"
       >
-        <div className="flex items-center gap-1 px-2 pt-3 pb-2">
-          <button
-            type="button"
-            onClick={() => runNav("back")}
-            aria-label="Back"
-            className="text-muted-foreground hover:bg-accent flex h-9 w-9 items-center justify-center rounded-full"
-          >
-            <ChevronLeft className="h-5 w-5" />
-          </button>
-          {/* The list's own large title, sort and + follow (E-Projects) */}
-          <h2 className="sr-only">Projects</h2>
-        </div>
+        {/* The list brings its own row: Back, title, sort and + */}
         <div className="min-h-0 flex-1">{projectsView}</div>
       </aside>
     );
