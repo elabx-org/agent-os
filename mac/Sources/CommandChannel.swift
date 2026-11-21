@@ -10,6 +10,11 @@ protocol CommandTarget: AnyObject {
   func channelCapture(_ name: String, done: @escaping ([String]) -> Void)
   func channelDumpState() -> [String: Any]
   func channelQuit()
+  func channelDumpMenu() -> String
+  func channelPlan(session id: String, path: String) -> [String: Any]
+  func channelNotifyStatus(_ done: @escaping ([String: Any]) -> Void)
+  func channelDelivered(_ done: @escaping ([String: Any]) -> Void)
+  func channelNotifyTest(_ done: @escaping ([String: Any]) -> Void)
 }
 
 /// The one way in from outside, for tests and second launches: a
@@ -89,6 +94,13 @@ enum CommandChannel {
 
   static func arguments(_ raw: Any?) -> [String]? { LaunchMode.channelArguments(raw) }
 
+  /// A menu item path under a session's row: "3" or "0.2"
+  static func isItemPath(_ s: String) -> Bool {
+    let parts = s.split(separator: ".", omittingEmptySubsequences: false)
+    return (1...4).contains(parts.count)
+      && parts.allSatisfy { (1...3).contains($0.utf8.count) && $0.utf8.allSatisfy { $0 >= 0x30 && $0 <= 0x39 } }
+  }
+
   static func isCaptureName(_ s: String) -> Bool {
     (1...32).contains(s.utf8.count)
       && s.utf8.allSatisfy { ($0 >= 0x30 && $0 <= 0x39) || ($0 >= 0x61 && $0 <= 0x7A) || $0 == 0x2D }
@@ -154,9 +166,21 @@ enum CommandChannel {
       case "quit":
         reply(["ok": true])
         target.channelQuit()
+      case "dump-menu":
+        reply(["menu": target.channelDumpMenu()])
+      case "plan":
+        // Prints what the item would send. It never sends.
+        guard args.count == 2, SessionLink.isValidId(args[0]) else { return reply(["error": "bad id"]) }
+        guard CommandChannel.isItemPath(args[1]) else { return reply(["error": "bad path"]) }
+        reply(target.channelPlan(session: args[0], path: args[1]))
+      case "notify-status":
+        target.channelNotifyStatus(reply)
+      case "delivered":
+        target.channelDelivered(reply)
+      case "notify-test":
+        target.channelNotifyTest(reply)
       default:
-        // dump-menu, plan, notify-status, delivered, notify-test (Stage 2)
-        // and apply-update (Stage 3) arrive with those stages
+        // apply-update arrives with Stage 3
         reply(["error": "unknown"])
       }
     }

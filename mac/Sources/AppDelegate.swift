@@ -3,12 +3,15 @@ import ServiceManagement
 import WebKit
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate, WindowHost, StatusMenuHost, CommandTarget {
+final class AppDelegate: NSObject, NSApplicationDelegate, WindowHost, StatusMenuHost, CommandTarget, NotifierHost,
+  PanelHost
+{
   let opts: AppOptions
   let poller = Poller()
   private var status: StatusMenu!
   private var main: MainWindowController?
   private var listener: CommandChannel.Listener?
+  private(set) var notifier: Notifier?
   private var activity: NSObjectProtocol?
   private let work = DispatchQueue(label: "agentos.app.work")
   /// Read once at launch: `defaults write com.agentos.mac inspectable -bool true`
@@ -22,7 +25,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WindowHost, StatusMenu
   // MARK: Launch
 
   func applicationWillFinishLaunching(_ notification: Notification) {
-    // Stage 2 sets the notification delegate and categories here
+    // The delegate and categories are set before launch ends, so a click on
+    // a notification that launched the app still arrives
+    let n = Notifier(poster: SystemPoster())
+    n.host = self
+    n.setUp()
+    notifier = n
   }
 
   func applicationDidFinishLaunching(_ notification: Notification) {
@@ -31,6 +39,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WindowHost, StatusMenu
       options: [.userInitiatedAllowingIdleSystemSleep], reason: "Watching sessions")
     status = StatusMenu(host: self)
     poller.observe { [weak self] snap in self?.polled(snap) }
+    poller.onEvents = { [weak self] entries, prompts in self?.notifier?.consider(entries, prompts: prompts) }
+    poller.eventsSince = { [weak self] in self?.notifier?.cursor ?? 0 }
+    poller.onDetails = { [weak self] in self?.status.detailsChanged() }
     poller.start()
     let listener = CommandChannel.Listener(target: self)
     listener.start()
@@ -79,6 +90,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WindowHost, StatusMenu
   /// `activate: true` only from our menu items, the Dock and notification clicks
   func open(_ d: Destination, activate: Bool) {
     window().open(d, activate: activate)
+    // The first time the window shows, macOS may ask about notifications
+    notifier?.refreshStatus { [weak self] in self?.notifier?.askIfUndetermined() }
+  }
+
+  var snapshot: Snapshot { poller.snapshot }
+  var details: [String: SessionDetails] { poller.details }
+  var appIsActive: Bool { NSApp.isActive }
+
+  var keyWindowSession: String? {
+    guard let main, main.window?.isKeyWindow == true else { return nil }
+    return windowShowingSession
+  }
+
+  func openPanel(_ kind: PanelKind) {
+    switch kind {
+    case .newSession: Panels.showNewSession(host: self)
+    default: Panels.showReply(kind, host: self)
+    }
+  }
+
+  func menuOpened() {
+    notifier?.refreshStatus { [weak self] in
+      self?.notifier?.askIfUndetermined()
+      self?.status.render()
+    }
+    let ids = poller.snapshot.sessions.filter { $0.state == "waiting" || $0.state == "running" }.map(\.id)
+    poller.fetchDetails(ids)
   }
 
   var windowShowingSession: String? {
@@ -107,6 +145,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WindowHost, StatusMenu
     status.update(snap)
     main?.pane.serverChanged(answering: snap.facts.answering)
     updatePolicy()
+    notifier?.reconcile(snap, details: poller.details)
   }
 
   func refreshNow() { poller.refreshNow() }
@@ -134,11 +173,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WindowHost, StatusMenu
     if #available(macOS 14.0, *) { NSApp.activate() } else { NSApp.activate(ignoringOtherApps: true) }
   }
 
-  /// Stage 1: the window on its home page. Stage 2 opens the New session panel.
-  @objc func newSession(_ sender: Any?) {
-    window().pane.load(path: "/")
-    open(.home, activate: true)
-  }
+  /// File › New Session… (⌘N): the New session panel
+  @objc func newSession(_ sender: Any?) { Panels.showNewSession(host: self) }
 
   @objc func showMainWindow(_ sender: Any?) { open(.home, activate: true) }
 
@@ -188,8 +224,48 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WindowHost, StatusMenu
         "updating": snap.facts.updating, "link": snap.facts.linkStatus ?? null as Any,
       ] as [String: Any],
       "sessions": snap.sessions.map { ["id": $0.id, "name": $0.name, "state": $0.state] },
-      "notifications": null, "update": null, "login": null,
+      "notifications": [
+        "authorization": notifier?.authorization ?? null as Any,
+        "posted": Notifier.posted.sorted { $0.key < $1.key }.map {
+          ["id": $0.key, "category": $0.value.category, "fingerprint": $0.value.fingerprint == nil ? null : "present"]
+            as [String: Any]
+        },
+        "lastActions": Notifier.lastActions.map {
+          ["action": $0.action, "sessionId": $0.sessionId, "outcome": $0.outcome, "at": iso.string(from: $0.at)]
+        },
+      ] as [String: Any],
+      "update": null, "login": null,
     ]
+  }
+
+  func channelDumpMenu() -> String { status.modelText() }
+
+  /// What the item at `path` under a session's row would send; never sends
+  func channelPlan(session id: String, path: String) -> [String: Any] {
+    guard let row = status.model().first(where: { $0.action == .open(id: id) }) else { return ["error": "no session"] }
+    guard let entry = MenuModel.entry(row.children, path: path) else { return ["error": "no item"] }
+    guard let action = entry.action else { return ["error": "no action"] }
+    guard let r = Requests.request(for: action) else { return ["title": entry.title, "request": NSNull(), "action": action.tag] }
+    var out: [String: Any] = [
+      "title": entry.title, "enabled": entry.enabled, "method": r.method, "path": r.path, "proof": r.needsProof,
+    ]
+    if let body = r.body { out["body"] = body }
+    return out
+  }
+
+  func channelNotifyStatus(_ done: @escaping ([String: Any]) -> Void) {
+    guard let notifier else { return done(["error": "not ready"]) }
+    notifier.status { s in DispatchQueue.main.async { done(s) } }
+  }
+
+  func channelDelivered(_ done: @escaping ([String: Any]) -> Void) {
+    guard let notifier else { return done(["error": "not ready"]) }
+    notifier.delivered { list in DispatchQueue.main.async { done(["delivered": list]) } }
+  }
+
+  func channelNotifyTest(_ done: @escaping ([String: Any]) -> Void) {
+    guard let notifier else { return done(["error": "not ready"]) }
+    notifier.postTest { ok in done(ok ? ["posted": true] : ["error": "not allowed"]) }
   }
 
   func channelCapture(_ name: String, done: @escaping ([String]) -> Void) {

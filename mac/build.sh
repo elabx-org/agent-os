@@ -55,10 +55,13 @@ if [ -f Sources/Notifier.swift ]; then
 fi
 
 if [ "$ACTION" = 1 ]; then
-  [ -f Tests/ActionTest.swift ] || fail "Tests/ActionTest.swift arrives with Stage 2"
-  mkdir -p build
+  [ -f Tests/ActionTest.swift ] || fail "Tests/ActionTest.swift is missing"
+  mkdir -p build/actiontest
+  # Top-level code lives in a file named main.swift: the test is copied in
+  # as one, beside the app's sources without the app's own main.swift
+  cp Tests/ActionTest.swift build/actiontest/main.swift
   "${SWIFTC[@]}" -D SELFTEST "${FRAMEWORKS[@]}" -o build/agentos-actiontest \
-    $(ls Sources/*.swift | grep -v '^Sources/main.swift$') Sources/Logic/*.swift Tests/ActionTest.swift
+    $(ls Sources/*.swift | grep -v '^Sources/main.swift$') Sources/Logic/*.swift build/actiontest/main.swift
   echo "built build/agentos-actiontest"
   exit 0
 fi

@@ -7,6 +7,61 @@ struct SessionRow: Equatable {
   let name: String
   /// "waiting" (needs you), "running" (working) or "idle"
   let state: String
+  /// The status's last screen line, for a working session's submenu
+  var lastLine: String? = nil
+}
+
+/// How a request went, for the menu's and the notifications' follow-ups
+enum Outcome: Equatable {
+  case ok
+  /// 409: the prompt or question is not the one answered
+  case changed
+  /// 409 from send-keys: a prompt is up (the server's text)
+  case guarded(String)
+  /// 403, after fetching proof once and trying again
+  case refused
+  case offline
+  case error(String)
+
+  var name: String {
+    switch self {
+    case .ok: return "ok"
+    case .changed: return "changed"
+    case .guarded: return "guarded"
+    case .refused: return "refused"
+    case .offline: return "offline"
+    case .error: return "error"
+    }
+  }
+
+  /// What today's settings alerts say; nil when it worked
+  var problem: String? {
+    switch self {
+    case .ok: return nil
+    case .changed: return Strings.changedBody
+    case .guarded(let text): return text
+    case .refused: return Strings.refusedChange
+    case .offline: return Strings.noAnswer
+    case .error(let text): return text
+    }
+  }
+
+  static func from(status: Int, json: [String: Any], askedForProof: Bool) -> Outcome {
+    if (200..<300).contains(status) { return .ok }
+    if status == 0 { return .offline }
+    if status == 409 {
+      if json["prompt"] as? Bool == true { return .guarded((json["error"] as? String) ?? Strings.guardedTitle) }
+      let error = json["error"] as? String
+      if json.keys.contains("prompt") || json.keys.contains("fingerprint")
+        || error == "The question changed; check the session"
+      {
+        return .changed
+      }
+      return .error(error ?? Strings.errorCode(status))
+    }
+    if status == 403 && askedForProof { return .refused }
+    return .error((json["error"] as? String) ?? Strings.errorCode(status))
+  }
 }
 
 /// The service as the poller found it
@@ -26,6 +81,10 @@ struct ServiceFacts: Equatable {
 
 struct Snapshot {
   var on = false
+  /// /api/build lists the three answer features
+  var features = false
+  /// Every session's name by id, for notification titles
+  var names: [String: String] = [:]
   var version: String?
   var hub: String?
   /// The server's address from link.json, for "Open your server's AgentOS"
@@ -69,6 +128,65 @@ enum Backend {
   static let port = ProcessInfo.processInfo.environment["AGENT_OS_PORT"] ?? "3011"
   static var portNumber: Int { Int(port) ?? 3011 }
   static var base: String { "http://127.0.0.1:\(port)" }
+
+  /// The body of a 2xx answer, or nil
+  static func fetch(_ path: String, timeout: TimeInterval = 4) -> Data? {
+    dispatchPrecondition(condition: .notOnQueue(.main))
+    guard let url = URL(string: base + path) else { return nil }
+    let req = URLRequest(url: url, timeoutInterval: timeout)
+    let done = DispatchSemaphore(value: 0)
+    nonisolated(unsafe) var out: Data?
+    URLSession.shared.dataTask(with: req) { data, response, _ in
+      if let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) { out = data ?? Data() }
+      done.signal()
+    }.resume()
+    _ = done.wait(timeout: .now() + timeout + 1)
+    return out
+  }
+
+  static func decode<T: Decodable>(_ type: T.Type, _ path: String, timeout: TimeInterval = 4) -> T? {
+    Models.decode(type, fetch(path, timeout: timeout))
+  }
+
+  static func prompt(_ id: String, timeout: TimeInterval = 2) -> PromptReply? {
+    guard SessionLink.isValidId(id) else { return nil }
+    return decode(PromptReply.self, "/api/sessions/\(id)/prompt", timeout: timeout)
+  }
+
+  static func replyContext(_ id: String, timeout: TimeInterval = 2) -> ReplyContext? {
+    guard SessionLink.isValidId(id) else { return nil }
+    return decode(ReplyContextReply.self, "/api/sessions/\(id)/reply-context", timeout: timeout)?.context
+  }
+
+  static func build(timeout: TimeInterval = 4) -> BuildInfo? { decode(BuildInfo.self, "/api/build", timeout: timeout) }
+
+  static func statuses() -> [String: StatusEntry]? {
+    struct Reply: Decodable { let statuses: [String: StatusEntry] }
+    return decode(Reply.self, "/api/sessions/status")?.statuses
+  }
+
+  /// A request that needs no proof (stop, interrupt, a new session). It
+  /// sends no Origin and no agent marker, as a command-line tool would.
+  static func plain(path: String, method: String = "POST", body: [String: Any]?) -> (Outcome, [String: Any]) {
+    dispatchPrecondition(condition: .notOnQueue(.main))
+    guard let url = URL(string: base + path) else { return (.error(Strings.errorCode(0)), [:]) }
+    var req = URLRequest(url: url, timeoutInterval: 15)
+    req.httpMethod = method
+    if let body {
+      req.httpBody = try? JSONSerialization.data(withJSONObject: body)
+      req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    }
+    let done = DispatchSemaphore(value: 0)
+    nonisolated(unsafe) var status = 0
+    nonisolated(unsafe) var json: [String: Any] = [:]
+    URLSession.shared.dataTask(with: req) { data, response, _ in
+      status = (response as? HTTPURLResponse)?.statusCode ?? 0
+      if let data, let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any] { json = parsed }
+      done.signal()
+    }.resume()
+    _ = done.wait(timeout: .now() + 16)
+    return (Outcome.from(status: status, json: json, askedForProof: false), json)
+  }
 
   static func request(_ path: String, method: String = "GET", timeout: TimeInterval = 4) -> Any? {
     dispatchPrecondition(condition: .notOnQueue(.main))
@@ -122,22 +240,30 @@ enum Backend {
   }
 
   /// A change only the user may make. It takes a Click, which only a real
-  /// click in our own menu can make (Click.swift). nil when it worked, else
-  /// what to tell the user.
-  static func asUser(path: String, method: String = "PUT", body: [String: Any], click: Click) -> String? {
+  /// click in our own menu, panels or notifications can make (Click.swift).
+  /// On a 403 it fetches proof once, the way a page would, and tries again.
+  static func asUser(path: String, method: String = "PUT", body: [String: Any], click: Click) -> Outcome {
     var (status, json) = userCall(path, method: method, body: body)
+    var asked = false
     if status == 403 {
+      asked = true
       _ = userCall("/api/user-proof", method: "GET", body: nil)
       (status, json) = userCall(path, method: method, body: body)
     }
-    if (200..<300).contains(status) { return nil }
-    if status == 0 { return Strings.noAnswer }
-    if status == 403 { return Strings.refusedChange }
-    return (json["error"] as? String) ?? Strings.errorCode(status)
+    return Outcome.from(status: status, json: json, askedForProof: asked)
+  }
+
+  /// A menu action's request: with proof when it needs it
+  static func perform(_ r: PlannedRequest, click: Click?) -> Outcome {
+    if r.needsProof {
+      guard let click else { return .refused }
+      return asUser(path: r.path, method: r.method, body: r.body ?? [:], click: click)
+    }
+    return plain(path: r.path, method: r.method, body: r.body).0
   }
 
   static func setAgents(_ allowed: Bool, click: Click) -> String? {
-    asUser(path: "/api/link/agents", body: ["allowed": allowed], click: click)
+    asUser(path: "/api/link/agents", body: ["allowed": allowed], click: click).problem
   }
 
   /// A folder as AgentOS stores it: "~/code" inside the home folder
@@ -150,7 +276,10 @@ enum Backend {
 
   /// nil puts it back to the default
   static func setReposDir(_ folder: String?, click: Click) -> String? {
-    asUser(path: "/api/preferences", body: ["key": "repos_dir", "value": folder.map { $0 as Any } ?? NSNull()], click: click)
+    asUser(
+      path: "/api/preferences", body: ["key": "repos_dir", "value": folder.map { $0 as Any } ?? NSNull()],
+      click: click
+    ).problem
   }
 
   /// The server this Mac is linked to (link.json's hubUrl only)
@@ -187,7 +316,9 @@ enum Backend {
     snap.hub = snap.hubURL.map { $0.host ?? $0.absoluteString }
     snap.facts.updating = FileManager.default.fileExists(atPath: agentHome.appendingPathComponent("update.lock").path)
     snap.facts.linkStatus = linkStatus()
-    guard let build = request("/api/build") as? [String: Any] else {
+    guard let buildData = fetch("/api/build"),
+      let build = (try? JSONSerialization.jsonObject(with: buildData)) as? [String: Any]
+    else {
       snap.facts.installed = snap.installed
       snap.facts.serviceLoaded = serviceLoaded()
       snap.facts.downSince = downSince ?? Date()
@@ -198,6 +329,7 @@ enum Backend {
     snap.facts.serviceLoaded = true
     snap.facts.installed = true
     snap.version = (build["version"] as? String)?.components(separatedBy: "+").first
+    snap.features = BuildInfo.hasAnswerFeatures(build["features"] as? [String])
     snap.agents = (request("/api/link/agents") as? [String: Any])?["allowed"] as? Bool
     snap.reposDir =
       ((request("/api/preferences?key=repos_dir") as? [String: Any])?["value"] as? String) ?? "~/AgentOS"
@@ -205,11 +337,16 @@ enum Backend {
     let statuses =
       (request("/api/sessions/status") as? [String: Any])?["statuses"] as? [String: [String: Any]] ?? [:]
     let order = ["waiting": 0, "running": 1, "idle": 2]
+    for row in list {
+      if let id = row["id"] as? String, let name = row["name"] as? String { snap.names[id] = name }
+    }
     snap.sessions = list.compactMap { row -> SessionRow? in
       guard let id = row["id"] as? String, !(row["settled_at"] is NSNumber),
         let state = statuses[id]?["status"] as? String, order[state] != nil
       else { return nil }
-      return SessionRow(id: id, name: (row["name"] as? String) ?? "Session", state: state)
+      return SessionRow(
+        id: id, name: (row["name"] as? String) ?? "Session", state: state,
+        lastLine: statuses[id]?["lastLine"] as? String)
     }
     .sorted { (order[$0.state] ?? 9, $0.name) < (order[$1.state] ?? 9, $1.name) }
     return snap
@@ -230,10 +367,6 @@ enum Backend {
   static func machine(_ command: String) -> Bool {
     dispatchPrecondition(condition: .notOnQueue(.main))
     return run("/bin/bash", [machineScript.path, command]) == 0
-  }
-
-  static func stop(_ session: SessionRow) -> Bool {
-    request("/api/sessions/\(session.id)/stop", method: "POST", timeout: 15) != nil
   }
 
   /// Removes it all. Sessions' own folders, repositories and Claude's

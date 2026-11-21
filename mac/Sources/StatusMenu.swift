@@ -7,6 +7,17 @@ protocol StatusMenuHost: AnyObject {
   func refreshNow()
   func turnOn(then: (() -> Void)?)
   var isRegular: Bool { get }
+  func openPanel(_ kind: PanelKind)
+  /// The menu opened: ask for notifications once, read session details
+  func menuOpened()
+  var notifier: Notifier? { get }
+  var details: [String: SessionDetails] { get }
+}
+
+/// A menu item's action, carried in representedObject
+final class ActionBox: NSObject {
+  let action: MenuAction
+  init(_ action: MenuAction) { self.action = action }
 }
 
 /// AgentOS in the menu bar: shows that it runs on this Mac and what its
@@ -20,6 +31,8 @@ final class StatusMenu: NSObject, NSMenuDelegate {
   private var menu: NSMenu { Self.menu }
   private(set) var snap = Snapshot()
   private var busy: String?
+  /// Sessions with a request on its way: their items are disabled
+  private var busyIds: Set<String> = []
   private let queue = DispatchQueue(label: "agentos.menu.work")
   private weak var host: StatusMenuHost?
   private var drawn: (IconState, Bool)?
@@ -41,7 +54,36 @@ final class StatusMenu: NSObject, NSMenuDelegate {
     render()
   }
 
-  func menuWillOpen(_ menu: NSMenu) { host?.refreshNow() }
+  func menuWillOpen(_ menu: NSMenu) {
+    host?.refreshNow()
+    host?.menuOpened()
+  }
+
+  /// Details arrived while the menu may be open
+  func detailsChanged() {
+    render()
+    menu.update()
+  }
+
+  /// The session part of the menu as data (also for dump-menu and plan)
+  func model() -> [MenuEntry] {
+    let details = host?.details ?? [:]
+    let sessions = snap.sessions.map { row in
+      MenuSession(
+        id: row.id, name: row.name, state: row.state, lastLine: row.lastLine, prompt: details[row.id]?.prompt,
+        context: details[row.id]?.context)
+    }
+    return MenuModel.build(MenuSnapshot(on: snap.on, sessions: sessions, features: snap.features))
+  }
+
+  func notificationsEntry() -> MenuEntry {
+    MenuModel.notifications(
+      authorization: host?.notifier?.authorization ?? "notDetermined",
+      toggles: host?.notifier?.toggles ?? NotifyRules.Toggles())
+  }
+
+  /// dump-menu: the model as text
+  func modelText() -> String { MenuModel.text(model() + [notificationsEntry()]) }
 
   func update(_ next: Snapshot) {
     snap = next
@@ -82,30 +124,11 @@ final class StatusMenu: NSObject, NSMenuDelegate {
 
     if snap.on {
       menu.addItem(.separator())
-      menu.addItem(label(snap.sessions.isEmpty ? Strings.noSessions : Strings.sessionsHere))
-      for session in snap.sessions.prefix(12) {
-        let row = action(Strings.sessionRow(session.name, session.state), #selector(openSession(_:)))
-        row.representedObject = session.id
-        let dot = ["waiting": "exclamationmark.circle.fill", "running": "circle.fill", "idle": "circle"][session.state] ?? "circle"
-        row.image = NSImage(systemSymbolName: dot, accessibilityDescription: Strings.stateWord(session.state))
-        menu.addItem(row)
-      }
-      if snap.sessions.count > 12 { menu.addItem(label(Strings.andMore(snap.sessions.count - 12))) }
-      if !snap.sessions.isEmpty {
-        let stop = NSMenuItem(title: Strings.stopASession, action: nil, keyEquivalent: "")
-        let sub = NSMenu()
-        sub.autoenablesItems = false
-        for session in snap.sessions {
-          let row = action(session.name, #selector(stopSession(_:)))
-          row.representedObject = session.id
-          sub.addItem(row)
-        }
-        stop.submenu = sub
-        menu.addItem(stop)
-      }
+      for entry in model() { menu.addItem(item(for: entry, topLevel: true)) }
     }
     menu.addItem(.separator())
     menu.addItem(action(Strings.openAgentOS, #selector(openApp), key: "o"))
+    menu.addItem(item(for: notificationsEntry(), topLevel: true))
 
     if snap.installed {
       menu.addItem(.separator())
@@ -157,6 +180,58 @@ final class StatusMenu: NSObject, NSMenuDelegate {
       }
     }
     return lines(menu, 0).joined(separator: "\n") + "\n"
+  }
+
+  /// An NSMenuItem for a model entry, with its submenu
+  private func item(for e: MenuEntry, topLevel: Bool) -> NSMenuItem {
+    if e.style == .separator { return .separator() }
+    let row = NSMenuItem(title: e.title, action: nil, keyEquivalent: "")
+    switch e.style {
+    case .bold:
+      row.attributedTitle = NSAttributedString(
+        string: e.title,
+        attributes: [.font: NSFont.systemFont(ofSize: NSFont.systemFontSize, weight: .semibold), .foregroundColor: NSColor.labelColor])
+    case .secondary:
+      row.attributedTitle = NSAttributedString(
+        string: e.title,
+        attributes: [.font: NSFont.menuFont(ofSize: 0), .foregroundColor: NSColor.secondaryLabelColor])
+    case .mono:
+      row.attributedTitle = NSAttributedString(
+        string: e.title,
+        attributes: [
+          .font: NSFont.monospacedSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .regular),
+          .foregroundColor: NSColor.labelColor,
+        ])
+    default:
+      break
+    }
+    row.toolTip = e.tooltip
+    row.state = e.checked ? .on : .off
+    if !e.children.isEmpty {
+      let sub = NSMenu()
+      sub.autoenablesItems = false
+      for child in e.children { sub.addItem(item(for: child, topLevel: false)) }
+      row.submenu = sub
+      row.isEnabled = true
+    } else if let a = e.action {
+      row.action = #selector(perform(_:))
+      row.target = self
+      row.representedObject = ActionBox(a)
+      let isBusy = a.sessionId.map(busyIds.contains) ?? false
+      row.isEnabled = e.enabled && !isBusy && (busy == nil || Requests.request(for: a) == nil)
+      if let key = e.keyEquivalent {
+        row.keyEquivalent = key
+        row.keyEquivalentModifierMask = [.command]
+      }
+    } else {
+      row.isEnabled = false
+    }
+    // A session row: its state as a dot
+    if topLevel, case .open(let id)? = e.action, let session = snap.sessions.first(where: { $0.id == id }) {
+      let dot = ["waiting": "exclamationmark.circle.fill", "running": "circle.fill", "idle": "circle"][session.state] ?? "circle"
+      row.image = NSImage(systemSymbolName: dot, accessibilityDescription: Strings.stateWord(session.state))
+    }
+    return row
   }
 
   private func label(_ text: String, bold: Bool = false) -> NSMenuItem {
@@ -226,13 +301,6 @@ final class StatusMenu: NSObject, NSMenuDelegate {
     if let url = snap.hubURL { NSWorkspace.shared.open(url) }
   }
 
-  @objc private func openSession(_ sender: NSMenuItem) {
-    guard let id = sender.representedObject as? String, SessionLink.isValidId(id) else {
-      return openApp()
-    }
-    host?.open(.session(id), activate: true)
-  }
-
   @objc private func toggleAgents(_ sender: NSMenuItem) {
     guard let click = Clicks.fromMenu(sender), let now = snap.agents else { return }
     if !now {
@@ -288,12 +356,108 @@ final class StatusMenu: NSObject, NSMenuDelegate {
     change(Strings.changingFolder) { Backend.setReposDir(nil, click: click) }
   }
 
-  @objc private func stopSession(_ sender: NSMenuItem) {
-    guard let id = sender.representedObject as? String,
-      let session = snap.sessions.first(where: { $0.id == id })
-    else { return }
-    guard confirm(Strings.stopTitle(session.name), Strings.stopBody, button: Strings.stop) else { return }
-    work(Strings.stopping(session.name)) { _ = Backend.stop(session) }
+  // MARK: Session actions
+
+  @objc private func perform(_ sender: NSMenuItem) {
+    guard let box = sender.representedObject as? ActionBox else { return }
+    let a = box.action
+    switch a {
+    case .open(let id):
+      guard SessionLink.isValidId(id) else { return openApp() }
+      host?.open(.session(id), activate: true)
+    case .openHome:
+      openApp()
+    case .openPanel(let kind):
+      host?.openPanel(kind)
+    case .notifyToggle(let key):
+      guard let notifier = host?.notifier else { return }
+      switch key {
+      case "needsYou": notifier.toggles.needsYou.toggle()
+      case "finished": notifier.toggles.finished.toggle()
+      case "limited": notifier.toggles.limited.toggle()
+      default: return
+      }
+      render()
+    case .notifyAsk:
+      host?.notifier?.requestAuthorization()
+    case .notifySettings:
+      if let url = URL(string: Strings.notificationSettingsURL) { NSWorkspace.shared.open(url) }
+    case .stop(let id):
+      guard let session = snap.sessions.first(where: { $0.id == id }), let request = Requests.request(for: a) else {
+        return
+      }
+      guard confirm(Strings.endTitle(session.name), Strings.stopBody, button: Strings.endButton) else { return }
+      run(a, request, click: nil, busyText: Strings.stoppingBusy)
+    default:
+      guard let request = Requests.request(for: a) else { return }
+      var click: Click?
+      if request.needsProof {
+        // Only a fresh real click on this item may answer as the user
+        guard let made = Clicks.fromMenu(sender) else { return }
+        click = made
+      }
+      let text: String
+      switch a {
+      case .answerPrompt, .answerAsk: text = Strings.answering
+      case .interrupt: text = Strings.stoppingBusy
+      case .newSession: text = Strings.startingSession
+      default: text = Strings.sending
+      }
+      run(a, request, click: click, busyText: text)
+    }
+  }
+
+  private func run(_ a: MenuAction, _ request: PlannedRequest, click: Click?, busyText: String) {
+    let id = a.sessionId ?? ""
+    busy = busyText
+    busyIds.insert(id)
+    render()
+    queue.async { [weak self] in
+      let outcome = Backend.perform(request, click: click)
+      DispatchQueue.main.async {
+        MainActor.assumeIsolated {
+          guard let self else { return }
+          Notifier.log(a.name, id, outcome.name)
+          self.busy = nil
+          self.busyIds.remove(id)
+          self.host?.refreshNow()
+          self.render()
+          self.tell(outcome, sessionId: id)
+        }
+      }
+    }
+  }
+
+  /// What the person is told after a menu answer that didn't go through
+  private func tell(_ outcome: Outcome, sessionId: String) {
+    let alert = NSAlert()
+    var showButton: String?
+    switch outcome {
+    case .ok:
+      return
+    case .changed:
+      alert.messageText = Strings.changedTitle
+      alert.informativeText = Strings.changedBody
+      showButton = Strings.showMe
+    case .refused:
+      alert.messageText = Strings.refusedTitle
+      alert.informativeText = Strings.refusedBody
+      showButton = Strings.openWindow
+    case .guarded:
+      alert.messageText = Strings.guardedTitle
+      alert.informativeText = Strings.guardedBody
+    case .offline:
+      alert.messageText = Strings.noAnswer
+    case .error(let text):
+      alert.messageText = text
+    }
+    if let showButton { alert.addButton(withTitle: showButton) }
+    alert.addButton(withTitle: Strings.ok)
+    NSApp.activate(ignoringOtherApps: true)
+    let answer = alert.runModal()
+    if showButton != nil, answer == .alertFirstButtonReturn, SessionLink.isValidId(sessionId) {
+      host?.open(.session(sessionId), activate: true)
+    }
   }
 
   @objc private func togglePower() {

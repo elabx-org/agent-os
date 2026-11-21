@@ -13,8 +13,22 @@ case "${1:-}" in
     build/logic-tests
     ;;
   action)
-    echo "test.sh: the action test arrives with Stage 2" >&2
-    exit 64
+    # The stub action test: a stub AgentOS on 39011 (never the real one),
+    # the test binary built with -D SELFTEST, every action through it
+    PORT=39011
+    if curl -s -m 1 "http://127.0.0.1:$PORT/api/build" >/dev/null 2>&1; then
+      echo "test.sh: something already listens on $PORT" >&2
+      exit 1
+    fi
+    ./build.sh --selftest-action
+    node Tests/stub-server.mjs "$PORT" >build/stub.out 2>&1 &
+    STUB=$!
+    trap 'kill $STUB 2>/dev/null || true' EXIT
+    for _ in $(seq 1 50); do
+      curl -s -m 1 "http://127.0.0.1:$PORT/api/build" >/dev/null 2>&1 && break
+      sleep 0.1
+    done
+    AGENT_OS_PORT=$PORT build/agentos-actiontest
     ;;
   *)
     echo "usage: ./test.sh [action]" >&2

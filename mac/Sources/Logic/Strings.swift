@@ -17,7 +17,6 @@ enum Strings {
     ["waiting": "Needs you", "running": "Working", "idle": "Idle"][state] ?? state
   }
   static func andMore(_ n: Int) -> String { "and \(n) more" }
-  static let stopASession = "Stop a session…"
   static let openAgentOS = "Open AgentOS"
   static let openServer = "Open your server's AgentOS"
   static let turnOff = "Turn AgentOS off"
@@ -39,7 +38,6 @@ enum Strings {
   static let turningThatOff = "Turning that off…"
   static let allowing = "Allowing…"
   static let changingFolder = "Changing the folder…"
-  static func stopping(_ name: String) -> String { "Stopping \(name)…" }
   static let uninstalling = "Uninstalling…"
   static let cancel = "Cancel"
   static let didntChange = "That didn’t change"
@@ -55,9 +53,9 @@ enum Strings {
   }
   static let chooseFolderMessage = "Where AgentOS finds your repositories on this Mac, and puts the ones it clones."
   static let useThisFolder = "Use This Folder"
-  static func stopTitle(_ name: String) -> String { "Stop “\(name)”?" }
+  static func endTitle(_ name: String) -> String { "End \"\(name)\"?" }
   static let stopBody = "Its agent and terminal end. The session stays in AgentOS and starts again when you open it."
-  static let stop = "Stop"
+  static let endButton = "End Session"
   static let turnOffTitle = "Turn AgentOS off on this Mac?"
   static let turnOffBody =
     "Nothing can reach this Mac until you turn it on again. Sessions already running keep running in the background."
@@ -83,6 +81,91 @@ enum Strings {
   static let refusedChange =
     "AgentOS on this Mac refused the change. Change it in AgentOS on your phone instead (Settings, Machines)."
   static func errorCode(_ status: Int) -> String { "AgentOS answered with an error (\(status))." }
+
+  // MARK: Session submenus (Stage 2)
+
+  static let claudeAsks = "Claude asks"
+  static func claudeAsksAbout(_ header: String) -> String { "Claude asks · \(header)" }
+  static let tooLong = "Too long to show here. Open it in the window to allow it."
+  static let needsUpdate = "Answer it in the AgentOS window. AgentOS on this Mac needs an update first."
+  static func hasQuestions(_ n: Int) -> String { "This has \(n) questions. Answer them in the window." }
+  static let answerInWindow = "Answer in the AgentOS window"
+  static let typeOwnAnswer = "Type my own answer…"
+  static let replyMenu = "Reply…"
+  static let stopWhatItsDoing = "Stop what it's doing"
+  static let openInWindow = "Open in the AgentOS window"
+  static let endSession = "End session…"
+  static let answering = "Answering…"
+  static let sending = "Sending…"
+  static let stoppingBusy = "Stopping…"
+  static let startingSession = "Starting a session…"
+  static let newSessionMenu = "New session…"
+  static let notificationsMenu = "Notifications"
+
+  // MARK: Alerts after an answer
+
+  static let changedTitle = "That question changed"
+  static let changedBody = "It now asks something else. Look again before you answer."
+  static let showMe = "Show me"
+  static let refusedTitle = "AgentOS on this Mac didn't take that"
+  static let refusedBody = "Answer it in the AgentOS window instead."
+  static let openWindow = "Open window"
+  static let guardedTitle = "It's asking for permission now"
+  static let guardedBody = "Answer that first, then send your reply."
+
+  // MARK: Reply panel
+
+  static func replyTo(_ name: String) -> String { "Reply to \(name)" }
+  static let typeYourReply = "Type your reply"
+  static let send = "Send"
+
+  // MARK: New session panel
+
+  static let newSessionTitle = "New session on this Mac"
+  static let projectLabel = "Project"
+  static let noProject = "No project (home folder)"
+  static let taskLabel = "What should it do?"
+  static let taskPlaceholder = "Describe the task. Leave empty to start it and type later."
+  static func defaultsLine(_ agent: String, _ model: String, _ folder: String) -> String {
+    "\(agent) · \(model) · In \(folder)"
+  }
+  static let usualModel = "its usual model"
+  static let askNote = "It will ask you before it acts. For Full access, start it in the AgentOS window."
+  static let openItInWindow = "Open it in the window"
+  static let start = "Start"
+  static let noProjects = "No projects yet. Add one in the AgentOS window."
+  static func agentName(_ type: String?) -> String {
+    ["claude": "Claude", "codex": "Codex", "gemini": "Gemini", "shell": "Shell"][type ?? "claude"]
+      ?? (type ?? "Claude")
+  }
+
+  // MARK: Notifications submenu
+
+  static let whenNeedsYou = "When a session needs you"
+  static let whenFinishes = "When a session finishes"
+  static let whenLimited = "When a session hits its usage limit"
+  static let phoneStillGets = "Your phone still gets them from the server too."
+  static let turnOnNotifications = "Turn on notifications…"
+  static let notificationsOff = "Notifications are off"
+  static let turnOnInSettings = "Turn them on in System Settings…"
+  static let notificationSettingsURL =
+    "x-apple.systempreferences:com.apple.Notifications-Settings.extension?id=com.agentos.mac"
+
+  // MARK: Notifications (titles built by the app)
+
+  static func notifyNeedsYou(_ name: String) -> String { "\(name) needs you" }
+  static func notifyFinished(_ name: String) -> String { "\(name) is done" }
+  static func notifyLimited(_ name: String) -> String { "\(name) hit its usage limit" }
+  static func notifyFullAccess(_ name: String) -> String { "Full access switched on for \(name)" }
+  static let notifyAgentNeedsYou = "A background agent needs you"
+  static let aSession = "A session"
+  static let allowOnce = "Allow once"
+  static let deny = "Deny"
+  static let notifyChangedBody = "Open it to see what it asks now."
+  static func couldntAnswer(_ name: String) -> String { "Couldn't answer \"\(name)\"" }
+  static func couldntReply(_ name: String) -> String { "Couldn't send your reply to \"\(name)\"" }
+  static let testTitle = "AgentOS test"
+  static let testBody = "If you see this, notifications work on this Mac."
 
   // MARK: Tooltip and accessibility label
 
@@ -207,20 +290,34 @@ enum Strings {
     ].flatMap { [$0.title, $0.body] + $0.buttons }
     return [
       isOn, isOff, notInstalled, linkedTo("hub.example"), notLinked, version("0.5.0"), sessionsHere, noSessions,
-      sessionRow("Build", "waiting"), stateWord("running"), stateWord("idle"), andMore(3), stopASession,
+      sessionRow("Build", "waiting"), stateWord("running"), stateWord("idle"), andMore(3),
       openAgentOS, openServer, turnOff, turnOn, offNote, letServerSessions, reposFolder("~/AgentOS"),
       showInFinder, chooseFolder, useDefaultFolder, showAtLogin, uninstall, quit, turningOff, turningOn,
-      turningThatOff, allowing, changingFolder, stopping("Build"), uninstalling, cancel, didntChange,
+      turningThatOff, allowing, changingFolder, uninstalling, cancel, didntChange,
       allowTitle, yourServer, allow, folderMissingTitle, folderMissingBody("~/AgentOS"),
-      chooseFolderMessage, useThisFolder, stopTitle("Build"), stopBody, stop, turnOffTitle, turnOffBody,
+      chooseFolderMessage, useThisFolder, endTitle("Build"), stopBody, endButton, turnOffTitle, turnOffBody,
       turnOffButton, loginFailedTitle, loginFailedBody("no"), uninstallButton, removedTitle, removedBody,
       noAnswer, refusedChange, errorCode(500), uploadMessage, downloadFailedTitle,
       downloadFailedBody("a.zip", "The disk is full."), ok, aboutAgentOS, hideAgentOS, hideOthers, showAll,
       quitAgentOS, fileMenu, newSession, closeWindow, editMenu, undo, redo, cut, copy, paste,
       pasteAndMatchStyle, selectAll, viewMenu, reloadPage, back, forward, enterFullScreen, windowMenu,
       minimize, zoom, appName, bringAllToFront, windowTitle(nil), aboutCredits("0.5.0"),
-    ] + alertDestructiveWords + uninstallList + offline + IconState.samples.map(tooltipFirst)
+    ] + stage2 + alertDestructiveWords + uninstallList + offline + IconState.samples.map(tooltipFirst)
       + [tooltipFirst(.needsYou(1)), tooltipFirst(.working(3))]
+  }
+
+  static var stage2: [String] {
+    [
+      claudeAsks, claudeAsksAbout("Colour"), tooLong, needsUpdate, hasQuestions(3), answerInWindow, typeOwnAnswer,
+      replyMenu, stopWhatItsDoing, openInWindow, endSession, answering, sending, stoppingBusy, startingSession,
+      newSessionMenu, notificationsMenu, changedTitle, changedBody, showMe, refusedTitle, refusedBody, openWindow,
+      guardedTitle, guardedBody, replyTo("Build"), typeYourReply, send, newSessionTitle, projectLabel, noProject,
+      taskLabel, taskPlaceholder, defaultsLine("Claude", usualModel, "~/AgentOS/app"), usualModel, askNote,
+      openItInWindow, start, noProjects, agentName("codex"), whenNeedsYou, whenFinishes, whenLimited,
+      phoneStillGets, turnOnNotifications, notificationsOff, turnOnInSettings, notifyNeedsYou("Build"),
+      notifyFinished("Build"), notifyLimited("Build"), notifyFullAccess("Build"), notifyAgentNeedsYou, aSession,
+      allowOnce, deny, notifyChangedBody, couldntAnswer("Build"), couldntReply("Build"), testTitle, testBody,
+    ]
   }
 
   /// The tooltip's second lines, which may run to 160 characters
