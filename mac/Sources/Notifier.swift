@@ -125,6 +125,9 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
 
   /// The first time the window shows or the menu opens, while macOS hasn't
   /// asked yet. Never at an event and never at launch.
+  /// macOS shows what we post
+  var allowed: Bool { ["authorized", "provisional", "ephemeral"].contains(authorization) }
+
   func askIfUndetermined() {
     guard authorization == "notDetermined" else { return }
     requestAuthorization()
@@ -201,6 +204,8 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         let d = NotifyRules.decide(
           e, context, prompt: prompts[sid], sessionName: name, features: snap.features)
       else { continue }
+      // Nothing is recorded that macOS won't show
+      guard allowed else { continue }
       let fingerprint = e.kind == "needsYou" ? prompts[sid]?.fingerprint : nil
       post(d, sessionId: sid, fingerprint: fingerprint, kind: e.kind)
     }
@@ -245,7 +250,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
 
   func postTest(_ done: @escaping (Bool) -> Void) {
     refreshStatus {
-      guard ["authorized", "provisional", "ephemeral"].contains(self.authorization) else { return done(false) }
+      guard self.allowed else { return done(false) }
       let d = NotifyRules.Decision(
         identifier: "s-test", category: .info, title: Strings.testTitle, subtitle: "", body: Strings.testBody,
         sound: false)

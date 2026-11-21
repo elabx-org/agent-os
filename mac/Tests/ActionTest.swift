@@ -211,6 +211,10 @@ func runAll() {
   let notifier = Notifier(poster: poster, defaults: defaults)
   notifier.host = host
   Notifier.posted = [:]
+  var statusRead = false
+  notifier.refreshStatus { statusRead = true }
+  spin(until: { statusRead })
+  check("notifier reads its permission", notifier.authorization == "authorized", notifier.authorization)
   var serial = 0
   func entry(_ kind: String) -> NotificationEntry {
     serial += 1
@@ -314,6 +318,23 @@ func runAll() {
   host.windowShowingSession = id
   notifier.consider([entry("needsYou")], prompts: [id: background { Backend.prompt(id) }!])
   check("not while the window shows it", poster.posts.count == count + 1)
+
+  // A "needs you" post goes once its session stops waiting; a finished one stays
+  host.windowShowingSession = nil
+  host.appIsActive = false
+  notifier.consider([entry("needsYou")], prompts: [id: background { Backend.prompt(id) }!])
+  check("posted again", Notifier.posted["s-stub-a"]?.kind == "needsYou")
+  var idle = host.snapshot
+  idle.sessions = [SessionRow(id: id, name: "Stub A", state: "idle")]
+  host.snapshot = idle
+  notifier.reconcile(idle, details: [:])
+  check("removed once it isn't waiting", Notifier.posted["s-stub-a"] == nil && poster.removed.last == "s-stub-a")
+  notifier.consider([entry("finished")], prompts: [:])
+  notifier.reconcile(idle, details: [:])
+  check("a finished post stays", Notifier.posted["s-stub-a"]?.kind == "finished")
+  host.windowShowingSession = id
+  notifier.reconcile(idle, details: [:])
+  check("removed when the window shows it", Notifier.posted["s-stub-a"] == nil)
 
   defaults.removePersistentDomain(forName: suite)
 }
