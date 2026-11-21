@@ -281,10 +281,14 @@ export async function beginBackup(
     if (!session) {
       throw new BackupError("taken", { taken: takenFromRow(row) });
     }
-    // It went back to that machine: its copies start again
+    // It went back to that machine: its copies start again, from nothing.
+    // The take-over dropped this copy's conversation, and the machine's
+    // code may have moved on: no claude id means the next copy is whole
     db.prepare(
       `UPDATE machine_backups SET state = 'current', take_id = NULL,
-         taken_at = NULL, machine_paused_at = NULL, ahead = NULL
+         taken_at = NULL, machine_paused_at = NULL, ahead = NULL,
+         claude_session_id = '', file_bytes = 0, head = NULL,
+         snapshot_commit = NULL, snapshot_tree = NULL
        WHERE machine_id = ? AND session_id = ? AND state = 'taken'`
     ).run(machine.id, sessionId);
     row = backupRow(machine.id, sessionId, db);
@@ -628,6 +632,11 @@ export async function commitBackup(
   const { dir, begin } = await upload(machine.id, sessionId, input?.backupId);
   const manifest = cleanManifest(input?.manifest, sessionId, begin);
   const row = backupRow(machine.id, sessionId, db);
+  // It arrived here since begin (a move, a take-over): no copy of it now
+  const held = hubHolds(sessionId, machine.id, db);
+  if (held) {
+    throw new BackupError("taken", { taken: takenFromSession(held, row) });
+  }
   if (row && row.state !== "current") {
     throw new BackupError(row.state === "taking" ? "taking" : "taken");
   }

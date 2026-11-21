@@ -317,7 +317,8 @@ async function dropSessionRefs(row: BackupRow): Promise<void> {
 
 /**
  * Deletes copies. A taken row the machine hasn't confirmed stays: it is
- * how the machine is told to pause. Returns how many went
+ * how the machine is told to pause. So does one being continued here
+ * right now: the take-over reads its files. Returns how many went
  */
 export async function deleteCopies(
   rows: BackupRow[],
@@ -325,10 +326,11 @@ export async function deleteCopies(
 ): Promise<number> {
   let removed = 0;
   for (const row of rows) {
-    if (unconfirmed(row)) continue;
+    if (unconfirmed(row) || row.state === "taking") continue;
     const { changes } = db
       .prepare(
         `DELETE FROM machine_backups WHERE machine_id = ? AND session_id = ?
+           AND state != 'taking'
            AND NOT (state = 'taken' AND machine_paused_at IS NULL)`
       )
       .run(row.machine_id, row.session_id);

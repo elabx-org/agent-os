@@ -12,7 +12,7 @@ import { serverName, type MachineRow } from "../link/store";
 import { recordNotification, setDelivered } from "../push/history";
 import { sendPush } from "../push/send";
 import { serverNameOr } from "../server-name";
-import { parseMovedFrom } from "../session-move-types";
+import { parseMovedFrom, parseMovedTo } from "../session-move-types";
 import { takenRows, type BackupRow } from "./store";
 
 /** "taken" for a session the hub itself has, built from its own row */
@@ -54,13 +54,31 @@ export function takenFromRow(row: BackupRow): TakenSession {
   };
 }
 
+/**
+ * Moved back to that machine since ("Bring it back"): it runs there now,
+ * so it is not paused. Its row turns current at the machine's next begin
+ */
+function wentBack(
+  row: BackupRow,
+  machineId: string,
+  db: Database.Database
+): boolean {
+  const session = queries.getSession(db).get(row.session_id) as
+    | Session
+    | undefined;
+  return (
+    !!session?.settled_at &&
+    parseMovedTo(session.moved_to)?.machine === machineId
+  );
+}
+
 /** HubDeps.takenFor: everything this machine must pause */
 export function takenFor(
   machine: Pick<MachineRow, "id">,
   db: Database.Database = getDb()
 ): TakenSession[] {
   return takenRows(machine.id, db)
-    .filter((row) => row.take_id)
+    .filter((row) => row.take_id && !wentBack(row, machine.id, db))
     .map(takenFromRow);
 }
 

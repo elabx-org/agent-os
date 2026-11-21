@@ -45,6 +45,7 @@ import {
   type MovePlan,
 } from "./repos-dir";
 import { launchSession, tmuxNameOf } from "./session-launch";
+import { heldSessions } from "./backup/hold";
 import {
   MOVE_ID,
   MOVE_OUT_ERRORS,
@@ -1265,6 +1266,9 @@ async function runImport(inn: Arriving): Promise<MoveInResult> {
       );
     })();
     wrote = true;
+    // Paused here once because a copy of it was continued elsewhere
+    // (lib/backup): it was handed back, so it may run here again
+    heldSessions().delete(m.sessionId);
 
     const leftBehind = m.snapshot?.skipped ?? [];
     const session = getSession(m.sessionId)!;

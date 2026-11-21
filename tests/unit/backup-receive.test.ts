@@ -255,9 +255,10 @@ test("a crash before commit: begin truncates, drops incoming, and the old id is 
 
 test("a reset writes a new generation; the row switches only at commit", async () => {
   const m = machine(A);
-  await copyOnce(m, Buffer.from('{"a":1}\n'));
+  // The same code as the copy: a new snapshot a second later is another commit
+  const { head, snapshot } = await copyOnce(m, Buffer.from('{"a":1}\n'));
   const before = store.backupRow(A, SID)!;
-  const { head, first, snapshot } = await code();
+  const first = sh(["rev-list", "--max-parents=0", "HEAD"]);
   const fresh = Buffer.from('{"z":9}\n');
   const plan = await recv.beginBackup(m, SID, {
     v: 1,
@@ -505,4 +506,81 @@ test("has_settings: a hook file in the copied tree is noticed", async () => {
   assert.equal(store.backupRow(A, SID)!.has_settings, 1);
   assert.equal(recv.settingsNames([".claude/settings.local.json"]), true);
   assert.equal(recv.settingsNames(["src/settings.json"]), false);
+});
+
+test("taken at commit: the session arrived here after its begin", async () => {
+  const m = machine(A);
+  const { head, first, snapshot } = await code();
+  const convo = Buffer.from('{"a":1}\n');
+  const plan = await recv.beginBackup(m, SID, {
+    v: 1,
+    claudeSessionId: CLAUDE,
+    repo: { name: "work", remote: null, first },
+    transcriptBytes: convo.length,
+  });
+  const bundle = path.join(tmp, `b-${plan.backupId}.bundle`);
+  const made = await move.packBundle(
+    REPO,
+    [
+      `refs/agent-os/${SID}/backup-head`,
+      ...(snapshot ? [`refs/agent-os/${SID}/backup`] : []),
+    ],
+    plan.have,
+    bundle
+  );
+  if (made) await recv.receiveBundle(m, SID, plan.backupId, webFile(made));
+  await recv.receiveFile(
+    m,
+    SID,
+    { backup: plan.backupId, offset: "0", reset: "0" },
+    web(convo)
+  );
+  // Moved here (or continued here) meanwhile
+  db.getDb()
+    .prepare(
+      `INSERT INTO sessions (id, name, working_directory) VALUES (?, 'S', '/tmp')`
+    )
+    .run(SID);
+  await code409(
+    () =>
+      recv.commitBackup(m, SID, {
+        backupId: plan.backupId,
+        manifest: manifest(SID, head, snapshot, convo.length),
+      }),
+    "taken"
+  );
+  assert.equal(store.backupRow(A, SID), null);
+});
+
+test("brought back after a take-over: the next copy starts whole", async () => {
+  const m = machine(A);
+  const convo = Buffer.from('{"a":1}\n{"b":2}\n');
+  await copyOnce(m, convo);
+  const before = store.backupRow(A, SID)!;
+  // The take-over stood and dropped its copy of the conversation
+  const d = db.getDb();
+  d.prepare(
+    `UPDATE machine_backups SET state = 'taken', take_id = 'aaaaaaaaaaaaaaaa'`
+  ).run();
+  fs.rmSync(store.conversationFile(A, SID, before.file_gen));
+  // Then "Bring it back": the hub's session is settled and moved to A
+  d.prepare(
+    `INSERT INTO sessions (id, name, working_directory, settled_at, moved_to)
+     VALUES (?, 'S', '/tmp', 1, ?)`
+  ).run(
+    SID,
+    JSON.stringify({ machine: A, name: "Mac", at: 1, head: "", snapshot: null })
+  );
+  const more = Buffer.concat([convo, Buffer.from('{"c":3}\n')]);
+  const { plan } = await copyOnce(m, more);
+  assert.equal(plan.offset, 0);
+  assert.equal(plan.head, null);
+  const row = store.backupRow(A, SID)!;
+  assert.equal(row.state, "current");
+  assert.equal(row.claude_session_id, CLAUDE);
+  assert.equal(row.file_bytes, more.length);
+  assert.deepEqual(
+    fs.readFileSync(store.conversationFile(A, SID, row.file_gen)),
+    more
+  );
 });

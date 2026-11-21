@@ -428,6 +428,16 @@ export async function startTake(
     )
     .run(takeId, machineId, sessionId);
   if (changes !== 1) throw new TakeRefused(TAKE_WHY_NOT.taking);
+  // It may have connected while the checks above ran: its connect found
+  // nothing to call off, so this one gives way. From here on (still in
+  // this tick, the job is registered below) a connect calls it off
+  if (deps.online(machineId)) {
+    db.prepare(
+      `UPDATE machine_backups SET state = 'current', take_id = NULL
+       WHERE machine_id = ? AND session_id = ? AND take_id = ?`
+    ).run(machineId, sessionId, takeId);
+    throw new TakeRefused(TAKE_WHY_NOT.online(machine!.name));
+  }
   const claimed = backupRow(machineId, sessionId, db)!;
   const job: TakeJob = {
     id: randomBytes(8).toString("hex"),

@@ -184,3 +184,41 @@ test("a move elsewhere drops the copies of that session, not a taken one", async
   assert.equal(store.backupRow(A, "s1"), null);
   assert.ok(store.backupRow(B, "s1"));
 });
+
+test("a copy being continued here is never deleted", async () => {
+  row(A, "s1", { state: "taking", take_id: "a".repeat(16) });
+  row(A, "s2");
+  assert.equal(await store.deleteCopies(store.backupRows(A)), 1);
+  assert.equal(await store.dropOtherCopies("s1", B), 0);
+  assert.deepEqual(
+    store.backupRows(A).map((r) => r.session_id),
+    ["s1"]
+  );
+});
+
+test("taken: a session brought back to that machine is not paused again", () => {
+  const take = "a".repeat(16);
+  row(A, "s1", { state: "taken", take_id: take });
+  row(A, "s2", { state: "taken", take_id: "b".repeat(16) });
+  const insert = db.getDb().prepare(
+    `INSERT INTO sessions (id, name, working_directory, settled_at, moved_to)
+       VALUES (?, 'S', '/tmp', ?, ?)`
+  );
+  // s1 went back to A ("Bring it back"); s2 runs here
+  insert.run("s1", 5, JSON.stringify({ machine: A, name: "Mac", at: 5 }));
+  insert.run("s2", null, null);
+  assert.deepEqual(
+    taken.takenFor({ id: A }).map((t) => t.sessionId),
+    ["s2"]
+  );
+  // To another machine it is still paused here
+  insert.run("s3", 5, JSON.stringify({ machine: B, name: "Other", at: 5 }));
+  row(A, "s3", { state: "taken", take_id: "c".repeat(16) });
+  assert.deepEqual(
+    taken
+      .takenFor({ id: A })
+      .map((t) => t.sessionId)
+      .sort(),
+    ["s2", "s3"]
+  );
+});

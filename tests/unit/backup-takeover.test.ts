@@ -326,3 +326,28 @@ test("the machine back after the commit point: it stands", async () => {
   assert.equal((await settle(job)).step, "done");
   assert.equal(store.backupRow(A, SID)!.state, "taken");
 });
+
+test("the machine connects while the checks run: it gives way, the copy stays current", async () => {
+  // Offline at the check, online by the claim (codeBytes is async)
+  let online = false;
+  const { deps, seen } = fakeDeps({
+    online: () => online,
+    codeBytes: async () => {
+      online = true;
+      return 1000;
+    },
+  });
+  await assert.rejects(
+    () => takeover.startTake(A, SID, { settingsOk: false }, deps),
+    (error: unknown) => {
+      assert.ok(error instanceof takeover.TakeRefused);
+      assert.equal(error.message, W().online("Mac"));
+      return true;
+    }
+  );
+  const row = store.backupRow(A, SID)!;
+  assert.equal(row.state, "current");
+  assert.equal(row.take_id, null);
+  assert.equal(seen.manifest, undefined);
+  assert.equal(takes.takes().size, 0);
+});
