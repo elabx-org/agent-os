@@ -481,9 +481,10 @@ export function ProjectList({
             {/* The count after the title when buttons hold the right
                 (E-Projects has it alone on the right) */}
             <div className="flex min-w-0 items-baseline gap-2">
-              <h1 className="t-large">Projects</h1>
+              <h1 className="t-large shrink-0">Projects</h1>
               {ownButtons && count}
-              <MachineChip className="self-center" home />
+              {/* Gives way (its name shortens) before it reaches the buttons */}
+              <MachineChip className="min-w-[2.9rem] shrink self-center" home />
             </div>
             <div className="flex shrink-0 items-end gap-1">
               {ownButtons && (
