@@ -1,5 +1,6 @@
 "use client";
 
+import { serverNameOr } from "@/lib/server-name";
 import { Check, ChevronDown, Laptop, Server } from "lucide-react";
 import {
   DropdownMenu,
@@ -24,17 +25,27 @@ export const presenceWord = (m: MachineView) =>
 /**
  * Which machine the tab is on, when it isn't this server: a laptop glyph
  * and the name. Tapping it lists this server and each machine; picking one
- * reloads the app there. Nothing on this server.
+ * reloads the app there. On this server it shows only on the home pages
+ * (`home`), and only when there is a machine to switch to.
  */
 export function MachineChip({
   className,
   compact,
+  home,
 }: {
   className?: string;
   /** Just the glyph, where the row has no room for the name */
   compact?: boolean;
+  /** Also shown on this server, as the way to a linked machine */
+  home?: boolean;
 }) {
-  if (!useTabMachineId()) return null;
+  const id = useTabMachineId();
+  const { data } = useMachines();
+  if (!id) {
+    const linked =
+      !!data?.enabled && data.machines.some((m) => m.status === "approved");
+    if (!home || !linked) return null;
+  }
   return <Chip className={className} compact={compact} />;
 }
 
@@ -48,23 +59,26 @@ function Chip({
   const { id, machine } = useTabMachine();
   const { data } = useMachines();
   const linked = data?.machines.filter((m) => m.status === "approved") ?? [];
+  const server = serverNameOr(data?.serverName, "This server");
+  const name = id ? (machine?.name ?? "Mac") : server;
+  const Glyph = id ? Laptop : Server;
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          aria-label={`On ${machine?.name ?? "another machine"}. Switch machine`}
-          title={compact ? machine?.name : undefined}
+          aria-label={`On ${id ? (machine?.name ?? "another machine") : server}. Switch machine`}
+          title={compact ? name : undefined}
           className={cn(
             "relative inline-flex h-7 max-w-[11rem] shrink-0 items-center gap-1 rounded-full bg-violet-500/15 pr-2 pl-2.5 text-[13px] font-semibold text-violet-700 after:absolute after:inset-x-0 after:-inset-y-2 after:content-[''] active:opacity-70 dark:text-violet-300",
+            !id &&
+              "bg-foreground/[0.07] text-muted-foreground dark:text-muted-foreground",
             compact && "gap-0.5 pr-1.5 pl-2",
             className
           )}
         >
-          <Laptop aria-hidden className="h-3.5 w-3.5 shrink-0" />
-          {!compact && (
-            <span className="truncate">{machine?.name ?? "Mac"}</span>
-          )}
+          <Glyph aria-hidden className="h-3.5 w-3.5 shrink-0" />
+          {!compact && <span className="truncate">{name}</span>}
           <ChevronDown
             aria-hidden
             className="h-3.5 w-3.5 shrink-0 opacity-70"
@@ -74,7 +88,7 @@ function Chip({
       <DropdownMenuContent align="start" className="min-w-[14rem]">
         <PickerItem
           icon={Server}
-          name="This server"
+          name={server}
           online
           current={!id}
           onSelect={() => switchMachine(null)}

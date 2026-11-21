@@ -21,6 +21,9 @@ export const MACHINE_STORAGE_KEY = "agentos.machine";
 /** Set once this browser has looked at a machine: other tabs start guarding */
 export const MACHINES_USED_KEY = "agentos.machines.used";
 
+/** The machine this browser last chose, for a tab that starts with none */
+export const MACHINE_LAST_KEY = "agentos.machine.last";
+
 const MACHINE_ID = /^m_[0-9a-f]{12}$/;
 
 export const isMachineId = (value: unknown): value is string =>
@@ -179,4 +182,17 @@ export function inviteHasSignIn(command: string): boolean | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * A tab that hasn't chosen yet (nothing in its own storage: a new tab, or
+ * the app opened again) starts where this browser last was. A tab that
+ * chose this server keeps it, whatever another tab picks later.
+ */
+export function machineToRestore(
+  tabValue: string | null,
+  last: string | null
+): string | null {
+  if (tabValue !== null) return null;
+  return isMachineId(last) ? last : null;
 }

@@ -285,7 +285,7 @@ export function DesktopSidebar({
         )}
       </div>
       {/* On a linked machine: which, and the way back */}
-      <MachineChip className="mx-1.5 self-start" />
+      <MachineChip className="mx-1.5 self-start" home />
 
       {newOpen ? (
         <div className="srow sel flex-none">

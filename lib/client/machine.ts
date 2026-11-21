@@ -12,6 +12,7 @@ import {
   HUB_TARGET,
   MACHINE_COOKIE,
   MACHINE_HEADER,
+  MACHINE_LAST_KEY,
   MACHINE_STORAGE_KEY,
   MACHINES_USED_KEY,
   MACHINE_QUERY,
@@ -20,6 +21,7 @@ import {
   isMachineGone,
   isMachineId,
   linkTarget,
+  machineToRestore,
   markedSocketUrl,
   readCookie,
   switchHref,
@@ -62,6 +64,35 @@ export function tabMachine(): string | null {
   if (typeof window === "undefined") return null;
   const value = storage("session")?.getItem(MACHINE_STORAGE_KEY) ?? null;
   return isMachineId(value) ? value : null;
+}
+
+/**
+ * Records the tab's choice (null: this server), and for the next tab this
+ * browser opens. This server is written down too, so a later choice in
+ * another tab doesn't move this one.
+ */
+function keepChoice(machine: string | null) {
+  const mine = machine && isMachineId(machine) ? machine : null;
+  storage("session")?.setItem(MACHINE_STORAGE_KEY, mine ?? HUB_TARGET);
+  if (mine) {
+    storage("local")?.setItem(MACHINE_LAST_KEY, mine);
+    storage("local")?.setItem(MACHINES_USED_KEY, "1");
+  } else {
+    storage("local")?.removeItem(MACHINE_LAST_KEY);
+  }
+}
+
+/** A tab with no choice of its own takes up where this browser last was */
+function restoreChoice() {
+  const session = storage("session");
+  if (!session) return;
+  const mine = session.getItem(MACHINE_STORAGE_KEY);
+  if (mine !== null) return;
+  const last = machineToRestore(
+    mine,
+    storage("local")?.getItem(MACHINE_LAST_KEY) ?? null
+  );
+  session.setItem(MACHINE_STORAGE_KEY, last ?? HUB_TARGET);
 }
 
 const cookieMachine = () => readCookie(document.cookie, MACHINE_COOKIE);
@@ -163,12 +194,7 @@ function adoptLinkedMachine() {
   // would put it back if it went now
   const target = linkTarget(url.searchParams.get(MACHINE_QUERY));
   if (!target) return;
-  if (target === HUB_TARGET) {
-    storage("session")?.removeItem(MACHINE_STORAGE_KEY);
-  } else {
-    storage("session")?.setItem(MACHINE_STORAGE_KEY, target);
-    storage("local")?.setItem(MACHINES_USED_KEY, "1");
-  }
+  keepChoice(target === HUB_TARGET ? null : target);
 }
 
 let installed = false;
@@ -178,6 +204,7 @@ export function installMachineMarker() {
   if (installed || typeof window === "undefined") return;
   installed = true;
   adoptLinkedMachine();
+  restoreChoice();
   syncCookie();
   // Another tab may have moved the cookie while this one was away
   window.addEventListener("focus", syncCookie);
@@ -201,13 +228,7 @@ export function installMachineMarker() {
  * on a session or project when one is named
  */
 export function switchMachine(machine: string | null, open?: SwitchOpen) {
-  const session = storage("session");
-  if (machine && isMachineId(machine)) {
-    session?.setItem(MACHINE_STORAGE_KEY, machine);
-    storage("local")?.setItem(MACHINES_USED_KEY, "1");
-  } else {
-    session?.removeItem(MACHINE_STORAGE_KEY);
-  }
+  keepChoice(machine);
   document.cookie = cookieAssignment(machine);
   window.location.assign(switchHref(open));
 }

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { matchCode } from "@/lib/link/keys";
 import { linkHub, machinesOn, ownSha } from "@/lib/link/server";
-import { listMachines } from "@/lib/link/store";
+import { listMachines, serverName } from "@/lib/link/store";
 
 export const dynamic = "force-dynamic";
 
@@ -16,6 +16,8 @@ export async function GET() {
   return NextResponse.json(
     {
       enabled: true,
+      // What the user calls this server, null when they gave it no name
+      serverName: serverName(),
       machines: listMachines().map((m) => ({
         id: m.id,
         name: m.name,

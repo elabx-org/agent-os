@@ -4,7 +4,11 @@
  */
 
 import { randomBytes } from "crypto";
-import { getDb } from "../db";
+import { getDb, queries } from "../db";
+import {
+  SERVER_NAME_PREFERENCE_KEY,
+  normalizeServerName,
+} from "../server-name";
 
 export type MachineStatus = "pending" | "approved";
 
@@ -121,4 +125,16 @@ export function touchMachine(
       seen.signedInAs ? clean(seen.signedInAs, 120) : null,
       id
     );
+}
+
+/** The name the user gave this server, null when they gave none */
+export function serverName(): string | null {
+  try {
+    const row = queries
+      .getPreference(getDb())
+      .get(SERVER_NAME_PREFERENCE_KEY) as { value: string } | undefined;
+    return normalizeServerName(row ? JSON.parse(row.value) : null);
+  } catch {
+    return null;
+  }
 }

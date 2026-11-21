@@ -198,7 +198,7 @@ export function MissionControl({
                 AgentOS
               </p>
               {/* On a linked machine: which, and the way back */}
-              <MachineChip />
+              <MachineChip home />
             </div>
             <h1 className="t-large">Now</h1>
             {/* One line: a count that doesn't fit wraps out of sight, so
