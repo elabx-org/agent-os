@@ -28,6 +28,8 @@ export interface MachineView {
 export interface MachinesResponse {
   enabled: boolean;
   machines: MachineView[];
+  /** The user's name for this server; null or absent when it has none */
+  serverName?: string | null;
 }
 
 export const machineKeys = {

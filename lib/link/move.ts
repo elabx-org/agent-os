@@ -21,9 +21,9 @@ import {
 } from "../session-move-types";
 import type { MovePlan } from "../repos-dir";
 import { HUB_MARKER, MACHINE_HEADER, linkHub, ownSha } from "./server";
-import { machineById } from "./store";
+import { serverNameOr } from "../server-name";
+import { machineById, serverName } from "./store";
 
-const HUB_NAME = "the server";
 const POLL_MS = 1000;
 /** A first clone of a large repository can take a while */
 const PREPARE_MS = 20 * 60_000;
@@ -47,7 +47,7 @@ export class MoveNotPossible extends Error {}
 
 /** The machine's name, or why a session can't go to or leave it now */
 function nameOf(machine: MachineRef): string {
-  if (machine === HUB_MARKER) return HUB_NAME;
+  if (machine === HUB_MARKER) return serverNameOr(serverName());
   const row = machineById(machine);
   if (!row || row.status !== "approved") {
     throw new MoveNotPossible("No such machine");

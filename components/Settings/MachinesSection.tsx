@@ -32,6 +32,11 @@ import {
   REPOS_DIR_PREFERENCE_KEY,
   normalizeReposDir,
 } from "@/lib/repos-dir";
+import {
+  SERVER_NAME_MAX,
+  SERVER_NAME_PREFERENCE_KEY,
+  normalizeServerName,
+} from "@/lib/server-name";
 import { cn } from "@/lib/utils";
 import { Chevron } from "./SettingGroup";
 
@@ -122,7 +127,7 @@ export function MachinesSection() {
     <div className="flex flex-col pb-4">
       <Heading>Linked</Heading>
       <Card>
-        <ServerRow />
+        <ServerRow name={data.serverName ?? null} onChange={refresh} />
         {linked.map((m) => (
           <LinkedRow key={m.id} machine={m} onChange={refresh} />
         ))}
@@ -144,20 +149,104 @@ export function MachinesSection() {
 }
 
 /** "This server": where AgentOS is open; tapping it comes back here */
-function ServerRow() {
+function ServerRow({
+  name,
+  onChange,
+}: {
+  name: string | null;
+  onChange: () => void;
+}) {
   const tab = useTabMachineId();
   const { data: count } = useSessionCount(HUB_TARGET, true);
+  const [draft, setDraft] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const online = count == null ? "Online" : `Online · ${sessionsWord(count)}`;
+
+  const save = async () => {
+    const next = normalizeServerName(draft);
+    if (next === name) return setDraft(null);
+    setSaving(true);
+    // This server's own name, whichever machine the tab is on
+    const res = await fetchOn(HUB_TARGET, "/api/preferences", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key: SERVER_NAME_PREFERENCE_KEY, value: next }),
+    }).catch(() => null);
+    setSaving(false);
+    if (!res?.ok) {
+      toast.error("Couldn't save the name");
+      return;
+    }
+    setDraft(null);
+    onChange();
+  };
+
+  if (draft !== null) {
+    return (
+      <form
+        className="row gap-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void save();
+        }}
+      >
+        <Tile kind="server" />
+        <input
+          autoFocus
+          value={draft}
+          maxLength={SERVER_NAME_MAX}
+          placeholder="This server"
+          aria-label="This server's name"
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") {
+              e.stopPropagation();
+              setDraft(null);
+            }
+          }}
+          className="bg-foreground/[0.07] min-w-0 flex-1 rounded-lg px-3 py-2 text-[16px] outline-none"
+        />
+        <button
+          type="submit"
+          disabled={saving}
+          className="pill pill-primary pill-sm shrink-0 disabled:opacity-60"
+        >
+          Save
+        </button>
+      </form>
+    );
+  }
+
   return (
     <>
       <MachineRow
         kind="server"
-        name="This server"
+        name={name ?? "This server"}
         online
-        detail={count == null ? "Online" : `Online · ${sessionsWord(count)}`}
+        detail={name ? `This server · ${online}` : online}
         current={!tab}
         onOpen={() => switchMachine(null)}
+        menu={
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                aria-label={`${name ?? "This server"}: more`}
+                className="text-muted-foreground active:bg-accent relative grid h-9 w-9 shrink-0 place-items-center rounded-full after:absolute after:-inset-1 after:content-['']"
+              >
+                <MoreHorizontal className="h-5 w-5" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={() => setDraft(name ?? "")}>
+                <Pencil className="h-4 w-4" />
+                {name ? "Rename" : "Give it a name"}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        }
       />
-      <ReposFolderRow target={HUB_TARGET} name="this server" />
+      <ReposFolderRow target={HUB_TARGET} name={name ?? "this server"} />
     </>
   );
 }

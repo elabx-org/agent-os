@@ -1,5 +1,6 @@
 "use client";
 
+import { serverNameOr } from "@/lib/server-name";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSnapshot } from "valtio";
 import { useQueryClient } from "@tanstack/react-query";
@@ -90,7 +91,7 @@ function useTargets(from: string): Target[] {
     if (from !== HUB_TARGET) {
       out.unshift({
         id: HUB_TARGET,
-        name: "the server",
+        name: serverNameOr(data.serverName),
         kind: "server",
         blocked: null,
       });
@@ -128,7 +129,7 @@ function Body({
   const { data: machines } = useMachines();
   const fromName =
     from === HUB_TARGET
-      ? "the server"
+      ? serverNameOr(machines?.serverName)
       : (machines?.machines.find((m) => m.id === from)?.name ?? "that machine");
   /** "here" only when this tab looks at the machine it leaves */
   const fromHere = from === mine;

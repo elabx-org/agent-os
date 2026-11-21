@@ -5,6 +5,7 @@ import { FLAG_SESSIONS_PREFERENCE_KEY, FLAGS_PREFERENCE_KEY, setFlagSessions, se
 import { requireUser } from "@/lib/user-proof";
 import { CLAUDE_MODELS_PREFERENCE_KEY } from "@/lib/claude-models";
 import { writeClaudeModels } from "@/lib/claude-models-store";
+import { SERVER_NAME_PREFERENCE_KEY, normalizeServerName } from "@/lib/server-name";
 import { DEFAULT_REPOS_DIR, REPOS_DIR_PREFERENCE_KEY, normalizeReposDir } from "@/lib/repos-dir";
 
 export async function GET(request: Request) {
@@ -66,6 +67,13 @@ export async function PUT(request: Request) {
         return NextResponse.json({ error: "user_only", reason: proof.reason }, { status: 403 });
       }
       return NextResponse.json({ success: true, value: writeClaudeModels(db, value) });
+    }
+
+    // What the user calls this server: kept as one clean line, or cleared
+    if (key === SERVER_NAME_PREFERENCE_KEY) {
+      const name = normalizeServerName(value);
+      queries.upsertPreference(db).run(key, JSON.stringify(name));
+      return NextResponse.json({ success: true, value: name });
     }
 
     // Where this machine keeps repositories (and clones them): the user's call
