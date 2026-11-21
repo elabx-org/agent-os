@@ -2,9 +2,39 @@
 
 import { useEffect } from "react";
 import { toast } from "sonner";
+import { canReloadNow } from "@/lib/auto-reload";
 import { isChunkFailure, reloadOnce } from "@/lib/chunk-error";
 
 const POLL_MS = 60_000;
+/** While an update waits for a moment that costs the user nothing */
+const WAIT_MS = 3000;
+
+const FIELDS =
+  'textarea, input:not([type]), input[type="text"], input[type="search"], [contenteditable="true"]';
+const OVERLAYS =
+  '[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"]';
+
+const textOf = (el: Element) =>
+  el instanceof HTMLTextAreaElement || el instanceof HTMLInputElement
+    ? el.value
+    : (el.textContent ?? "");
+
+/** Nothing typed, nothing open, and the user away or leaving it alone */
+function quietMoment(lastTouch: number): boolean {
+  const active = document.activeElement;
+  return canReloadNow({
+    hidden: document.visibilityState === "hidden",
+    // The terminal's own hidden field never holds a draft
+    draft: [...document.querySelectorAll(FIELDS)].some(
+      (el) =>
+        !el.classList.contains("xterm-helper-textarea") &&
+        textOf(el).trim() !== ""
+    ),
+    overlay: document.querySelector(OVERLAYS) !== null,
+    typing: !!active && active !== document.body && active.matches(FIELDS),
+    idleMs: Date.now() - lastTouch,
+  });
+}
 
 export interface Build {
   id: string;
@@ -25,13 +55,23 @@ export async function fetchBuild(): Promise<Build | null> {
 
 /**
  * After a deploy the open page keeps running the old build until it is
- * reloaded: offer the reload, never do it (a draft or a tap may be mid-way),
- * unless a code file it needs is already gone (lib/chunk-error.ts).
+ * reloaded. It reloads itself at the first moment that costs the user
+ * nothing (lib/auto-reload.ts) and offers the reload until then; at once
+ * when a code file it needs is already gone (lib/chunk-error.ts).
  */
 export function useUpdatePrompt() {
   useEffect(() => {
     let loaded: string | null = null;
     let shown = false;
+    let lastTouch = Date.now();
+    let waiting: ReturnType<typeof setInterval> | null = null;
+    const touched = () => {
+      lastTouch = Date.now();
+    };
+    const reloadWhenQuiet = () => {
+      if (!shown || !quietMoment(lastTouch)) return;
+      location.reload();
+    };
     const check = async () => {
       if (shown) return;
       const build = await fetchBuild();
@@ -39,6 +79,8 @@ export function useUpdatePrompt() {
       if (!loaded) loaded = build.id;
       else if (build.id !== loaded) {
         shown = true;
+        if (quietMoment(lastTouch)) return location.reload();
+        waiting = setInterval(reloadWhenQuiet, WAIT_MS);
         toast("AgentOS updated", {
           id: "update",
           description: build.version
@@ -56,7 +98,10 @@ export function useUpdatePrompt() {
     const timer = setInterval(check, POLL_MS);
     const onVisible = () => {
       if (document.visibilityState === "visible") check();
+      else reloadWhenQuiet();
     };
+    window.addEventListener("pointerdown", touched, true);
+    window.addEventListener("keydown", touched, true);
     document.addEventListener("visibilitychange", onVisible);
     // Except when the old build's code is already gone: the page can't
     // go on, so reload now
@@ -70,6 +115,9 @@ export function useUpdatePrompt() {
     window.addEventListener("unhandledrejection", onRejection);
     return () => {
       clearInterval(timer);
+      if (waiting) clearInterval(waiting);
+      window.removeEventListener("pointerdown", touched, true);
+      window.removeEventListener("keydown", touched, true);
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("error", onError);
       window.removeEventListener("unhandledrejection", onRejection);
