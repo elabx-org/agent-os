@@ -36,7 +36,7 @@ final class AppUpdater {
 
   /// The installed app this copy replaces; nil for a build run from elsewhere
   var target: String? {
-    paths.target(bundlePath: Bundle.main.bundlePath, existing: { FileManager.default.fileExists(atPath: $0) })
+    paths.target(bundlePath: Swapper.bundlePath, existing: { FileManager.default.fileExists(atPath: $0) })
   }
 
   func poll() {
@@ -98,9 +98,20 @@ final class AppUpdater {
 enum Swapper {
   static func paths() -> UpdatePaths {
     UpdatePaths.make(
-      home: FileManager.default.homeDirectoryForCurrentUser.path,
-      testRoot: ProcessInfo.processInfo.environment["AGENTOS_APP_TEST_ROOT"], tempDir: NSTemporaryDirectory())
+      home: canonical(FileManager.default.homeDirectoryForCurrentUser.path),
+      testRoot: ProcessInfo.processInfo.environment["AGENTOS_APP_TEST_ROOT"].map(canonical),
+      tempDir: NSTemporaryDirectory())
   }
+
+  /// A path with its links resolved (/var is /private/var), as the system
+  /// reports this app's own bundle; the path itself when it doesn't exist
+  static func canonical(_ path: String) -> String {
+    guard let resolved = realpath(path, nil) else { return path }
+    defer { free(resolved) }
+    return String(cString: resolved)
+  }
+
+  static var bundlePath: String { canonical(Bundle.main.bundlePath) }
 
   /// The end of a log file (the last 8 KB)
   static func tail(_ path: String) -> String? {
@@ -227,7 +238,7 @@ enum Swapper {
   /// this copy isn't the staged one.
   static func installIfStaged() -> Int32? {
     let paths = paths()
-    guard Bundle.main.bundlePath == paths.staged else { return nil }
+    guard bundlePath == paths.staged else { return nil }
     let own = AppInfo.sourceHash
     guard UpdateDecision.readyHash(try? String(contentsOfFile: paths.ready, encoding: .utf8)) == own,
       let exe = Bundle.main.executablePath,

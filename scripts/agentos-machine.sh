@@ -35,6 +35,9 @@ export AGENT_OS_HOME
 # never reach /Applications.
 APP_SRC="${AGENTOS_APP_SRC:-$REPO_DIR}"
 if [ -n "${AGENTOS_APP_TEST_ROOT:-}" ]; then
+  # As the system reports a running app's path (/var is /private/var)
+  AGENTOS_APP_TEST_ROOT=$(cd -P "$AGENTOS_APP_TEST_ROOT" && pwd) || { echo "No test folder" >&2; exit 1; }
+  export AGENTOS_APP_TEST_ROOT
   APP_DIRS=("$AGENTOS_APP_TEST_ROOT/Applications/AgentOS.app" "$AGENTOS_APP_TEST_ROOT/HomeApplications/AgentOS.app")
   MACAPP="$AGENTOS_APP_TEST_ROOT/mac-app"
   APP_LOCK="$AGENTOS_APP_TEST_ROOT/app.lock"
