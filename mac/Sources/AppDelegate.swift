@@ -118,7 +118,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WindowHost, StatusMenu
       self?.status.render()
     }
     let ids = poller.snapshot.sessions.filter { $0.state == "waiting" || $0.state == "running" }.map(\.id)
-    poller.fetchDetails(ids)
+    poller.refreshDetailsForMenu(ids)
+    status.render()
   }
 
   var windowShowingSession: String? {

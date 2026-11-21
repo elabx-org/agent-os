@@ -87,6 +87,16 @@ final class Poller {
     }
   }
 
+  /// The menu opened: details older than 3 s are dropped before they are
+  /// read again, so the menu shows nothing to answer until the fresh read
+  func refreshDetailsForMenu(_ ids: [String]) {
+    let now = Date()
+    for id in ids where !detailsInFlight.contains(id) {
+      if let d = details[id], now.timeIntervalSince(d.at) >= 3 { details[id] = nil }
+    }
+    fetchDetails(ids)
+  }
+
   /// Reads the prompt and reply context of these sessions (2 s timeout
   /// each, off the main thread) unless read in the last 3 s
   func fetchDetails(_ ids: [String], then: (() -> Void)? = nil) {
@@ -149,7 +159,13 @@ final class Poller {
         self.snapshot = next
         self.inFlight = false
         let live = Set(next.sessions.map(\.id))
-        self.details = self.details.filter { live.contains($0.key) }
+        let nowWaiting = Set(next.sessions.filter { $0.state == "waiting" }.map(\.id))
+        // What a session asked before it moved on is not what it asks now:
+        // dropped when it starts or stops waiting, so the menu never offers
+        // an old prompt's or question's answers in the meantime
+        self.details = self.details.filter {
+          live.contains($0.key) && wasWaiting.contains($0.key) == nowWaiting.contains($0.key)
+        }
         // A session that just turned "waiting": read what it asks
         let newly = next.sessions.filter { $0.state == "waiting" && !wasWaiting.contains($0.id) }.map(\.id)
         if !newly.isEmpty { self.fetchDetails(newly) }

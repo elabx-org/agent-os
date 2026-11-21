@@ -12,6 +12,10 @@ enum TextSafety {
     case 0x0A, 0x09: return false
     case 0x00...0x1F, 0x7F...0x9F: return true
     case 0x202A...0x202E, 0x2066...0x2069, 0x200B...0x200F, 0x2028, 0x2029, 0xFEFF: return true
+    // Also invisible: the Arabic letter mark (a bidi mark), word joiner and
+    // invisible operators, the deprecated format controls, interlinear
+    // annotation, the Mongolian vowel separator and tag characters
+    case 0x061C, 0x180E, 0x2060...0x2064, 0x206A...0x206F, 0xFFF9...0xFFFB, 0xE0000...0xE007F: return true
     default: return false
     }
   }
@@ -64,6 +68,11 @@ enum TextSafety {
     let flat = s.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
     guard flat.count > max else { return flat }
     return String(flat.prefix(Swift.max(0, max - 1))) + "…"
+  }
+
+  /// Whether oneLine(s, max:) shows all of it
+  static func fitsOneLine(_ s: String, max: Int) -> Bool {
+    s.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ").count <= max
   }
 
   /// At most `max` characters, with "…" when cut

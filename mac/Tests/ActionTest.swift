@@ -301,6 +301,18 @@ func runAll() {
   respond("reply", nonce: Notifier.posted["s-stub-a"]?.nonce, text: "hello")
   check("reply at a prompt sends nothing", !appRequests().contains { ($0["method"] as? String) == "POST" }, json(appRequests()))
 
+  // An action the post's category doesn't offer: nothing read, nothing sent
+  notifier.consider([entry("finished")], prompts: [:])
+  stub("prompt=v1&clear=1")
+  respond("allow", nonce: Notifier.posted["s-stub-a"]?.nonce)
+  check("allow on a finished post sends nothing", appRequests().isEmpty, json(appRequests()))
+  notifier.consider([entry("needsYou")], prompts: [id: background { Backend.prompt(id) }!])
+  stub("prompt=none&clear=1")
+  respond("reply", nonce: Notifier.posted["s-stub-a"]?.nonce, text: "1")
+  check("reply on a permission post sends nothing", appRequests().isEmpty, json(appRequests()))
+  check("offers: deny-only has no allow", !Notifier.offers("PERMISSION_DENY", "allow") && Notifier.offers("PERMISSION_DENY", "deny"))
+  check("offers: info has none", !Notifier.offers("INFO", "deny") && !Notifier.offers("INFO", "reply"))
+
   // A tap on the body opens the window, sends nothing
   notifier.consider([entry("finished")], prompts: [:])
   stub("clear=1")

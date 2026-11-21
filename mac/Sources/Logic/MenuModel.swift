@@ -45,6 +45,15 @@ enum MenuModel {
   static let maxRows = 12
   static let detailWidth = 70
   static let detailLines = 12
+  static let questionLines = 3
+  /// lib/permission-prompt.ts MAX_DETAIL: the server cuts a longer detail
+  /// to this many UTF-16 units and adds "…"
+  static let serverDetailLimit = 600
+
+  /// A detail the server cut short (so the screen holds more than it sent)
+  static func serverCut(_ detail: String) -> Bool {
+    detail.hasSuffix("…") && detail.utf16.count > serverDetailLimit
+  }
 
   static func build(_ s: MenuSnapshot) -> [MenuEntry] {
     guard s.on else { return [] }
@@ -99,8 +108,14 @@ enum MenuModel {
     }
     let wrapped = TextSafety.wrap(TextSafety.clean(p.detail), width: detailWidth, maxLines: detailLines)
     if !p.detail.isEmpty { out += wrapped.lines.map { .label($0, .mono) } }
-    if wrapped.cut { out.append(.label(Strings.tooLong, .secondary)) }
-    if !p.question.isEmpty { out.append(.label(TextSafety.oneLine(TextSafety.clean(p.question), max: detailWidth))) }
+    // The question can name the file (an edit's "…to <file>?"): wrapped, not cut
+    let question = TextSafety.wrap(TextSafety.clean(p.question), width: detailWidth, maxLines: questionLines)
+    // Anything not shown in full keeps allow off: the detail past 12 lines,
+    // a detail the server itself cut, a title or question too long to show
+    let hidden =
+      wrapped.cut || question.cut || serverCut(p.detail) || !TextSafety.fitsOneLine(p.title, max: detailWidth)
+    if hidden { out.append(.label(Strings.tooLong, .secondary)) }
+    if !p.question.isEmpty { out += question.lines.map { .label($0) } }
     let canAnswer = features && fingerprint != nil
     if !canAnswer { out.append(.label(Strings.needsUpdate, .secondary)) }
     out.append(.separator)
@@ -108,7 +123,7 @@ enum MenuModel {
     for (position, option) in p.options.enumerated() {
       let safeOption = !TextSafety.hasUnsafe(option.label)
       let quiet = option.kind == "deny" || option.kind == "other"
-      let enabled = canAnswer && safeOption && (quiet || (!wrapped.cut && !unsafe))
+      let enabled = canAnswer && safeOption && (quiet || (!hidden && !unsafe))
       // ⌘1…⌘9 only on deny and other, never on allow or always
       let key = quiet && position < 9 ? String(position + 1) : nil
       out.append(

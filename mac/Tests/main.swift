@@ -315,6 +315,27 @@ equal("long: 12 detail lines", longMenu.filter { $0.style == .mono }.count, 12)
 let bidiMenu = rows(session(prompt: prompt(detail: "rm -rf \u{202E}txt.x")))
 check("unsafe: allow disabled", titled(bidiMenu, "Yes")?.enabled == false)
 check("unsafe: shown cleaned", bidiMenu.contains { $0.title.contains("\u{FFFD}") && !$0.title.contains("\u{202E}") })
+// The server cuts a detail past 600 characters and adds "…": allow stays off
+let serverCutDetail = String(repeating: "echo ok; ", count: 70).prefix(600) + "…"
+let cutMenu = rows(session(prompt: prompt(detail: String(serverCutDetail))))
+check("server-cut detail: fits 12 lines", cutMenu.filter { $0.style == .mono }.count <= 12)
+check("server-cut detail: allow disabled", titled(cutMenu, "Yes")?.enabled == false)
+check("server-cut detail: Too long line", titled(cutMenu, "Too long to show here. Open it in the window to allow it.") != nil)
+check("server-cut detail: deny enabled", titled(cutMenu, "No")?.enabled == true)
+check("600 characters and an ellipsis of its own: allowed", !MenuModel.serverCut(String(repeating: "x", count: 599) + "…"))
+// A question naming a long file is wrapped, never cut; past 3 lines, allow is off
+var editPrompt = prompt(detail: "")
+editPrompt.question = "Do you want to make this edit to " + String(repeating: "a", count: 60) + "/settings.json?"
+let editMenu = rows(session(prompt: editPrompt))
+check("long question: file name shown", editMenu.contains { $0.title.contains("settings.json?") })
+check("long question: allow enabled", titled(editMenu, "Yes")?.enabled == true)
+editPrompt.question = String(repeating: "word ", count: 60)
+check("question past 3 lines: allow disabled", titled(rows(session(prompt: editPrompt)), "Yes")?.enabled == false)
+let longTitle = rows(session(prompt: prompt(title: String(repeating: "T", count: 71))))
+check("title too long: allow disabled", titled(longTitle, "Yes")?.enabled == false)
+for (name, scalar) in [("ALM", "\u{061C}"), ("WJ", "\u{2060}"), ("tag", "\u{E0041}"), ("IAA", "\u{FFF9}")] {
+  check("unsafe \(name)", TextSafety.hasUnsafe("ls \(scalar)x"))
+}
 let oldServer = rows(session(prompt: prompt()), features: false)
 check("no features: every option disabled", oldServer.filter { if case .answerPrompt? = $0.action { return true }; return false }
   .allSatisfy { !$0.enabled })

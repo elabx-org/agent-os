@@ -298,13 +298,17 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
       if SessionLink.isValidId(record.sessionId) { host?.open(.session(record.sessionId), activate: true) }
       return done()
     }
-    guard Notifier.actionIds.contains(r.actionId), let click = Clicks.fromNotification(r, record: record) else {
+    // Only the actions this post's category offers
+    guard Notifier.actionIds.contains(r.actionId), Notifier.offers(record.category, r.actionId),
+      let click = Clicks.fromNotification(r, record: record)
+    else {
       return done()
     }
     let identifier = r.identifier
     let action = r.actionId
     let text = r.text
-    let name = host?.snapshot.names[record.sessionId] ?? Strings.aSession
+    let name = TextSafety.oneLine(
+      TextSafety.clean(host?.snapshot.names[record.sessionId] ?? Strings.aSession), max: 60)
     work.async {
       let result = Notifier.act(action, record: record, click: click, text: text)
       DispatchQueue.main.async {
@@ -322,6 +326,18 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
           done()
         }
       }
+    }
+  }
+
+  /// The actions each category's notification shows (SystemPoster.setUp)
+  nonisolated static func offers(_ category: String, _ action: String) -> Bool {
+    switch action {
+    case "allow": return category == NotifyRules.Category.permission.rawValue
+    case "deny":
+      return category == NotifyRules.Category.permission.rawValue
+        || category == NotifyRules.Category.permissionDenyOnly.rawValue
+    case "reply": return category == NotifyRules.Category.finished.rawValue
+    default: return false
     }
   }
 

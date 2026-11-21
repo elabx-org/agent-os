@@ -386,7 +386,8 @@ final class StatusMenu: NSObject, NSMenuDelegate {
       guard let session = snap.sessions.first(where: { $0.id == id }), let request = Requests.request(for: a) else {
         return
       }
-      guard confirm(Strings.endTitle(session.name), Strings.stopBody, button: Strings.endButton) else { return }
+      let name = TextSafety.oneLine(TextSafety.clean(session.name), max: 60)
+      guard confirm(Strings.endTitle(name), Strings.stopBody, button: Strings.endButton) else { return }
       run(a, request, click: nil, busyText: Strings.stoppingBusy)
     default:
       guard let request = Requests.request(for: a) else { return }
