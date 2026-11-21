@@ -1,6 +1,9 @@
 "use client";
 
-import { MachineChip } from "@/components/Machines/MachineChip";
+import {
+  MachineChip,
+  useMachineChipShown,
+} from "@/components/Machines/MachineChip";
 import {
   useEffect,
   useMemo,
@@ -116,7 +119,7 @@ const PAD: Record<LayoutMode, string> = {
   tabletop: "px-4 pt-4",
   "duo-open": "pt-5 pr-5 pl-6",
   book: "pt-5 pr-5 pl-6",
-  desktop: "pt-5 pr-5 pl-6",
+  desktop: "pt-3.5 pr-5 pl-5",
 };
 
 const WIDE: LayoutMode[] = ["duo-open", "book", "desktop"];
@@ -449,11 +452,16 @@ export function ProjectList({
   // column don't
   const appBar = native && !nativeCaps().column;
   const ownButtons = appBar || mode === "phone" || mode === "desktop";
+  // Back sits in the title row (the desktop sidebar and the iOS app's bar)
+  const back = appBar || mode === "desktop";
+  const chipShown = useMachineChipShown(true);
   const count = (
     <span className="text-muted-foreground text-[14px] tabular-nums">
       {movable.length}
     </span>
   );
+  // The row's buttons: finger-sized on touch, tighter under a pointer
+  const tool = mode === "desktop" ? "size-9" : "size-[44px]";
   // The ungrouped rest gets a title only below other groups
   const titled = groups.length > 1;
 
@@ -482,44 +490,58 @@ export function ProjectList({
                 ownButtons ? "items-center" : "items-baseline"
               )}
             >
-              {appBar && (
+              {back && (
                 <button
                   type="button"
                   onClick={() => runNav("back")}
                   aria-label="Back to Now"
-                  className="text-muted-foreground active:bg-accent -mr-2 -ml-3 flex h-[44px] w-[44px] shrink-0 items-center justify-center self-center rounded-full"
+                  className={cn(
+                    "text-muted-foreground active:bg-accent hover:bg-accent -mr-2 flex shrink-0 items-center justify-center rounded-full",
+                    tool,
+                    mode === "desktop" ? "-ml-2" : "-ml-3"
+                  )}
                 >
                   <ChevronLeft className="h-5 w-5" />
                 </button>
               )}
+              {/* Beside Back it is a bar title; alone it leads the page */}
               <h1
-                className={cn("shrink-0", ownButtons ? "t-title" : "t-large")}
+                className={cn(
+                  "shrink-0",
+                  !ownButtons ? "t-large" : back ? "t-head" : "t-title"
+                )}
               >
                 Projects
               </h1>
-              {ownButtons && count}
-              {/* Gives way (its name shortens) before it reaches the buttons */}
+              {/* The count gives its place to the machine's name */}
+              {ownButtons && !chipShown && count}
+              {/* Its name shortens only when it is a long one */}
               <MachineChip className="min-w-[2.9rem] shrink self-center" home />
             </div>
-            <div className="flex shrink-0 items-center gap-0">
+            <div className="-mr-2 flex shrink-0 items-center gap-0">
               {ownButtons && (
                 <>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    aria-label="Edit order and groups"
-                    className="size-[44px]"
-                    onClick={() => setSortOpen(true)}
-                  >
-                    <AlignLeft className="h-5 w-5" />
-                  </Button>
+                  {/* Beside the machine's name it moves into the + menu */}
+                  {!chipShown && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label="Edit order and groups"
+                      className={tool}
+                      onClick={() => setSortOpen(true)}
+                    >
+                      <AlignLeft className="h-5 w-5" />
+                    </Button>
+                  )}
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button
                         variant="ghost"
                         size="icon"
-                        aria-label="Add project"
-                        className="size-[44px]"
+                        aria-label={
+                          chipShown ? "Add or arrange projects" : "Add project"
+                        }
+                        className={tool}
                       >
                         <Plus className="h-5 w-5" />
                       </Button>
@@ -535,6 +557,12 @@ export function ProjectList({
                         <FolderOpen className="mr-2 h-3 w-3" />
                         Open a folder
                       </DropdownMenuItem>
+                      {chipShown && (
+                        <DropdownMenuItem onClick={() => setSortOpen(true)}>
+                          <AlignLeft className="mr-2 h-3 w-3" />
+                          Edit order and groups
+                        </DropdownMenuItem>
+                      )}
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </>

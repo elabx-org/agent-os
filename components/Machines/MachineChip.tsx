@@ -28,6 +28,19 @@ export const presenceWord = (m: MachineView) =>
  * reloads the app there. On this server it shows only on the home pages
  * (`home`), and only when there is a machine to switch to.
  */
+/** Whether the chip shows: always on a machine; on this server only as the
+ * way to a linked one (`home`) */
+export function useMachineChipShown(home?: boolean): boolean {
+  const id = useTabMachineId();
+  const { data } = useMachines();
+  if (id) return true;
+  return (
+    !!home &&
+    !!data?.enabled &&
+    data.machines.some((m) => m.status === "approved")
+  );
+}
+
 export function MachineChip({
   className,
   compact,
@@ -39,13 +52,7 @@ export function MachineChip({
   /** Also shown on this server, as the way to a linked machine */
   home?: boolean;
 }) {
-  const id = useTabMachineId();
-  const { data } = useMachines();
-  if (!id) {
-    const linked =
-      !!data?.enabled && data.machines.some((m) => m.status === "approved");
-    if (!home || !linked) return null;
-  }
+  if (!useMachineChipShown(home)) return null;
   return <Chip className={className} compact={compact} />;
 }
 
