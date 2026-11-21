@@ -350,16 +350,61 @@ export async function forgetMachine(
   machineId: string,
   db: Database.Database = getDb()
 ): Promise<void> {
+  // A take-over under way may still finish: its row must then be there to
+  // turn taken (lib/backup/takeover.ts drops it if the take-over fails)
   db.prepare(
     `UPDATE machine_backups SET orphan = 1
-     WHERE machine_id = ? AND state = 'taken' AND machine_paused_at IS NULL`
+     WHERE machine_id = ? AND ((state = 'taken' AND machine_paused_at IS NULL)
+       OR state = 'taking')`
   ).run(machineId);
   db.prepare(
     `DELETE FROM machine_backups WHERE machine_id = ? AND orphan = 0`
   ).run(machineId);
+  db.prepare(`DELETE FROM backup_departures WHERE machine_id = ?`).run(
+    machineId
+  );
   if (MACHINE_ID.test(machineId)) {
     await fsp.rm(machineDir(machineId), { recursive: true, force: true });
   }
+}
+
+/** The session moved away from that machine: no copy of it from there now */
+export function departed(
+  machineId: string,
+  sessionId: string,
+  db: Database.Database = getDb()
+): boolean {
+  return !!db
+    .prepare(
+      `SELECT 1 FROM backup_departures WHERE machine_id = ? AND session_id = ?`
+    )
+    .get(machineId, sessionId);
+}
+
+/**
+ * A move finished: copies from the machine it left are refused from now on,
+ * and the machine it went to may copy it again. null is this server
+ */
+export function noteMove(
+  sessionId: string,
+  from: string | null,
+  to: string | null,
+  db: Database.Database = getDb(),
+  now: number = Date.now()
+): void {
+  db.transaction(() => {
+    if (to) {
+      db.prepare(
+        `DELETE FROM backup_departures WHERE machine_id = ? AND session_id = ?`
+      ).run(to, sessionId);
+    }
+    if (from) {
+      db.prepare(
+        `INSERT OR REPLACE INTO backup_departures (machine_id, session_id, at)
+         VALUES (?, ?, ?)`
+      ).run(from, sessionId, now);
+    }
+  })();
 }
 
 /** Copies of a session under other machines (not taken): one copy per session */

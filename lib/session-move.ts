@@ -682,8 +682,10 @@ async function prepare(inn: Arriving): Promise<void> {
     if (
       went.machine !== inn.from.machine ||
       // A copy that was continued elsewhere may have started another
-      // conversation since; it comes back to its own folder all the same
+      // conversation since; it comes back to its own folder all the same.
+      // So may a session taken over here from a copy of it on that machine
       (!went.takeover &&
+        !inn.takeover &&
         existing.claude_session_id &&
         existing.claude_session_id !== m.claudeSessionId)
     ) {

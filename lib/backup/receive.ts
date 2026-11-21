@@ -32,7 +32,7 @@ import {
   backupRows,
   conversationFile,
   deleteCopies,
-  dropOtherCopies,
+  departed,
   ensureBareRepo,
   ensureDir,
   folderBytes,
@@ -276,6 +276,8 @@ export async function beginBackup(
     throw new BackupError("taken", { taken: takenFromSession(held, row) });
   }
   if (row?.state === "taking") throw new BackupError("taking");
+  // It moved away from that machine: whatever is still copying is old
+  if (departed(machine.id, sessionId, db)) throw new BackupError("stale");
   if (row?.state === "taken") {
     const session = getSession(sessionId, db);
     if (!session) {
@@ -540,14 +542,35 @@ export function settingsNames(names: string[]): boolean {
   );
 }
 
+/** Names a symlink may not carry: through one, Claude would read settings the names above miss */
+const SETTINGS_LINK =
+  /(^|\/)(\.claude|\.mcp\.json|hooks|settings(\.local)?\.json)$/;
+
+/**
+ * The same over `ls-tree -r -z` lines ("<mode> <type> <sha>\t<path>"). A
+ * symlink named .claude (or like a settings file) counts as settings, since
+ * its target's files are never listed under that name
+ */
+export function settingsEntries(lines: string[]): boolean {
+  const names: string[] = [];
+  for (const line of lines) {
+    const tab = line.indexOf("\t");
+    if (tab < 0) continue;
+    const name = line.slice(tab + 1);
+    if (line.startsWith("120000 ") && SETTINGS_LINK.test(name)) return true;
+    names.push(name);
+  }
+  return settingsNames(names);
+}
+
 /** Whether a commit's tree holds Claude settings that run commands */
 export async function hasSettings(repo: string, commits: string[]) {
   for (const commit of commits) {
-    const names = await git(["ls-tree", "-r", "--name-only", "-z", commit], {
+    const lines = await git(["ls-tree", "-r", "-z", commit], {
       cwd: repo,
       timeoutMs: BACKUP_GIT_MS,
     });
-    if (settingsNames(names.split("\0").filter(Boolean))) return true;
+    if (settingsEntries(lines.split("\0").filter(Boolean))) return true;
   }
   return false;
 }
@@ -687,10 +710,14 @@ export async function commitBackup(
     }
   }
 
-  // 2. The row, only while no take-over has claimed it
-  const { changes } = db
-    .prepare(
-      `INSERT INTO machine_backups (machine_id, session_id, machine_name, name,
+  // 2. The row, only while no take-over has claimed it, and never for a
+  // session that has moved away from that machine since its begin (checked
+  // in the same step as the write, so a move can't slip in between)
+  const write = db.transaction(() => {
+    if (departed(machine.id, sessionId, db)) return -1;
+    return db
+      .prepare(
+        `INSERT INTO machine_backups (machine_id, session_id, machine_name, name,
          project_name, claude_session_id, manifest, repo_key, head,
          snapshot_commit, snapshot_tree, file_gen, file_bytes, has_settings,
          copied_at, last_active_at, state)
@@ -706,31 +733,33 @@ export async function commitBackup(
          copied_at = excluded.copied_at,
          last_active_at = excluded.last_active_at
        WHERE machine_backups.state = 'current'`
-    )
-    .run(
-      machine.id,
-      sessionId,
-      machine.name,
-      manifest.name,
-      manifest.projectName,
-      manifest.claudeSessionId,
-      JSON.stringify(manifest),
-      manifest.repo ? key : null,
-      manifest.repo?.head ?? null,
-      manifest.snapshot?.commit ?? null,
-      snapshotTree,
-      gen,
-      total,
-      settings ? 1 : 0,
-      now,
-      manifest.lastActiveAt || null
-    );
+      )
+      .run(
+        machine.id,
+        sessionId,
+        machine.name,
+        manifest.name,
+        manifest.projectName,
+        manifest.claudeSessionId,
+        JSON.stringify(manifest),
+        manifest.repo ? key : null,
+        manifest.repo?.head ?? null,
+        manifest.snapshot?.commit ?? null,
+        snapshotTree,
+        gen,
+        total,
+        settings ? 1 : 0,
+        now,
+        manifest.lastActiveAt || null
+      ).changes;
+  });
+  const changes = write();
   if (changes !== 1) {
     // A take-over claimed it meanwhile: what it reads is untouched
     if (over && (!row || gen !== row.file_gen)) {
       await fsp.rm(live, { force: true });
     }
-    throw new BackupError("taking");
+    throw new BackupError(changes === -1 ? "stale" : "taking");
   }
 
   // 3. The refs, then what is no longer needed
@@ -770,8 +799,8 @@ export async function commitBackup(
       })
       .catch(() => {});
   }
-  // One copy per session: it lives on this machine now
-  await dropOtherCopies(sessionId, machine.id, db);
+  // Other machines' copies of this id stay: only a finished move
+  // (lib/link/move.ts) says which one is out of date
   return { copiedAt: now };
 }
 

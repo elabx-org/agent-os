@@ -105,6 +105,29 @@ export function movedAnswer(session: Session): NextResponse | null {
 }
 
 /** The sessions here that a session on `machineId` started and that still run */
+const g = globalThis as unknown as {
+  __agentosStartLocks?: Map<string, Promise<void>>;
+};
+
+/**
+ * Starts from one machine run one at a time, from the running count to
+ * the launch, so starts sent at once can't all pass the cap. Resolves to
+ * the release
+ */
+export async function startLock(machineId: string): Promise<() => void> {
+  const locks = (g.__agentosStartLocks ??= new Map());
+  const before = locks.get(machineId) ?? Promise.resolve();
+  let release!: () => void;
+  const mine = new Promise<void>((done) => (release = done));
+  const tail = before.then(() => mine);
+  locks.set(machineId, tail);
+  await before;
+  return () => {
+    release();
+    if (locks.get(machineId) === tail) locks.delete(machineId);
+  };
+}
+
 export async function runningFrom(
   machineId: string,
   sessions: Session[],

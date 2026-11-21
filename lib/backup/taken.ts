@@ -13,7 +13,7 @@ import { recordNotification, setDelivered } from "../push/history";
 import { sendPush } from "../push/send";
 import { serverNameOr } from "../server-name";
 import { parseMovedFrom, parseMovedTo } from "../session-move-types";
-import { takenRows, type BackupRow } from "./store";
+import { takenRows, takenSessionOf, type BackupRow } from "./store";
 
 /** "taken" for a session the hub itself has, built from its own row */
 export function takenFromSession(
@@ -72,13 +72,27 @@ function wentBack(
   );
 }
 
+/**
+ * An orphan goes to every machine, so only while the session it made still
+ * runs here: once it has moved on, the machine it went to must not be paused
+ */
+function stillHere(row: BackupRow, db: Database.Database): boolean {
+  const session = takenSessionOf(row.session_id, row.take_id ?? "", db);
+  return !!session && !session.settled_at;
+}
+
 /** HubDeps.takenFor: everything this machine must pause */
 export function takenFor(
   machine: Pick<MachineRow, "id">,
   db: Database.Database = getDb()
 ): TakenSession[] {
   return takenRows(machine.id, db)
-    .filter((row) => row.take_id && !wentBack(row, machine.id, db))
+    .filter(
+      (row) =>
+        row.take_id &&
+        !wentBack(row, machine.id, db) &&
+        (row.orphan !== 1 || stillHere(row, db))
+    )
     .map(takenFromRow);
 }
 

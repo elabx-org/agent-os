@@ -162,6 +162,18 @@ function treeBytes(repo: string, commit: string): Promise<number> {
   );
 }
 
+/** Its machine was removed while it was being taken over: nothing to keep */
+function dropOrphanCopy(
+  db: Database.Database,
+  machineId: string,
+  sessionId: string
+): void {
+  db.prepare(
+    `DELETE FROM machine_backups WHERE machine_id = ? AND session_id = ?
+       AND orphan = 1 AND state = 'current'`
+  ).run(machineId, sessionId);
+}
+
 const pinRefs = (row: BackupRow, takeId: string) => ({
   head: `refs/agent-os/${row.session_id}/out-${takeId}`,
   snap: `refs/agent-os/${row.session_id}/snap-${takeId}`,
@@ -385,6 +397,7 @@ async function runTake(run: Running, row: BackupRow, deps: TakeDeps) {
       `UPDATE machine_backups SET state = 'current', take_id = NULL
        WHERE machine_id = ? AND session_id = ? AND take_id = ? AND state = 'taking'`
     ).run(row.machine_id, row.session_id, takeId);
+    dropOrphanCopy(db, row.machine_id, row.session_id);
     if (pinned) await deps.unpin(row, takeId).catch(() => {});
     job.step = "failed";
     job.error = run.cameBack
@@ -496,6 +509,7 @@ export function recoverTakes(db: Database.Database = getDb()): number {
         `UPDATE machine_backups SET state = 'current', take_id = NULL
          WHERE machine_id = ? AND session_id = ? AND state = 'taking'`
       ).run(row.machine_id, row.session_id);
+      dropOrphanCopy(db, row.machine_id, row.session_id);
     }
   }
   return rows.length;

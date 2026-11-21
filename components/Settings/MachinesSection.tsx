@@ -469,7 +469,7 @@ function AgentsRow({
         </span>
         <span className="text-muted-foreground block text-[13px]">
           {allowed
-            ? `Agents here can start sessions on ${name} and give them work.`
+            ? `Agents here, and on your other machines you've let use this server, can start sessions on ${name} and give them work.`
             : `Off: only you can reach ${name}, from the app.`}
         </span>
       </label>

@@ -134,11 +134,23 @@ function keepsWork(session: Session): boolean {
  */
 function dropSessionData(session: Session) {
   try {
-    getDb()
-      .prepare(
-        `DELETE FROM machine_backups WHERE session_id = ? AND state = 'taken'`
-      )
-      .run(session.id);
+    // A copy left behind by a move lives on elsewhere: the machine it was
+    // taken from must stay paused, unless it is the one it went back to
+    const went = session.settled_at ? parseMovedTo(session.moved_to) : null;
+    if (!went) {
+      getDb()
+        .prepare(
+          `DELETE FROM machine_backups WHERE session_id = ? AND state = 'taken'`
+        )
+        .run(session.id);
+    } else if (went.machine !== "hub") {
+      getDb()
+        .prepare(
+          `DELETE FROM machine_backups
+           WHERE session_id = ? AND state = 'taken' AND machine_id = ?`
+        )
+        .run(session.id, went.machine);
+    }
   } catch (error) {
     console.error(`Failed to drop the copy of ${session.id}:`, error);
   }

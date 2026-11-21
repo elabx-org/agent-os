@@ -658,8 +658,16 @@ export class LinkClient {
     local.on("open", () => send({ t: "ws-open", id }));
     local.on("message", (data, isBinary) => {
       if (ws.readyState !== WebSocket.OPEN) return;
-      if (isBinary) ws.send(encodeBinary(id, BIN_WS, bytes(data)));
-      else send({ t: "ws-msg", id, data: text(data) });
+      const out = isBinary
+        ? encodeBinary(id, BIN_WS, bytes(data))
+        : JSON.stringify({ t: "ws-msg", id, data: text(data) });
+      // Past the link's frame limit the hub would drop the whole link:
+      // only this socket closes instead
+      if (Buffer.byteLength(out) > LINK_MAX_FRAME) {
+        local.close(1009, "message too big");
+        return;
+      }
+      ws.send(out);
     });
     local.on("close", (code) => {
       if (this.sockets.delete(id)) send({ t: "ws-close", id, code });

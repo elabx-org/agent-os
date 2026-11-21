@@ -126,6 +126,24 @@ test("a handed-off row is paused the same way", async () => {
   assert.equal(seen.settled, 1);
 });
 
+test("ahead: the conversation the live pane was on counts, not the row's", async () => {
+  fs.writeFileSync(CONVO, "x".repeat(10));
+  let alive = true;
+  const { deps } = fakes({
+    isRunning: async () => alive,
+    kill: async () => {
+      alive = false;
+    },
+    // Only the pane knows the new id; once it's gone the row's old one is left
+    conversation: async () => ({
+      sessionId: alive ? "1b5e3a3c-1d2e-4f50-9a6b-7c8d9e0f1a2b" : CLAUDE,
+      file: CONVO,
+    }),
+  });
+  const [r] = await machine.pauseTaken([taken()], deps);
+  assert.equal(r.ahead!.conversation, true);
+});
+
 test("ahead: nothing more, more conversation, a different Claude id, more code", async () => {
   let r = await machine.pauseTaken([taken()], fakes().deps);
   assert.deepEqual(r[0].ahead, { conversation: false, code: false });

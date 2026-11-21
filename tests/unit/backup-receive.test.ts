@@ -69,6 +69,7 @@ function machine(id: string): MachineRow {
 beforeEach(() => {
   const d = db.getDb();
   d.exec("DELETE FROM machine_backups");
+  d.exec("DELETE FROM backup_departures");
   d.exec("DELETE FROM sessions");
   fs.rmSync(path.join(tmp, "home"), { recursive: true, force: true });
   fs.rmSync(REPO, { recursive: true, force: true });
@@ -476,12 +477,70 @@ test("a bundle with a bad object is refused", async () => {
   );
 });
 
-test("a commit for (B, S) removes the copy (A, S)", async () => {
+test("a commit for (B, S) leaves the copy (A, S): only a move drops it", async () => {
   await copyOnce(machine(A), Buffer.from('{"a":1}\n'));
+  // Another machine naming the same id can't delete A's copy
+  await copyOnce(machine(B), Buffer.from('{"x":1}\n'));
   assert.ok(store.backupRow(A, SID));
-  await copyOnce(machine(B), Buffer.from('{"a":1}\n'));
+  assert.ok(store.backupRow(B, SID));
+  // The move A -> B drops it
+  store.noteMove(SID, A, B);
+  await store.dropOtherCopies(SID, B);
   assert.equal(store.backupRow(A, SID), null);
   assert.ok(store.backupRow(B, SID));
+});
+
+test("a copy still on its way when its session moved away never lands", async () => {
+  const m = machine(A);
+  const { head, first, snapshot } = await code();
+  const convo = Buffer.from('{"a":1}\n');
+  const plan = await recv.beginBackup(m, SID, {
+    v: 1,
+    claudeSessionId: CLAUDE,
+    repo: { name: "work", remote: null, first },
+    transcriptBytes: convo.length,
+  });
+  const bundle = path.join(tmp, `b-${plan.backupId}.bundle`);
+  const made = await move.packBundle(
+    REPO,
+    [`refs/agent-os/${SID}/backup-head`, `refs/agent-os/${SID}/backup`],
+    plan.have,
+    bundle
+  );
+  if (made) await recv.receiveBundle(m, SID, plan.backupId, webFile(made));
+  await recv.receiveFile(
+    m,
+    SID,
+    { backup: plan.backupId, offset: "0", reset: "0" },
+    web(convo)
+  );
+  // The session moves A -> B while this copy is under way
+  store.noteMove(SID, A, B);
+  await store.dropOtherCopies(SID, B);
+  await code409(
+    () =>
+      recv.commitBackup(m, SID, {
+        backupId: plan.backupId,
+        manifest: manifest(SID, head, snapshot, convo.length),
+      }),
+    "stale"
+  );
+  assert.equal(store.backupRow(A, SID), null);
+  // Nor can A start another one
+  await code409(
+    () =>
+      recv.beginBackup(m, SID, {
+        v: 1,
+        claudeSessionId: CLAUDE,
+        repo: { name: "work", remote: null, first },
+        transcriptBytes: convo.length,
+      }),
+    "stale"
+  );
+  // Once it moves back to A, A copies it again
+  store.noteMove(SID, B, A);
+  await copyOnce(m, convo);
+  assert.equal(store.backupRow(A, SID)!.state, "current");
 });
 
 test("sessions sync drops only current copies it no longer lists", async () => {
@@ -506,6 +565,32 @@ test("has_settings: a hook file in the copied tree is noticed", async () => {
   assert.equal(store.backupRow(A, SID)!.has_settings, 1);
   assert.equal(recv.settingsNames([".claude/settings.local.json"]), true);
   assert.equal(recv.settingsNames(["src/settings.json"]), false);
+});
+
+test("has_settings: a .claude symlink to another folder in the tree is noticed", async () => {
+  const repo = path.join(tmp, "linked-settings");
+  fs.mkdirSync(path.join(repo, "cfg"), { recursive: true });
+  const g = (args: string[]) => sh(args, repo);
+  g(["init", "-q", "-b", "main"]);
+  fs.writeFileSync(
+    path.join(repo, "cfg", "settings.json"),
+    '{"hooks":{"SessionStart":[]}}'
+  );
+  fs.symlinkSync("cfg", path.join(repo, ".claude"));
+  g(["add", "-A"]);
+  g(["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "link"]);
+  const head = g(["rev-parse", "HEAD"]);
+  assert.equal(await recv.hasSettings(repo, [head]), true);
+  // Its plain names alone would have missed it
+  assert.equal(recv.settingsNames([".claude", "cfg/settings.json"]), false);
+  assert.equal(
+    recv.settingsEntries([`100644 blob ${"0".repeat(40)}\tsrc/hooks.ts`]),
+    false
+  );
+  assert.equal(
+    recv.settingsEntries([`120000 blob ${"0".repeat(40)}\tsub/.mcp.json`]),
+    true
+  );
 });
 
 test("taken at commit: the session arrived here after its begin", async () => {

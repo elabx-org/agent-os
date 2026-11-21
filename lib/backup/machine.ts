@@ -143,6 +143,11 @@ export function eligible(session: Session): boolean {
   );
 }
 
+/** Read again: a move or a pause may have started while a copy was made */
+function stillEligible(session: Session): boolean {
+  return eligible(getSession(session.id) ?? session);
+}
+
 /** Copies are on: the user's switch, and the hub's "taken" list is in */
 export const backupOn = () => hubUp().backup && takenReceived();
 
@@ -314,7 +319,8 @@ export async function backupOne(
     return "dropped";
   }
 
-  // 5. Begin
+  // 5. Begin, unless it started leaving meanwhile (a move out of here)
+  if (!stillEligible(session)) return "dropped";
   const begin: BackupBegin = {
     v: 1,
     claudeSessionId,
@@ -402,7 +408,8 @@ export async function backupOne(
     if (sent.status !== 200) return "failed";
   }
 
-  // 8. Commit
+  // 8. Commit; a copy of a session that has left would outlive the move
+  if (!stillEligible(session)) return "dropped";
   const fresh = getSession(id) ?? session;
   const project = fresh.project_id
     ? (queries.getProject(getDb()).get(fresh.project_id) as Project | undefined)
@@ -702,6 +709,13 @@ async function pauseOne(
   if (!session || (went && went.machine !== "hub")) {
     return { ...base, state: "gone" };
   }
+  // Which conversation it is on, asked of the live pane while there is one
+  // (a /clear offline starts a new one the row doesn't know); briefly, so
+  // the stop below isn't held up
+  const live = await Promise.race([
+    deps.conversation(session).catch(() => null),
+    sleep(3000).then(() => null),
+  ]);
   // 3. Stopped, whatever the row says, and seen to be stopped
   if (!(await stopped(session, deps))) return { ...base, state: "failed" };
   const folder = sessionCwd(session).slice(0, 300);
@@ -717,7 +731,8 @@ async function pauseOne(
   // 5. Settled as moved
   await deps.settle(session);
   // 6. More here than in the copy?
-  const conversation = await deps.conversation(session).catch(() => null);
+  const conversation =
+    live ?? (await deps.conversation(session).catch(() => null));
   const size = conversation?.file
     ? ((await fsp.stat(conversation.file).catch(() => null))?.size ?? 0)
     : 0;

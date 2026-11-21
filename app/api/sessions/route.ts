@@ -28,6 +28,7 @@ import {
   fromMachineRefusal,
   MAX_RUNNING_FROM_MACHINE,
   runningFrom,
+  startLock,
 } from "@/lib/from-machine-rules";
 import { chainOf, MAX_CHAIN, type StartedBy } from "@/lib/session-started-by";
 import { isMachineMode, hubUp } from "@/lib/link/machine";
@@ -108,9 +109,11 @@ function forMachine(body: Record<string, unknown>): Record<string, unknown> {
 
 // POST /api/sessions - Create new session
 export async function POST(request: NextRequest) {
+  const from = fromMachine(request);
+  // One start from a machine at a time, so the running cap holds
+  const release = from ? await startLock(from) : null;
   try {
     const db = getDb();
-    const from = fromMachine(request);
     let body = await request.json();
     let startedBy: StartedBy | null = null;
     if (from) {
@@ -464,5 +467,7 @@ export async function POST(request: NextRequest) {
       { error: "Failed to create session" },
       { status: 500 }
     );
+  } finally {
+    release?.();
   }
 }

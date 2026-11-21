@@ -495,6 +495,68 @@ test("up: a 32 MiB copy arrives byte for byte", async () => {
   await r.close();
 });
 
+test("up: a streamed body can't run past its content-length into a second request", async () => {
+  const rule: UpRule = {
+    kind: "system",
+    method: "POST",
+    path: /^\/api\/link\/inbox\/ping$/,
+    relay: false,
+    maxBody: 4096,
+    headMs: 5000,
+  };
+  const r = await rig({
+    deps: { upRules: () => [rule] },
+    hubApi: (req, res) => {
+      req.resume();
+      req.on("end", () => {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ path: req.url }));
+      });
+    },
+  });
+  const c = await r.linked();
+  allow(r, { backup: 1 });
+  const smuggled =
+    "POST /api/sessions HTTP/1.1\r\nHost: 127.0.0.1\r\n" +
+    "Content-Type: application/json\r\nContent-Length: 2\r\n\r\n{}";
+  const over = await c
+    .up("system", {
+      method: "POST",
+      path: "/api/link/inbox/ping",
+      headers: { "content-length": "0" },
+      body: Readable.from([Buffer.from(smuggled)]),
+    })
+    .then(
+      (a) => a.status,
+      () => "failed"
+    );
+  assert.notEqual(over, 200);
+  // Short of what it declared: refused too, never sent on half-made
+  const short = await c.up("system", {
+    method: "POST",
+    path: "/api/link/inbox/ping",
+    headers: { "content-length": "100" },
+    body: Buffer.from("{}"),
+  });
+  assert.equal(short.status, 400);
+  assert.equal(json(short.body).code, "bad_request");
+  // The right length still goes through
+  const ok = await c.up("system", {
+    method: "POST",
+    path: "/api/link/inbox/ping",
+    headers: { "content-length": "2" },
+    body: Buffer.from("{}"),
+  });
+  assert.equal(ok.status, 200);
+  await wait(200);
+  assert.ok(
+    r.apiSeen.every((req) => req.url === "/api/link/inbox/ping"),
+    `only the asked path reached the server: ${r.apiSeen.map((q) => q.url)}`
+  );
+  c.stop();
+  await r.close();
+});
+
 test("up: the 9th request at once and the rate are refused with 429", async () => {
   const held: http.ServerResponse[] = [];
   const rule: UpRule = {
@@ -749,6 +811,8 @@ test("up: an older machine gets no up-allowed, and its raw up frames are ignored
   assert.equal(welcome.up, undefined);
   allow(r, { uses_hub: 1 });
   r.hub.tellUp(MACHINE_ID);
+  // Nor "taken": it never named take1, so it wouldn't honour it
+  r.hub.tellTaken(MACHINE_ID);
   ws.send(
     JSON.stringify({
       t: "up",
@@ -765,6 +829,10 @@ test("up: an older machine gets no up-allowed, and its raw up frames are ignored
   assert.equal(ws.readyState, WebSocket.OPEN);
   assert.equal(
     frames.some((f) => f.t.startsWith("up")),
+    false
+  );
+  assert.equal(
+    frames.some((f) => f.t === "taken"),
     false
   );
   assert.equal(r.apiSeen.length, 0);

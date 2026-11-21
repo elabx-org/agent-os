@@ -178,6 +178,16 @@ const QUEUE_MAX = 256;
 /** An answer with an audit label keeps this much of itself for deps.onUp */
 const KEEP_MAX = 256 * 1024;
 
+/** Loopback calls made for a machine never reuse a connection */
+const LOOPBACK_AGENT = new http.Agent({ keepAlive: false });
+
+/** The content-length a streamed (system) body declared, if any */
+function declaredLength(up: UpPending): number | null {
+  if (up.kind !== "system") return null;
+  const raw = up.decision?.headers["content-length"];
+  return raw === undefined ? null : Number(raw);
+}
+
 /** At most 16 short names; anything else is dropped */
 function capsOf(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
@@ -864,6 +874,16 @@ export class LinkHub {
         code: refusal.code,
       });
     }
+    // A streamed body may never run past the length it declared: the extra
+    // bytes would reach this server as a second request of the machine's making
+    const declared = declaredLength(up);
+    if (declared !== null && up.bytes > declared) {
+      const refusal = upRefusal("bad_request");
+      return this.failUp(tunnel, id, refusal.status, {
+        error: refusal.error,
+        code: refusal.code,
+      });
+    }
     if (up.kind === "agent") {
       up.chunks.push(chunk);
       return;
@@ -892,6 +912,14 @@ export class LinkHub {
       );
     }
     if (up.kind === "system") {
+      const declared = declaredLength(up);
+      if (declared !== null && up.bytes !== declared) {
+        const refusal = upRefusal("bad_request");
+        return this.failUp(tunnel, id, refusal.status, {
+          error: refusal.error,
+          code: refusal.code,
+        });
+      }
       up.req?.end();
       return;
     }
@@ -960,6 +988,9 @@ export class LinkHub {
         method: rule.method,
         path: decision.path,
         headers,
+        // One socket per call: nothing a machine sends can share a
+        // connection with another request
+        agent: LOOPBACK_AGENT,
       },
       (response) => {
         if (tunnel.ups.get(id) !== up) return void response.resume();
@@ -1031,6 +1062,10 @@ export class LinkHub {
         code: "hub_unreachable",
       })
     );
+    // Node refuses to write past (or end short of) a declared content-length
+    (
+      req as http.ClientRequest & { strictContentLength: boolean }
+    ).strictContentLength = true;
     up.req = req;
     if (up.kind === "agent") req.end(body ?? undefined);
   }
@@ -1066,8 +1101,16 @@ export class LinkHub {
     binary: boolean
   ): void {
     if (tunnel.ws.readyState !== WebSocket.OPEN) return;
-    if (binary) tunnel.ws.send(encodeBinary(id, BIN_WS, bytes(data)));
-    else tunnel.ws.send(JSON.stringify({ t: "ws-msg", id, data: text(data) }));
+    const out = binary
+      ? encodeBinary(id, BIN_WS, bytes(data))
+      : JSON.stringify({ t: "ws-msg", id, data: text(data) });
+    // Past the link's frame limit the machine would drop the whole link:
+    // only this socket closes instead
+    if (Buffer.byteLength(out) > LINK_MAX_FRAME) {
+      tunnel.relays.get(id)?.browser.close(1009, "message too big");
+      return;
+    }
+    tunnel.ws.send(out);
   }
 
   // --- The user's requests go down the link ---

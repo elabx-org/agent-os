@@ -729,6 +729,22 @@ const migrations: Migration[] = [
       `);
     }),
   },
+  {
+    id: 43,
+    name: "add_backup_departures",
+    up: atomic((db) => {
+      // A session that moved away from a machine (lib/link/move.ts): a copy
+      // from that machine still on its way must not land after the move
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS backup_departures (
+          machine_id TEXT NOT NULL,
+          session_id TEXT NOT NULL,
+          at INTEGER NOT NULL,
+          PRIMARY KEY (machine_id, session_id)
+        );
+      `);
+    }),
+  },
 ];
 
 export function runMigrations(db: Database.Database): void {

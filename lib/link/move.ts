@@ -23,7 +23,7 @@ import type { MovePlan } from "../repos-dir";
 import { HUB_MARKER, MACHINE_HEADER, linkHub, ownSha } from "./server";
 import { serverNameOr } from "../server-name";
 import { machineById, serverName } from "./store";
-import { dropOtherCopies } from "../backup/store";
+import { dropOtherCopies, noteMove } from "../backup/store";
 
 const POLL_MS = 1000;
 /** A first clone of a large repository can take a while */
@@ -358,6 +358,16 @@ async function run(job: MoveJob, headers: Record<string, string>) {
   }
   // Copies of it kept here from where it was are out of date now, and a
   // take-over of one would make two (lib/backup)
+  try {
+    // First, so a copy from where it was that is still on its way can't land
+    noteMove(
+      id,
+      from === HUB_MARKER ? null : from,
+      to === HUB_MARKER ? null : to
+    );
+  } catch (error) {
+    console.error("[move] noting where it went:", error);
+  }
   await dropOtherCopies(id, to === HUB_MARKER ? null : to).catch((error) =>
     console.error("[move] dropping its copies:", error)
   );
