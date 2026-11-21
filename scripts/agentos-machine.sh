@@ -312,7 +312,7 @@ app_at_login() {
   is_mac || return 0
   [ -f "$AGENT_OS_HOME/app-at-login" ] || return 0
   local boot app
-  boot=$(sysctl -n kern.boottime 2>/dev/null | sed -n 's/.*sec = \([0-9]*\).*/\1/p')
+  boot=$(sysctl -n kern.boottime 2>/dev/null | sed -n 's/^{ sec = \([0-9]*\).*/\1/p')
   [ -n "$boot" ] || return 0
   [ "$(cat "$AGENT_OS_HOME/.app-launched-boot" 2>/dev/null)" = "$boot" ] && return 0
   app=$(app_path) || return 0
