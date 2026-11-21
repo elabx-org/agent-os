@@ -38,7 +38,11 @@ export async function PATCH(request: Request, { params }: Context) {
     name?: unknown;
     agents?: unknown;
   };
-  if (typeof body.name === "string") renameMachine(id, body.name);
+  if (typeof body.name === "string") {
+    renameMachine(id, body.name);
+    // It shows its own name as the server knows it
+    linkHub().tellUp(id);
+  }
   if (typeof body.agents === "boolean") {
     setMachineAgents(id, body.agents);
     linkHub().tellAgents(id);

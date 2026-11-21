@@ -14,6 +14,8 @@ import { LinkHub } from "./hub";
 import { receiveNotice } from "./notices";
 import { LINK_PATH } from "./protocol";
 import * as store from "./store";
+import { BASE_UP_RULES } from "./up";
+import { linkProof } from "./up-guard";
 
 // server.ts and the Next route bundles are separate module graphs in one
 // process: the hub (with its live connections) lives on globalThis
@@ -46,6 +48,12 @@ export function linkHub(): LinkHub {
     ...store,
     sha: ownSha,
     onNotice: receiveNotice,
+    // The same port lib/link/move.ts asks on
+    localPort: () => Number(process.env.PORT || "3011"),
+    linkProof,
+    upRules: () => BASE_UP_RULES,
+    serverName: store.serverName,
+    setMachineCaps: store.setMachineCaps,
   });
   return shared.__agentosLinkHub;
 }
@@ -78,6 +86,8 @@ const HUB_ONLY = [
   "/api/push",
   "/api/notifications",
   "/api/build",
+  // A machine's own way up to its hub: never asked of a machine from here
+  "/api/hub",
 ];
 
 const first = (value: string | string[] | undefined) =>

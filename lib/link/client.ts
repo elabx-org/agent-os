@@ -6,11 +6,16 @@
  */
 
 import http from "http";
+import { Readable } from "stream";
 import { WebSocket, type RawData } from "ws";
+import { CreditSender } from "./flow";
 import { signProof, type MachineKey } from "./keys";
 import {
   BIN_BODY,
+  BIN_UP,
   BIN_WS,
+  CAP_UP,
+  LINK_MAX_FRAME,
   LINK_PATH,
   LINK_VERSION,
   decodeBinary,
@@ -21,8 +26,55 @@ import {
   type HubFrame,
   type LinkNotice,
   type MachineFrame,
+  type UpAllowed,
+  type UpKind,
 } from "./protocol";
 
+/** One request this machine asks of the hub (lib/link/up.ts) */
+export interface UpInit {
+  method: string;
+  /** The hub's path, with its query */
+  path: string;
+  headers?: Record<string, string>;
+  body?: Readable | Buffer | null;
+  signal?: AbortSignal;
+}
+
+export interface UpAnswer {
+  status: number;
+  headers: Headers;
+  body: Buffer;
+}
+
+/** Why the hub couldn't be asked at all; the texts are in lib/link/up.ts */
+export class UpUnavailable extends Error {
+  constructor(
+    public code: "not_linked" | "hub_too_old" | "link_dropped" | "timeout"
+  ) {
+    super(code);
+    this.name = "UpUnavailable";
+  }
+}
+
+interface UpCall {
+  resolve(answer: UpAnswer): void;
+  reject(error: Error): void;
+  status: number | null;
+  headers: Headers;
+  chunks: Buffer[];
+  sender: CreditSender | null;
+  timer: NodeJS.Timeout;
+  unlisten: () => void;
+}
+
+/**
+ * How long this side waits for a whole answer, whatever the hub's rule:
+ * a copy may take the hub's 45 minutes, a session's call its 2
+ */
+const UP_WAIT_MS: Record<UpKind, number> = {
+  system: 46 * 60_000,
+  agent: 135_000,
+};
 export type LinkState =
   | { status: "connecting" }
   /** Key accepted; the user hasn't approved this machine yet */
@@ -49,6 +101,10 @@ export interface LinkClientOptions {
   /** This machine's own proof-of-user cookie, added when the hub vouches */
   userCookie: () => string;
   onState?: (state: LinkState) => void;
+  /** What the hub lets this machine ask, when it says; null once the link drops */
+  onUpAllowed?: (up: UpAllowed | null) => void;
+  /** Tests: how long to wait for an answer to an upward request */
+  upWaitMs?: Partial<Record<UpKind, number>>;
 }
 
 const RETRY_MS = [1000, 2000, 5000, 10_000, 30_000];
@@ -70,14 +126,30 @@ const closeCode = (code: number | undefined) =>
     ? code
     : 1000;
 
-/** Only this server's API and sockets; never an absolute or odd URL */
+/**
+ * Only this server's API and sockets; never an absolute or odd URL, and
+ * never this machine's own way up to the hub (/api/hub)
+ */
 export function isForwardablePath(path: unknown): path is string {
   return (
     typeof path === "string" &&
     /^\/(api|ws)\/[^\s]*$/.test(path) &&
+    !/^\/api\/hub(?:[/?#%]|$)/i.test(path) &&
     !path.includes("//") &&
     !path.includes("\\")
   );
+}
+
+/** The hub's word on what this machine may ask, checked field by field */
+function upAllowedOf(value: unknown): UpAllowed | null {
+  if (!value || typeof value !== "object") return null;
+  const v = value as Record<string, unknown>;
+  return {
+    agents: v.agents === true,
+    backup: v.backup === true,
+    name: typeof v.name === "string" ? v.name.slice(0, 80) : "",
+    hubName: typeof v.hubName === "string" ? v.hubName.slice(0, 80) : null,
+  };
 }
 
 export class LinkClient {
@@ -92,6 +164,12 @@ export class LinkClient {
   state: LinkState = { status: "connecting" };
   /** Whether the hub's sessions may use this machine; null when unknown */
   agents: boolean | null = null;
+  /** What the hub said it can do in its welcome; empty on an older hub */
+  hubCaps = new Set<string>();
+  /** What the hub lets this machine ask; null when unknown */
+  upAllowed: UpAllowed | null = null;
+  private ups = new Map<number, UpCall>();
+  private upNext = 1;
 
   constructor(private options: LinkClientOptions) {
     this.hub = new URL(options.hubUrl);
@@ -124,6 +202,131 @@ export class LinkClient {
     if (this.ws?.readyState !== WebSocket.OPEN) return false;
     this.ws.send(JSON.stringify({ t: "agents", allowed } as MachineFrame));
     return true;
+  }
+
+  /**
+   * Asks the hub. Rejects with UpUnavailable when there is no link, the
+   * hub is too old to be asked, the link drops, or it takes too long.
+   */
+  up(kind: UpKind, init: UpInit): Promise<UpAnswer> {
+    const ws = this.ws;
+    if (
+      this.state.status !== "linked" ||
+      !ws ||
+      ws.readyState !== WebSocket.OPEN
+    ) {
+      return Promise.reject(new UpUnavailable("not_linked"));
+    }
+    // An older hub would ignore the frame: never send it
+    if (!this.hubCaps.has(CAP_UP)) {
+      return Promise.reject(new UpUnavailable("hub_too_old"));
+    }
+    if (init.signal?.aborted) {
+      return Promise.reject(new Error("aborted"));
+    }
+    const id = this.upNext++;
+    const send = (frame: MachineFrame) => {
+      if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(frame));
+    };
+    return new Promise<UpAnswer>((resolve, reject) => {
+      const finish = () => {
+        const call = this.ups.get(id);
+        if (!call) return null;
+        this.ups.delete(id);
+        clearTimeout(call.timer);
+        call.unlisten();
+        call.sender?.abort();
+        return call;
+      };
+      const onAbort = () => {
+        if (!finish()) return;
+        send({ t: "up-abort", id });
+        reject(new Error("aborted"));
+      };
+      init.signal?.addEventListener("abort", onAbort, { once: true });
+      const wait = this.options.upWaitMs?.[kind] ?? UP_WAIT_MS[kind];
+      const call: UpCall = {
+        resolve: (answer) => {
+          if (finish()) resolve(answer);
+        },
+        reject: (error) => {
+          if (finish()) reject(error);
+        },
+        status: null,
+        headers: {},
+        chunks: [],
+        sender: null,
+        timer: setTimeout(() => {
+          if (!finish()) return;
+          send({ t: "up-abort", id });
+          reject(new UpUnavailable("timeout"));
+        }, wait),
+        unlisten: () => init.signal?.removeEventListener("abort", onAbort),
+      };
+      this.ups.set(id, call);
+      send({
+        t: "up",
+        id,
+        kind,
+        method: init.method,
+        path: init.path,
+        headers: init.headers ?? {},
+      });
+      const body = init.body;
+      if (!body) return send({ t: "up-end", id });
+      const sender = new CreditSender({
+        send: (chunk) => {
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(encodeBinary(id, BIN_UP, chunk));
+          }
+        },
+        buffered: () => ws.bufferedAmount,
+      });
+      call.sender = sender;
+      const source = Buffer.isBuffer(body) ? Readable.from([body]) : body;
+      sender.pipe(source).then(
+        () => {
+          if (this.ups.has(id)) send({ t: "up-end", id });
+        },
+        () => {
+          // Aborted, or the answer came first: nothing more to send
+          if (!Buffer.isBuffer(body)) body.destroy();
+        }
+      );
+    });
+  }
+
+  private fromHubUp(frame: HubFrame): void {
+    switch (frame.t) {
+      case "up-res": {
+        const call = this.ups.get(frame.id);
+        if (!call || call.status !== null) return;
+        call.status = Number.isInteger(frame.status) ? frame.status : 502;
+        call.headers = frame.headers ?? {};
+        return;
+      }
+      case "up-res-end": {
+        const call = this.ups.get(frame.id);
+        if (!call) return;
+        call.resolve({
+          status: call.status ?? 502,
+          headers: call.headers,
+          body: Buffer.concat(call.chunks),
+        });
+        return;
+      }
+      case "up-res-error":
+        this.ups.get(frame.id)?.reject(new UpUnavailable("link_dropped"));
+        return;
+      case "up-credit":
+        this.ups.get(frame.id)?.sender?.credit(frame.bytes);
+        return;
+    }
+  }
+
+  private setUpAllowed(up: UpAllowed | null): void {
+    this.upAllowed = up;
+    this.options.onUpAllowed?.(up);
   }
 
   private setState(state: LinkState): void {
@@ -166,7 +369,11 @@ export class LinkClient {
     }
     const url = new URL(LINK_PATH, this.hub);
     url.protocol = this.hub.protocol === "https:" ? "wss:" : "ws:";
-    const ws = new WebSocket(url, { headers, followRedirects: false });
+    const ws = new WebSocket(url, {
+      headers,
+      followRedirects: false,
+      maxPayload: LINK_MAX_FRAME,
+    });
     this.ws = ws;
     let refused: string | null = null;
 
@@ -185,6 +392,7 @@ export class LinkClient {
         sha: this.options.sha,
         hubHost: this.hub.host,
         code: this.options.code,
+        caps: [CAP_UP],
       });
     });
 
@@ -212,12 +420,28 @@ export class LinkClient {
         case "agents":
           this.agents = frame.allowed === true;
           return;
+        case "up-allowed":
+          return this.setUpAllowed(upAllowedOf(frame));
+        case "up-res":
+        case "up-res-end":
+        case "up-res-error":
+        case "up-credit":
+          return this.fromHubUp(frame);
         case "welcome":
           this.attempt = 0;
           this.agents =
             frame.status === "approved" && typeof frame.agents === "boolean"
               ? frame.agents
               : null;
+          this.hubCaps = new Set(
+            frame.status === "approved" && Array.isArray(frame.caps)
+              ? frame.caps.filter((c) => typeof c === "string")
+              : []
+          );
+          this.upNext = 1;
+          this.setUpAllowed(
+            frame.status === "approved" ? upAllowedOf(frame.up) : null
+          );
           return this.setState(
             frame.status === "approved"
               ? {
@@ -258,7 +482,9 @@ export class LinkClient {
       if (this.quiet) clearTimeout(this.quiet);
       if (this.ws === ws) this.ws = null;
       this.agents = null;
+      this.hubCaps = new Set();
       this.dropAll();
+      if (this.upAllowed) this.setUpAllowed(null);
       if (this.stopped) return;
       if (code === 4403) {
         // Removed on the hub: stop for good until it's added again
@@ -284,6 +510,9 @@ export class LinkClient {
     this.requests.clear();
     for (const socket of this.sockets.values()) socket.terminate();
     this.sockets.clear();
+    for (const call of [...this.ups.values()]) {
+      call.reject(new UpUnavailable("link_dropped"));
+    }
   }
 
   /** What this machine's server sees: a same-site call on the hub's host */
@@ -365,7 +594,10 @@ export class LinkClient {
   private fromHubBinary(frame: Buffer): void {
     const decoded = decodeBinary(frame);
     if (!decoded) return;
-    if (decoded.kind === BIN_BODY) {
+    if (decoded.kind === BIN_UP) {
+      const call = this.ups.get(decoded.id);
+      if (call && call.status !== null) call.chunks.push(decoded.data);
+    } else if (decoded.kind === BIN_BODY) {
       this.requests.get(decoded.id)?.write(decoded.data);
     } else if (decoded.kind === BIN_WS) {
       this.toLocalSocket(decoded.id, decoded.data, true);

@@ -653,6 +653,19 @@ const migrations: Migration[] = [
       addColumnIfMissing(db, "sessions", "moved_from", "TEXT");
     }),
   },
+  {
+    id: 40,
+    name: "add_machines_up_columns",
+    up: atomic((db) => {
+      // The machine-to-server channel (lib/link/up.ts). uses_hub 1: the
+      // machine's sessions may use this server; backup 1: it may keep
+      // copies of its sessions here; caps: JSON string[] from its last
+      // hello. Both switches off until the user says so
+      addColumnIfMissing(db, "machines", "uses_hub", "INTEGER NOT NULL DEFAULT 0");
+      addColumnIfMissing(db, "machines", "backup", "INTEGER NOT NULL DEFAULT 0");
+      addColumnIfMissing(db, "machines", "caps", "TEXT");
+    }),
+  },
 ];
 
 export function runMigrations(db: Database.Database): void {
