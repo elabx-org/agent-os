@@ -453,5 +453,142 @@ check("projects decode 0/1 and bools", decoded?.projects.map(\.uncategorized) ==
 let pr = Models.decode(PromptReply.self, Data(#"{"prompt":null,"fingerprint":null}"#.utf8))
 check("an empty prompt reply decodes", pr != nil && pr?.prompt == nil)
 
+// MARK: Stage 3: UpdateDecision
+
+let own = "aaaaaaaaaaaaaaaa"
+let newer = "bbbbbbbbbbbbbbbb"
+for ready in [nil, own, newer] as [String?] {
+  for staged in [false, true] {
+    for window in [false, true] {
+      for menu in [false, true] {
+        for busy in [false, true] {
+          for requested in [false, true] {
+            let got = UpdateDecision.decide(
+              ownHash: own, readyHash: ready, stagedExists: staged, windowVisible: window, menuOpen: menu,
+              busy: busy, requested: requested)
+            let want: UpdateAction
+            if ready == nil || ready == own || !staged {
+              want = .none
+            } else if (!window && !menu && !busy) || requested {
+              want = .swapNow
+            } else {
+              want = .offer
+            }
+            equal(
+              "update ready=\(ready ?? "nil") staged=\(staged) window=\(window) menu=\(menu) busy=\(busy) asked=\(requested)",
+              got, want)
+          }
+        }
+      }
+    }
+  }
+}
+equal("ready hash read", UpdateDecision.readyHash("bbbbbbbbbbbbbbbb\n"), newer)
+equal("ready hash junk", UpdateDecision.readyHash("../x"), nil)
+equal("ready hash upper", UpdateDecision.readyHash("BBBBBBBBBBBBBBBB"), nil)
+let swapLog = """
+  2026-11-21T10:00:00Z ok from aaaaaaaaaaaaaaaa to bbbbbbbbbbbbbbbb
+  2026-11-21T11:00:00Z failed from bbbbbbbbbbbbbbbb to cccccccccccccccc: couldn't put the new app in place
+  noise
+  """
+let lastSwap = UpdateDecision.lastSwap(swapLog)
+equal("swap log last", lastSwap?.to, "cccccccccccccccc")
+equal("swap log last failed", lastSwap?.ok, false)
+equal("swap log ok line", UpdateDecision.swapLine("2026-11-21T10:00:00Z ok from aaaaaaaaaaaaaaaa to bbbbbbbbbbbbbbbb")?.ok, true)
+equal("swap log install line", UpdateDecision.swapLine("t ok from unknown to bbbbbbbbbbbbbbbb")?.from, "unknown")
+check("swap failed for that hash", UpdateDecision.swapFailed(ownHash: newer, readyHash: "cccccccccccccccc", last: lastSwap))
+check("swap failed not for another", !UpdateDecision.swapFailed(ownHash: newer, readyHash: "dddddddddddddddd", last: lastSwap))
+check("build failed", UpdateDecision.buildFailed(["state": "failed", "hash": newer], ownHash: own))
+check("build failed is old news", !UpdateDecision.buildFailed(["state": "failed", "hash": own], ownHash: own))
+check("build staged", !UpdateDecision.buildFailed(["state": "staged", "hash": newer], ownHash: own))
+
+let realPaths = UpdatePaths.make(home: "/Users/me", testRoot: nil, tempDir: "/var/folders/x/T/")
+equal("update paths installed", realPaths.installed, ["/Applications/AgentOS.app", "/Users/me/Applications/AgentOS.app"])
+equal("update paths ready", realPaths.ready, "/Users/me/.agent-os/mac-app/next/ready")
+equal("update paths prev", realPaths.prev, "/Users/me/.agent-os/mac-app/prev.app")
+let testPaths = UpdatePaths.make(home: "/Users/me", testRoot: "/var/folders/x/T/t1", tempDir: "/var/folders/x/T/")
+equal("update test root", testPaths.installed.first, "/var/folders/x/T/t1/Applications/AgentOS.app")
+check("update test root never /Applications", !testPaths.installed.contains("/Applications/AgentOS.app"))
+for bad in ["/Applications", "/var/folders/x/T/../../Applications", "relative", "/var/folders/x/T/a b", "/tmp/x"] {
+  equal("update test root refused: \(bad)", UpdatePaths.make(home: "/Users/me", testRoot: bad, tempDir: "/var/folders/x/T/"), realPaths)
+}
+equal("update test root /private", UpdatePaths.acceptedTestRoot("/private/var/folders/x/T/t", tempDir: "/var/folders/x/T/"), "/private/var/folders/x/T/t")
+equal("swap target: installed", realPaths.target(bundlePath: "/Applications/AgentOS.app", existing: { _ in true }), "/Applications/AgentOS.app")
+equal("swap target: a build folder", realPaths.target(bundlePath: "/Users/me/src/mac/build/AgentOS.app", existing: { _ in true }), nil)
+equal("swap target: staged, none installed", realPaths.target(bundlePath: realPaths.staged, existing: { _ in false }), "/Applications/AgentOS.app")
+equal("swap target: staged, home install", realPaths.target(bundlePath: realPaths.staged, existing: { $0.hasPrefix("/Users") }), "/Users/me/Applications/AgentOS.app")
+equal("shell quote", SwapScript.quote("a'b"), "'a'\\''b'")
+let script = SwapScript.text(SwapScript.Input(
+  pid: 42, executable: "/Applications/AgentOS.app/Contents/MacOS/AgentOS", target: "/Applications/AgentOS.app",
+  staged: realPaths.staged, paths: realPaths, fromHash: own, toHash: newer, window: true, path: "/?view=x'y", installing: false))
+check("swap script waits for the app", script.contains("pid=42") && script.contains("kill -0 \"$pid\""))
+check("swap script keeps prev", script.contains("prev='/Users/me/.agent-os/mac-app/prev.app'"))
+check("swap script relaunches with the window", script.contains("--after-update window=1 'path=/?view=x'\\''y'"))
+check("swap script no test env", !script.contains("--env"))
+check("swap script installing only when asked", !script.contains("pgrep"))
+let testScript = SwapScript.text(SwapScript.Input(
+  pid: 1, executable: "e", target: testPaths.installed[0], staged: testPaths.staged, paths: testPaths, fromHash: "unknown",
+  toHash: own, window: false, path: nil, installing: true))
+check("swap script test env", testScript.contains("--env AGENTOS_APP_TEST_ROOT='/var/folders/x/T/t1'"))
+check("swap script installing stops the old app", testScript.contains("pgrep -x AgentOS"))
+check("swap script never names /Applications in a test", !testScript.contains("'/Applications"))
+
+// MARK: Stage 3: UninstallText
+
+let planJSON = #"""
+  {"refused":null,"machine":"Studio","hub":"hub.example.app","goes":[{"what":"AgentOS and its updates","path":"/Users/me/.agent-os/repo","size":"1.4G"},{"what":"Its list of sessions, settings, logs, saved checkpoints and handoffs","path":"/Users/me/.agent-os"},{"what":"The key that links this Mac to hub.example.app","path":"Keychain"},{"what":"Starting AgentOS at login","path":"/Users/me/Library/LaunchAgents/com.agentos.machine.plist"},{"what":"The agent-os command","path":"/Users/me/.local/bin/agent-os"},{"what":"The menu bar app and its window settings","path":"/Applications/AgentOS.app"},{"what":"AgentOS's tools in codex","path":"codex"},{"what":"AgentOS's tools in gemini","path":"gemini"}],"stays":[],"sessions":[{"id":"1","name":"Build‮ it","tmux":"claude-1","stop":true}],"worktrees":[{"name":"fix","path":"/x","keep":true,"why":"3 changed files, 2 commits not pushed","to":"/Users/me/AgentOS/Kept from AgentOS/fix"},{"name":"done","path":"/y","keep":false,"why":null,"to":null}],"kept":"/Users/me/AgentOS/Kept from AgentOS","repos":"/Users/me/AgentOS","warnings":[],"done":null}
+  """#
+let plan = UninstallPlan.decode(Data(planJSON.utf8))
+check("uninstall plan decodes", plan != nil)
+let dialog = UninstallText.dialogText(plan ?? UninstallPlan(), home: "/Users/me")
+equal("uninstall dialog title", dialog.title, "Remove AgentOS from this Mac?")
+equal("uninstall dialog body", dialog.body, """
+  AgentOS will be removed from this Mac (Studio).
+
+  These go:
+    • AgentOS and its updates (~/.agent-os/repo, 1.4G)
+    • Its list of sessions, settings, logs, saved checkpoints and handoffs (~/.agent-os)
+    • The key that links this Mac to hub.example.app (in your Keychain)
+    • Starting AgentOS at login
+    • The agent-os command (~/.local/bin/agent-os)
+    • The menu bar app (/Applications/AgentOS.app) and its window settings
+    • AgentOS's tools in Codex and Gemini
+
+  Running sessions, stopped (their conversations stay in Claude):
+    • Build\u{FFFD} it
+
+  Worktrees with work not yet pushed, kept in ~/AgentOS/Kept from AgentOS:
+    • fix (3 changed files, 2 commits not pushed)
+
+  Worktrees with nothing unsaved, removed (their branches stay in the repository):
+    • done
+
+  These stay:
+    • Your repositories (~/AgentOS) and everything in them
+    • Claude's conversations and settings (~/.claude and ~/.claude.json)
+    • Homebrew, Node and tmux
+    • This app's entry in System Settings, Notifications
+
+  Your server still lists this Mac. Remove it there afterwards: AgentOS on your phone, Settings, Machines.
+  """)
+check("uninstall dialog has no Type yes", !dialog.body.contains("Type yes"))
+var bare = plan ?? UninstallPlan()
+bare.sessions = []
+bare.worktrees = []
+let bareBody = UninstallText.dialogText(bare, home: "/Users/me").body
+check("uninstall dialog without sessions or worktrees", !bareBody.contains("Running sessions") && !bareBody.contains("Worktrees"))
+let doneResult = UninstallPlan.decode(Data(#"{"kept":"/Users/me/AgentOS/Kept from AgentOS","done":{"stopped":1,"kept":2,"removed":[],"left":[]}}"#.utf8))
+let done = UninstallText.doneText(doneResult ?? UninstallPlan(), home: "/Users/me")
+equal("uninstall done title", done.title, "AgentOS was removed from this Mac")
+check("uninstall done body kept", done.body.hasSuffix("Work not yet pushed is kept in ~/AgentOS/Kept from AgentOS."))
+let doneNone = UninstallText.doneText(UninstallPlan.decode(Data(#"{"done":{"stopped":0,"kept":0}}"#.utf8)) ?? UninstallPlan(), home: "/Users/me")
+equal("uninstall done body plain", doneNone.body, Strings.uninstallDoneBody)
+let partly = UninstallText.partlyText(UninstallPlan.decode(Data(#"{"done":{"stopped":0,"kept":0,"left":[{"path":"/Users/me/.agent-os","reason":"worktrees are still in it"}]}}"#.utf8)), home: "/Users/me", fallback: "x")
+equal("uninstall partly", partly.body, "Still here:\n• ~/.agent-os: worktrees are still in it\n\nChoose Uninstall AgentOS… again to retry.")
+equal("uninstall refusal hub", UninstallText.refusal("hub"), Strings.refusedHub)
+equal("uninstall refusal session", UninstallText.refusal("inSession"), "Run this in Terminal, not in an AgentOS session. Nothing was removed.")
+equal("uninstall refusal decodes", UninstallPlan.decode(Data(#"{"refused":"hub","message":"m"}"#.utf8))?.refused, "hub")
+equal("launch --uninstall-plan", parse("--uninstall-plan"), .uninstallPlan)
+
 print("\(passed) passed, \(failed) failed")
 exit(failed == 0 ? 0 : 1)

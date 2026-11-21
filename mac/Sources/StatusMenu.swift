@@ -1,5 +1,4 @@
 import AppKit
-import ServiceManagement
 
 @MainActor
 protocol StatusMenuHost: AnyObject {
@@ -12,6 +11,7 @@ protocol StatusMenuHost: AnyObject {
   func menuOpened()
   var notifier: Notifier? { get }
   var details: [String: SessionDetails] { get }
+  var updater: AppUpdater? { get }
 }
 
 /// A menu item's action, carried in representedObject
@@ -38,6 +38,12 @@ final class StatusMenu: NSObject, NSMenuDelegate {
   private var drawn: (IconState, Bool)?
   private var appearanceWatch: NSKeyValueObservation?
 
+  private let uninstaller = UninstallFlow()
+  /// The menu is open (the updater waits)
+  private(set) var isOpen = false
+  /// Something the person started is still running
+  var isBusy: Bool { busy != nil || !busyIds.isEmpty || uninstaller.running }
+
   private(set) var iconState: IconState = .starting
   private(set) var linkDown = false
   private(set) var tooltip = ""
@@ -51,12 +57,21 @@ final class StatusMenu: NSObject, NSMenuDelegate {
     appearanceWatch = item.button?.observe(\.effectiveAppearance) { button, _ in
       MainActor.assumeIsolated { button.needsDisplay = true }
     }
+    uninstaller.setBusy = { [weak self] text in
+      self?.busy = text
+      self?.render()
+    }
     render()
   }
 
   func menuWillOpen(_ menu: NSMenu) {
+    isOpen = true
     host?.refreshNow()
     host?.menuOpened()
+  }
+
+  func menuDidClose(_ menu: NSMenu) {
+    isOpen = false
   }
 
   /// Details arrived while the menu may be open
@@ -119,7 +134,12 @@ final class StatusMenu: NSObject, NSMenuDelegate {
     var facts: [String] = []
     if let hub = snap.hub { facts.append(Strings.linkedTo(hub)) } else if snap.installed { facts.append(Strings.notLinked) }
     if let version = snap.version { facts.append(Strings.version(version)) }
+    let updater = host?.updater
+    if updater?.decision == .offer { facts.append(Strings.updateReady) }
     if !facts.isEmpty { menu.addItem(label(facts.joined(separator: " · "))) }
+    if updater?.decision == .offer { menu.addItem(action(Strings.restartToUpdate, #selector(restartToUpdate))) }
+    if updater?.failedSwap == true { menu.addItem(label(Strings.updateFailed)) }
+    if updater?.buildFailed == true { menu.addItem(label(Strings.buildFailed)) }
     if snap.hubURL != nil { menu.addItem(action(Strings.openServer, #selector(openServer))) }
 
     if snap.on {
@@ -158,9 +178,11 @@ final class StatusMenu: NSObject, NSMenuDelegate {
     }
 
     menu.addItem(.separator())
-    let login = action(Strings.showAtLogin, #selector(toggleLogin))
-    login.state = SMAppService.mainApp.status == .enabled ? .on : .off
-    menu.addItem(login)
+    if FileManager.default.fileExists(atPath: Backend.agentHome.path) {
+      let login = action(Strings.startAtLogin, #selector(toggleLogin))
+      login.state = StartAtLogin.wanted ? .on : .off
+      menu.addItem(login)
+    }
     if snap.installed {
       let remove = action(Strings.uninstall, #selector(uninstall))
       remove.isEnabled = busy == nil
@@ -475,43 +497,30 @@ final class StatusMenu: NSObject, NSMenuDelegate {
     }
   }
 
+  /// Start at login (D7): the service opens the app once per boot while
+  /// ~/.agent-os/app-at-login exists
   @objc private func toggleLogin() {
-    do {
-      if SMAppService.mainApp.status == .enabled {
-        try SMAppService.mainApp.unregister()
-      } else {
-        try SMAppService.mainApp.register()
-      }
-    } catch {
-      NSApp.activate(ignoringOtherApps: true)
-      let alert = NSAlert()
-      alert.messageText = Strings.loginFailedTitle
-      alert.informativeText = Strings.loginFailedBody(error.localizedDescription)
-      alert.runModal()
-    }
+    StartAtLogin.set(!StartAtLogin.wanted)
     render()
   }
 
-  @objc private func uninstall() {
-    let list = Strings.uninstallList.map { "• \($0)" }.joined(separator: "\n")
-    guard confirm(Strings.uninstallTitle, Strings.uninstallBody(list), button: Strings.uninstallButton) else { return }
-    try? SMAppService.mainApp.unregister()
-    busy = Strings.uninstalling
-    render()
-    queue.async {
-      Backend.uninstall()
-      DispatchQueue.main.async {
-        let bundle = Bundle.main.bundleURL
-        if bundle.pathExtension == "app" { try? FileManager.default.trashItem(at: bundle, resultingItemURL: nil) }
-        let alert = NSAlert()
-        alert.messageText = Strings.removedTitle
-        alert.informativeText = Strings.removedBody
-        NSApp.activate(ignoringOtherApps: true)
-        alert.runModal()
-        NSApp.terminate(nil)
-      }
-    }
-  }
+  @objc private func restartToUpdate() { host?.updater?.restartNow() }
+
+  @objc private func uninstall() { uninstaller.start() }
 
   @objc private func quit() { NSApp.terminate(nil) }
+}
+
+/// The flag file the service reads at login (scripts/agentos-machine.sh run)
+enum StartAtLogin {
+  static var file: URL { Backend.agentHome.appendingPathComponent("app-at-login") }
+  static var wanted: Bool { FileManager.default.fileExists(atPath: file.path) }
+
+  static func set(_ on: Bool) {
+    if on {
+      FileManager.default.createFile(atPath: file.path, contents: Data())
+    } else {
+      try? FileManager.default.removeItem(at: file)
+    }
+  }
 }

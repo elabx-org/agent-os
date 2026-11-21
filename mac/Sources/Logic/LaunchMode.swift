@@ -6,6 +6,8 @@ enum LaunchMode: Equatable {
   case version
   case command(String, [String])
   case selfTest([String])
+  /// --uninstall-plan: the uninstaller's dry run as JSON (read only)
+  case uninstallPlan
   case app(AppOptions)
 
   static func parse(_ argv: [String]) -> LaunchMode {
@@ -17,6 +19,7 @@ enum LaunchMode: Equatable {
     case "--version": return .version
     case "--command": return .command(rest.first ?? "", Array(rest.dropFirst()))
     case "--self-test": return .selfTest(rest)
+    case "--uninstall-plan": return .uninstallPlan
     default: break
     }
     var opts = AppOptions()

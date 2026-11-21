@@ -10,7 +10,11 @@ case .command(let cmd, let args):
   exit(CommandChannel.send(cmd, args))
 case .selfTest(let only):
   SelfTest.run(only)
+case .uninstallPlan:
+  exit(UninstallFlow.printPlan())
 case .app(let opts):
+  // The staged update installs itself and quits (AppUpdater)
+  if let code = Swapper.installIfStaged() { exit(code) }
   if CommandChannel.forwardIfRunning(opts) { exit(0) }
   MainActor.assumeIsolated {
     let app = NSApplication.shared

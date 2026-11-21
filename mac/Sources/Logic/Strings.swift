@@ -27,7 +27,7 @@ enum Strings {
   static let showInFinder = "Show in Finder"
   static let chooseFolder = "Choose another folder…"
   static let useDefaultFolder = "Use ~/AgentOS again"
-  static let showAtLogin = "Show this menu at login"
+  static let startAtLogin = "Start at login"
   static let uninstall = "Uninstall AgentOS…"
   static let quit = "Quit"
 
@@ -38,7 +38,6 @@ enum Strings {
   static let turningThatOff = "Turning that off…"
   static let allowing = "Allowing…"
   static let changingFolder = "Changing the folder…"
-  static let uninstalling = "Uninstalling…"
   static let cancel = "Cancel"
   static let didntChange = "That didn’t change"
   static let allowTitle = "Let server sessions use this Mac?"
@@ -60,23 +59,34 @@ enum Strings {
   static let turnOffBody =
     "Nothing can reach this Mac until you turn it on again. Sessions already running keep running in the background."
   static let turnOffButton = "Turn Off"
-  static let loginFailedTitle = "Couldn’t change that"
-  static func loginFailedBody(_ why: String) -> String {
-    "macOS refused: \(why). Keep the app in Applications and try again."
+  static let uninstallTitle = "Remove AgentOS from this Mac?"
+  static let uninstallButton = "Remove AgentOS"
+  static let keepSessionsRunning = "Keep my running sessions running"
+  static let removing = "Removing AgentOS…"
+  static let uninstallDoneTitle = "AgentOS was removed from this Mac"
+  static let uninstallDoneBody =
+    "The app is in the Trash. Your repositories and Claude's conversations (~/.claude) are untouched. Remove this Mac on your phone too: AgentOS, Settings, Machines."
+  static func workKeptIn(_ path: String) -> String { "Work not yet pushed is kept in \(path)." }
+  static let partlyTitle = "AgentOS was only partly removed"
+  static func partlyBody(_ left: [(String, String)]) -> String {
+    "Still here:\n" + left.map { "• \($0.0): \($0.1)" }.joined(separator: "\n")
+      + "\n\nChoose Uninstall AgentOS… again to retry."
   }
-  static let uninstallTitle = "Uninstall AgentOS from this Mac?"
-  static func uninstallBody(_ list: String) -> String {
-    "This removes:\n\(list)\n\nIt stays: your repositories and sessions’ folders, Claude’s own conversations (~/.claude), Homebrew’s node and tmux. Sessions still running keep running until you close them. Also remove this Mac in AgentOS on your phone (Settings, Machines)."
-  }
-  static let uninstallButton = "Uninstall"
-  static let uninstallList = [
-    "~/.agent-os (AgentOS, its session list, logs and the key that links this Mac)",
-    "~/Library/LaunchAgents/com.agentos.machine.plist (starts it at login)",
-    "~/.local/bin/agent-os (the command)",
-    "This app",
-  ]
-  static let removedTitle = "AgentOS was removed from this Mac"
-  static let removedBody = "The app is in the Trash."
+  static let cantFindUninstaller = "This app can't find AgentOS's uninstaller. Run agent-os uninstall in Terminal."
+  static let uninstallerStopped = "the uninstaller stopped before it finished"
+  static let refusedHub =
+    "This is the AgentOS your Macs link to, not a linked Mac. agent-os uninstall only removes AgentOS from a linked Mac. Nothing was removed."
+  static let refusedRoot = "Run this as yourself, not with sudo. Nothing was removed."
+  static let refusedNotInstalled = "AgentOS isn't installed on this Mac."
+  static let refusedInSession = "Run this in Terminal, not in an AgentOS session. Nothing was removed."
+  static let refusedHome = "This Terminal's home folder isn't your account's home folder. Nothing was removed."
+
+  // MARK: App update (Stage 3)
+
+  static let restartToUpdate = "Restart the app to update it"
+  static let updateReady = "App update ready"
+  static let updateFailed = "Couldn't update the app. Run agent-os link app update in Terminal."
+  static let buildFailed = "This menu couldn't update itself. Details: ~/.agent-os/logs/app-build.log"
   static let noAnswer = "AgentOS on this Mac didn’t answer."
   static let refusedChange =
     "AgentOS on this Mac refused the change. Change it in AgentOS on your phone instead (Settings, Machines)."
@@ -292,17 +302,17 @@ enum Strings {
       isOn, isOff, notInstalled, linkedTo("hub.example"), notLinked, version("0.5.0"), sessionsHere, noSessions,
       sessionRow("Build", "waiting"), stateWord("running"), stateWord("idle"), andMore(3),
       openAgentOS, openServer, turnOff, turnOn, offNote, letServerSessions, reposFolder("~/AgentOS"),
-      showInFinder, chooseFolder, useDefaultFolder, showAtLogin, uninstall, quit, turningOff, turningOn,
-      turningThatOff, allowing, changingFolder, uninstalling, cancel, didntChange,
+      showInFinder, chooseFolder, useDefaultFolder, startAtLogin, uninstall, quit, turningOff, turningOn,
+      turningThatOff, allowing, changingFolder, cancel, didntChange,
       allowTitle, yourServer, allow, folderMissingTitle, folderMissingBody("~/AgentOS"),
       chooseFolderMessage, useThisFolder, endTitle("Build"), stopBody, endButton, turnOffTitle, turnOffBody,
-      turnOffButton, loginFailedTitle, loginFailedBody("no"), uninstallButton, removedTitle, removedBody,
+      turnOffButton,
       noAnswer, refusedChange, errorCode(500), uploadMessage, downloadFailedTitle,
       downloadFailedBody("a.zip", "The disk is full."), ok, aboutAgentOS, hideAgentOS, hideOthers, showAll,
       quitAgentOS, fileMenu, newSession, closeWindow, editMenu, undo, redo, cut, copy, paste,
       pasteAndMatchStyle, selectAll, viewMenu, reloadPage, back, forward, enterFullScreen, windowMenu,
       minimize, zoom, appName, bringAllToFront, windowTitle(nil), aboutCredits("0.5.0"),
-    ] + stage2 + alertDestructiveWords + uninstallList + offline + IconState.samples.map(tooltipFirst)
+    ] + stage2 + stage3 + alertDestructiveWords + offline + IconState.samples.map(tooltipFirst)
       + [tooltipFirst(.needsYou(1)), tooltipFirst(.working(3))]
   }
 
@@ -320,6 +330,14 @@ enum Strings {
     ]
   }
 
+  static var stage3: [String] {
+    [
+      uninstallTitle, uninstallButton, keepSessionsRunning, removing, uninstallDoneTitle, workKeptIn("~/AgentOS/Kept"),
+      partlyTitle, cantFindUninstaller, uninstallerStopped, refusedRoot, refusedNotInstalled, refusedInSession,
+      refusedHome, restartToUpdate, updateReady, updateFailed, buildFailed,
+    ]
+  }
+
   /// The tooltip's second lines, which may run to 160 characters
   static var long: [String] {
     ["offline", "connecting", "pending", "refused", "signin"].compactMap(tooltipSecond)
@@ -327,6 +345,6 @@ enum Strings {
 
   /// Alert bodies, which wrap in the alert and are kept as today's menu has them
   static var paragraphs: [String] {
-    [allowBody("hub.example"), uninstallBody("• This app")]
+    [allowBody("hub.example"), uninstallDoneBody, refusedHub, partlyBody([("~/.agent-os", "couldn't remove it")])]
   }
 }

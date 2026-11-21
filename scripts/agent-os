@@ -83,7 +83,7 @@ case "${1:-}" in
     deploy)           cmd_deploy "${2:-}" ;;
     enable)           cmd_enable ;;
     disable)          cmd_disable ;;
-    uninstall)        cmd_uninstall ;;
+    uninstall)        shift; exec /bin/bash "$SCRIPT_DIR/agentos-uninstall.sh" "$@" ;;
     start-foreground) cmd_start_foreground ;;
     help|--help|-h)   cmd_help ;;
     *)

@@ -368,19 +368,4 @@ enum Backend {
     dispatchPrecondition(condition: .notOnQueue(.main))
     return run("/bin/bash", [machineScript.path, command]) == 0
   }
-
-  /// Removes it all. Sessions' own folders, repositories and Claude's
-  /// conversations (~/.claude) are not AgentOS's to delete and stay.
-  static func uninstall() {
-    dispatchPrecondition(condition: .notOnQueue(.main))
-    if FileManager.default.fileExists(atPath: machineScript.path) { _ = machine("remove") }
-    let plist = home.appendingPathComponent("Library/LaunchAgents/com.agentos.machine.plist")
-    run("/bin/launchctl", ["bootout", "gui/\(getuid())/com.agentos.machine"])
-    try? FileManager.default.removeItem(at: plist)
-    let command = home.appendingPathComponent(".local/bin/agent-os")
-    if (try? FileManager.default.destinationOfSymbolicLink(atPath: command.path)) != nil {
-      try? FileManager.default.removeItem(at: command)
-    }
-    try? FileManager.default.removeItem(at: agentHome)
-  }
 }

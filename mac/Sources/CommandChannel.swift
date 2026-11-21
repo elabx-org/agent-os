@@ -15,6 +15,7 @@ protocol CommandTarget: AnyObject {
   func channelNotifyStatus(_ done: @escaping ([String: Any]) -> Void)
   func channelDelivered(_ done: @escaping ([String: Any]) -> Void)
   func channelNotifyTest(_ done: @escaping ([String: Any]) -> Void)
+  func channelApplyUpdate() -> [String: Any]
 }
 
 /// The one way in from outside, for tests and second launches: a
@@ -179,8 +180,10 @@ enum CommandChannel {
         target.channelDelivered(reply)
       case "notify-test":
         target.channelNotifyTest(reply)
+      case "apply-update":
+        // Swaps only when UpdateDecision says so (never with a window open)
+        reply(target.channelApplyUpdate())
       default:
-        // apply-update arrives with Stage 3
         reply(["error": "unknown"])
       }
     }

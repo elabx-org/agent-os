@@ -24,7 +24,7 @@ done
 
 fail() { echo "build.sh: $*" >&2; exit 1; }
 SWIFTC=(xcrun swiftc -swift-version 5 -target arm64-apple-macos13.0)
-FRAMEWORKS=(-framework AppKit -framework WebKit -framework UserNotifications -framework ServiceManagement)
+FRAMEWORKS=(-framework AppKit -framework WebKit -framework UserNotifications -framework ServiceManagement -framework Security)
 
 # --- Guards on the sources (R2) ---
 # Only Click.swift may make a Click.
@@ -110,6 +110,9 @@ if (
   echo "build.sh: warning: couldn't make the app icon; building without it" >&2
 fi
 rm -rf "$(dirname "$ICONSET")"
+
+# The uninstaller, for when ~/.agent-os/repo is already gone
+[ -f "$ROOT/scripts/agentos-uninstall.sh" ] && cp "$ROOT/scripts/agentos-uninstall.sh" "$APP/Contents/Resources/"
 
 codesign --force --options runtime --sign "${AGENTOS_SIGN_IDENTITY:--}" "$APP"
 

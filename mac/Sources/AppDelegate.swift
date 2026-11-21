@@ -4,7 +4,7 @@ import WebKit
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, WindowHost, StatusMenuHost, CommandTarget, NotifierHost,
-  PanelHost
+  PanelHost, UpdaterHost
 {
   let opts: AppOptions
   let poller = Poller()
@@ -12,6 +12,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WindowHost, StatusMenu
   private var main: MainWindowController?
   private var listener: CommandChannel.Listener?
   private(set) var notifier: Notifier?
+  private(set) var updater: AppUpdater?
   private var activity: NSObjectProtocol?
   private let work = DispatchQueue(label: "agentos.app.work")
   /// Read once at launch: `defaults write com.agentos.mac inspectable -bool true`
@@ -37,6 +38,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WindowHost, StatusMenu
     NSApp.mainMenu = MainMenu.build(target: self)
     activity = ProcessInfo.processInfo.beginActivity(
       options: [.userInitiatedAllowingIdleSystemSleep], reason: "Watching sessions")
+    let updater = AppUpdater()
+    updater.host = self
+    // --apply-update: swap now, since no window shows at such a launch
+    if opts.applyUpdate { updater.requested = true }
+    self.updater = updater
     status = StatusMenu(host: self)
     poller.observe { [weak self] snap in self?.polled(snap) }
     poller.onEvents = { [weak self] entries, prompts in self?.notifier?.consider(entries, prompts: prompts) }
@@ -48,7 +54,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WindowHost, StatusMenu
     self.listener = listener
     SMAppServiceCleanup.runOnce()
 
-    let quiet = opts.atLogin || (opts.afterUpdate && !opts.restoreWindow)
+    let quiet = opts.atLogin || opts.applyUpdate || (opts.afterUpdate && !opts.restoreWindow)
     if !quiet {
       if opts.afterUpdate, let path = opts.restorePath, let clean = WindowMemory.sanitize(path: path) {
         window().pane.load(path: clean)
@@ -149,7 +155,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WindowHost, StatusMenu
     main?.pane.serverChanged(answering: snap.facts.answering)
     updatePolicy()
     notifier?.reconcile(snap, details: poller.details)
+    updater?.poll()
   }
+
+  // MARK: Updater
+
+  var windowVisible: Bool { main?.isShown ?? false }
+  var menuIsOpen: Bool { status?.isOpen ?? false }
+  var isBusy: Bool {
+    (status?.isBusy ?? false) || Panels.reply?.isVisible == true || Panels.newSession?.isVisible == true
+  }
+  var windowPath: String? { main?.pane.currentPath }
+  func updaterChanged() { status?.render() }
 
   func refreshNow() { poller.refreshNow() }
 
@@ -237,11 +254,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WindowHost, StatusMenu
           ["action": $0.action, "sessionId": $0.sessionId, "outcome": $0.outcome, "at": iso.string(from: $0.at)]
         },
       ] as [String: Any],
-      "update": null, "login": null,
+      "update": updateState(),
+      "login": ["wanted": StartAtLogin.wanted, "atLogin": opts.atLogin],
     ]
   }
 
-  func channelDumpMenu() -> String { status.modelText() }
+  private func updateState() -> [String: Any] {
+    let null = NSNull()
+    guard let u = updater else { return [:] }
+    var out: [String: Any] = [
+      "ready": u.readyHash ?? null as Any, "staged": u.stagedExists, "decision": u.decision.rawValue,
+      "failedSwap": u.failedSwap, "buildFailed": u.buildFailed, "requested": u.requested,
+      "target": u.target ?? null as Any, "lastSwap": null, "from": null, "to": null, "ok": null,
+    ]
+    if let last = u.lastSwap {
+      out["lastSwap"] = last.at
+      out["from"] = last.from
+      out["to"] = last.to
+      out["ok"] = last.ok
+    }
+    return out
+  }
+
+  /// The channel's apply-update: asks for the swap only while no window shows
+  func channelApplyUpdate() -> [String: Any] {
+    guard let u = updater else { return ["error": "not ready"] }
+    if !windowVisible { u.requested = true }
+    u.poll()
+    return ["ok": true, "requested": u.requested, "decision": u.decision.rawValue]
+  }
+
+  /// The session part as data, then the whole status menu as drawn
+  func channelDumpMenu() -> String {
+    status.render()
+    return status.modelText() + "--- menu ---\n" + status.dumpText()
+  }
 
   /// What the item at `path` under a session's row would send; never sends
   func channelPlan(session id: String, path: String) -> [String: Any] {
@@ -321,14 +368,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WindowHost, StatusMenu
 
 /// Earlier builds offered "Show this menu at login" through SMAppService.
 /// Stage 3 moves that to the service's own flag file; this clears the old
-/// registration once. Only the installed app does it, so a build run from a
-/// build folder never changes the person's login items.
+/// registration once, and keeps the person's choice: a registered item
+/// becomes the flag file. Only the installed app does it, so a build run
+/// from a build folder never changes the person's login items.
 @MainActor
 enum SMAppServiceCleanup {
   static func runOnce() {
     guard Bundle.main.bundlePath == "/Applications/AgentOS.app" else { return }
     let defaults = UserDefaults.standard
     guard !defaults.bool(forKey: "smCleared") else { return }
+    if SMAppService.mainApp.status == .enabled, FileManager.default.fileExists(atPath: Backend.agentHome.path) {
+      StartAtLogin.set(true)
+    }
     try? SMAppService.mainApp.unregister()
     defaults.set(true, forKey: "smCleared")
   }
