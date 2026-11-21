@@ -211,7 +211,7 @@ enum Strings {
       openAgentOS, openServer, turnOff, turnOn, offNote, letServerSessions, reposFolder("~/AgentOS"),
       showInFinder, chooseFolder, useDefaultFolder, showAtLogin, uninstall, quit, turningOff, turningOn,
       turningThatOff, allowing, changingFolder, stopping("Build"), uninstalling, cancel, didntChange,
-      allowTitle, allowBody("hub.example"), yourServer, allow, folderMissingTitle, folderMissingBody("~/AgentOS"),
+      allowTitle, yourServer, allow, folderMissingTitle, folderMissingBody("~/AgentOS"),
       chooseFolderMessage, useThisFolder, stopTitle("Build"), stopBody, stop, turnOffTitle, turnOffBody,
       turnOffButton, loginFailedTitle, loginFailedBody("no"), uninstallButton, removedTitle, removedBody,
       noAnswer, refusedChange, errorCode(500), uploadMessage, downloadFailedTitle,
