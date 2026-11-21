@@ -59,6 +59,8 @@ final class AppUpdater {
       if failedSwap && !requested { d = .none }
     }
     decision = d
+    // A request is for what is staged now, never for a later one
+    if d == .none { requested = false }
     if before != (readyHash, decision, failedSwap, buildFailed) { host?.updaterChanged() }
     if d == .swapNow { swap() }
   }

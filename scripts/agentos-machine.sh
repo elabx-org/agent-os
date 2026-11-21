@@ -372,6 +372,8 @@ cmd_app() {
       app_kick
       ;;
     auto) app_auto ;;
+    # What the service does at login (for tests): open the app once per boot
+    at-login) app_at_login ;;
     *) die "Usage: agent-os link app [update|check|install --from <AgentOS.app>|rollback]" ;;
   esac
 }
