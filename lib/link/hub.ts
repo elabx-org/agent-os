@@ -759,6 +759,10 @@ export class LinkHub {
     const rule = up.rule;
     // The head may already be here (a system call answered early)
     if (!up.answered) {
+      // Until the head, only rule.headMs counts: a rule may wait longer
+      // than the idle limit (the idle timer starts again with the head)
+      if (up.idle) clearTimeout(up.idle);
+      up.idle = null;
       up.timer = setTimeout(
         () =>
           this.failUp(tunnel, id, 504, {

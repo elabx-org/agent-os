@@ -620,6 +620,34 @@ test("up: no head in time is a 504; a dropped link fails what is in flight", asy
   await r.close();
 });
 
+test("up: a rule may wait for its head longer than the idle limit", async () => {
+  const rule: UpRule = { ...BASE_UP_RULES[0], headMs: 2000 };
+  const r = await rig({
+    deps: {
+      upRules: () => [rule],
+      upLimits: {
+        agent: { concurrent: 8, perMinute: 300, idleMs: 100 },
+        system: { concurrent: 2, perMinute: 120, idleMs: 100 },
+      },
+    },
+    hubApi: (_req, res) => {
+      setTimeout(() => {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end("{}");
+      }, 400);
+    },
+  });
+  const c = await r.linked();
+  allow(r, { uses_hub: 1 });
+  const answer = await c.up("agent", {
+    method: "GET",
+    path: "/api/link/hello",
+  });
+  assert.equal(answer.status, 200);
+  c.stop();
+  await r.close();
+});
+
 test("up: a machine whose hub is too old never sends an up frame", async () => {
   // An older hub: welcome without caps, and it records what it hears
   const heard: string[] = [];
