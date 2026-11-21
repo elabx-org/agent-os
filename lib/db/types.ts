@@ -73,6 +73,9 @@ export interface Session {
   // another machine (it is settled here); JSON MovedFrom when it came from one
   moved_to: string | null;
   moved_from: string | null;
+  // Migration 41: JSON StartedBy (lib/session-started-by.ts) when a session
+  // on another machine started it
+  started_by: string | null;
 }
 
 /** What an agent tried on a session's permissions (lib/agent-actions.ts) */

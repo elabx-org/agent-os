@@ -61,6 +61,7 @@ export interface BuildFlagsOptions {
   worktreeName?: string; // If set, use provider's native worktree flag with this name
   systemPromptFile?: string; // Appended to the system prompt (the project note)
   settingsFile?: string; // Extra settings (project hooks, state capture)
+  mcpConfigFile?: string; // AgentOS's tools on a linked machine (lib/project-context.ts writeMcpConfig)
 }
 
 // Common spinner characters used across CLIs
@@ -109,6 +110,11 @@ export const claudeProvider: AgentProvider = {
       flags.push(`--append-system-prompt-file '${options.systemPromptFile}'`);
     }
     if (options.settingsFile) {
+      // --mcp-config takes several values: a flag must follow it, or it
+      // would swallow the prompt, so it only ever goes right before --settings
+      if (options.mcpConfigFile) {
+        flags.push(`--mcp-config '${options.mcpConfigFile}'`);
+      }
       flags.push(`--settings '${options.settingsFile}'`);
     }
 

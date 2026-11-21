@@ -9,6 +9,8 @@ import { writeInitScript } from "./init-script";
 import { sessionBrowserEnv, tmuxEnvArgs } from "./browser-helper";
 import { getFlag } from "./flags";
 import type { LaunchCaps } from "./permission-mode";
+import { parseMovedTo } from "./session-move-types";
+import { isHeld } from "./backup/hold";
 
 const execFileAsync = promisify(execFile);
 
@@ -73,11 +75,13 @@ export async function buildLaunchCommand(
 
   let systemPromptFile: string | undefined;
   let settingsFile: string | undefined;
+  let mcpConfigFile: string | undefined;
   if (provider.id === "claude") {
     try {
       const context = await writeProjectContext(session);
       systemPromptFile = context.file || undefined;
       settingsFile = context.settings || undefined;
+      mcpConfigFile = context.mcp || undefined;
     } catch {
       // Starts without the note
     }
@@ -95,6 +99,7 @@ export async function buildLaunchCommand(
   const flags = provider.buildFlags({
     systemPromptFile,
     settingsFile,
+    mcpConfigFile,
     sessionId: session.claude_session_id,
     parentSessionId,
     autoApprove: session.auto_approve,
@@ -121,6 +126,10 @@ export async function launchSession(
   session: Session,
   initialPrompt?: string
 ): Promise<boolean> {
+  // The hub continued it from a copy: two would run (lib/backup)
+  if (parseMovedTo(session.moved_to)?.takeover || isHeld(session.id)) {
+    throw new Error("This session continued on another machine");
+  }
   if (await isRunning(session)) return false;
 
   const { name, cwd, command } = await buildLaunchCommand(

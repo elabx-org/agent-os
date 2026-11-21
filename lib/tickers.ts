@@ -19,6 +19,10 @@ import { startDispatcher } from "./queue/dispatcher";
 import { onEdge, startSessionWatch, wantWatch } from "./session-watch";
 import { reconcileSettled } from "./settle";
 import { onIdleEdge, pruneSettled } from "./turns";
+import { isMachineMode } from "./link/machine";
+import { startMachineBackup } from "./backup/machine";
+import { gcRepos } from "./backup/store";
+import { recoverTakes } from "./backup/takeover";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** Settled sessions keep their turn snapshots this long (M8) */
@@ -65,6 +69,22 @@ export function startTickers(): void {
   setInterval(prune, DAY_MS).unref();
   // Transcript search index (M11): checks flag searchIndex
   startSearchIndexer();
+
+  // Copies of sessions (lib/backup): a machine sends them once its hub
+  // allows it; the hub settles take-overs a restart cut off and packs
+  // the copied repositories daily
+  if (isMachineMode()) {
+    startMachineBackup();
+  } else {
+    try {
+      recoverTakes();
+    } catch (error) {
+      console.error("[tickers] take-overs:", error);
+    }
+    setInterval(() => {
+      gcRepos().catch((error) => console.error("[tickers] copies gc:", error));
+    }, DAY_MS).unref();
+  }
 
   // The end of a turn: Codex/Gemini post snapshots, Claude's turn journal
   onEdge((edge) => {

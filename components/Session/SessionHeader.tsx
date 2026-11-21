@@ -26,6 +26,30 @@ import { formatAge, workingLine } from "./activity-format";
 import { useBackLabel } from "@/components/ControlColumn/columnState";
 import { IN_BACKGROUND_CLASS } from "./InBackground";
 import { MachineChip } from "@/components/Machines/MachineChip";
+import { parseStartedBy, startedByLine } from "@/lib/session-started-by";
+
+/** "Started by a session on Mac Studio": a session another machine's started */
+export function StartedByLine({
+  session,
+  className,
+}: {
+  session: Session;
+  className?: string;
+}) {
+  const by = parseStartedBy(session.started_by);
+  if (!by) return null;
+  return (
+    <p className={cn("text-muted-foreground truncate text-[13px]", className)}>
+      {startedByLine(by)}
+    </p>
+  );
+}
+
+/** The same words for a crumb (the desktop's one-line header) */
+const startedByText = (session: Session) => {
+  const by = parseStartedBy(session.started_by);
+  return by ? startedByLine(by) : null;
+};
 
 /** What every header says about the session */
 export interface HeaderInfo {
@@ -206,6 +230,9 @@ export function PageHeader({
           />
         )}
       </div>
+      {size !== "compact" && (
+        <StartedByLine session={session} className="mt-1" />
+      )}
       {pr && (
         <PrChip
           pr={pr}
@@ -378,7 +405,11 @@ export function DesktopHeader({
         <span className="t-head truncate leading-tight">{info.title}</span>
         <Crumb
           info={info}
-          extra={[branch, count > 0 ? agentsLabel(count) : null]}
+          extra={[
+            branch,
+            count > 0 ? agentsLabel(count) : null,
+            startedByText(info.session),
+          ]}
           className="text-[13px]"
         />
       </div>

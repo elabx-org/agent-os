@@ -17,6 +17,8 @@ import {
   recordRefusal,
 } from "@/lib/agent-actions";
 import { requireUser } from "@/lib/user-proof";
+import { fromMachine } from "@/lib/link/from-machine";
+import { fromMachineRefusal, isClaudeSession } from "@/lib/from-machine-rules";
 
 const execFileAsync = promisify(execFile);
 
@@ -65,6 +67,9 @@ export async function POST(
   const session = getSession(id);
   if (!session) {
     return NextResponse.json({ error: "Session not found" }, { status: 404 });
+  }
+  if (fromMachine(request) && !isClaudeSession(session)) {
+    return fromMachineRefusal("claude_only");
   }
   const target = tmuxName(session);
 

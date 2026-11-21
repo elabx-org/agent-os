@@ -4,6 +4,7 @@ import {
   MOVE_ID,
   arrivalMode,
   arrivalRow,
+  ageText,
   arrivedNoticeText,
   moveStepText,
   safeBranch,
@@ -196,4 +197,30 @@ test("moveStepText names the machine it leaves when that isn't this one", () => 
     moveStepText("pausing", "the server", "Mac Studio"),
     "Pausing it on Mac Studio"
   );
+});
+
+test("arrivedNoticeText: a take-over says it came from a copy, and how old", () => {
+  const now = 10 * 3_600_000;
+  const notice = arrivedNoticeText(
+    "Unraid",
+    "linux",
+    "/repos/app",
+    "Mac",
+    [],
+    false,
+    now - 5 * 60_000,
+    now
+  );
+  const first = notice.split("\n")[0];
+  assert.match(first, /continued here from a copy made 5 minutes ago/);
+  assert.match(first, /because Mac was offline/);
+  assert.match(first, /Anything done on Mac after that copy is not here/);
+  assert.doesNotMatch(notice, /moved here from Mac/);
+});
+
+test("ageText: minutes, hours and days in words", () => {
+  assert.equal(ageText(10_000), "less than a minute");
+  assert.equal(ageText(60_000), "1 minute");
+  assert.equal(ageText(3 * 3_600_000), "3 hours");
+  assert.equal(ageText(26 * 3_600_000), "1 day");
 });

@@ -5,14 +5,22 @@
  * that isn't connected is simply offline.
  */
 
-import type { IncomingMessage, ServerResponse } from "http";
+import http, { type IncomingMessage, type ServerResponse } from "http";
 import type { Duplex } from "stream";
 import { WebSocket, WebSocketServer, type RawData } from "ws";
+import { CreditReceiver } from "./flow";
 import { matchCode, newNonce, newPairingCode, verifyProof } from "./keys";
 import {
   BIN_BODY,
+  BIN_UP,
   BIN_WS,
+  CAP_TAKE,
+  CAP_UP,
+  LINK_MAX_FRAME,
   LINK_VERSION,
+  UP_ANSWER_MAX,
+  UP_CHUNK,
+  UP_WINDOW,
   decodeBinary,
   encodeBinary,
   parseFrame,
@@ -22,8 +30,34 @@ import {
   type HubFrame,
   type LinkNotice,
   type MachineFrame,
+  type TakenResult,
+  type TakenSession,
+  type UpAllowed,
+  type UpKind,
 } from "./protocol";
 import type { MachineRow } from "./store";
+import {
+  UP_LIMITS,
+  UP_LOCAL_ERRORS,
+  UpCounter,
+  decideUp,
+  upRefusal,
+  type UpDecision,
+  type UpLimits,
+  type UpRefusal,
+  type UpRule,
+} from "./up";
+
+/** An upward request the hub answered, for the audit (stage 2) */
+export interface UpEvent {
+  machine: MachineRow;
+  rule: UpRule;
+  targetMachineId: string | null;
+  pathname: string;
+  status: number;
+  sent: unknown;
+  answer: unknown;
+}
 
 export interface HubDeps {
   machineByKey(publicKey: string): MachineRow | null;
@@ -46,6 +80,36 @@ export interface HubDeps {
   sha(): string | null;
   /** An approved, connected machine has something to tell the user */
   onNotice?(machine: MachineRow, notice: LinkNotice): void;
+  /** This server's own port, where a machine's upward requests are asked */
+  localPort(): number;
+  /** The per-boot proof added to AgentOS's own upward calls (lib/link/up-guard.ts) */
+  linkProof(): string;
+  /** What machines may ask (lib/link/up.ts) */
+  upRules(): UpRule[];
+  /** What the user calls this server */
+  serverName(): string | null;
+  /** What the machine said it can do in its hello */
+  setMachineCaps(id: string, caps: string[]): void;
+  /** An upward request with an audit label was answered */
+  onUp?(event: UpEvent): void;
+  /** An approved machine's request was refused before it was asked */
+  onUpRefused?(machine: MachineRow, refusal: UpRefusal): void;
+  /** Last word before an allowed upward request is asked (stage 2 limits) */
+  beforeUp?(
+    decision: Extract<UpDecision, { ok: true }>,
+    machine: MachineRow
+  ): UpRefusal | null;
+  /** Tests: smaller limits and timeouts */
+  upLimits?: UpLimits;
+  /**
+   * The sessions this hub continued from the machine's copies, which it
+   * must pause before anything else (lib/backup)
+   */
+  takenFor?(machine: MachineRow): TakenSession[];
+  /** What the machine did about them */
+  onTakenAck?(machine: MachineRow, results: TakenResult[]): void;
+  /** It is connected again: a take-over of its sessions stops if it can */
+  onMachineBack?(machine: MachineRow): void;
 }
 
 interface PendingResponse {
@@ -59,6 +123,28 @@ interface Relay {
   queue: { data: RawData; binary: boolean }[];
 }
 
+/** One upward request from a machine (ids are the machine's) */
+interface UpPending {
+  kind: UpKind;
+  req: http.ClientRequest | null;
+  /** Agent bodies are read whole, then rebuilt (rule.body) */
+  chunks: Buffer[];
+  bytes: number;
+  rule: UpRule | null;
+  decision: Extract<UpDecision, { ok: true }> | null;
+  receiver: CreditReceiver;
+  /** Head timeout after the body ends */
+  timer: NodeJS.Timeout | null;
+  /** No word either way for this long: it's given up */
+  idle: NodeJS.Timeout | null;
+  answered: boolean;
+  answerBytes: number;
+  /** Part of a JSON answer kept for deps.onUp */
+  kept: Buffer[];
+  keptBytes: number;
+  sent: unknown;
+}
+
 interface Tunnel {
   machineId: string;
   ws: WebSocket;
@@ -67,6 +153,9 @@ interface Tunnel {
   relays: Map<number, Relay>;
   alive: boolean;
   ping: NodeJS.Timeout;
+  /** What the machine said it can do in its hello */
+  caps: Set<string>;
+  ups: Map<number, UpPending>;
 }
 
 export type MachinePresence = "online" | "offline" | "waiting";
@@ -86,6 +175,71 @@ const BUFFER_HIGH = 4 * 1024 * 1024;
 const CODE_MS = 10 * 60_000;
 /** A relay may hold this much before the machine's socket opens */
 const QUEUE_MAX = 256;
+/** An answer with an audit label keeps this much of itself for deps.onUp */
+const KEEP_MAX = 256 * 1024;
+
+/** Loopback calls made for a machine never reuse a connection */
+const LOOPBACK_AGENT = new http.Agent({ keepAlive: false });
+
+/** The content-length a streamed (system) body declared, if any */
+function declaredLength(up: UpPending): number | null {
+  if (up.kind !== "system") return null;
+  const raw = up.decision?.headers["content-length"];
+  return raw === undefined ? null : Number(raw);
+}
+
+/** At most 16 short names; anything else is dropped */
+function capsOf(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const out = value.filter(
+    (c): c is string => typeof c === "string" && c.length > 0 && c.length <= 16
+  );
+  return [...new Set(out)].slice(0, 16);
+}
+
+const TAKE_STATES = new Set(["paused", "already", "gone", "failed"]);
+
+/** A machine's taken-ack, checked field by field (at most 2,000) */
+function takenResultsOf(value: unknown): TakenResult[] {
+  if (!Array.isArray(value)) return [];
+  const out: TakenResult[] = [];
+  for (const item of value.slice(0, 2000)) {
+    const r = item as Record<string, unknown> | null;
+    if (
+      !r ||
+      typeof r.sessionId !== "string" ||
+      !/^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$/.test(r.sessionId) ||
+      typeof r.takeId !== "string" ||
+      !/^[0-9a-f]{16}$/.test(r.takeId) ||
+      typeof r.state !== "string" ||
+      !TAKE_STATES.has(r.state)
+    ) {
+      continue;
+    }
+    const ahead = r.ahead as Record<string, unknown> | undefined;
+    out.push({
+      sessionId: r.sessionId,
+      takeId: r.takeId,
+      state: r.state as TakenResult["state"],
+      ...(ahead && typeof ahead === "object"
+        ? {
+            ahead: {
+              conversation: ahead.conversation === true,
+              code: ahead.code === true,
+            },
+          }
+        : {}),
+      ...(typeof r.folder === "string"
+        ? {
+            folder: r.folder
+              .replace(/[\u0000-\u001f\u007f]/g, "")
+              .slice(0, 300),
+          }
+        : {}),
+    });
+  }
+  return out;
+}
 
 const first = (value: string | string[] | undefined) =>
   (Array.isArray(value) ? value[0] : value)?.split(",")[0].trim() || null;
@@ -109,10 +263,19 @@ export class LinkHub {
   /** Machines that proved their key and wait for the user's approval */
   private waiting = new Map<string, { ws: WebSocket; open: () => void }>();
   private codes = new Map<string, number>();
-  private machineWss = new WebSocketServer({ noServer: true });
+  private machineWss = new WebSocketServer({
+    noServer: true,
+    maxPayload: LINK_MAX_FRAME,
+  });
   private browserWss = new WebSocketServer({ noServer: true });
+  private upCounter: UpCounter;
+  /** When each machine's tunnel last dropped; this hub's start counts as one */
+  private droppedAt = new Map<string, number>();
+  private startedAt = Date.now();
 
-  constructor(private deps: HubDeps) {}
+  constructor(private deps: HubDeps) {
+    this.upCounter = new UpCounter(deps.upLimits ?? UP_LIMITS);
+  }
 
   // --- Adding and removing machines ---
 
@@ -155,6 +318,63 @@ export class LinkHub {
     if (!tunnel || !machine) return;
     const frame: HubFrame = { t: "agents", allowed: machine.agents === 1 };
     tunnel.ws.send(JSON.stringify(frame));
+  }
+
+  /** What a machine may ask of this hub: its two switches and the names */
+  private upAllowed(machine: MachineRow): UpAllowed {
+    return {
+      agents: machine.uses_hub === 1,
+      backup: machine.backup === 1,
+      name: machine.name,
+      hubName: this.deps.serverName(),
+    };
+  }
+
+  /** Tells a connected machine what it may ask, when a switch or a name changes */
+  tellUp(id: string): void {
+    const tunnel = this.tunnels.get(id);
+    const machine = this.deps.machineById(id);
+    if (!tunnel?.caps.has(CAP_UP) || machine?.status !== "approved") return;
+    const frame: HubFrame = { t: "up-allowed", ...this.upAllowed(machine) };
+    tunnel.ws.send(JSON.stringify(frame));
+  }
+
+  /** The same for every connected machine: this server's name changed */
+  tellUpAll(): void {
+    for (const id of this.tunnels.keys()) this.tellUp(id);
+  }
+
+  /** How long a machine has been offline, in ms; 0 while it is connected */
+  offlineFor(id: string): number {
+    if (this.tunnels.has(id)) return 0;
+    return Date.now() - (this.droppedAt.get(id) ?? this.startedAt);
+  }
+
+  /** Sends a connected machine every session it must pause (lib/backup) */
+  tellTaken(id: string): void {
+    const tunnel = this.tunnels.get(id);
+    const machine = this.deps.machineById(id);
+    if (!tunnel?.caps.has(CAP_TAKE) || machine?.status !== "approved") return;
+    this.sendTaken(tunnel, machine);
+  }
+
+  private sendTaken(tunnel: Tunnel, machine: MachineRow): void {
+    let sessions: TakenSession[] = [];
+    try {
+      sessions = this.deps.takenFor?.(machine) ?? [];
+    } catch (error) {
+      console.error("[link] takenFor failed:", error);
+    }
+    const frame: HubFrame = { t: "taken", sessions };
+    if (tunnel.ws.readyState === WebSocket.OPEN) {
+      tunnel.ws.send(JSON.stringify(frame));
+    }
+  }
+
+  /** Whether a connected machine named a cap in its hello; null when offline */
+  hasCap(id: string, cap: string): boolean | null {
+    const tunnel = this.tunnels.get(id);
+    return tunnel ? tunnel.caps.has(cap) : null;
   }
 
   /** Cuts a machine off and forgets its key */
@@ -211,6 +431,8 @@ export class LinkHub {
         nextId: 1,
         requests: new Map(),
         relays: new Map(),
+        caps: new Set(capsOf(hello?.caps)),
+        ups: new Map(),
         alive: true,
         ping: setInterval(() => {
           if (!t.alive) return ws.terminate();
@@ -227,7 +449,17 @@ export class LinkHub {
         sha: this.deps.sha(),
         code: matchCode(machine.public_key),
         agents: machine.agents === 1,
+        caps: [CAP_UP, CAP_TAKE],
+        ...(t.caps.has(CAP_UP) ? { up: this.upAllowed(machine) } : {}),
       });
+      // Before anything else on this connection: a take-over still under
+      // way stops if it can, then the machine learns what to pause
+      try {
+        this.deps.onMachineBack?.(machine);
+      } catch (error) {
+        console.error("[link] onMachineBack failed:", error);
+      }
+      if (t.caps.has(CAP_TAKE)) this.sendTaken(t, machine);
     };
 
     ws.on("message", (data, isBinary) => {
@@ -287,6 +519,7 @@ export class LinkHub {
           sha: typeof hello.sha === "string" ? hello.sha : null,
           signedInAs,
         });
+        this.deps.setMachineCaps(machine.id, capsOf(hello.caps));
         // Re-read: it may have been approved or removed since hello
         machine = this.deps.machineById(machine.id);
         if (!machine) return refuse("removed");
@@ -325,6 +558,7 @@ export class LinkHub {
     clearInterval(tunnel.ping);
     if (this.tunnels.get(tunnel.machineId) === tunnel) {
       this.tunnels.delete(tunnel.machineId);
+      this.droppedAt.set(tunnel.machineId, Date.now());
     }
     for (const [id, pending] of tunnel.requests) {
       this.failResponse(pending, 502, "The machine disconnected");
@@ -334,6 +568,7 @@ export class LinkHub {
       relay.browser.close(1012, "machine disconnected");
       tunnel.relays.delete(id);
     }
+    for (const id of [...tunnel.ups.keys()]) this.endUp(tunnel, id);
   }
 
   private failResponse(
@@ -358,7 +593,13 @@ export class LinkHub {
     if (isBinary) {
       const frame = decodeBinary(bytes(data));
       if (!frame) return;
-      if (frame.kind === BIN_BODY) {
+      if (frame.kind === BIN_UP) {
+        if (!tunnel.caps.has(CAP_UP)) return;
+        if (frame.data.length > UP_CHUNK) {
+          return this.closeTunnel(tunnel, 1009, "chunk too large");
+        }
+        this.upBody(tunnel, frame.id, frame.data);
+      } else if (frame.kind === BIN_BODY) {
         tunnel.requests.get(frame.id)?.res.write(frame.data);
       } else if (frame.kind === BIN_WS) {
         const relay = tunnel.relays.get(frame.id);
@@ -451,6 +692,405 @@ export class LinkHub {
         relay.browser.close(closeCode(frame.code));
         return;
       }
+      case "up":
+        if (tunnel.caps.has(CAP_UP)) this.upStart(tunnel, frame);
+        return;
+      case "up-end":
+        if (tunnel.caps.has(CAP_UP)) this.upEnd(tunnel, frame.id);
+        return;
+      case "up-abort":
+        if (tunnel.ups.has(frame.id)) this.endUp(tunnel, frame.id);
+        return;
+      case "taken-ack": {
+        if (!tunnel.caps.has(CAP_TAKE)) return;
+        // Re-read: only a machine that is still approved gets a say
+        const machine = this.deps.machineById(tunnel.machineId);
+        if (machine?.status !== "approved") return;
+        const results = takenResultsOf(frame.results);
+        try {
+          this.deps.onTakenAck?.(machine, results);
+        } catch (error) {
+          console.error("[link] onTakenAck failed:", error);
+        }
+        return;
+      }
+    }
+  }
+
+  // --- A machine asks this hub (lib/link/up.ts) ---
+
+  private sendUp(tunnel: Tunnel, frame: HubFrame): void {
+    if (tunnel.ws.readyState === WebSocket.OPEN) {
+      tunnel.ws.send(JSON.stringify(frame));
+    }
+  }
+
+  /** A whole answer made here: a refusal, a timeout, an unreachable API */
+  private answerUp(
+    tunnel: Tunnel,
+    id: number,
+    status: number,
+    body: { error: string; code: string }
+  ): void {
+    this.sendUp(tunnel, {
+      t: "up-res",
+      id,
+      status,
+      headers: { "content-type": "application/json" },
+    });
+    if (tunnel.ws.readyState === WebSocket.OPEN) {
+      tunnel.ws.send(
+        encodeBinary(id, BIN_UP, Buffer.from(JSON.stringify(body)))
+      );
+    }
+    this.sendUp(tunnel, { t: "up-res-end", id });
+  }
+
+  private refuseUp(tunnel: Tunnel, id: number, refusal: UpRefusal): void {
+    this.answerUp(tunnel, id, refusal.status, {
+      error: refusal.error,
+      code: refusal.code,
+    });
+  }
+
+  /** Forgets one upward request: its loopback call, timers and count */
+  private endUp(tunnel: Tunnel, id: number): void {
+    const up = tunnel.ups.get(id);
+    if (!up) return;
+    tunnel.ups.delete(id);
+    if (up.timer) clearTimeout(up.timer);
+    if (up.idle) clearTimeout(up.idle);
+    up.req?.destroy();
+    if (up.decision) this.upCounter.leave(tunnel.machineId, up.kind);
+  }
+
+  /** Stops it and tells the machine why: a full answer, or an error after the head */
+  private failUp(
+    tunnel: Tunnel,
+    id: number,
+    status: number,
+    body: { error: string; code: string }
+  ): void {
+    const up = tunnel.ups.get(id);
+    if (!up) return;
+    this.endUp(tunnel, id);
+    if (up.answered) {
+      this.sendUp(tunnel, { t: "up-res-error", id, message: body.code });
+    } else {
+      this.answerUp(tunnel, id, status, body);
+    }
+  }
+
+  private touchUp(tunnel: Tunnel, id: number): void {
+    const up = tunnel.ups.get(id);
+    if (!up) return;
+    if (up.idle) clearTimeout(up.idle);
+    const limits = this.deps.upLimits ?? UP_LIMITS;
+    up.idle = setTimeout(
+      () =>
+        this.failUp(tunnel, id, 504, {
+          error: UP_LOCAL_ERRORS.timeout.error,
+          code: "timeout",
+        }),
+      limits[up.kind].idleMs
+    );
+  }
+
+  private upStart(
+    tunnel: Tunnel,
+    frame: Extract<MachineFrame, { t: "up" }>
+  ): void {
+    const { id } = frame;
+    if (!Number.isInteger(id) || id < 1 || id > 0xffffffff) return;
+    if (tunnel.ups.has(id)) {
+      return this.sendUp(tunnel, {
+        t: "up-res-error",
+        id,
+        message: "duplicate id",
+      });
+    }
+    // Re-read: a switch flipped since the last request applies to this one
+    const machine = this.deps.machineById(tunnel.machineId);
+    const decision = decideUp(this.deps.upRules(), machine, frame, {
+      port: this.deps.localPort(),
+      proof: this.deps.linkProof(),
+    });
+    if (!decision.ok) {
+      if (machine?.status === "approved") {
+        try {
+          this.deps.onUpRefused?.(machine, decision);
+        } catch (error) {
+          console.error("[link] onUpRefused failed:", error);
+        }
+      }
+      return this.refuseUp(tunnel, id, decision);
+    }
+    const kind = decision.rule.kind;
+    if (!this.upCounter.enter(tunnel.machineId, kind, Date.now())) {
+      return this.refuseUp(tunnel, id, upRefusal("too_many"));
+    }
+    const up: UpPending = {
+      kind,
+      req: null,
+      chunks: [],
+      bytes: 0,
+      rule: decision.rule,
+      decision,
+      receiver: new CreditReceiver({
+        window: UP_WINDOW,
+        grant: (bytes) => this.sendUp(tunnel, { t: "up-credit", id, bytes }),
+        overrun: () => this.closeTunnel(tunnel, 1009, "window overrun"),
+      }),
+      timer: null,
+      idle: null,
+      answered: false,
+      answerBytes: 0,
+      kept: [],
+      keptBytes: 0,
+      sent: undefined,
+    };
+    tunnel.ups.set(id, up);
+    const veto = this.deps.beforeUp?.(decision, machine!);
+    if (veto) {
+      this.endUp(tunnel, id);
+      return this.refuseUp(tunnel, id, veto);
+    }
+    this.touchUp(tunnel, id);
+    // Copies stream straight through; an agent's body is read whole first
+    if (kind === "system") this.upAsk(tunnel, id, decision.headers, null);
+  }
+
+  private upBody(tunnel: Tunnel, id: number, chunk: Buffer): void {
+    const up = tunnel.ups.get(id);
+    if (!up?.rule) return;
+    up.receiver.received(chunk.length);
+    if (!tunnel.ups.has(id)) return;
+    this.touchUp(tunnel, id);
+    up.bytes += chunk.length;
+    if (up.bytes > up.rule.maxBody) {
+      const refusal = upRefusal("too_large");
+      return this.failUp(tunnel, id, refusal.status, {
+        error: refusal.error,
+        code: refusal.code,
+      });
+    }
+    // A streamed body may never run past the length it declared: the extra
+    // bytes would reach this server as a second request of the machine's making
+    const declared = declaredLength(up);
+    if (declared !== null && up.bytes > declared) {
+      const refusal = upRefusal("bad_request");
+      return this.failUp(tunnel, id, refusal.status, {
+        error: refusal.error,
+        code: refusal.code,
+      });
+    }
+    if (up.kind === "agent") {
+      up.chunks.push(chunk);
+      return;
+    }
+    up.req?.write(chunk, () => up.receiver.consumed(chunk.length));
+  }
+
+  private upEnd(tunnel: Tunnel, id: number): void {
+    const up = tunnel.ups.get(id);
+    if (!up?.rule || !up.decision) return;
+    this.touchUp(tunnel, id);
+    const rule = up.rule;
+    // The head may already be here (a system call answered early)
+    if (!up.answered) {
+      // Until the head, only rule.headMs counts: a rule may wait longer
+      // than the idle limit (the idle timer starts again with the head)
+      if (up.idle) clearTimeout(up.idle);
+      up.idle = null;
+      up.timer = setTimeout(
+        () =>
+          this.failUp(tunnel, id, 504, {
+            error: UP_LOCAL_ERRORS.timeout.error,
+            code: "timeout",
+          }),
+        rule.headMs
+      );
+    }
+    if (up.kind === "system") {
+      const declared = declaredLength(up);
+      if (declared !== null && up.bytes !== declared) {
+        const refusal = upRefusal("bad_request");
+        return this.failUp(tunnel, id, refusal.status, {
+          error: refusal.error,
+          code: refusal.code,
+        });
+      }
+      up.req?.end();
+      return;
+    }
+    // Agent: only what the rule builds is sent on, never the machine's bytes
+    let body: Buffer | null = null;
+    if (rule.body) {
+      let input: unknown;
+      try {
+        const raw = Buffer.concat(up.chunks).toString("utf8");
+        input = raw.trim() ? JSON.parse(raw) : {};
+      } catch {
+        const refusal = upRefusal("bad_request");
+        return this.failUp(tunnel, id, refusal.status, {
+          error: refusal.error,
+          code: refusal.code,
+        });
+      }
+      const machine = this.deps.machineById(tunnel.machineId);
+      if (!machine) {
+        const refusal = upRefusal("machine_unknown");
+        return this.failUp(tunnel, id, refusal.status, {
+          error: refusal.error,
+          code: refusal.code,
+        });
+      }
+      const built = rule.body(input, {
+        machine,
+        targetMachineId: up.decision.targetMachineId,
+        pathname: up.decision.path.split("?")[0],
+      });
+      if ("ok" in built && built.ok === false) {
+        return this.failUp(tunnel, id, built.status, {
+          error: built.error,
+          code: built.code,
+        });
+      }
+      up.sent = (built as { body: unknown }).body;
+      body = Buffer.from(JSON.stringify(up.sent));
+    }
+    up.chunks = [];
+    const headers = { ...up.decision.headers };
+    delete headers["content-type"];
+    delete headers["content-length"];
+    if (body) headers["content-type"] = "application/json";
+    if (body || rule.method !== "GET") {
+      headers["content-length"] = String(body?.length ?? 0);
+    }
+    this.upAsk(tunnel, id, headers, body);
+  }
+
+  /** The loopback call to this server's own API; streams the answer back */
+  private upAsk(
+    tunnel: Tunnel,
+    id: number,
+    headers: Record<string, string>,
+    body: Buffer | null
+  ): void {
+    const up = tunnel.ups.get(id);
+    if (!up?.decision || !up.rule) return;
+    const rule = up.rule;
+    const decision = up.decision;
+    const req = http.request(
+      {
+        host: "127.0.0.1",
+        port: this.deps.localPort(),
+        method: rule.method,
+        path: decision.path,
+        headers,
+        // One socket per call: nothing a machine sends can share a
+        // connection with another request
+        agent: LOOPBACK_AGENT,
+      },
+      (response) => {
+        if (tunnel.ups.get(id) !== up) return void response.resume();
+        if (up.timer) clearTimeout(up.timer);
+        up.timer = null;
+        up.answered = true;
+        this.touchUp(tunnel, id);
+        const status = response.statusCode ?? 502;
+        this.sendUp(tunnel, {
+          t: "up-res",
+          id,
+          status,
+          headers: responseHeadersFromLink(response.headers),
+        });
+        const json = /json/.test(String(response.headers["content-type"]));
+        response.on("data", (chunk: Buffer) => {
+          if (tunnel.ups.get(id) !== up) return;
+          this.touchUp(tunnel, id);
+          up.answerBytes += chunk.length;
+          if (up.answerBytes > UP_ANSWER_MAX) {
+            return this.failUp(tunnel, id, 502, {
+              error: "too large",
+              code: "too_large",
+            });
+          }
+          if (rule.action && json && up.keptBytes < KEEP_MAX) {
+            up.kept.push(chunk);
+            up.keptBytes += chunk.length;
+          }
+          for (let at = 0; at < chunk.length; at += UP_CHUNK) {
+            if (tunnel.ws.readyState !== WebSocket.OPEN) return;
+            tunnel.ws.send(
+              encodeBinary(id, BIN_UP, chunk.subarray(at, at + UP_CHUNK))
+            );
+          }
+          // A large answer waits for the link, so pings still get through
+          if (tunnel.ws.bufferedAmount > BUFFER_HIGH) {
+            response.pause();
+            const drain = setInterval(() => {
+              if (
+                tunnel.ws.readyState !== WebSocket.OPEN ||
+                tunnel.ws.bufferedAmount < BUFFER_HIGH / 4 ||
+                tunnel.ups.get(id) !== up
+              ) {
+                clearInterval(drain);
+                response.resume();
+              }
+            }, 50);
+          }
+        });
+        response.on("end", () => {
+          if (tunnel.ups.get(id) !== up) return;
+          up.req = null;
+          this.endUp(tunnel, id);
+          this.sendUp(tunnel, { t: "up-res-end", id });
+          if (rule.action && this.deps.onUp) this.reportUp(tunnel, up, status);
+        });
+        response.on("error", () =>
+          this.failUp(tunnel, id, 502, {
+            error: UP_LOCAL_ERRORS.link_dropped.error,
+            code: "link_dropped",
+          })
+        );
+      }
+    );
+    req.on("error", () =>
+      this.failUp(tunnel, id, 502, {
+        error: "The server couldn't answer",
+        code: "hub_unreachable",
+      })
+    );
+    // Node refuses to write past (or end short of) a declared content-length
+    (
+      req as http.ClientRequest & { strictContentLength: boolean }
+    ).strictContentLength = true;
+    up.req = req;
+    if (up.kind === "agent") req.end(body ?? undefined);
+  }
+
+  private reportUp(tunnel: Tunnel, up: UpPending, status: number): void {
+    const machine = this.deps.machineById(tunnel.machineId);
+    if (!machine || !up.rule || !up.decision) return;
+    let answer: unknown = null;
+    try {
+      answer = JSON.parse(Buffer.concat(up.kept).toString("utf8"));
+    } catch {
+      // Not JSON, or more than was kept
+    }
+    try {
+      this.deps.onUp?.({
+        machine,
+        rule: up.rule,
+        targetMachineId: up.decision.targetMachineId,
+        pathname: up.decision.path.split("?")[0],
+        status,
+        sent: up.sent,
+        answer,
+      });
+    } catch (error) {
+      console.error("[link] onUp failed:", error);
     }
   }
 
@@ -461,8 +1101,16 @@ export class LinkHub {
     binary: boolean
   ): void {
     if (tunnel.ws.readyState !== WebSocket.OPEN) return;
-    if (binary) tunnel.ws.send(encodeBinary(id, BIN_WS, bytes(data)));
-    else tunnel.ws.send(JSON.stringify({ t: "ws-msg", id, data: text(data) }));
+    const out = binary
+      ? encodeBinary(id, BIN_WS, bytes(data))
+      : JSON.stringify({ t: "ws-msg", id, data: text(data) });
+    // Past the link's frame limit the machine would drop the whole link:
+    // only this socket closes instead
+    if (Buffer.byteLength(out) > LINK_MAX_FRAME) {
+      tunnel.relays.get(id)?.browser.close(1009, "message too big");
+      return;
+    }
+    tunnel.ws.send(out);
   }
 
   // --- The user's requests go down the link ---

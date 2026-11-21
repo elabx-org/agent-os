@@ -653,6 +653,98 @@ const migrations: Migration[] = [
       addColumnIfMissing(db, "sessions", "moved_from", "TEXT");
     }),
   },
+  {
+    id: 40,
+    name: "add_machines_up_columns",
+    up: atomic((db) => {
+      // The machine-to-server channel (lib/link/up.ts). uses_hub 1: the
+      // machine's sessions may use this server; backup 1: it may keep
+      // copies of its sessions here; caps: JSON string[] from its last
+      // hello. Both switches off until the user says so
+      addColumnIfMissing(db, "machines", "uses_hub", "INTEGER NOT NULL DEFAULT 0");
+      addColumnIfMissing(db, "machines", "backup", "INTEGER NOT NULL DEFAULT 0");
+      addColumnIfMissing(db, "machines", "caps", "TEXT");
+    }),
+  },
+  {
+    id: 41,
+    name: "add_started_by_and_machine_actions",
+    up: atomic((db) => {
+      // JSON StartedBy (lib/session-started-by.ts): a session that a
+      // session on another machine started, and how far along the chain
+      addColumnIfMissing(db, "sessions", "started_by", "TEXT");
+      // What sessions on a linked machine did here (lib/link/machine-actions.ts)
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS machine_actions (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          machine_id TEXT NOT NULL,
+          machine_name TEXT NOT NULL,
+          action TEXT NOT NULL,
+          target_session_id TEXT,
+          target_name TEXT,
+          target_machine_id TEXT,
+          detail TEXT,
+          allowed INTEGER NOT NULL,
+          at INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_machine_actions_machine ON machine_actions(machine_id, at);
+      `);
+    }),
+  },
+  {
+    id: 42,
+    name: "add_machine_backups",
+    up: atomic((db) => {
+      // Copies of a linked machine's sessions kept here (lib/backup). The
+      // files are under $AGENT_OS_HOME/backups/<machine_id>; a row changes
+      // only when a copy is committed. state: current | taking | taken.
+      // orphan 1: its machine was removed before it confirmed the pause
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS machine_backups (
+          machine_id TEXT NOT NULL,
+          session_id TEXT NOT NULL,
+          machine_name TEXT NOT NULL,
+          name TEXT NOT NULL,
+          project_name TEXT,
+          claude_session_id TEXT NOT NULL,
+          manifest TEXT NOT NULL,
+          repo_key TEXT,
+          head TEXT,
+          snapshot_commit TEXT,
+          snapshot_tree TEXT,
+          file_gen INTEGER NOT NULL DEFAULT 0,
+          file_bytes INTEGER NOT NULL DEFAULT 0,
+          has_settings INTEGER NOT NULL DEFAULT 0,
+          copied_at INTEGER NOT NULL,
+          last_active_at INTEGER,
+          state TEXT NOT NULL DEFAULT 'current',
+          take_id TEXT,
+          taken_at INTEGER,
+          machine_paused_at INTEGER,
+          ahead TEXT,
+          orphan INTEGER NOT NULL DEFAULT 0,
+          PRIMARY KEY (machine_id, session_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_machine_backups_session ON machine_backups(session_id);
+      `);
+    }),
+  },
+  {
+    id: 43,
+    name: "add_backup_departures",
+    up: atomic((db) => {
+      // A session that moved away from a machine (lib/link/move.ts): a copy
+      // from that machine still on its way must not land after the move
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS backup_departures (
+          machine_id TEXT NOT NULL,
+          session_id TEXT NOT NULL,
+          at INTEGER NOT NULL,
+          PRIMARY KEY (machine_id, session_id)
+        );
+      `);
+    }),
+  },
 ];
 
 export function runMigrations(db: Database.Database): void {

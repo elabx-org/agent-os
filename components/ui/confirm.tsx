@@ -17,6 +17,8 @@ interface ConfirmRequest {
   title: string;
   message?: string;
   confirmLabel: string;
+  /** Default "Cancel" */
+  cancelLabel?: string;
   destructive?: boolean;
 }
 
@@ -68,7 +70,7 @@ export function ConfirmHost() {
             className="h-11 sm:h-9"
             onClick={() => finish(false)}
           >
-            Cancel
+            {request?.cancelLabel ?? "Cancel"}
           </Button>
           <Button
             variant={request?.destructive ? "destructive" : "default"}

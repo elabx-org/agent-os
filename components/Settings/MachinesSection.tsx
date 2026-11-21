@@ -11,15 +11,25 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { confirmAction } from "@/components/ui/confirm";
+import {
+  Sheet,
+  SheetBody,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { Switch } from "@/components/ui/switch";
 import {
   isOnline,
   machineKeys,
+  useMachineActivity,
   useMachines,
   useSessionCount,
   useTabMachineId,
   type MachineView,
 } from "@/data/machines";
+import { activityLine, activitySummary } from "./machine-activity";
 import { fetchAsUser, refusalText, reprove } from "@/lib/client/user-fetch";
 import { fetchOn, switchMachine } from "@/lib/client/machine";
 import {
@@ -39,6 +49,8 @@ import {
 } from "@/lib/server-name";
 import { cn } from "@/lib/utils";
 import { Chevron } from "./SettingGroup";
+import { copiedWord, copyAge, sizeText } from "@/lib/backup/types";
+import { openCopies } from "@/stores/copiesSheet";
 
 /** Polled while this screen is open, to see a Mac arrive and connect */
 const POLL_MS = 2000;
@@ -108,6 +120,8 @@ const sessionsWord = (n: number) => (n === 1 ? "1 session" : `${n} sessions`);
  */
 export function MachinesSection() {
   const { data } = useMachines(POLL_MS);
+  const machineName = (id: string) =>
+    data?.machines.find((m) => m.id === id)?.name ?? null;
   const queryClient = useQueryClient();
   const refresh = useCallback(
     () => queryClient.invalidateQueries({ queryKey: machineKeys.list() }),
@@ -129,7 +143,12 @@ export function MachinesSection() {
       <Card>
         <ServerRow name={data.serverName ?? null} onChange={refresh} />
         {linked.map((m) => (
-          <LinkedRow key={m.id} machine={m} onChange={refresh} />
+          <LinkedRow
+            key={m.id}
+            machine={m}
+            machineName={machineName}
+            onChange={refresh}
+          />
         ))}
       </Card>
       {pending.length > 0 && (
@@ -253,17 +272,23 @@ function ServerRow({
 
 function LinkedRow({
   machine,
+  machineName,
   onChange,
 }: {
   machine: MachineView;
+  machineName: (id: string) => string | null;
   onChange: () => void;
 }) {
   const tab = useTabMachineId();
   const online = isOnline(machine);
   const { data: count } = useSessionCount(machine.id, online);
   const [renaming, setRenaming] = useState(false);
+  const copies = machine.copies ?? 0;
+  const unconfirmed = machine.unconfirmed ?? 0;
   const detail = !online
-    ? "Offline"
+    ? copies > 0
+      ? `Offline · ${copiedWord(copies)}, newest ${copyAge(Date.now() - (machine.newestCopyAt ?? Date.now()))} ago`
+      : "Offline"
     : machine.sameVersion === false
       ? "Online · needs the same AgentOS version"
       : count == null
@@ -273,8 +298,17 @@ function LinkedRow({
   const remove = async () => {
     const ok = await confirmAction({
       title: `Remove ${machine.name}?`,
-      message:
+      message: [
         "It's cut off at once. Its sessions stay on it; link it again to see them here.",
+        copies > 0 || unconfirmed > 0
+          ? "The copies of its sessions kept here are deleted too."
+          : "",
+        unconfirmed > 0
+          ? `${machine.name} was never told that ${unconfirmed} session(s) continued here; they may still be running on it.`
+          : "",
+      ]
+        .filter(Boolean)
+        .join(" "),
       confirmLabel: "Remove",
       destructive: true,
     });
@@ -290,17 +324,51 @@ function LinkedRow({
     if (machine.id === tab) switchMachine(null);
   };
 
-  const allowAgents = async (allowed: boolean) => {
-    const res = await fetchAsUser(`/api/machines/${machine.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ agents: allowed }),
+  const deleteCopies = async () => {
+    const ok = await confirmAction({
+      title: `Delete the copies of ${machine.name}'s sessions?`,
+      message: `Only the copies on this server go. The sessions on ${machine.name} stay as they are.`,
+      confirmLabel: "Delete copies",
+      destructive: true,
+    });
+    if (!ok) return;
+    const res = await fetchAsUser(`/api/machines/${machine.id}/backups`, {
+      method: "DELETE",
     });
     if (!res.ok) {
       toast.error(refusalText(await res.json().catch(() => ({}))));
       return;
     }
     onChange();
+  };
+
+  const patch = async (
+    change: { agents: boolean } | { usesHub: boolean } | { backup: boolean }
+  ) => {
+    const res = await fetchAsUser(`/api/machines/${machine.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(change),
+    });
+    if (!res.ok) {
+      toast.error(refusalText(await res.json().catch(() => ({}))));
+      return;
+    }
+    onChange();
+  };
+  const allowAgents = (allowed: boolean) => patch({ agents: allowed });
+  const allowUsesHub = async (allowed: boolean) => {
+    // Turning it off needs no asking
+    if (allowed) {
+      const ok = await confirmAction({
+        title: `Let sessions on ${machine.name} use this server?`,
+        message: `Agents working on ${machine.name} will be able to read the conversations of sessions here, start new Claude sessions in your projects, send messages to sessions and stop them. A session they start asks you before it runs anything; once you approve, it runs here. They can also reach your other machines that have "Let sessions on this server use it" turned on. They can never answer a permission request, turn on full access or change these switches. You are told each time one starts a session here.`,
+        confirmLabel: "Allow",
+        cancelLabel: "Not now",
+      });
+      if (!ok) return;
+    }
+    await patch({ usesHub: allowed });
   };
 
   if (renaming) {
@@ -340,6 +408,15 @@ function LinkedRow({
                 <Pencil className="h-4 w-4" />
                 Rename
               </DropdownMenuItem>
+              {copies > 0 && (
+                <DropdownMenuItem
+                  variant="destructive"
+                  onSelect={() => void deleteCopies()}
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Delete its copies
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem variant="destructive" onSelect={remove}>
                 <Trash2 className="h-4 w-4" />
                 Remove
@@ -353,6 +430,17 @@ function LinkedRow({
         allowed={!!machine.agents}
         onChange={allowAgents}
       />
+      <UsesHubRow
+        machine={machine}
+        needsUpdate={online && machine.up === false}
+        onChange={allowUsesHub}
+      />
+      <BackupRow
+        machine={machine}
+        onSwitch={(on) => patch({ backup: on })}
+        onDeleted={onChange}
+      />
+      <ActivityRow machine={machine} machineName={machineName} />
       {online && <ReposFolderRow target={machine.id} name={machine.name} />}
     </>
   );
@@ -381,7 +469,7 @@ function AgentsRow({
         </span>
         <span className="text-muted-foreground block text-[13px]">
           {allowed
-            ? `Agents here can start sessions on ${name} and give them work.`
+            ? `Agents here, and on your other machines you've let use this server, can start sessions on ${name} and give them work.`
             : `Off: only you can reach ${name}, from the app.`}
         </span>
       </label>
@@ -396,6 +484,257 @@ function AgentsRow({
         }}
       />
     </div>
+  );
+}
+
+/**
+ * Whether sessions on the machine may use this server: read its sessions,
+ * start Claude sessions that ask first, message and stop them. A machine
+ * on an older AgentOS can't ask at all until it updates
+ */
+function UsesHubRow({
+  machine,
+  needsUpdate,
+  onChange,
+}: {
+  machine: MachineView;
+  needsUpdate: boolean;
+  onChange: (allowed: boolean) => Promise<void>;
+}) {
+  const [saving, setSaving] = useState(false);
+  const { name } = machine;
+  const allowed = !!machine.usesHub;
+  const id = `machine-uses-hub-${machine.id}`;
+  return (
+    <div className="row items-start gap-3 py-3 pl-[68px]">
+      <label htmlFor={id} className="min-w-0 flex-1">
+        <span className="block text-[15px]">
+          Let sessions on {name} use this server
+        </span>
+        <span className="text-muted-foreground block text-[13px]">
+          {needsUpdate
+            ? `${name} needs to update first. It does this on its own shortly after it connects.`
+            : allowed
+              ? `Agents on ${name} can read the sessions here, start new Claude sessions in your projects, send them messages and stop them. What they start still asks you before it acts. They can't answer permission requests or turn on full access.`
+              : `Off: sessions on ${name} can't see or touch anything here.`}
+        </span>
+      </label>
+      <Switch
+        id={id}
+        checked={allowed}
+        // An older machine can still be switched off
+        disabled={saving || (needsUpdate && !allowed)}
+        onCheckedChange={async (next) => {
+          setSaving(true);
+          await onChange(next);
+          setSaving(false);
+        }}
+      />
+    </div>
+  );
+}
+
+/**
+ * "Keep a copy of its sessions on this server" (lib/backup): the switch,
+ * what is copied, and the way into the copies. Turning it off asks
+ * whether the copies already here stay
+ */
+function BackupRow({
+  machine,
+  onSwitch,
+  onDeleted,
+}: {
+  machine: MachineView;
+  onSwitch: (on: boolean) => Promise<void>;
+  onDeleted: () => void;
+}) {
+  const [saving, setSaving] = useState(false);
+  const [asking, setAsking] = useState(false);
+  const { name } = machine;
+  const on = !!machine.backup;
+  const copies = machine.copies ?? 0;
+  const unconfirmed = machine.unconfirmed ?? 0;
+  const tooOld = on && machine.canTakeOver === false;
+  const id = `machine-backup-${machine.id}`;
+
+  const stop = async (drop: boolean) => {
+    setAsking(false);
+    setSaving(true);
+    await onSwitch(false);
+    if (drop) {
+      const res = await fetchAsUser(`/api/machines/${machine.id}/backups`, {
+        method: "DELETE",
+      });
+      if (!res.ok) toast.error(refusalText(await res.json().catch(() => ({}))));
+      onDeleted();
+    }
+    setSaving(false);
+  };
+
+  return (
+    <>
+      <div className="row items-start gap-3 py-3 pl-[68px]">
+        <label htmlFor={id} className="min-w-0 flex-1">
+          <span className="block text-[15px]">
+            Keep a copy of its sessions on this server
+          </span>
+          <span className="text-muted-foreground block text-[13px]">
+            {!on
+              ? `Off: nothing new from ${name} is copied here.`
+              : tooOld
+                ? `Starts once ${name} has updated itself.`
+                : `After each reply, ${name} sends its Claude conversations and unfinished code here. If ${name} goes offline you can read them and carry on here. The copies stay on this server, where its sessions could read them.`}
+          </span>
+          {machine.copiesFull && (
+            <span className="block text-[13px] text-[var(--del)]">
+              Copies of {name} have reached 20 GB, so new changes aren&apos;t
+              being copied. Delete copies you no longer need.
+            </span>
+          )}
+          {unconfirmed > 0 && (
+            <span className="block text-[13px] text-[var(--del)]">
+              {name} hasn&apos;t confirmed it paused {unconfirmed} session(s)
+              that continued here. Don&apos;t use those sessions on {name}.
+            </span>
+          )}
+        </label>
+        <Switch
+          id={id}
+          checked={on}
+          disabled={saving}
+          onCheckedChange={async (next) => {
+            if (!next && copies > 0) {
+              setAsking(true);
+              return;
+            }
+            setSaving(true);
+            await onSwitch(next);
+            setSaving(false);
+          }}
+        />
+      </div>
+      {copies > 0 && (
+        <button
+          type="button"
+          onClick={() => openCopies(machine.id)}
+          className="row w-full items-center gap-3 py-3 pl-[68px] text-left active:opacity-70"
+        >
+          <span className="text-muted-foreground min-w-0 flex-1 text-[13px]">
+            {copiedWord(copies)} · newest{" "}
+            {copyAge(Date.now() - (machine.newestCopyAt ?? Date.now()))} ago ·{" "}
+            {sizeText(machine.copyBytes ?? 0)}
+          </span>
+          <Chevron />
+        </button>
+      )}
+      <Sheet open={asking} onOpenChange={setAsking}>
+        <SheetContent>
+          <SheetHeader>
+            <SheetTitle>Stop copying {name}&apos;s sessions?</SheetTitle>
+            <SheetDescription>
+              The {copies} copies already here stay until you delete them.
+            </SheetDescription>
+          </SheetHeader>
+          <SheetBody className="flex flex-col gap-2 pb-4">
+            <button
+              type="button"
+              onClick={() => void stop(false)}
+              className="pill pill-primary w-full active:opacity-80"
+            >
+              Stop and keep copies
+            </button>
+            <button
+              type="button"
+              onClick={() => void stop(true)}
+              className="pill pill-secondary w-full text-[var(--del)] active:opacity-80"
+            >
+              Stop and delete copies
+            </button>
+            <button
+              type="button"
+              onClick={() => setAsking(false)}
+              className="pill pill-secondary w-full active:opacity-80"
+            >
+              Cancel
+            </button>
+          </SheetBody>
+        </SheetContent>
+      </Sheet>
+    </>
+  );
+}
+
+/** "What {name}'s sessions did here": the row, and the list in a sheet */
+function ActivityRow({
+  machine,
+  machineName,
+}: {
+  machine: MachineView;
+  machineName: (id: string) => string | null;
+}) {
+  const [open, setOpen] = useState(false);
+  const { data: actions } = useMachineActivity(
+    machine.id,
+    open ? POLL_MS : undefined
+  );
+  if (!machine.usesHub && !actions?.length) return null;
+  const { name } = machine;
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="row w-full items-center gap-3 py-3 pl-[68px] text-left active:opacity-70"
+      >
+        <span className="min-w-0 flex-1">
+          <span className="block text-[15px]">
+            What {name}&apos;s sessions did here
+          </span>
+          <span className="text-muted-foreground block text-[13px]">
+            {activitySummary(actions ?? [])}
+          </span>
+        </span>
+        <Chevron />
+      </button>
+      <Sheet open={open} onOpenChange={setOpen}>
+        <SheetContent>
+          <SheetHeader>
+            <SheetTitle>What {name}&apos;s sessions did here</SheetTitle>
+            <SheetDescription>Kept for 30 days.</SheetDescription>
+          </SheetHeader>
+          <SheetBody className="pb-4">
+            {!actions?.length ? (
+              <p className="text-muted-foreground px-1 text-[15px]">
+                Nothing yet. When a session on {name} starts or messages a
+                session here, it shows in this list.
+              </p>
+            ) : (
+              <ul className="flex flex-col gap-3 px-1">
+                {actions.map((action) => {
+                  const line = activityLine(action, machineName);
+                  return (
+                    <li key={action.id} className="min-w-0">
+                      <span className="block text-[15px]">
+                        {line.text}
+                        <span className="text-muted-foreground">
+                          {" · "}
+                          {new Date(action.at).toLocaleString()}
+                        </span>
+                      </span>
+                      {line.detail && (
+                        <span className="text-muted-foreground line-clamp-2 block text-[13px] break-words">
+                          {line.detail}
+                        </span>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </SheetBody>
+        </SheetContent>
+      </Sheet>
+    </>
   );
 }
 

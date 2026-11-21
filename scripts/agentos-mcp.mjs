@@ -32,33 +32,90 @@ const BASE = process.env.AGENTOS_URL || "http://localhost:3011";
 const PERMISSION_USER_ONLY =
   "Permission requests can only be answered by the user in AgentOS. Ask the user.";
 
-/** The linked machine a tool call is for ({ id, name }); unset: this one */
+const NOT_HERE =
+  "On another machine, name a project there; only Claude sessions can be started.";
+
+/**
+ * Where a tool call goes ({ id, name, prefix, viaHub }); unset: this one.
+ * On a server, a linked machine is /m/<id>. On a linked machine, the
+ * server is /api/hub and another machine /api/hub/m/<id>: the server
+ * decides what a session here may do there (viaHub)
+ */
 const where = new AsyncLocalStorage();
 
 /** This server's own answer, whatever machine the tool call is for */
 const here = (fn) => where.run(undefined, fn);
+
+let hubCache = null;
+
+/**
+ * This AgentOS's link to its server, when it is a linked machine (GET
+ * /api/hub, kept 15 s); null on a server, or an older one without it
+ */
+async function hubInfo() {
+  if (hubCache && Date.now() - hubCache.at < 15000) return hubCache.value;
+  let value = null;
+  try {
+    const res = await fetch(`${BASE}/api/hub`, {
+      headers: { "X-AgentOS-Origin": "agent" },
+    });
+    const data = res.ok ? await res.json() : null;
+    // A server answers { linked: false } and nothing more
+    if (data && typeof data === "object" && "supported" in data) value = data;
+  } catch {
+    // Not up yet: asked again on the next call
+  }
+  hubCache = { at: Date.now(), value };
+  return value;
+}
+
+const hubName = (info) => info?.hubName || "the server";
+const myName = (info) => info?.name || "this machine";
+
+/** The error a tool shows, in words the session can pass to the user */
+async function errorText(data, res, path, target) {
+  const code = data.code;
+  if (code === "hub_agents_off") {
+    const info = await hubInfo();
+    return `The user hasn't let sessions on ${myName(info)} use ${hubName(info)}. They can allow it in AgentOS: Settings, Machines.`;
+  }
+  if (code === "moved" && data.name) {
+    return `It continues on ${data.name}: pass machine "${data.name}".`;
+  }
+  if (code === "hub_unreachable")
+    return "The server couldn't answer. Try again.";
+  if (target && code === "machine_agents_off") {
+    const through = target.viaHub ? hubName(await hubInfo()) : "this server";
+    return `The user hasn't let sessions on ${through} use ${target.name}. They can turn it on in AgentOS: Settings, Machines.`;
+  }
+  if (
+    target &&
+    (code === "machine_offline" ||
+      code === "machine_unreachable" ||
+      (code === "machine_unknown" && !target.viaHub))
+  ) {
+    return `${target.name} can't be reached right now (${data.error}).`;
+  }
+  return data.error || `${res.status} ${res.statusText} on ${path}`;
+}
 
 async function api(path, options = {}) {
   // Changing a session's permission mode is the user's, not a tool
   if (/\/permission-mode(\/|\?|$)/.test(path)) {
     throw new Error(PERMISSION_USER_ONLY);
   }
-  const machine = where.getStore();
-  const res = await fetch(
-    `${BASE}${machine ? `/m/${machine.id}` : ""}${path}`,
-    {
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options.headers,
-        "X-AgentOS-Origin": "agent",
-        // Who is asking, for the user's record of what agents tried
-        ...(ownTmux ? { "X-AgentOS-Actor": ownTmux } : {}),
-      },
-      body:
-        options.body === undefined ? undefined : JSON.stringify(options.body),
-    }
-  );
+  const target = where.getStore();
+  const res = await fetch(`${BASE}${target?.prefix ?? ""}${path}`, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+      "X-AgentOS-Origin": "agent",
+      // Who is asking, for the user's record of what agents tried
+      ...(ownTmux ? { "X-AgentOS-Actor": ownTmux } : {}),
+    },
+    body: options.body === undefined ? undefined : JSON.stringify(options.body),
+  });
   const text = await res.text();
   let data;
   try {
@@ -66,31 +123,105 @@ async function api(path, options = {}) {
   } catch {
     data = { raw: text };
   }
-  if (!res.ok) {
-    if (machine && data.code === "machine_agents_off") {
-      throw new Error(
-        `The user hasn't let sessions on this server use ${machine.name}. They can turn it on in AgentOS: Settings, Machines.`
-      );
-    }
-    if (machine && String(data.code).startsWith("machine_")) {
-      throw new Error(
-        `${machine.name} can't be reached right now (${data.error}).`
-      );
-    }
-    throw new Error(data.error || `${res.status} ${res.statusText} on ${path}`);
-  }
+  if (!res.ok) throw new Error(await errorText(data, res, path, target));
   return data;
 }
 
+/**
+ * Where tool calls can go. On a server: the linked machines. On a linked
+ * machine: its server first, then the server's other machines
+ */
 async function machines() {
-  const data = await here(() => api("/api/machines"));
-  return (data.machines ?? []).filter((m) => m.status === "approved");
+  const info = await hubInfo();
+  if (!info) {
+    const data = await here(() => api("/api/machines"));
+    return (data.machines ?? [])
+      .filter((m) => m.status === "approved")
+      .map((m) => ({
+        id: m.id,
+        name: m.name,
+        kind: "machine",
+        platform: m.platform,
+        online: m.presence === "online",
+        usable: !!m.agents,
+        note: m.agents
+          ? undefined
+          : "The user hasn't allowed sessions here to use it (Settings, Machines)",
+        target: { id: m.id, name: m.name, prefix: `/m/${m.id}`, viaHub: false },
+      }));
+  }
+  const hub = hubName(info);
+  const server = {
+    id: "hub",
+    name: info.hubName || "Server",
+    kind: "server",
+    online: info.linked,
+    usable: info.linked && info.supported && info.agents,
+    note: !info.linked
+      ? "This machine isn't connected to its server right now."
+      : !info.supported
+        ? "The server's AgentOS needs to update before sessions here can use it."
+        : !info.agents
+          ? `The user hasn't let sessions on ${myName(info)} use it (Settings, Machines)`
+          : undefined,
+    target: {
+      id: "hub",
+      name: info.hubName || "the server",
+      prefix: "/api/hub",
+      viaHub: true,
+    },
+  };
+  let peers = [];
+  if (server.usable) {
+    try {
+      const data = await where.run(server.target, () => api("/api/link/peers"));
+      peers = (data.machines ?? []).filter((m) => m.id !== info.machineId);
+    } catch {
+      // Only the server, then
+    }
+  }
+  return [
+    server,
+    ...peers.map((m) => ({
+      id: m.id,
+      name: m.name,
+      kind: "machine",
+      platform: m.platform,
+      online: !!m.online,
+      usable: !!m.usableByServerSessions,
+      note: m.usableByServerSessions
+        ? `Reached through ${hub}`
+        : `The user hasn't let sessions on ${hub} use it (Settings, Machines)`,
+      target: {
+        id: m.id,
+        name: m.name,
+        prefix: `/api/hub/m/${m.id}`,
+        viaHub: true,
+      },
+    })),
+  ];
 }
 
-/** A linked machine by id or name */
+/**
+ * Where `ref` (an id or a name) is; null for this machine itself. On a
+ * linked machine "hub", "server" and the server's name mean the server
+ */
 async function findMachine(ref) {
-  const list = await machines();
+  const info = await hubInfo();
   const key = ref.trim().toLowerCase();
+  if (info) {
+    if (
+      key === (info.name || "").toLowerCase() ||
+      ref === info.machineId ||
+      key === "this machine"
+    ) {
+      return null;
+    }
+  }
+  const list = await machines();
+  if (info && ["hub", "server", "the server"].includes(key)) {
+    return check(list[0]);
+  }
   const found =
     list.find((m) => m.id === ref) ||
     list.find((m) => m.name.toLowerCase() === key) ||
@@ -107,22 +238,36 @@ async function findMachine(ref) {
         : "No machine is linked to this AgentOS."
     );
   }
-  if (one.presence !== "online") throw new Error(`${one.name} is offline.`);
-  return one;
+  return check(one);
 }
+
+function check(machine) {
+  if (!machine.online) {
+    throw new Error(
+      machine.kind === "server" && machine.note
+        ? machine.note
+        : `${machine.name} is offline.`
+    );
+  }
+  return machine.target;
+}
+
+const ROLE = await hubInfo();
 
 const MACHINE = z
   .string()
   .optional()
   .describe(
-    "A linked machine (name or id from list_machines) to do this on, instead of this server"
+    ROLE
+      ? "A linked machine, or the server (name or id from list_machines), to do this on instead of here"
+      : "A linked machine (name or id from list_machines) to do this on, instead of this server"
   );
 
 /** A tool that takes `machine`: its calls go to that machine */
 const onMachine = (fn) => async (args) => {
   if (!args.machine) return fn(args);
-  const machine = await findMachine(args.machine);
-  return where.run({ id: machine.id, name: machine.name }, () => fn(args));
+  const target = await findMachine(args.machine);
+  return target ? where.run(target, () => fn(args)) : fn(args);
 };
 
 /** ~ is the machine's home there, not this server's */
@@ -140,6 +285,18 @@ const ownTmux = (() => {
     return null;
   }
 })();
+
+/** What the user calls the machine this session runs on */
+async function ownName() {
+  const info = await hubInfo();
+  if (info) return myName(info);
+  try {
+    const data = await here(() => api("/api/machines"));
+    return data.serverName || "the server";
+  } catch {
+    return "the server";
+  }
+}
 
 const tmuxOf = (s) => s.tmux_name || `${s.agent_type || "claude"}-${s.id}`;
 
@@ -282,6 +439,11 @@ const server = new McpServer(
       "The user is on their phone, not this machine: a server you start (a dev server, a preview, a test page) is reachable only through AgentOS's port proxy. When you start one, give the user its preview_url link, never a localhost or 0.0.0.0 address, and don't open ports to the network. Bind to 127.0.0.1 or 0.0.0.0 on any free port. list_servers shows what runs; stop_server stops only servers your own session started.",
       "Linked machines (list_machines), e.g. the user's Mac: pass `machine` to the project and session tools to work there, for what only that machine can do (Xcode, the iOS simulator, macOS-only tools). A session there is its own agent on that machine with its own files: give it a complete task, and move code between machines with git. It only works when the user has allowed it for that machine in Settings, Machines; if it's refused, tell the user.",
       "When the user approves, rejects or drops a mock you published, record it with set_mock_status (with the PR once it's built).",
+      ...(ROLE
+        ? [
+            `This machine is linked to the user's server (${hubName(ROLE)}). list_machines shows it and the user's other machines: pass machine to work there. It only works when the user has allowed it in Settings, Machines; if it's refused, tell the user. Sessions you start elsewhere are announced to the user and always ask before acting.`,
+          ]
+        : []),
     ].join("\n"),
   }
 );
@@ -293,18 +455,28 @@ server.registerTool(
       "List the machines linked to this AgentOS (e.g. the user's Mac): name, id, platform, whether each is online and whether the user lets sessions here use it. Pass a machine's name as `machine` to the project and session tools to work there.",
     inputSchema: {},
   },
-  tool(async () =>
-    (await machines()).map((m) => ({
+  tool(async () => {
+    const list = await machines();
+    if (!(await hubInfo())) {
+      return list.map((m) => ({
+        id: m.id,
+        name: m.name,
+        platform: m.platform,
+        online: m.online,
+        usable_by_sessions: m.usable,
+        note: m.note,
+      }));
+    }
+    return list.map((m) => ({
       id: m.id,
       name: m.name,
-      platform: m.platform,
-      online: m.presence === "online",
-      usable_by_sessions: !!m.agents,
-      note: m.agents
-        ? undefined
-        : "The user hasn't allowed sessions here to use it (Settings, Machines)",
-    }))
-  )
+      kind: m.kind,
+      ...(m.platform ? { platform: m.platform } : {}),
+      online: m.online,
+      usable_by_sessions: m.usable,
+      note: m.note,
+    }));
+  })
 );
 
 server.registerTool(
@@ -349,6 +521,11 @@ server.registerTool(
   },
   tool(
     onMachine(async ({ name, directory, create_directory, agent, model }) => {
+      if (where.getStore()?.viaHub) {
+        throw new Error(
+          "create_project only works on this machine. Ask the user to add the project there."
+        );
+      }
       const path = homePath(directory);
       if (create_directory) {
         if (where.getStore())
@@ -464,6 +641,35 @@ server.registerTool(
   tool(
     onMachine(
       async ({ task, project, directory, name, agent, model, branch }) => {
+        const target = where.getStore();
+        if (target?.viaHub) {
+          // Another machine starts only Claude sessions, in its projects
+          if (!project || directory || (agent && agent !== "claude")) {
+            throw new Error(NOT_HERE);
+          }
+          const p = findProject(await projects(), project);
+          const { session, error } = await api("/api/sessions", {
+            method: "POST",
+            body: {
+              projectId: p.id,
+              name,
+              initialPrompt: task || null,
+              model: model || undefined,
+              useWorktree: !!branch,
+              featureName: branch || null,
+            },
+          });
+          if (error) throw new Error(error);
+          return {
+            id: session.id,
+            name: session.name,
+            directory: session.worktree_path || session.working_directory,
+            branch: session.branch_name || undefined,
+            machine: target.name,
+            started: true,
+            note: "It asks the user before it acts.",
+          };
+        }
         const p = project ? findProject(await projects(), project) : null;
         const cwd = homePath(directory || p?.working_directory || "~");
         const { session, error } = await api("/api/sessions", {
@@ -510,11 +716,28 @@ server.registerTool(
     onMachine(async ({ session, text }) => {
       const s = await findSession(session);
       notSelf(s, "message");
+      const target = where.getStore();
+      let message = text;
+      let busyNow = false;
+      if (target) {
+        // Across machines: say where it came from, unless it answers a
+        // prompt on screen
+        const [{ prompt }, { state }] = await Promise.all([
+          get(`/api/sessions/${s.id}/prompt`),
+          running().then((live) => inspect(s, live)),
+        ]);
+        if (!prompt) {
+          message = `[Message from a session on ${await ownName()}, sent with AgentOS. No reply is needed unless it asks for one.]\n${text}`;
+        }
+        busyNow = busy(state);
+      }
       await api(`/api/sessions/${s.id}/send-keys`, {
         method: "POST",
-        body: { text, pressEnter: true },
+        body: { text: message, pressEnter: true },
       });
-      return `Sent to ${s.name}`;
+      return busyNow
+        ? `Sent to ${s.name}; it is busy and will read it after this reply`
+        : `Sent to ${s.name}`;
     })
   )
 );

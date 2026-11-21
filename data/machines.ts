@@ -3,11 +3,13 @@
 import { useSyncExternalStore } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import type { Session } from "@/lib/db";
+import type { MachineAction } from "@/lib/link/machine-actions";
 import { fetchOn, tabMachine } from "@/lib/client/machine";
 import { HUB_TARGET } from "@/lib/machine-marker";
 import type { AgentLike, MachineSource, MachineTag } from "@/lib/machine-now";
 import type { SessionStatus } from "@/components/views/types";
 import type { ProjectWithRepositories } from "@/lib/projects";
+import type { BackupView, TakeJob } from "@/lib/backup/types";
 
 /** GET /api/machines (app/api/machines/route.ts) */
 export interface MachineView {
@@ -23,6 +25,21 @@ export interface MachineView {
   sameVersion: boolean | null;
   /** Sessions on this server may use it through AgentOS's tools */
   agents?: boolean;
+  /** Its sessions may use this server (lib/link/up.ts) */
+  usesHub?: boolean;
+  /** It can ask this server at all (its version); null while offline */
+  up?: boolean | null;
+  /** Copies of its sessions are kept here (lib/backup) */
+  backup?: boolean;
+  copies?: number;
+  newestCopyAt?: number | null;
+  copyBytes?: number;
+  /** Its copies reached the 20 GB cap: new changes aren't copied */
+  copiesFull?: boolean;
+  /** Sessions continued here it hasn't confirmed pausing */
+  unconfirmed?: number;
+  /** Its version can pause what was continued here (caps take1) */
+  canTakeOver?: boolean;
 }
 
 export interface MachinesResponse {
@@ -37,6 +54,9 @@ export const machineKeys = {
   list: () => [...machineKeys.all, "list"] as const,
   on: (target: string, what: string) =>
     [...machineKeys.all, "on", target, what] as const,
+  activity: (id: string) => [...machineKeys.all, "activity", id] as const,
+  copies: (id: string) => [...machineKeys.all, "copies", id] as const,
+  take: (id: string) => [...machineKeys.all, "take", id] as const,
 };
 
 async function fetchMachines(): Promise<MachinesResponse> {
@@ -201,5 +221,52 @@ export function useSessionCount(target: string, enabled: boolean) {
     staleTime: LISTS_MS / 2,
     refetchInterval: enabled ? LISTS_MS : false,
     select: (data) => data.sessions?.length ?? 0,
+  });
+}
+
+/** What a machine's sessions did on this server (Settings, Machines) */
+export function useMachineActivity(id: string, pollMs?: number) {
+  return useQuery({
+    queryKey: machineKeys.activity(id),
+    queryFn: () =>
+      readJson<{ actions: MachineAction[] }>(
+        HUB_TARGET,
+        `/api/machines/${id}/activity?limit=50`
+      ).then((data) => data.actions ?? []),
+    staleTime: 5000,
+    refetchInterval: pollMs ?? false,
+  });
+}
+
+/** The copies of a machine's sessions kept on this server */
+export function useMachineCopies(id: string | null, pollMs?: number) {
+  return useQuery({
+    queryKey: machineKeys.copies(id ?? ""),
+    queryFn: () =>
+      readJson<{ copies: BackupView[]; bytes: number; unconfirmed: number }>(
+        HUB_TARGET,
+        `/api/machines/${id}/backups`
+      ),
+    enabled: !!id,
+    staleTime: 2000,
+    refetchInterval: id ? (pollMs ?? false) : false,
+  });
+}
+
+/** A take-over running on this server, polled until it ends */
+export function useTakeJob(job: TakeJob | null) {
+  return useQuery({
+    queryKey: machineKeys.take(job?.id ?? ""),
+    queryFn: () =>
+      readJson<TakeJob>(
+        HUB_TARGET,
+        `/api/machines/${job!.machineId}/backups/${job!.sessionId}/take?job=${job!.id}`
+      ),
+    enabled: !!job,
+    initialData: job ?? undefined,
+    refetchInterval: (query) => {
+      const step = query.state.data?.step;
+      return step === "done" || step === "failed" ? false : 700;
+    },
   });
 }

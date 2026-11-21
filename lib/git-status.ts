@@ -383,7 +383,9 @@ export function isMainBranch(workingDir: string): boolean {
  * Create a new branch and switch to it
  */
 export function createBranch(workingDir: string, branchName: string): void {
-  execSync(`git checkout -b "${branchName}"`, {
+  // No shell: the name is one argument, whatever it holds (never an option)
+  if (branchName.startsWith("-")) throw new Error("Invalid branch name");
+  execFileSync("git", ["checkout", "-b", branchName], {
     cwd: workingDir,
     encoding: "utf-8",
   });
@@ -494,7 +496,9 @@ export function getBranchList(workingDir: string): {
  * Switch to an existing branch
  */
 export function checkoutBranch(workingDir: string, branch: string): void {
-  execSync(`git checkout "${branch}"`, {
+  // No shell: the name is one argument, whatever it holds (never an option)
+  if (branch.startsWith("-")) throw new Error("Invalid branch name");
+  execFileSync("git", ["checkout", branch], {
     cwd: workingDir,
     encoding: "utf-8",
   });

@@ -380,12 +380,17 @@ async function changedPaths(
 /** Snapshot of the working tree for a move */
 export async function snapshotForMove(
   cwd: string,
-  sessionId: string
+  sessionId: string,
+  /**
+   * Where to keep it and its index's name; a move's own by default. A
+   * copy (lib/backup) keeps one ref it moves each time
+   */
+  options: { ref?: string; label?: string } = {}
 ): Promise<MoveSnapshot> {
   if (!SESSION_ID.test(sessionId)) throw new Error("Bad session id");
   const top = await topOf(cwd);
   const head = await headOf(top);
-  const index = await privateIndex(top, `move-${sessionId}`);
+  const index = await privateIndex(top, options.label ?? `move-${sessionId}`);
   try {
     await seedFromHead(top, index, head);
     const big = await bigUntracked(top, index);
@@ -424,7 +429,7 @@ export async function snapshotForMove(
         { cwd: top, index, env: IDENTITY }
       )
     ).trim();
-    const ref = `refs/agent-os/${sessionId}/move-${ms}`;
+    const ref = options.ref ?? `refs/agent-os/${sessionId}/move-${ms}`;
     await git(["update-ref", ref, commit], { cwd: top });
     const { paths, gitlinks } = await changedPaths(top, head, tree);
     return {

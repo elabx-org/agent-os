@@ -25,6 +25,12 @@ export interface MachineRow {
   last_seen: number | null;
   /** 1: sessions on this server may use it through AgentOS's tools */
   agents: number;
+  /** 1: its sessions may use this server (lib/link/up.ts) */
+  uses_hub: number;
+  /** 1: it may keep copies of its sessions on this server */
+  backup: number;
+  /** JSON string[]: what it said it can do in its last hello */
+  caps: string | null;
 }
 
 const clean = (value: string, max: number) =>
@@ -102,6 +108,39 @@ export function setMachineAgents(id: string, allowed: boolean): void {
   getDb()
     .prepare(`UPDATE machines SET agents = ? WHERE id = ?`)
     .run(allowed ? 1 : 0, id);
+}
+
+/** Whether the machine's sessions may use this server */
+export function setMachineUsesHub(id: string, on: boolean): void {
+  getDb()
+    .prepare(`UPDATE machines SET uses_hub = ? WHERE id = ?`)
+    .run(on ? 1 : 0, id);
+}
+
+/** Whether the machine may keep copies of its sessions on this server */
+export function setMachineBackup(id: string, on: boolean): void {
+  getDb()
+    .prepare(`UPDATE machines SET backup = ? WHERE id = ?`)
+    .run(on ? 1 : 0, id);
+}
+
+/** What the machine said it can do when it last connected */
+export function setMachineCaps(id: string, caps: string[]): void {
+  getDb()
+    .prepare(`UPDATE machines SET caps = ? WHERE id = ?`)
+    .run(JSON.stringify(caps), id);
+}
+
+/** The stored caps; empty when none or unreadable */
+export function machineCaps(row: Pick<MachineRow, "caps">): string[] {
+  try {
+    const value: unknown = JSON.parse(row.caps ?? "[]");
+    return Array.isArray(value)
+      ? value.filter((c): c is string => typeof c === "string")
+      : [];
+  } catch {
+    return [];
+  }
 }
 
 export function removeMachine(id: string): boolean {

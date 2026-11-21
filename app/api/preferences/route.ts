@@ -6,6 +6,7 @@ import { requireUser } from "@/lib/user-proof";
 import { CLAUDE_MODELS_PREFERENCE_KEY } from "@/lib/claude-models";
 import { writeClaudeModels } from "@/lib/claude-models-store";
 import { SERVER_NAME_PREFERENCE_KEY, normalizeServerName } from "@/lib/server-name";
+import { linkHub, machinesOn } from "@/lib/link/server";
 import { DEFAULT_REPOS_DIR, REPOS_DIR_PREFERENCE_KEY, normalizeReposDir } from "@/lib/repos-dir";
 
 export async function GET(request: Request) {
@@ -73,6 +74,8 @@ export async function PUT(request: Request) {
     if (key === SERVER_NAME_PREFERENCE_KEY) {
       const name = normalizeServerName(value);
       queries.upsertPreference(db).run(key, JSON.stringify(name));
+      // Linked machines show it as the server's name
+      if (machinesOn()) linkHub().tellUpAll();
       return NextResponse.json({ success: true, value: name });
     }
 

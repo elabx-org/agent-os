@@ -19,6 +19,65 @@ export function proofText(hubHost: string, nonce: string): string {
 
 export type Headers = Record<string, string | string[] | undefined>;
 
+/**
+ * Abilities named in hello and welcome. LINK_VERSION stays 1 so older
+ * peers still connect; a side sends nothing new unless the other named it.
+ */
+/** Can send and answer upward requests (a machine asking the hub) */
+export const CAP_UP = "up1";
+/** Honours "taken": pauses a session the hub continued from its copy */
+export const CAP_TAKE = "take1";
+
+/** agent: a session's tool call; system: AgentOS itself (copies) */
+export type UpKind = "agent" | "system";
+
+/** Largest BIN_UP payload */
+export const UP_CHUNK = 64 * 1024;
+/** Request-body bytes a machine may have unacknowledged per request */
+export const UP_WINDOW = 1024 * 1024;
+/** Up bodies wait while the socket holds more than this unsent */
+export const UP_SOCKET_HIGH = 256 * 1024;
+/** Largest answer body to an upward request */
+export const UP_ANSWER_MAX = 16 * 1024 * 1024;
+/** Largest frame either side accepts */
+export const LINK_MAX_FRAME = 16 * 1024 * 1024;
+
+/** What the hub lets this machine ask of it, and the names to show */
+export interface UpAllowed {
+  agents: boolean;
+  backup: boolean;
+  name: string;
+  hubName: string | null;
+}
+
+/**
+ * A session the hub continued from this machine's copy (lib/backup): the
+ * machine must pause its own and say what it did since
+ */
+export interface TakenSession {
+  sessionId: string;
+  /** 16 hex; also the move id on the hub */
+  takeId: string;
+  at: number;
+  /** When the copy it continued from was made */
+  copyAt: number;
+  hubName: string;
+  claudeSessionId: string;
+  transcriptBytes: number;
+  head: string | null;
+  tree: string | null;
+}
+
+export interface TakenResult {
+  sessionId: string;
+  takeId: string;
+  state: "paused" | "already" | "gone" | "failed";
+  /** What the machine did after the copy */
+  ahead?: { conversation: boolean; code: boolean };
+  /** Where that work is; shown as text only */
+  folder?: string;
+}
+
 export type MachineFrame =
   | {
       t: "hello";
@@ -30,6 +89,8 @@ export type MachineFrame =
       hubHost: string;
       /** One-time code from Settings -> Machines; only needed the first time */
       code?: string;
+      /** What this machine can do (CAP_UP, ...); absent on older machines */
+      caps?: string[];
     }
   | { t: "proof"; sig: string }
   | { t: "res"; id: number; status: number; headers: Headers }
@@ -50,7 +111,20 @@ export type MachineFrame =
       sessionId?: string;
       agentId?: string;
       projectName?: string;
-    };
+    }
+  /** The machine asks the hub (ids are its own, from 1 per connection) */
+  | {
+      t: "up";
+      id: number;
+      kind: UpKind;
+      method: string;
+      path: string;
+      headers: Headers;
+    }
+  | { t: "up-end"; id: number }
+  | { t: "up-abort"; id: number }
+  /** What it did about the hub's "taken" list */
+  | { t: "taken-ack"; results: TakenResult[] };
 
 export type LinkNotice = Omit<Extract<MachineFrame, { t: "notify" }>, "t">;
 
@@ -66,6 +140,10 @@ export type HubFrame =
       code: string;
       /** Approved only: whether the hub's sessions may use this machine */
       agents?: boolean;
+      /** What this hub can do; absent on older hubs */
+      caps?: string[];
+      /** Approved, to a machine that named CAP_UP: what it may ask */
+      up?: UpAllowed;
     }
   /** That setting, when it changes on either side */
   | { t: "agents"; allowed: boolean }
@@ -84,11 +162,26 @@ export type HubFrame =
   | { t: "ws"; id: number; path: string; headers: Headers; user: boolean }
   | { t: "ws-msg"; id: number; data: string }
   | { t: "ws-close"; id: number; code?: number }
-  | { t: "ping" };
+  | { t: "ping" }
+  /** Its switches or names changed */
+  | ({ t: "up-allowed" } & UpAllowed)
+  /** The answer to an upward request; its body follows as BIN_UP */
+  | { t: "up-res"; id: number; status: number; headers: Headers }
+  | { t: "up-res-end"; id: number }
+  | { t: "up-res-error"; id: number; message: string }
+  /** The hub took in this many more bytes of that request's body */
+  | { t: "up-credit"; id: number; bytes: number }
+  /**
+   * Every session the hub continued from this machine's copies: sent
+   * right after welcome (even empty) and again on change
+   */
+  | { t: "taken"; sessions: TakenSession[] };
 
 /** Binary frame kinds: a body chunk of a request/response, a binary socket message */
 export const BIN_BODY = 1;
 export const BIN_WS = 2;
+/** A body chunk of an upward request or of its answer; the id is the machine's */
+export const BIN_UP = 3;
 
 export function encodeBinary(id: number, kind: number, data: Buffer): Buffer {
   const head = Buffer.allocUnsafe(5);

@@ -10,6 +10,7 @@ import { clearQueue } from "@/lib/queue/store";
 import { forgetSessionSummary } from "@/lib/session-summaries";
 import { pruneSessionTurns } from "@/lib/turns";
 import { reviewStore } from "@/lib/review-comments";
+import { parseMovedTo } from "@/lib/session-move-types";
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -118,10 +119,41 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 }
 
 /**
+ * A copy the server continued, with work done here after that copy
+ * (lib/backup): its folder and refs hold work that is nowhere else
+ */
+function keepsWork(session: Session): boolean {
+  const ahead = parseMovedTo(session.moved_to)?.takeover?.ahead;
+  return !!ahead && (ahead.conversation || ahead.code);
+}
+
+/**
  * Its queued messages, review comments, turn rows and snapshot refs (in the
- * background)
+ * background). A session continued here from a linked machine's copy
+ * forgets that: the machine is then never told to pause it
  */
 function dropSessionData(session: Session) {
+  try {
+    // A copy left behind by a move lives on elsewhere: the machine it was
+    // taken from must stay paused, unless it is the one it went back to
+    const went = session.settled_at ? parseMovedTo(session.moved_to) : null;
+    if (!went) {
+      getDb()
+        .prepare(
+          `DELETE FROM machine_backups WHERE session_id = ? AND state = 'taken'`
+        )
+        .run(session.id);
+    } else if (went.machine !== "hub") {
+      getDb()
+        .prepare(
+          `DELETE FROM machine_backups
+           WHERE session_id = ? AND state = 'taken' AND machine_id = ?`
+        )
+        .run(session.id, went.machine);
+    }
+  } catch (error) {
+    console.error(`Failed to drop the copy of ${session.id}:`, error);
+  }
   try {
     clearQueue(session.id);
   } catch (error) {
@@ -137,6 +169,7 @@ function dropSessionData(session: Session) {
   } catch (error) {
     console.error(`Failed to drop the summary of ${session.id}:`, error);
   }
+  if (keepsWork(session)) return;
   pruneSessionTurns(session).catch((error) =>
     console.error(`Failed to prune the turns of ${session.id}:`, error)
   );
@@ -178,7 +211,11 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     dropSessionData(existing);
 
     // Clean up worktree in background (non-blocking)
-    if (existing.worktree_path && isAgentOSWorktree(existing.worktree_path)) {
+    if (
+      existing.worktree_path &&
+      isAgentOSWorktree(existing.worktree_path) &&
+      !keepsWork(existing)
+    ) {
       const worktreePath = existing.worktree_path; // Capture for closure
       runInBackground(async () => {
         const { exec } = await import("child_process");

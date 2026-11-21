@@ -145,7 +145,9 @@ export type SettleRefusalReason =
   | "already_settled"
   | "not_settled"
   /** Handed off (M4): resume-paused, not settle */
-  | "paused";
+  | "paused"
+  /** Continued on the hub from its copy (lib/backup): open it there */
+  | "moved";
 
 export interface SettleError {
   error: string;

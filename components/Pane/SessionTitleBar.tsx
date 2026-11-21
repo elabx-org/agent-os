@@ -79,6 +79,7 @@ import {
   FoldHeader,
   PageHeader,
   PaneCardHeader,
+  StartedByLine,
   ViewSeg,
   type HeaderInfo,
 } from "@/components/Session/SessionHeader";
@@ -772,6 +773,13 @@ export function SessionTitleBar({
                 </>
               )}
             </span>
+          )}
+          {/* A session another machine's session started says so */}
+          {session && (
+            <StartedByLine
+              session={session}
+              className="text-xs leading-tight"
+            />
           )}
           {!session && backgroundAgent && (
             <span className="text-muted-foreground flex min-w-0 items-center gap-1.5 text-xs leading-tight">

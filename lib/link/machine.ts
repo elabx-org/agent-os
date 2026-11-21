@@ -10,8 +10,21 @@ import { spawn } from "child_process";
 import fs from "fs";
 import path from "path";
 import { USER_PROOF_COOKIE, userSecret } from "../user-proof";
-import { LinkClient, type LinkState } from "./client";
-import type { LinkNotice } from "./protocol";
+import { heldSessions } from "../backup/hold";
+import { BACKUP_SESSION_ID } from "../backup/types";
+import {
+  LinkClient,
+  UpUnavailable,
+  type LinkState,
+  type UpAnswer,
+  type UpInit,
+} from "./client";
+import {
+  CAP_UP,
+  type LinkNotice,
+  type TakenSession,
+  type UpAllowed,
+} from "./protocol";
 import { generateMachineKey, isPublicKey, type MachineKey } from "./keys";
 import { home, readSecret, writeSecret } from "./secrets";
 import { ownSha } from "./server";
@@ -87,10 +100,16 @@ export interface LinkStatusFile {
   state: LinkState;
   /** The hub runs a different commit: this copy should update to it */
   updateTo: string | null;
+  /** What the hub lets this machine ask (lib/link/up.ts) */
+  up?: { supported: boolean; agents: boolean; backup: boolean };
   at: number;
 }
 
-function writeState(config: LinkConfig, state: LinkState): void {
+function writeState(
+  config: LinkConfig,
+  state: LinkState,
+  up?: LinkStatusFile["up"]
+): void {
   const hubSha = state.status === "linked" ? state.hubSha : null;
   const mine = ownSha();
   const file: LinkStatusFile = {
@@ -98,6 +117,7 @@ function writeState(config: LinkConfig, state: LinkState): void {
     name: config.name,
     state,
     updateTo: hubSha && mine && hubSha !== mine ? hubSha : null,
+    up,
     at: Date.now(),
   };
   try {
@@ -142,6 +162,91 @@ export const hubAgents = (): boolean | null =>
 export const setHubAgents = (allowed: boolean): boolean =>
   shared.__agentosLinkClient?.setAgents(allowed) ?? false;
 
+export { UpUnavailable, type UpAnswer, type UpInit };
+
+const upFailed = (code: UpUnavailable["code"]) =>
+  Promise.reject(new UpUnavailable(code));
+
+/**
+ * A session's call to the hub, marked as an agent's. Only the machine's
+ * /api/hub route calls this.
+ */
+export function askHub(init: UpInit): Promise<UpAnswer> {
+  const client = shared.__agentosLinkClient;
+  return client ? client.up("agent", init) : upFailed("not_linked");
+}
+
+/**
+ * AgentOS's own upload to the hub (copies of sessions). No HTTP route may
+ * call this: a session must never be able to send as AgentOS.
+ */
+export function uploadToHub(init: UpInit): Promise<UpAnswer> {
+  const client = shared.__agentosLinkClient;
+  return client ? client.up("system", init) : upFailed("not_linked");
+}
+
+/** What the hub lets this machine ask, for its pages and tools */
+export function hubUp(): {
+  linked: boolean;
+  supported: boolean;
+  agents: boolean;
+  backup: boolean;
+  machineId: string | null;
+  name: string | null;
+  hubName: string | null;
+} {
+  const client = shared.__agentosLinkClient;
+  const state = client?.state;
+  const linked = state?.status === "linked";
+  const up: UpAllowed | null = linked ? (client?.upAllowed ?? null) : null;
+  return {
+    linked,
+    supported: linked && !!client?.hubCaps.has(CAP_UP),
+    agents: up?.agents ?? false,
+    backup: up?.backup ?? false,
+    machineId: state?.status === "linked" ? state.machineId : null,
+    name: up?.name || null,
+    hubName: up?.hubName ?? null,
+  };
+}
+
+/**
+ * The hub's "taken" list has come on this connection, so this machine
+ * knows what it must not copy or run (lib/backup/machine.ts)
+ */
+export const takenReceived = (): boolean =>
+  !!shared.__agentosLinkClient?.takenSeen;
+
+/** The hub's host and this machine's id there; null while not linked */
+export function linkIdentity(): { hubHost: string; machineId: string } | null {
+  const client = shared.__agentosLinkClient;
+  const state = client?.state;
+  const config = readLinkConfig();
+  if (state?.status !== "linked" || !config) return null;
+  return { hubHost: new URL(config.hubUrl).host, machineId: state.machineId };
+}
+
+/**
+ * Pauses what the hub continued: each id is held at once, before any
+ * later frame, then lib/backup/machine.ts does the rest
+ */
+function onTaken(list: TakenSession[]) {
+  for (const entry of list) {
+    if (typeof entry?.sessionId === "string") {
+      if (BACKUP_SESSION_ID.test(entry.sessionId)) {
+        heldSessions().add(entry.sessionId);
+      }
+    }
+  }
+  return import("../backup/machine").then((m) => m.pauseTaken(list));
+}
+
+const upState = (client: LinkClient): LinkStatusFile["up"] => ({
+  supported: client.hubCaps.has(CAP_UP),
+  agents: client.upAllowed?.agents ?? false,
+  backup: client.upAllowed?.backup ?? false,
+});
+
 let running: LinkClient | null = null;
 
 /**
@@ -172,8 +277,16 @@ export function startMachineLink(localPort: number): LinkClient | null {
       ? () => signInHeaders(config.hubUrl, config.signIn!)
       : undefined,
     userCookie: () => `${USER_PROOF_COOKIE}=${userSecret()}`,
+    onTaken,
+    onUpAllowed: (up) => {
+      writeState(config, client.state, upState(client));
+      // Copies just turned on: what changed is sent soon
+      if (up?.backup) {
+        void import("../backup/machine").then((m) => m.sweep()).catch(() => {});
+      }
+    },
     onState: (state) => {
-      writeState(config, state);
+      writeState(config, state, upState(client));
       console.log(
         `[link] ${state.status}${"reason" in state ? `: ${state.reason}` : ""}${state.status === "pending" ? ` (code ${state.code})` : ""}`
       );

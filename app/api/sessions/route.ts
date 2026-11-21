@@ -23,6 +23,18 @@ import {
   requester,
 } from "@/lib/permission-guard";
 import { capForAgent, normalizeMode } from "@/lib/permission-mode";
+import { fromMachine } from "@/lib/link/from-machine";
+import {
+  fromMachineRefusal,
+  MAX_RUNNING_FROM_MACHINE,
+  runningFrom,
+  startLock,
+} from "@/lib/from-machine-rules";
+import { chainOf, MAX_CHAIN, type StartedBy } from "@/lib/session-started-by";
+import { isMachineMode, hubUp } from "@/lib/link/machine";
+import { machineById } from "@/lib/link/store";
+import { isRunning } from "@/lib/session-launch";
+import { safeBranch } from "@/lib/session-move-types";
 
 // GET /api/sessions - List all sessions and groups
 export async function GET(request: NextRequest) {
@@ -66,11 +78,73 @@ function generateSessionName(db: ReturnType<typeof getDb>): string {
   return `Session ${nextNumber}`;
 }
 
+/** What this server calls the machine a request came from */
+function machineName(from: string): string {
+  if (isMachineMode()) {
+    return from === "hub" ? hubUp().hubName || "the server" : "another machine";
+  }
+  return (from !== "hub" && machineById(from)?.name) || "another machine";
+}
+
+/**
+ * A session on another machine asks: a Claude session that asks before
+ * acting, in one of the projects here and in its folder, and nothing that
+ * reaches a shell or a branch the caller names (lib/from-machine-rules.ts)
+ */
+function forMachine(body: Record<string, unknown>): Record<string, unknown> {
+  const text = (value: unknown) => (typeof value === "string" ? value : null);
+  return {
+    name: text(body.name) ?? undefined,
+    projectId: body.projectId,
+    model: text(body.model) ?? undefined,
+    initialPrompt: text(body.initialPrompt),
+    useWorktree: body.useWorktree === true,
+    featureName: text(body.featureName) || null,
+    agentType: "claude",
+    autoApprove: false,
+    permissionMode: "manual",
+    launch: body.launch === true,
+  };
+}
+
 // POST /api/sessions - Create new session
 export async function POST(request: NextRequest) {
+  const from = fromMachine(request);
+  // One start from a machine at a time, so the running cap holds
+  const release = from ? await startLock(from) : null;
   try {
-    const body = await request.json();
     const db = getDb();
+    let body = await request.json();
+    let startedBy: StartedBy | null = null;
+    if (from) {
+      body = forMachine(body ?? {});
+      const project =
+        typeof body.projectId === "string" ? getProject(body.projectId) : undefined;
+      if (!project || project.is_uncategorized) {
+        return fromMachineRefusal("project_required");
+      }
+      body.workingDirectory = project.working_directory;
+      if (body.useWorktree && !safeBranch(body.featureName)) {
+        return NextResponse.json(
+          { error: "That branch name can't be used.", code: "bad_request" },
+          { status: 400 }
+        );
+      }
+      const sessions = queries.getAllSessions(db).all() as Session[];
+      if ((await runningFrom(from, sessions, isRunning)) >= MAX_RUNNING_FROM_MACHINE) {
+        return fromMachineRefusal("too_many_running");
+      }
+    }
+    // Sessions starting each other across machines: one more hop. A start
+    // from another machine is always marked, chain or not, so the running
+    // cap above counts it
+    const chain = chainOf(request) ?? (from ? 0 : null);
+    if (chain !== null) {
+      const depth = chain + 1;
+      if (depth > MAX_CHAIN) return fromMachineRefusal("chain_too_deep");
+      const machineId = from ?? "hub";
+      startedBy = { machineId, machine: machineName(machineId), depth, at: Date.now() };
+    }
 
     const {
       name: providedName,
@@ -276,6 +350,13 @@ export async function POST(request: NextRequest) {
       projectId
     );
 
+    if (startedBy) {
+      db.prepare("UPDATE sessions SET started_by = ? WHERE id = ?").run(
+        JSON.stringify(startedBy),
+        id
+      );
+    }
+
     if (agentType === "claude" && (pickedModel || subagentModel)) {
       db.prepare(
         "UPDATE sessions SET model_pinned = ?, subagent_model = ?, subagent_own_first = ? WHERE id = ?"
@@ -386,5 +467,7 @@ export async function POST(request: NextRequest) {
       { error: "Failed to create session" },
       { status: 500 }
     );
+  } finally {
+    release?.();
   }
 }

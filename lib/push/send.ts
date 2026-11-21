@@ -11,6 +11,8 @@ export interface PushMessage {
     | "limited"
     | "resumed"
     | "settled"
+    // A session on a linked machine started or messaged one here
+    | "fromMachine"
     | "test";
   title: string;
   body: string;

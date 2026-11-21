@@ -17,6 +17,7 @@ import { statusDetector } from "./status-detector";
 import { wrapWithBanner } from "./banner";
 import { runInBackground } from "./async-operations";
 import { writeClaudeStateSettings } from "./claude-state";
+import { writeMcpConfig } from "./project-context";
 import { effectiveMode, type Mode } from "./permission-mode";
 
 const execAsync = promisify(exec);
@@ -203,6 +204,10 @@ export async function spawnWorker(
     settingsFile:
       agentType === "claude"
         ? writeClaudeStateSettings(sessionId) || undefined
+        : undefined,
+    mcpConfigFile:
+      agentType === "claude"
+        ? writeMcpConfig(sessionId) || undefined
         : undefined,
   });
   const flagsStr = flags.join(" ");

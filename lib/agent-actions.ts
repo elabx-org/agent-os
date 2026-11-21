@@ -63,7 +63,11 @@ export function hasAgentMarkers(request: Request): boolean {
   );
 }
 
+/** A session on a linked machine (lib/link/up.ts): never one of ours */
+const LINK_ACTOR = "link:";
+
 function sessionIdOfTmux(db: Database.Database, tmux: string): string | null {
+  if (tmux.startsWith(LINK_ACTOR)) return null;
   const row = db
     .prepare(
       `SELECT id FROM sessions
