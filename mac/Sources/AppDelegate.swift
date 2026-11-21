@@ -90,8 +90,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WindowHost, StatusMenu
   /// `activate: true` only from our menu items, the Dock and notification clicks
   func open(_ d: Destination, activate: Bool) {
     window().open(d, activate: activate)
-    // The first time the window shows, macOS may ask about notifications
-    notifier?.refreshStatus { [weak self] in self?.notifier?.askIfUndetermined() }
+    // The first time the person opens the window, macOS may ask about
+    // notifications. Not for the channel, a second launch or a flag: those
+    // never bring anything in front of another app.
+    if activate { notifier?.refreshStatus { [weak self] in self?.notifier?.askIfUndetermined() } }
   }
 
   var snapshot: Snapshot { poller.snapshot }
