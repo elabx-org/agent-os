@@ -214,7 +214,7 @@ final class StatusMenu: NSObject, NSMenuDelegate {
       row.submenu = sub
       row.isEnabled = true
     } else if let a = e.action {
-      row.action = #selector(perform(_:))
+      row.action = #selector(runItem(_:))
       row.target = self
       row.representedObject = ActionBox(a)
       let isBusy = a.sessionId.map(busyIds.contains) ?? false
@@ -358,7 +358,7 @@ final class StatusMenu: NSObject, NSMenuDelegate {
 
   // MARK: Session actions
 
-  @objc private func perform(_ sender: NSMenuItem) {
+  @objc private func runItem(_ sender: NSMenuItem) {
     guard let box = sender.representedObject as? ActionBox else { return }
     let a = box.action
     switch a {
