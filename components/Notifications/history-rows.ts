@@ -25,6 +25,8 @@ export function historyTile(
     case "resumed":
     case "settled":
       return "done";
+    case "fromMachine":
+      return "bell";
     default:
       return "bell";
   }

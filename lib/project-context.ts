@@ -10,6 +10,7 @@ import { withClaudeState, type HookGroup } from "./claude-state";
 import { isClaudeModel } from "./handoff-types";
 import { proxyEnabled } from "./port-proxy-config";
 import { publicOrigin } from "./public-origin";
+import { isMachineMode } from "./link/machine";
 
 export { parseProjectHooks } from "./project-hooks";
 
@@ -218,19 +219,64 @@ function subagentEnv(session: Session): { env?: Record<string, string> } {
 }
 
 /**
- * Writes what a Claude session starts with: its project note (null when it
- * has none) and its settings (the project's hooks, and the hooks and status
- * line that record Claude's state for every session)
+ * On a linked machine, AgentOS's tools for one Claude session, as a file
+ * for --mcp-config: they work without `claude` on the server's PATH and
+ * reach this machine's own AgentOS (and through it, the server). Null, and
+ * no file, on a server (its own registration stays as it is), with
+ * AGENTOS_MCP_REGISTER=0, or for other agents. AGENTOS_MCP_SESSION_CONFIG=1
+ * forces it on (tests).
  */
-export async function writeProjectContext(
-  session: Session
-): Promise<{ file: string | null; settings: string | null }> {
+export function writeMcpConfig(
+  sessionId: string,
+  agentType: string = "claude"
+): string | null {
+  const file = path.join(contextDir(), `${sessionId}.mcp.json`);
+  const on =
+    agentType === "claude" &&
+    process.env.AGENTOS_MCP_REGISTER !== "0" &&
+    (process.env.AGENTOS_MCP_SESSION_CONFIG === "1" || isMachineMode());
+  if (!on) {
+    fs.rmSync(file, { force: true });
+    return null;
+  }
+  const command = fs.existsSync(process.execPath) ? process.execPath : "node";
+  const config = {
+    mcpServers: {
+      "agent-os": {
+        type: "stdio",
+        command,
+        args: [path.join(process.cwd(), "scripts", "agentos-mcp.mjs")],
+        env: {
+          AGENTOS_URL: `http://127.0.0.1:${process.env.PORT || "3011"}`,
+        },
+      },
+    },
+  };
+  fs.mkdirSync(contextDir(), { recursive: true });
+  fs.writeFileSync(file, JSON.stringify(config, null, 2), { mode: 0o600 });
+  // An existing file keeps its mode on write
+  fs.chmodSync(file, 0o600);
+  return file;
+}
+
+/**
+ * Writes what a Claude session starts with: its project note (null when it
+ * has none), its settings (the project's hooks, and the hooks and status
+ * line that record Claude's state for every session) and, on a linked
+ * machine, AgentOS's tools (writeMcpConfig)
+ */
+export async function writeProjectContext(session: Session): Promise<{
+  file: string | null;
+  settings: string | null;
+  mcp: string | null;
+}> {
   const file = path.join(contextDir(), `${session.id}.md`);
   const settingsFile = path.join(contextDir(), `${session.id}.settings.json`);
+  const mcp = writeMcpConfig(session.id, session.agent_type);
   if (session.agent_type !== "claude") {
     fs.rmSync(file, { force: true });
     fs.rmSync(settingsFile, { force: true });
-    return { file: null, settings: null };
+    return { file: null, settings: null, mcp: null };
   }
   const project = session.project_id
     ? getProject(session.project_id)
@@ -247,7 +293,7 @@ export async function writeProjectContext(
       ),
       { mode: 0o600 }
     );
-    return { file: null, settings: settingsFile };
+    return { file: null, settings: settingsFile, mcp };
   }
 
   fs.mkdirSync(suggestionsDir(project.id), { recursive: true });
@@ -281,7 +327,7 @@ export async function writeProjectContext(
   const note = await buildProjectNote(project, session);
   if (note) fs.writeFileSync(file, note, { mode: 0o600 });
   else fs.rmSync(file, { force: true });
-  return { file: note ? file : null, settings: settingsFile };
+  return { file: note ? file : null, settings: settingsFile, mcp };
 }
 
 export interface Suggestion {

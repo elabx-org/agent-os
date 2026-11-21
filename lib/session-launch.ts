@@ -73,11 +73,13 @@ export async function buildLaunchCommand(
 
   let systemPromptFile: string | undefined;
   let settingsFile: string | undefined;
+  let mcpConfigFile: string | undefined;
   if (provider.id === "claude") {
     try {
       const context = await writeProjectContext(session);
       systemPromptFile = context.file || undefined;
       settingsFile = context.settings || undefined;
+      mcpConfigFile = context.mcp || undefined;
     } catch {
       // Starts without the note
     }
@@ -95,6 +97,7 @@ export async function buildLaunchCommand(
   const flags = provider.buildFlags({
     systemPromptFile,
     settingsFile,
+    mcpConfigFile,
     sessionId: session.claude_session_id,
     parentSessionId,
     autoApprove: session.auto_approve,

@@ -15,7 +15,13 @@ import { receiveNotice } from "./notices";
 import { LINK_PATH } from "./protocol";
 import * as store from "./store";
 import { BASE_UP_RULES } from "./up";
+import { AGENT_UP_RULES } from "./up-agent-rules";
+import { announceRefusal, announceUp } from "./up-announce";
 import { linkProof } from "./up-guard";
+import { allowStartDown, beforeUp } from "./up-policy";
+import { CHAIN_HEADER } from "./from-machine";
+import { getDb } from "../db";
+import { depthOfActor } from "../session-started-by";
 
 // server.ts and the Next route bundles are separate module graphs in one
 // process: the hub (with its live connections) lives on globalThis
@@ -43,6 +49,9 @@ export function ownSha(): string | null {
   return shared.__agentosSha;
 }
 
+/** What a machine's sessions may ask: hello, then the agent table */
+const UP_RULES = [...BASE_UP_RULES, ...AGENT_UP_RULES];
+
 export function linkHub(): LinkHub {
   shared.__agentosLinkHub ??= new LinkHub({
     ...store,
@@ -51,9 +60,15 @@ export function linkHub(): LinkHub {
     // The same port lib/link/move.ts asks on
     localPort: () => Number(process.env.PORT || "3011"),
     linkProof,
-    upRules: () => BASE_UP_RULES,
+    upRules: () => UP_RULES,
     serverName: store.serverName,
     setMachineCaps: store.setMachineCaps,
+    beforeUp: (decision, machine) =>
+      beforeUp(decision, machine, {
+        hasCap: (id, cap) => shared.__agentosLinkHub?.hasCap(id, cap) ?? null,
+      }),
+    onUp: announceUp,
+    onUpRefused: announceRefusal,
   });
   return shared.__agentosLinkHub;
 }
@@ -231,6 +246,35 @@ export function linkRequest(
     });
     res.end(AGENTS_OFF);
     return true;
+  }
+  if (!fromBrowser(req)) {
+    // A start that isn't the user's: the same limits a machine's starts
+    // have here (lib/link/up-policy.ts)
+    if (
+      req.method === "POST" &&
+      /^\/api\/sessions(\?|$)/.test(target.path) &&
+      !allowStartDown(target.machineId)
+    ) {
+      res.writeHead(429, {
+        "Content-Type": "application/json",
+        "Cache-Control": "no-store",
+      });
+      res.end(
+        JSON.stringify({
+          error:
+            "Too many sessions started on that machine in a short time. Wait a minute and try again.",
+          code: "too_many",
+        })
+      );
+      return true;
+    }
+    // How far along a chain of cross-machine starts the asking session is,
+    // so the machine can stop the chain (lib/session-started-by.ts)
+    if (!req.headers[CHAIN_HEADER]) {
+      req.headers[CHAIN_HEADER] = String(
+        depthOfActor(first(req.headers["x-agentos-actor"]), getDb())
+      );
+    }
   }
   linkHub().forwardRequest(target.machineId, req, res, {
     path: target.path,

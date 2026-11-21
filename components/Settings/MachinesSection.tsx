@@ -11,15 +11,25 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { confirmAction } from "@/components/ui/confirm";
+import {
+  Sheet,
+  SheetBody,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { Switch } from "@/components/ui/switch";
 import {
   isOnline,
   machineKeys,
+  useMachineActivity,
   useMachines,
   useSessionCount,
   useTabMachineId,
   type MachineView,
 } from "@/data/machines";
+import { activityLine, activitySummary } from "./machine-activity";
 import { fetchAsUser, refusalText, reprove } from "@/lib/client/user-fetch";
 import { fetchOn, switchMachine } from "@/lib/client/machine";
 import {
@@ -108,6 +118,8 @@ const sessionsWord = (n: number) => (n === 1 ? "1 session" : `${n} sessions`);
  */
 export function MachinesSection() {
   const { data } = useMachines(POLL_MS);
+  const machineName = (id: string) =>
+    data?.machines.find((m) => m.id === id)?.name ?? null;
   const queryClient = useQueryClient();
   const refresh = useCallback(
     () => queryClient.invalidateQueries({ queryKey: machineKeys.list() }),
@@ -129,7 +141,12 @@ export function MachinesSection() {
       <Card>
         <ServerRow name={data.serverName ?? null} onChange={refresh} />
         {linked.map((m) => (
-          <LinkedRow key={m.id} machine={m} onChange={refresh} />
+          <LinkedRow
+            key={m.id}
+            machine={m}
+            machineName={machineName}
+            onChange={refresh}
+          />
         ))}
       </Card>
       {pending.length > 0 && (
@@ -253,9 +270,11 @@ function ServerRow({
 
 function LinkedRow({
   machine,
+  machineName,
   onChange,
 }: {
   machine: MachineView;
+  machineName: (id: string) => string | null;
   onChange: () => void;
 }) {
   const tab = useTabMachineId();
@@ -290,17 +309,31 @@ function LinkedRow({
     if (machine.id === tab) switchMachine(null);
   };
 
-  const allowAgents = async (allowed: boolean) => {
+  const patch = async (change: { agents: boolean } | { usesHub: boolean }) => {
     const res = await fetchAsUser(`/api/machines/${machine.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ agents: allowed }),
+      body: JSON.stringify(change),
     });
     if (!res.ok) {
       toast.error(refusalText(await res.json().catch(() => ({}))));
       return;
     }
     onChange();
+  };
+  const allowAgents = (allowed: boolean) => patch({ agents: allowed });
+  const allowUsesHub = async (allowed: boolean) => {
+    // Turning it off needs no asking
+    if (allowed) {
+      const ok = await confirmAction({
+        title: `Let sessions on ${machine.name} use this server?`,
+        message: `Agents working on ${machine.name} will be able to read the conversations of sessions here, start new Claude sessions in your projects, send messages to sessions and stop them. A session they start asks you before it runs anything; once you approve, it runs here. They can also reach your other machines that have "Let sessions on this server use it" turned on. They can never answer a permission request, turn on full access or change these switches. You are told each time one starts a session here.`,
+        confirmLabel: "Allow",
+        cancelLabel: "Not now",
+      });
+      if (!ok) return;
+    }
+    await patch({ usesHub: allowed });
   };
 
   if (renaming) {
@@ -353,6 +386,12 @@ function LinkedRow({
         allowed={!!machine.agents}
         onChange={allowAgents}
       />
+      <UsesHubRow
+        machine={machine}
+        needsUpdate={online && machine.up === false}
+        onChange={allowUsesHub}
+      />
+      <ActivityRow machine={machine} machineName={machineName} />
       {online && <ReposFolderRow target={machine.id} name={machine.name} />}
     </>
   );
@@ -396,6 +435,127 @@ function AgentsRow({
         }}
       />
     </div>
+  );
+}
+
+/**
+ * Whether sessions on the machine may use this server: read its sessions,
+ * start Claude sessions that ask first, message and stop them. A machine
+ * on an older AgentOS can't ask at all until it updates
+ */
+function UsesHubRow({
+  machine,
+  needsUpdate,
+  onChange,
+}: {
+  machine: MachineView;
+  needsUpdate: boolean;
+  onChange: (allowed: boolean) => Promise<void>;
+}) {
+  const [saving, setSaving] = useState(false);
+  const { name } = machine;
+  const allowed = !!machine.usesHub;
+  const id = `machine-uses-hub-${machine.id}`;
+  return (
+    <div className="row items-start gap-3 py-3 pl-[68px]">
+      <label htmlFor={id} className="min-w-0 flex-1">
+        <span className="block text-[15px]">
+          Let sessions on {name} use this server
+        </span>
+        <span className="text-muted-foreground block text-[13px]">
+          {needsUpdate
+            ? `${name} needs to update first. It does this on its own shortly after it connects.`
+            : allowed
+              ? `Agents on ${name} can read the sessions here, start new Claude sessions in your projects, send them messages and stop them. What they start still asks you before it acts. They can't answer permission requests or turn on full access.`
+              : `Off: sessions on ${name} can't see or touch anything here.`}
+        </span>
+      </label>
+      <Switch
+        id={id}
+        checked={allowed}
+        // An older machine can still be switched off
+        disabled={saving || (needsUpdate && !allowed)}
+        onCheckedChange={async (next) => {
+          setSaving(true);
+          await onChange(next);
+          setSaving(false);
+        }}
+      />
+    </div>
+  );
+}
+
+/** "What {name}'s sessions did here": the row, and the list in a sheet */
+function ActivityRow({
+  machine,
+  machineName,
+}: {
+  machine: MachineView;
+  machineName: (id: string) => string | null;
+}) {
+  const [open, setOpen] = useState(false);
+  const { data: actions } = useMachineActivity(
+    machine.id,
+    open ? POLL_MS : undefined
+  );
+  if (!machine.usesHub && !actions?.length) return null;
+  const { name } = machine;
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="row w-full items-center gap-3 py-3 pl-[68px] text-left active:opacity-70"
+      >
+        <span className="min-w-0 flex-1">
+          <span className="block text-[15px]">
+            What {name}&apos;s sessions did here
+          </span>
+          <span className="text-muted-foreground block text-[13px]">
+            {activitySummary(actions ?? [])}
+          </span>
+        </span>
+        <Chevron />
+      </button>
+      <Sheet open={open} onOpenChange={setOpen}>
+        <SheetContent>
+          <SheetHeader>
+            <SheetTitle>What {name}&apos;s sessions did here</SheetTitle>
+            <SheetDescription>Kept for 30 days.</SheetDescription>
+          </SheetHeader>
+          <SheetBody className="pb-4">
+            {!actions?.length ? (
+              <p className="text-muted-foreground px-1 text-[15px]">
+                Nothing yet. When a session on {name} starts or messages a
+                session here, it shows in this list.
+              </p>
+            ) : (
+              <ul className="flex flex-col gap-3 px-1">
+                {actions.map((action) => {
+                  const line = activityLine(action, machineName);
+                  return (
+                    <li key={action.id} className="min-w-0">
+                      <span className="block text-[15px]">
+                        {line.text}
+                        <span className="text-muted-foreground">
+                          {" · "}
+                          {new Date(action.at).toLocaleString()}
+                        </span>
+                      </span>
+                      {line.detail && (
+                        <span className="text-muted-foreground line-clamp-2 block text-[13px] break-words">
+                          {line.detail}
+                        </span>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </SheetBody>
+        </SheetContent>
+      </Sheet>
+    </>
   );
 }
 

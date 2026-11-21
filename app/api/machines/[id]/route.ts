@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { linkHub, machinesOn } from "@/lib/link/server";
-import { machineById, renameMachine, setMachineAgents } from "@/lib/link/store";
+import {
+  machineById,
+  renameMachine,
+  setMachineAgents,
+  setMachineUsesHub,
+} from "@/lib/link/store";
 import { requireUser } from "@/lib/user-proof";
 
 export const dynamic = "force-dynamic";
@@ -25,7 +30,8 @@ function refuse(request: Request): NextResponse | null {
 }
 
 // PATCH /api/machines/[id] - { approve: true } lets a waiting machine in;
-// { name } renames it; { agents } lets this server's sessions use it, or not
+// { name } renames it; { agents } lets this server's sessions use it, or not;
+// { usesHub } lets its sessions use this server, or not
 export async function PATCH(request: Request, { params }: Context) {
   const no = refuse(request);
   if (no) return no;
@@ -37,6 +43,7 @@ export async function PATCH(request: Request, { params }: Context) {
     approve?: unknown;
     name?: unknown;
     agents?: unknown;
+    usesHub?: unknown;
   };
   if (typeof body.name === "string") {
     renameMachine(id, body.name);
@@ -47,6 +54,10 @@ export async function PATCH(request: Request, { params }: Context) {
     setMachineAgents(id, body.agents);
     linkHub().tellAgents(id);
   }
+  if (typeof body.usesHub === "boolean") {
+    setMachineUsesHub(id, body.usesHub);
+    linkHub().tellUp(id);
+  }
   if (body.approve === true) linkHub().approve(id);
   const row = machineById(id)!;
   return NextResponse.json({
@@ -55,6 +66,7 @@ export async function PATCH(request: Request, { params }: Context) {
     status: row.status,
     presence: linkHub().presence(id),
     agents: row.agents === 1,
+    usesHub: row.uses_hub === 1,
   });
 }
 

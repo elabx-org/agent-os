@@ -89,6 +89,8 @@ export interface HubDeps {
   setMachineCaps(id: string, caps: string[]): void;
   /** An upward request with an audit label was answered */
   onUp?(event: UpEvent): void;
+  /** An approved machine's request was refused before it was asked */
+  onUpRefused?(machine: MachineRow, refusal: UpRefusal): void;
   /** Last word before an allowed upward request is asked (stage 2 limits) */
   beforeUp?(
     decision: Extract<UpDecision, { ok: true }>,
@@ -695,7 +697,16 @@ export class LinkHub {
       port: this.deps.localPort(),
       proof: this.deps.linkProof(),
     });
-    if (!decision.ok) return this.refuseUp(tunnel, id, decision);
+    if (!decision.ok) {
+      if (machine?.status === "approved") {
+        try {
+          this.deps.onUpRefused?.(machine, decision);
+        } catch (error) {
+          console.error("[link] onUpRefused failed:", error);
+        }
+      }
+      return this.refuseUp(tunnel, id, decision);
+    }
     const kind = decision.rule.kind;
     if (!this.upCounter.enter(tunnel.machineId, kind, Date.now())) {
       return this.refuseUp(tunnel, id, upRefusal("too_many"));

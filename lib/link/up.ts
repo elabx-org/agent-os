@@ -20,7 +20,9 @@ export type UpCode =
   | "same_machine"
   | "too_many"
   | "too_large"
-  | "machine_old";
+  | "machine_old"
+  | "machine_offline"
+  | "project_required";
 
 export interface UpRefusal {
   ok: false;
@@ -73,6 +75,8 @@ const STATUS: Record<UpCode, number> = {
   too_many: 429,
   too_large: 413,
   machine_old: 409,
+  machine_offline: 503,
+  project_required: 400,
 };
 
 export const UP_ERRORS: Record<UpCode, string> = {
@@ -88,6 +92,9 @@ export const UP_ERRORS: Record<UpCode, string> = {
   too_large: "That is too much to send in one go.",
   machine_old: "That machine needs to update before it can be used this way.",
   bad_request: "That request isn't one AgentOS understands.",
+  machine_offline: "That machine is offline.",
+  project_required:
+    "Name a project on that machine. A session from another machine can only start inside one of its projects.",
 };
 
 /** What the machine itself answers when it can't ask the hub at all */

@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { exec } from "child_process";
+import { execFile } from "child_process";
 import { promisify } from "util";
 import { queries, getDb, type Session } from "@/lib/db";
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 // Get terminal preview (last N lines) from tmux session
 export async function GET(
@@ -14,15 +14,28 @@ export async function GET(
     const { id } = await params;
     const db = getDb();
 
-    // Look up session to get the tmux name
+    // Only a session we have: the tmux name never comes from the URL
     const session = queries.getSession(db).get(id) as Session | undefined;
-    const agentType = session?.agent_type || "claude";
-    const sessionName = session?.tmux_name || `${agentType}-${id}`;
+    if (!session) {
+      return NextResponse.json({ error: "Session not found" }, { status: 404 });
+    }
+    const sessionName =
+      session.tmux_name || `${session.agent_type || "claude"}-${session.id}`;
 
     // Capture visible pane content plus scrollback, take last 50 lines
-    const { stdout } = await execAsync(
-      `tmux capture-pane -t "${sessionName}" -p -S -100 2>/dev/null || echo ""`
-    );
+    let stdout = "";
+    try {
+      ({ stdout } = await execFileAsync("tmux", [
+        "capture-pane",
+        "-t",
+        sessionName,
+        "-p",
+        "-S",
+        "-100",
+      ]));
+    } catch {
+      // Not running
+    }
 
     // Take the last 50 non-empty lines (trim trailing empty lines)
     const allLines = stdout.split("\n");

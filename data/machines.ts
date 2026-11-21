@@ -3,6 +3,7 @@
 import { useSyncExternalStore } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import type { Session } from "@/lib/db";
+import type { MachineAction } from "@/lib/link/machine-actions";
 import { fetchOn, tabMachine } from "@/lib/client/machine";
 import { HUB_TARGET } from "@/lib/machine-marker";
 import type { AgentLike, MachineSource, MachineTag } from "@/lib/machine-now";
@@ -23,6 +24,10 @@ export interface MachineView {
   sameVersion: boolean | null;
   /** Sessions on this server may use it through AgentOS's tools */
   agents?: boolean;
+  /** Its sessions may use this server (lib/link/up.ts) */
+  usesHub?: boolean;
+  /** It can ask this server at all (its version); null while offline */
+  up?: boolean | null;
 }
 
 export interface MachinesResponse {
@@ -37,6 +42,7 @@ export const machineKeys = {
   list: () => [...machineKeys.all, "list"] as const,
   on: (target: string, what: string) =>
     [...machineKeys.all, "on", target, what] as const,
+  activity: (id: string) => [...machineKeys.all, "activity", id] as const,
 };
 
 async function fetchMachines(): Promise<MachinesResponse> {
@@ -201,5 +207,19 @@ export function useSessionCount(target: string, enabled: boolean) {
     staleTime: LISTS_MS / 2,
     refetchInterval: enabled ? LISTS_MS : false,
     select: (data) => data.sessions?.length ?? 0,
+  });
+}
+
+/** What a machine's sessions did on this server (Settings, Machines) */
+export function useMachineActivity(id: string, pollMs?: number) {
+  return useQuery({
+    queryKey: machineKeys.activity(id),
+    queryFn: () =>
+      readJson<{ actions: MachineAction[] }>(
+        HUB_TARGET,
+        `/api/machines/${id}/activity?limit=50`
+      ).then((data) => data.actions ?? []),
+    staleTime: 5000,
+    refetchInterval: pollMs ?? false,
   });
 }

@@ -666,6 +666,31 @@ const migrations: Migration[] = [
       addColumnIfMissing(db, "machines", "caps", "TEXT");
     }),
   },
+  {
+    id: 41,
+    name: "add_started_by_and_machine_actions",
+    up: atomic((db) => {
+      // JSON StartedBy (lib/session-started-by.ts): a session that a
+      // session on another machine started, and how far along the chain
+      addColumnIfMissing(db, "sessions", "started_by", "TEXT");
+      // What sessions on a linked machine did here (lib/link/machine-actions.ts)
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS machine_actions (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          machine_id TEXT NOT NULL,
+          machine_name TEXT NOT NULL,
+          action TEXT NOT NULL,
+          target_session_id TEXT,
+          target_name TEXT,
+          target_machine_id TEXT,
+          detail TEXT,
+          allowed INTEGER NOT NULL,
+          at INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_machine_actions_machine ON machine_actions(machine_id, at);
+      `);
+    }),
+  },
 ];
 
 export function runMigrations(db: Database.Database): void {

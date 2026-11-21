@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { askHub, isMachineMode, UpUnavailable } from "@/lib/link/machine";
 import { UP_LOCAL_ERRORS, UP_ERRORS } from "@/lib/link/up";
+import { CHAIN_HEADER } from "@/lib/link/from-machine";
+import { getDb } from "@/lib/db";
+import { ownDepth } from "@/lib/session-started-by";
 
 export const dynamic = "force-dynamic";
 
@@ -73,6 +76,9 @@ async function ask(request: Request): Promise<Response> {
   const type = request.headers.get("content-type");
   if (type) headers["content-type"] = type;
   if (body) headers["content-length"] = String(body.length);
+  // How far along a chain of cross-machine starts the asking session is:
+  // AgentOS says it, not the tool (lib/session-started-by.ts)
+  headers[CHAIN_HEADER] = String(ownDepth(request, getDb()));
 
   try {
     const answer = await askHub({

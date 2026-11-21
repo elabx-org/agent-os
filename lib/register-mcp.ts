@@ -3,6 +3,7 @@ import { promisify } from "util";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
+import { isMachineMode } from "./link/machine";
 
 const run = promisify(execFile);
 
@@ -96,7 +97,11 @@ export async function registerMcp(port: number): Promise<void> {
     },
   ];
 
+  // A linked machine gives each Claude session its tools itself
+  // (--mcp-config, lib/project-context.ts); an older entry is left as it is
+  const machine = isMachineMode();
   for (const cli of clis) {
+    if (machine && cli.bin === "claude") continue;
     const bin = await which(cli.bin);
     if (!bin) continue;
     try {

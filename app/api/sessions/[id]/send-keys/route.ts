@@ -29,6 +29,13 @@ import {
   resolveAttachmentBlock,
 } from "@/lib/session-attach";
 import { quoteAttachMarkers } from "@/lib/session-attach-types";
+import { fromMachine } from "@/lib/link/from-machine";
+import {
+  fromMachineRefusal,
+  isClaudeSession,
+  messageRefusal,
+  movedAnswer,
+} from "@/lib/from-machine-rules";
 
 // Log to file for debugging
 const LOG_FILE = "/tmp/agent-os-send-keys.log";
@@ -49,7 +56,11 @@ export async function POST(
   try {
     const { id } = await params;
     const body = await request.json();
-    const { text, pressEnter = true } = body;
+    // A session on another machine sends a message with Enter, nothing more
+    const from = fromMachine(request);
+    const { text, pressEnter = true } = from
+      ? { text: body?.text, pressEnter: true }
+      : body;
 
     log(`=== START send-keys for session ${id} ===`);
     log(`Text length: ${text?.length || 0}, pressEnter: ${pressEnter}`);
@@ -58,8 +69,12 @@ export async function POST(
       log("ERROR: No text provided");
       return NextResponse.json({ error: "No text provided" }, { status: 400 });
     }
-    // Sessions attached with @ (M9), when the queue flag is off
-    const refs = parseSessionRefs(body.sessions);
+    if (from && typeof text !== "string") {
+      return NextResponse.json({ error: "No text provided" }, { status: 400 });
+    }
+    // Sessions attached with @ (M9), when the queue flag is off; never
+    // from another machine
+    const refs = from ? [] : parseSessionRefs(body.sessions);
     if (typeof refs === "string") {
       return NextResponse.json({ error: refs }, { status: 400 });
     }
@@ -70,6 +85,13 @@ export async function POST(
     if (!session) {
       log(`ERROR: Session ${id} not found in DB`);
       return NextResponse.json({ error: "Session not found" }, { status: 404 });
+    }
+
+    // It went on to another machine: say where, so a tool can follow it
+    const moved = movedAnswer(session);
+    if (moved) return moved;
+    if (from && !isClaudeSession(session)) {
+      return fromMachineRefusal("claude_only");
     }
 
     const tmuxSessionName = tmuxNameOf(session);
@@ -98,6 +120,14 @@ export async function POST(
         detail: text.slice(0, 200),
       };
       const prompt = await readScreenPrompt(tmuxSessionName).catch(() => null);
+      // From another machine, with nothing on screen to answer: a plain
+      // message, to a session that asks before acting
+      const refusal = from && !prompt ? messageRefusal(session, text) : null;
+      if (refusal) {
+        log(`REFUSED: ${refusal} from another machine`);
+        recordRefusal(request, audit);
+        return fromMachineRefusal(refusal);
+      }
       if (prompt && !(await agentMayAnswer(session, prompt))) {
         log("REFUSED: message at a permission prompt without user proof");
         recordRefusal(request, audit);

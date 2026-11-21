@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { matchCode } from "@/lib/link/keys";
+import { CAP_UP } from "@/lib/link/protocol";
 import { linkHub, machinesOn, ownSha } from "@/lib/link/server";
 import { listMachines, serverName } from "@/lib/link/store";
 
@@ -32,6 +33,10 @@ export async function GET() {
         sameVersion: !sha || !m.sha ? null : m.sha === sha,
         // Sessions on this server may use it (the user's switch)
         agents: m.agents === 1,
+        // Its sessions may use this server (the other switch)
+        usesHub: m.uses_hub === 1,
+        // It can ask this server at all; null while it's offline
+        up: hub.hasCap(m.id, CAP_UP),
       })),
     },
     { headers: { "Cache-Control": "no-store" } }
