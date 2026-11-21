@@ -14,6 +14,7 @@ import {
   BIN_BODY,
   BIN_UP,
   BIN_WS,
+  CAP_TAKE,
   CAP_UP,
   LINK_MAX_FRAME,
   LINK_VERSION,
@@ -29,6 +30,8 @@ import {
   type HubFrame,
   type LinkNotice,
   type MachineFrame,
+  type TakenResult,
+  type TakenSession,
   type UpAllowed,
   type UpKind,
 } from "./protocol";
@@ -98,6 +101,15 @@ export interface HubDeps {
   ): UpRefusal | null;
   /** Tests: smaller limits and timeouts */
   upLimits?: UpLimits;
+  /**
+   * The sessions this hub continued from the machine's copies, which it
+   * must pause before anything else (lib/backup)
+   */
+  takenFor?(machine: MachineRow): TakenSession[];
+  /** What the machine did about them */
+  onTakenAck?(machine: MachineRow, results: TakenResult[]): void;
+  /** It is connected again: a take-over of its sessions stops if it can */
+  onMachineBack?(machine: MachineRow): void;
 }
 
 interface PendingResponse {
@@ -175,6 +187,50 @@ function capsOf(value: unknown): string[] {
   return [...new Set(out)].slice(0, 16);
 }
 
+const TAKE_STATES = new Set(["paused", "already", "gone", "failed"]);
+
+/** A machine's taken-ack, checked field by field (at most 2,000) */
+function takenResultsOf(value: unknown): TakenResult[] {
+  if (!Array.isArray(value)) return [];
+  const out: TakenResult[] = [];
+  for (const item of value.slice(0, 2000)) {
+    const r = item as Record<string, unknown> | null;
+    if (
+      !r ||
+      typeof r.sessionId !== "string" ||
+      !/^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$/.test(r.sessionId) ||
+      typeof r.takeId !== "string" ||
+      !/^[0-9a-f]{16}$/.test(r.takeId) ||
+      typeof r.state !== "string" ||
+      !TAKE_STATES.has(r.state)
+    ) {
+      continue;
+    }
+    const ahead = r.ahead as Record<string, unknown> | undefined;
+    out.push({
+      sessionId: r.sessionId,
+      takeId: r.takeId,
+      state: r.state as TakenResult["state"],
+      ...(ahead && typeof ahead === "object"
+        ? {
+            ahead: {
+              conversation: ahead.conversation === true,
+              code: ahead.code === true,
+            },
+          }
+        : {}),
+      ...(typeof r.folder === "string"
+        ? {
+            folder: r.folder
+              .replace(/[\u0000-\u001f\u007f]/g, "")
+              .slice(0, 300),
+          }
+        : {}),
+    });
+  }
+  return out;
+}
+
 const first = (value: string | string[] | undefined) =>
   (Array.isArray(value) ? value[0] : value)?.split(",")[0].trim() || null;
 
@@ -203,6 +259,9 @@ export class LinkHub {
   });
   private browserWss = new WebSocketServer({ noServer: true });
   private upCounter: UpCounter;
+  /** When each machine's tunnel last dropped; this hub's start counts as one */
+  private droppedAt = new Map<string, number>();
+  private startedAt = Date.now();
 
   constructor(private deps: HubDeps) {
     this.upCounter = new UpCounter(deps.upLimits ?? UP_LIMITS);
@@ -273,6 +332,33 @@ export class LinkHub {
   /** The same for every connected machine: this server's name changed */
   tellUpAll(): void {
     for (const id of this.tunnels.keys()) this.tellUp(id);
+  }
+
+  /** How long a machine has been offline, in ms; 0 while it is connected */
+  offlineFor(id: string): number {
+    if (this.tunnels.has(id)) return 0;
+    return Date.now() - (this.droppedAt.get(id) ?? this.startedAt);
+  }
+
+  /** Sends a connected machine every session it must pause (lib/backup) */
+  tellTaken(id: string): void {
+    const tunnel = this.tunnels.get(id);
+    const machine = this.deps.machineById(id);
+    if (!tunnel?.caps.has(CAP_TAKE) || machine?.status !== "approved") return;
+    this.sendTaken(tunnel, machine);
+  }
+
+  private sendTaken(tunnel: Tunnel, machine: MachineRow): void {
+    let sessions: TakenSession[] = [];
+    try {
+      sessions = this.deps.takenFor?.(machine) ?? [];
+    } catch (error) {
+      console.error("[link] takenFor failed:", error);
+    }
+    const frame: HubFrame = { t: "taken", sessions };
+    if (tunnel.ws.readyState === WebSocket.OPEN) {
+      tunnel.ws.send(JSON.stringify(frame));
+    }
   }
 
   /** Whether a connected machine named a cap in its hello; null when offline */
@@ -353,9 +439,17 @@ export class LinkHub {
         sha: this.deps.sha(),
         code: matchCode(machine.public_key),
         agents: machine.agents === 1,
-        caps: [CAP_UP],
+        caps: [CAP_UP, CAP_TAKE],
         ...(t.caps.has(CAP_UP) ? { up: this.upAllowed(machine) } : {}),
       });
+      // Before anything else on this connection: a take-over still under
+      // way stops if it can, then the machine learns what to pause
+      try {
+        this.deps.onMachineBack?.(machine);
+      } catch (error) {
+        console.error("[link] onMachineBack failed:", error);
+      }
+      if (t.caps.has(CAP_TAKE)) this.sendTaken(t, machine);
     };
 
     ws.on("message", (data, isBinary) => {
@@ -454,6 +548,7 @@ export class LinkHub {
     clearInterval(tunnel.ping);
     if (this.tunnels.get(tunnel.machineId) === tunnel) {
       this.tunnels.delete(tunnel.machineId);
+      this.droppedAt.set(tunnel.machineId, Date.now());
     }
     for (const [id, pending] of tunnel.requests) {
       this.failResponse(pending, 502, "The machine disconnected");
@@ -596,6 +691,19 @@ export class LinkHub {
       case "up-abort":
         if (tunnel.ups.has(frame.id)) this.endUp(tunnel, frame.id);
         return;
+      case "taken-ack": {
+        if (!tunnel.caps.has(CAP_TAKE)) return;
+        // Re-read: only a machine that is still approved gets a say
+        const machine = this.deps.machineById(tunnel.machineId);
+        if (machine?.status !== "approved") return;
+        const results = takenResultsOf(frame.results);
+        try {
+          this.deps.onTakenAck?.(machine, results);
+        } catch (error) {
+          console.error("[link] onTakenAck failed:", error);
+        }
+        return;
+      }
     }
   }
 

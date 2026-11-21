@@ -1,11 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useSnapshot } from "valtio";
 import { Laptop } from "lucide-react";
 import { useMachines, useTabMachineId } from "@/data/machines";
 import { MACHINE_GONE_EVENT, switchMachine } from "@/lib/client/machine";
 import { MACHINE_QUERY } from "@/lib/machine-marker";
 import { openPage } from "@/stores/workspacePage";
+import { copiesSheetStore, openCopies } from "@/stores/copiesSheet";
+import { copyAge } from "@/lib/backup/types";
 
 /**
  * Mounted once (Providers). On a machine that has gone offline or been
@@ -24,6 +27,8 @@ function Gate({ id }: { id: string }) {
   // that went away while the tab sat idle
   const { data, refetch } = useMachines(15000);
   const [checking, setChecking] = useState(false);
+  // The copies sheet opens over this page
+  const { machineId: reading } = useSnapshot(copiesSheetStore);
   const retry = async () => {
     setChecking(true);
     await refetch();
@@ -41,9 +46,10 @@ function Gate({ id }: { id: string }) {
   const machine = data.enabled
     ? data.machines.find((m) => m.id === id && m.status === "approved")
     : undefined;
-  if (machine?.presence === "online") return null;
+  if (machine?.presence === "online" || reading) return null;
 
   const name = machine?.name ?? "This Mac";
+  const copies = machine?.copies ?? 0;
   return (
     <div
       role="alertdialog"
@@ -59,15 +65,30 @@ function Gate({ id }: { id: string }) {
           {machine ? `${name} is offline` : `${name} isn't linked any more`}
         </h1>
         <p className="text-muted-foreground text-[15px]">
-          {machine
-            ? "Its sessions are still there. They'll show here again once it's back online."
-            : "It was removed from Machines, or Linked machines was turned off."}
+          {machine && copies > 0
+            ? `Its sessions are still there. This server has a copy of ${copies} of them, the newest from ${copyAge(Date.now() - (machine.newestCopyAt ?? Date.now()))} ago.`
+            : machine
+              ? "Its sessions are still there. They'll show here again once it's back online."
+              : "It was removed from Machines, or Linked machines was turned off."}
         </p>
         <div className="mt-2 flex w-full flex-col gap-2">
+          {machine && copies > 0 && (
+            <button
+              type="button"
+              onClick={() => openCopies(machine.id)}
+              className="pill pill-primary w-full active:opacity-80"
+            >
+              See the copies
+            </button>
+          )}
           <button
             type="button"
             onClick={() => switchMachine(null)}
-            className="pill pill-primary w-full active:opacity-80"
+            className={
+              machine && copies > 0
+                ? "pill pill-secondary w-full active:opacity-80"
+                : "pill pill-primary w-full active:opacity-80"
+            }
           >
             Back to this server
           </button>

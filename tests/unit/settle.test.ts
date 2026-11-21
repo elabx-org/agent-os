@@ -372,3 +372,60 @@ describe("GET ?settled= filter", () => {
     assert.deepEqual(ids("today"), ["today"]);
   });
 });
+
+describe("a session continued on the server from its copy", () => {
+  const took = JSON.stringify({
+    machine: "hub",
+    name: "Unraid",
+    at: 1,
+    head: "",
+    branch: null,
+    snapshot: null,
+    takeover: {
+      takeId: "a".repeat(16),
+      copyAt: 1,
+      ahead: { conversation: false, code: false },
+    },
+  });
+
+  test("unsettle refuses it", async () => {
+    const f = fake();
+    addSession("t", {
+      settled_at: 5,
+      settled_reason: "moved",
+      moved_to: took,
+    });
+    assert.deepEqual(
+      await refusal(mod.createSettle(f.deps).unsettle(row("t")!)),
+      { status: 409, reason: "moved" }
+    );
+    assert.deepEqual(f.calls, []);
+  });
+
+  test("launchSession refuses it, and a held id", async () => {
+    const launch = await import("../../lib/session-launch");
+    const hold = await import("../../lib/backup/hold");
+    addSession("t", { moved_to: took });
+    await assert.rejects(
+      () => launch.launchSession(row("t")!),
+      /continued on another machine/
+    );
+    addSession("h");
+    hold.heldSessions().add("h");
+    await assert.rejects(
+      () => launch.launchSession(row("h")!),
+      /continued on another machine/
+    );
+    hold.heldSessions().delete("h");
+  });
+
+  test("reconcileSettled leaves a moved row settled", async () => {
+    addSession("m", {
+      settled_at: 5,
+      settled_reason: "moved",
+      moved_to: took,
+    });
+    await mod.reconcileSettled();
+    assert.ok(row("m")!.settled_at);
+  });
+});

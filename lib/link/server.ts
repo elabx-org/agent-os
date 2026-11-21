@@ -16,12 +16,15 @@ import { LINK_PATH } from "./protocol";
 import * as store from "./store";
 import { BASE_UP_RULES } from "./up";
 import { AGENT_UP_RULES } from "./up-agent-rules";
+import { BACKUP_UP_RULES } from "./up-backup-rules";
 import { announceRefusal, announceUp } from "./up-announce";
 import { linkProof } from "./up-guard";
 import { allowStartDown, beforeUp } from "./up-policy";
 import { CHAIN_HEADER } from "./from-machine";
 import { getDb } from "../db";
 import { depthOfActor } from "../session-started-by";
+import { onTakenAck, takenFor } from "../backup/taken";
+import { onMachineBack } from "../backup/takes";
 
 // server.ts and the Next route bundles are separate module graphs in one
 // process: the hub (with its live connections) lives on globalThis
@@ -49,8 +52,11 @@ export function ownSha(): string | null {
   return shared.__agentosSha;
 }
 
-/** What a machine's sessions may ask: hello, then the agent table */
-const UP_RULES = [...BASE_UP_RULES, ...AGENT_UP_RULES];
+/**
+ * What a machine may ask: hello, the agent table, and its AgentOS's own
+ * copies (lib/backup)
+ */
+const UP_RULES = [...BASE_UP_RULES, ...AGENT_UP_RULES, ...BACKUP_UP_RULES];
 
 export function linkHub(): LinkHub {
   shared.__agentosLinkHub ??= new LinkHub({
@@ -69,6 +75,10 @@ export function linkHub(): LinkHub {
       }),
     onUp: announceUp,
     onUpRefused: announceRefusal,
+    // Copies of its sessions (lib/backup): what it must pause on connect
+    takenFor: (machine) => takenFor(machine),
+    onTakenAck: (machine, results) => onTakenAck(machine, results),
+    onMachineBack,
   });
   return shared.__agentosLinkHub;
 }

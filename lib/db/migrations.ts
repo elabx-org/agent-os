@@ -691,6 +691,44 @@ const migrations: Migration[] = [
       `);
     }),
   },
+  {
+    id: 42,
+    name: "add_machine_backups",
+    up: atomic((db) => {
+      // Copies of a linked machine's sessions kept here (lib/backup). The
+      // files are under $AGENT_OS_HOME/backups/<machine_id>; a row changes
+      // only when a copy is committed. state: current | taking | taken.
+      // orphan 1: its machine was removed before it confirmed the pause
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS machine_backups (
+          machine_id TEXT NOT NULL,
+          session_id TEXT NOT NULL,
+          machine_name TEXT NOT NULL,
+          name TEXT NOT NULL,
+          project_name TEXT,
+          claude_session_id TEXT NOT NULL,
+          manifest TEXT NOT NULL,
+          repo_key TEXT,
+          head TEXT,
+          snapshot_commit TEXT,
+          snapshot_tree TEXT,
+          file_gen INTEGER NOT NULL DEFAULT 0,
+          file_bytes INTEGER NOT NULL DEFAULT 0,
+          has_settings INTEGER NOT NULL DEFAULT 0,
+          copied_at INTEGER NOT NULL,
+          last_active_at INTEGER,
+          state TEXT NOT NULL DEFAULT 'current',
+          take_id TEXT,
+          taken_at INTEGER,
+          machine_paused_at INTEGER,
+          ahead TEXT,
+          orphan INTEGER NOT NULL DEFAULT 0,
+          PRIMARY KEY (machine_id, session_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_machine_backups_session ON machine_backups(session_id);
+      `);
+    }),
+  },
 ];
 
 export function runMigrations(db: Database.Database): void {

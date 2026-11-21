@@ -3,6 +3,7 @@ import { getDb, queries, type Session } from "@/lib/db";
 import { requireUser } from "@/lib/user-proof";
 import { HandoffRefused, resumePaused } from "@/lib/handoff";
 import type { ResumePausedResult } from "@/lib/handoff-types";
+import { releaseTakeover } from "@/lib/backup/held";
 
 // POST /api/sessions/[id]/resume-paused {force?} - ResumePausedResult. The
 // user's only. Restarts a handed-off session (Claude with --resume); 409
@@ -27,8 +28,18 @@ export async function POST(
   const body = await request.json().catch(() => null);
   const force = body?.force === true;
 
+  // Continued on the server from its copy: only once the server let go
+  const released = await releaseTakeover(session);
+  if (!released.ok) {
+    return NextResponse.json(
+      { error: released.error, reason: "moved" },
+      { status: released.status }
+    );
+  }
+
   try {
-    const result: ResumePausedResult = await resumePaused(session, { force });
+    const fresh = queries.getSession(getDb()).get(id) as Session;
+    const result: ResumePausedResult = await resumePaused(fresh, { force });
     return NextResponse.json(result);
   } catch (error) {
     if (error instanceof HandoffRefused) {

@@ -50,6 +50,34 @@ export interface UpAllowed {
   hubName: string | null;
 }
 
+/**
+ * A session the hub continued from this machine's copy (lib/backup): the
+ * machine must pause its own and say what it did since
+ */
+export interface TakenSession {
+  sessionId: string;
+  /** 16 hex; also the move id on the hub */
+  takeId: string;
+  at: number;
+  /** When the copy it continued from was made */
+  copyAt: number;
+  hubName: string;
+  claudeSessionId: string;
+  transcriptBytes: number;
+  head: string | null;
+  tree: string | null;
+}
+
+export interface TakenResult {
+  sessionId: string;
+  takeId: string;
+  state: "paused" | "already" | "gone" | "failed";
+  /** What the machine did after the copy */
+  ahead?: { conversation: boolean; code: boolean };
+  /** Where that work is; shown as text only */
+  folder?: string;
+}
+
 export type MachineFrame =
   | {
       t: "hello";
@@ -94,7 +122,9 @@ export type MachineFrame =
       headers: Headers;
     }
   | { t: "up-end"; id: number }
-  | { t: "up-abort"; id: number };
+  | { t: "up-abort"; id: number }
+  /** What it did about the hub's "taken" list */
+  | { t: "taken-ack"; results: TakenResult[] };
 
 export type LinkNotice = Omit<Extract<MachineFrame, { t: "notify" }>, "t">;
 
@@ -140,7 +170,12 @@ export type HubFrame =
   | { t: "up-res-end"; id: number }
   | { t: "up-res-error"; id: number; message: string }
   /** The hub took in this many more bytes of that request's body */
-  | { t: "up-credit"; id: number; bytes: number };
+  | { t: "up-credit"; id: number; bytes: number }
+  /**
+   * Every session the hub continued from this machine's copies: sent
+   * right after welcome (even empty) and again on change
+   */
+  | { t: "taken"; sessions: TakenSession[] };
 
 /** Binary frame kinds: a body chunk of a request/response, a binary socket message */
 export const BIN_BODY = 1;

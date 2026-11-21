@@ -23,6 +23,7 @@ import type { MovePlan } from "../repos-dir";
 import { HUB_MARKER, MACHINE_HEADER, linkHub, ownSha } from "./server";
 import { serverNameOr } from "../server-name";
 import { machineById, serverName } from "./store";
+import { dropOtherCopies } from "../backup/store";
 
 const POLL_MS = 1000;
 /** A first clone of a large repository can take a while */
@@ -355,6 +356,11 @@ async function run(job: MoveJob, headers: Record<string, string>) {
   if (!marked) {
     job.warning = `It runs on ${job.toName} now, but the copy on ${fromName} couldn't be marked as moved. Don't resume that copy`;
   }
+  // Copies of it kept here from where it was are out of date now, and a
+  // take-over of one would make two (lib/backup)
+  await dropOtherCopies(id, to === HUB_MARKER ? null : to).catch((error) =>
+    console.error("[move] dropping its copies:", error)
+  );
   step("done");
 }
 

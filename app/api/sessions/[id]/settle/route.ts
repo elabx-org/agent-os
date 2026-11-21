@@ -4,6 +4,7 @@ import { getDb, queries, type Session } from "@/lib/db";
 import { requireUser } from "@/lib/user-proof";
 import { SettleRefused, settleSession, unsettleSession } from "@/lib/settle";
 import type { SettleResult, UnsettleResult } from "@/lib/settle-types";
+import { releaseTakeover } from "@/lib/backup/held";
 
 // POST /api/sessions/[id]/settle {force?} - SettleResult; DELETE - unsettle,
 // UnsettleResult (M8, lib/settle.ts; types in lib/settle-types.ts).
@@ -65,8 +66,17 @@ export async function DELETE(request: NextRequest, { params }: Params) {
       { status: 409 }
     );
   }
+  // Continued on the server from its copy: only once the server let go
+  const released = await releaseTakeover(session);
+  if (!released.ok) {
+    return NextResponse.json(
+      { error: released.error, reason: "moved" },
+      { status: released.status }
+    );
+  }
   try {
-    const result: UnsettleResult = await unsettleSession(session);
+    const fresh = queries.getSession(getDb()).get(session.id) as Session;
+    const result: UnsettleResult = await unsettleSession(fresh);
     return NextResponse.json(result);
   } catch (error) {
     return refused(error, "Undo");

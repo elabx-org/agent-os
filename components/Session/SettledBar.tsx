@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { CircleCheck, Laptop, Loader2 } from "lucide-react";
 import type { Session } from "@/lib/db";
 import { settledLine } from "@/lib/settle-types";
@@ -41,20 +42,42 @@ function MovedBar({
   resuming: boolean;
 }) {
   const { data } = useMachines();
+  const takeover = to.takeover;
+  // Continued on the server from a copy: this one may run again only once
+  // the server let go of it (deleted there)
+  const { data: held } = useQuery({
+    queryKey: ["sessions", session.id, "held"],
+    queryFn: async () => {
+      const res = await fetch(`/api/sessions/${session.id}/held`);
+      if (!res.ok) return null;
+      return ((await res.json()) as { held: boolean | null }).held;
+    },
+    enabled: !!takeover,
+    staleTime: 15_000,
+  });
   const linked =
-    to.machine === HUB_TARGET ||
+    (to.machine === HUB_TARGET && !(takeover && held === false)) ||
     !data ||
     data.machines.some((m) => m.id === to.machine && m.status === "approved");
+  const ahead = takeover?.ahead;
   return (
     <div role="status" className={cn("glass composer-card", className)}>
       <div className="text-muted-foreground flex min-w-0 items-center gap-2 px-1 text-[13px]">
         <Laptop className="h-4 w-4 flex-none" aria-hidden />
-        <span className="min-w-0 flex-1 truncate">
-          {linked
-            ? settledLine(session)
-            : `${settledLine(session)}, which is no longer linked`}
+        <span className={cn("min-w-0 flex-1", !takeover && "truncate")}>
+          {takeover
+            ? `Continued on ${to.name} from a copy made ${new Date(takeover.copyAt).toLocaleString()}, while this machine was offline`
+            : linked
+              ? settledLine(session)
+              : `${settledLine(session)}, which is no longer linked`}
         </span>
       </div>
+      {takeover && ahead && (ahead.conversation || ahead.code) && (
+        <p className="text-muted-foreground px-1 text-[13px]">
+          Work done here after that copy is still in this folder; it isn&apos;t
+          in the session on {to.name}.
+        </p>
+      )}
       {linked ? (
         <div className="flex gap-2">
           <button

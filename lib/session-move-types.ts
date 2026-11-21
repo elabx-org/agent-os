@@ -23,6 +23,16 @@ export interface MovedTo {
   /** The branch its folder was on (null detached; absent on older rows) */
   branch?: string | null;
   snapshot: MoveSnapshot | null;
+  /**
+   * The hub continued it from its copy while this machine was offline
+   * (lib/backup): this copy is paused for good, unless the hub lets go
+   */
+  takeover?: {
+    takeId: string;
+    copyAt: number;
+    /** What was done here after that copy */
+    ahead: { conversation: boolean; code: boolean };
+  };
 }
 
 /** sessions.moved_from: where a session came from */
@@ -30,6 +40,15 @@ export interface MovedFrom {
   machine: MachineRef;
   name: string;
   at: number;
+  /** Continued from a copy (lib/backup/takeover.ts), not moved */
+  takeId?: string;
+  /** When that copy was made */
+  copyAt?: number;
+  /**
+   * That machine said it did more after the copy (its taken-ack): the work
+   * is still there, in `folder`
+   */
+  ahead?: { conversation: boolean; code: boolean; folder?: string };
 }
 
 export function parseMovedTo(value: string | null | undefined): MovedTo | null {
@@ -234,17 +253,35 @@ export function moveStepText(
   }
 }
 
-/** The first message Claude gets on the new machine */
+/** "5 minutes", "2 hours", "3 days": how old a copy is */
+export function ageText(ms: number): string {
+  const minutes = Math.max(0, Math.round(ms / 60_000));
+  if (minutes < 1) return "less than a minute";
+  if (minutes < 60) return minutes === 1 ? "1 minute" : `${minutes} minutes`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return hours === 1 ? "1 hour" : `${hours} hours`;
+  const days = Math.round(hours / 24);
+  return days === 1 ? "1 day" : `${days} days`;
+}
+
+/**
+ * The first message Claude gets on the new machine. With `copyAt` it was
+ * continued from a copy (lib/backup), not moved
+ */
 export function arrivedNoticeText(
   toName: string,
   platform: string,
   folder: string,
   fromName: string,
   leftBehind: string[],
-  noRemoteAccess = false
+  noRemoteAccess = false,
+  copyAt?: number,
+  now: number = Date.now()
 ): string {
   const lines = [
-    `[AgentOS] This session now runs on ${toName} (${platform}). It was moved here from ${fromName} with the same conversation, branch and uncommitted changes.`,
+    copyAt !== undefined
+      ? `[AgentOS] This session now runs on ${toName} (${platform}). It was continued here from a copy made ${ageText(now - copyAt)} ago, because ${fromName} was offline. Anything done on ${fromName} after that copy is not here.`
+      : `[AgentOS] This session now runs on ${toName} (${platform}). It was moved here from ${fromName} with the same conversation, branch and uncommitted changes.`,
     `Its folder is now ${folder}. Paths (including saved tool outputs and checkpoints), running processes, servers and installed tools from earlier in this conversation were on ${fromName}; check before relying on them.`,
     `Files git ignores (such as .env or local config) and changes inside submodules did not come along; they are still on ${fromName}.`,
   ];
@@ -262,19 +299,21 @@ export function arrivedNoticeText(
   return lines.join("\n");
 }
 
+/** A remote's URL with how it is written taken out (ssh, https, .git) */
+export const normalRemote = (url: string): string =>
+  url
+    .trim()
+    .replace(/^[a-z+]+:\/\//i, "")
+    .replace(/^[^@/]+@/, "")
+    .replace(/:(?!\d+\/)/, "/")
+    .replace(/\/+$/, "")
+    .replace(/\.git$/i, "")
+    .toLowerCase();
+
 /** Same repository, however the URL is written (ssh, https, .git) */
 export function sameRemote(a: string | null, b: string | null): boolean {
   if (!a || !b) return false;
-  const norm = (url: string) =>
-    url
-      .trim()
-      .replace(/^[a-z+]+:\/\//i, "")
-      .replace(/^[^@/]+@/, "")
-      .replace(/:(?!\d+\/)/, "/")
-      .replace(/\/+$/, "")
-      .replace(/\.git$/i, "")
-      .toLowerCase();
-  return norm(a) === norm(b);
+  return normalRemote(a) === normalRemote(b);
 }
 
 /**

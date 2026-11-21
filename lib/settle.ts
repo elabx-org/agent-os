@@ -19,6 +19,7 @@ import { sendPush } from "./push/send";
 import { listQueue } from "./queue/store";
 import type { QueueItem } from "./queue/types";
 import { latest } from "./session-watch";
+import { parseMovedTo } from "./session-move-types";
 import { isRunning, launchSession, tmuxNameOf } from "./session-launch";
 import {
   UNSETTLED_REASON,
@@ -176,6 +177,15 @@ export function createSettle(deps: SettleDeps) {
   async function unsettle(
     session: Session
   ): Promise<{ session: Session; relaunched: boolean }> {
+    // Continued on the hub from a copy: the route clears moved_to first,
+    // once the hub says it let go (lib/backup/held.ts)
+    const went = parseMovedTo(session.moved_to);
+    if (went?.takeover) {
+      throw new SettleRefused(409, {
+        error: `It continued on ${went.name}. Open it there, or bring it back.`,
+        reason: "moved",
+      });
+    }
     if (!isSettled(session)) {
       throw new SettleRefused(409, {
         error: "This session isn't settled",
@@ -356,9 +366,12 @@ export async function reconcileSettled(
   now: number = Date.now()
 ): Promise<number> {
   const db = getDb();
+  // One that went on to another machine stays settled: a tmux by that
+  // name here is not it (lib/backup pauses a continued copy for good)
   const settled = db
     .prepare(
-      `SELECT * FROM sessions WHERE settled_at IS NOT NULL AND settled_at < ?`
+      `SELECT * FROM sessions WHERE settled_at IS NOT NULL AND settled_at < ?
+         AND moved_to IS NULL`
     )
     .all(now - 60 * 1000) as Session[];
   let cleared = 0;

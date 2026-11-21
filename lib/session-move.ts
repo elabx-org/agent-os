@@ -113,9 +113,23 @@ interface Leaving {
   temp: string[];
 }
 
+/** Where an arrival came from; a take-over also names its copy */
+export interface ArrivalFrom {
+  machine: string;
+  name: string;
+  /** Continued from a copy on the hub (lib/backup/takeover.ts) */
+  takeId?: string;
+  copyAt?: number;
+}
+
 interface Arriving {
   manifest: MoveManifest;
-  from: { machine: string; name: string };
+  from: ArrivalFrom;
+  /**
+   * Continued from a copy: never cloned, never a remote asked, the trust
+   * screen never answered, always asking first (lib/backup/takeover.ts)
+   */
+  takeover: boolean;
   self: { machine: string; name: string };
   dir: string;
   state: MoveInState;
@@ -326,6 +340,46 @@ export function transcriptOut(sessionId: string, moveId: string): Readable {
 }
 
 /**
+ * A git bundle of `refs` in `top`, without the commits of `have` that
+ * `top` knows (a receiver only names what it holds). Null when nothing
+ * would be in it
+ */
+export async function packBundle(
+  top: string,
+  refs: string[],
+  have: unknown,
+  file: string
+): Promise<string | null> {
+  const named = (Array.isArray(have) ? have : [])
+    .filter((sha): sha is string => typeof sha === "string" && SHA.test(sha))
+    .slice(0, HAVE_MAX);
+  const known: string[] = [];
+  if (named.length > 0) {
+    const checked = await git(["cat-file", "--batch-check"], {
+      cwd: top,
+      input: named.join("\n") + "\n",
+    });
+    for (const line of checked.split("\n")) {
+      const [sha, type] = line.split(" ");
+      if (type === "commit") known.push(sha);
+    }
+  }
+  const not = known.map((sha) => `^${sha}`);
+  const count = (
+    await git(["rev-list", "--count", ...refs, ...not], {
+      cwd: top,
+      timeoutMs: LONG_MS,
+    })
+  ).trim();
+  if (count === "0") return null;
+  await git(["bundle", "create", file, ...refs, ...not], {
+    cwd: top,
+    timeoutMs: LONG_MS,
+  });
+  return file;
+}
+
+/**
  * A git bundle of HEAD and the snapshot, without what the other machine
  * says it has. Null when it already has everything
  */
@@ -335,36 +389,10 @@ export async function bundleOut(
   have: unknown
 ): Promise<string | null> {
   const out = leavingOf(sessionId, moveId);
-  const named = (Array.isArray(have) ? have : [])
-    .filter((sha): sha is string => typeof sha === "string" && SHA.test(sha))
-    .slice(0, HAVE_MAX);
-  const known: string[] = [];
-  if (named.length > 0) {
-    const checked = await git(["cat-file", "--batch-check"], {
-      cwd: out.top,
-      input: named.join("\n") + "\n",
-    });
-    for (const line of checked.split("\n")) {
-      const [sha, type] = line.split(" ");
-      if (type === "commit") known.push(sha);
-    }
-  }
   const refs = [out.headRef, ...(out.snapshot ? [out.snapshot.ref] : [])];
-  const not = known.map((sha) => `^${sha}`);
-  const count = (
-    await git(["rev-list", "--count", ...refs, ...not], {
-      cwd: out.top,
-      timeoutMs: LONG_MS,
-    })
-  ).trim();
-  if (count === "0") return null;
   const file = path.join(os.tmpdir(), `agentos-move-${moveId}.bundle`);
   out.temp.push(file);
-  await git(["bundle", "create", file, ...refs, ...not], {
-    cwd: out.top,
-    timeoutMs: LONG_MS,
-  });
-  return file;
+  return packBundle(out.top, refs, have, file);
 }
 
 async function forget(out: Leaving, moveId: string): Promise<void> {
@@ -449,7 +477,7 @@ const platformName = () =>
       ? "Linux"
       : process.platform;
 
-function validManifest(value: unknown): value is MoveManifest {
+export function validManifest(value: unknown): value is MoveManifest {
   const m = value as MoveManifest;
   return (
     !!m &&
@@ -600,6 +628,15 @@ async function cloneOrInit(
   return { repo: fs.realpathSync(dir), mode: "empty" };
 }
 
+/** A new empty repository for a take-over, named after the copied one */
+async function emptyRepo(m: MoveManifest): Promise<string> {
+  const target = await cloneTarget(m.repo.name, null);
+  const dir = "existing" in target ? target.existing : target.dir;
+  await fsp.mkdir(dir, { recursive: true });
+  await git(["init", "--quiet"], { cwd: dir });
+  return fs.realpathSync(dir);
+}
+
 /** The repository a session works in, for the machine it may move to */
 export async function moveRepoOf(
   session: Session
@@ -643,7 +680,10 @@ async function prepare(inn: Arriving): Promise<void> {
     }
     if (
       went.machine !== inn.from.machine ||
-      (existing.claude_session_id &&
+      // A copy that was continued elsewhere may have started another
+      // conversation since; it comes back to its own folder all the same
+      (!went.takeover &&
+        existing.claude_session_id &&
         existing.claude_session_id !== m.claudeSessionId)
     ) {
       throw new Error(
@@ -661,6 +701,11 @@ async function prepare(inn: Arriving): Promise<void> {
     if (found) {
       inn.repo = found;
       inn.mode = "existing";
+    } else if (inn.takeover) {
+      // A copy is that machine's data: nothing is cloned from a URL it
+      // gave, everything comes from the bundle
+      inn.repo = await emptyRepo(m);
+      inn.mode = "empty";
     } else {
       const made = await cloneOrInit(m);
       inn.repo = made.repo;
@@ -692,8 +737,9 @@ async function prepare(inn: Arriving): Promise<void> {
 /** Starts getting this machine ready; poll moveInState */
 export async function prepareMoveIn(
   manifest: unknown,
-  from: { machine: string; name: string },
-  self: { machine: string; name: string }
+  from: ArrivalFrom,
+  self: { machine: string; name: string },
+  options: { takeover?: boolean } = {}
 ): Promise<MoveInState> {
   if (!validManifest(manifest)) throw new Error("Not a session to continue");
   if (arriving.has(manifest.moveId)) throw new Error("Already arriving");
@@ -701,6 +747,7 @@ export async function prepareMoveIn(
   const inn: Arriving = {
     manifest,
     from,
+    takeover: options.takeover === true,
     self,
     dir,
     state: { moveId: manifest.moveId, phase: "preparing" },
@@ -821,6 +868,14 @@ async function reuseFolder(
   const state = await readWorkingTree(top);
   if (!state || state.staged) return null;
   const went = parseMovedTo(existing.moved_to);
+  // It was continued elsewhere from a copy, and more was done here after
+  // that copy: that work stays as it is, in its own folder
+  if (
+    went?.takeover &&
+    (went.takeover.ahead.conversation || went.takeover.ahead.code)
+  ) {
+    return null;
+  }
   // Someone switched branches in it since
   if (went?.branch !== undefined && state.branch !== went.branch) return null;
   if (
@@ -1115,6 +1170,10 @@ async function runImport(inn: Arriving): Promise<MoveInResult> {
   if (fs.existsSync(bundle) && (await fsp.stat(bundle)).size > 0) {
     await git(
       [
+        // A copy is that machine's data: every object is checked
+        ...(inn.takeover
+          ? ["-c", "fetch.fsckObjects=true", "-c", "transfer.fsckObjects=true"]
+          : []),
         "fetch",
         "--quiet",
         "--no-tags",
@@ -1155,7 +1214,10 @@ async function runImport(inn: Arriving): Promise<MoveInResult> {
 
     const from: MovedFrom = { ...inn.from, at: Date.now() };
     const row = arrivalRow(placed, folder, existing?.branch_name ?? null);
-    const access = arrivalMode(m);
+    // A copy always arrives asking first, whatever it left with
+    const access = inn.takeover
+      ? { mode: "manual", fullAccessOff: false }
+      : arrivalMode(m);
     // Past here it is this machine's session: the hub can no longer call
     // it off, only a failed start undoes it
     stopIfCancelled();
@@ -1206,14 +1268,20 @@ async function runImport(inn: Arriving): Promise<MoveInResult> {
 
     const leftBehind = m.snapshot?.skipped ?? [];
     const session = getSession(m.sessionId)!;
-    const noRemoteAccess = !(await remoteReachable(repo));
+    // A take-over into a folder it made asks no remote (there is none);
+    // one into an existing checkout asks that checkout's own origin
+    const noRemoteAccess =
+      inn.takeover && inn.mode === "empty"
+        ? true
+        : !(await remoteReachable(repo));
     const notice = arrivedNoticeText(
       inn.self.name,
       platformName(),
       folder,
       inn.from.name,
       leftBehind,
-      noRemoteAccess
+      noRemoteAccess,
+      inn.takeover ? inn.from.copyAt : undefined
     );
     // Claude must learn it moved either way: queued when this machine
     // queues messages, else as the first thing it is told
@@ -1227,7 +1295,10 @@ async function runImport(inn: Arriving): Promise<MoveInResult> {
       });
     }
     const needsTrust = inn.made
-      ? await trustScreen(session, m.sourceTrusted === true).catch(() => false)
+      ? await trustScreen(
+          session,
+          !inn.takeover && m.sourceTrusted === true
+        ).catch(() => false)
       : false;
     inn.made = undefined;
     await git(

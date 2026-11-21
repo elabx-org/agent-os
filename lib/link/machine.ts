@@ -10,6 +10,8 @@ import { spawn } from "child_process";
 import fs from "fs";
 import path from "path";
 import { USER_PROOF_COOKIE, userSecret } from "../user-proof";
+import { heldSessions } from "../backup/hold";
+import { BACKUP_SESSION_ID } from "../backup/types";
 import {
   LinkClient,
   UpUnavailable,
@@ -17,7 +19,12 @@ import {
   type UpAnswer,
   type UpInit,
 } from "./client";
-import { CAP_UP, type LinkNotice, type UpAllowed } from "./protocol";
+import {
+  CAP_UP,
+  type LinkNotice,
+  type TakenSession,
+  type UpAllowed,
+} from "./protocol";
 import { generateMachineKey, isPublicKey, type MachineKey } from "./keys";
 import { home, readSecret, writeSecret } from "./secrets";
 import { ownSha } from "./server";
@@ -203,6 +210,37 @@ export function hubUp(): {
   };
 }
 
+/**
+ * The hub's "taken" list has come on this connection, so this machine
+ * knows what it must not copy or run (lib/backup/machine.ts)
+ */
+export const takenReceived = (): boolean =>
+  !!shared.__agentosLinkClient?.takenSeen;
+
+/** The hub's host and this machine's id there; null while not linked */
+export function linkIdentity(): { hubHost: string; machineId: string } | null {
+  const client = shared.__agentosLinkClient;
+  const state = client?.state;
+  const config = readLinkConfig();
+  if (state?.status !== "linked" || !config) return null;
+  return { hubHost: new URL(config.hubUrl).host, machineId: state.machineId };
+}
+
+/**
+ * Pauses what the hub continued: each id is held at once, before any
+ * later frame, then lib/backup/machine.ts does the rest
+ */
+function onTaken(list: TakenSession[]) {
+  for (const entry of list) {
+    if (typeof entry?.sessionId === "string") {
+      if (BACKUP_SESSION_ID.test(entry.sessionId)) {
+        heldSessions().add(entry.sessionId);
+      }
+    }
+  }
+  return import("../backup/machine").then((m) => m.pauseTaken(list));
+}
+
 const upState = (client: LinkClient): LinkStatusFile["up"] => ({
   supported: client.hubCaps.has(CAP_UP),
   agents: client.upAllowed?.agents ?? false,
@@ -239,7 +277,14 @@ export function startMachineLink(localPort: number): LinkClient | null {
       ? () => signInHeaders(config.hubUrl, config.signIn!)
       : undefined,
     userCookie: () => `${USER_PROOF_COOKIE}=${userSecret()}`,
-    onUpAllowed: () => writeState(config, client.state, upState(client)),
+    onTaken,
+    onUpAllowed: (up) => {
+      writeState(config, client.state, upState(client));
+      // Copies just turned on: what changed is sent soon
+      if (up?.backup) {
+        void import("../backup/machine").then((m) => m.sweep()).catch(() => {});
+      }
+    },
     onState: (state) => {
       writeState(config, state, upState(client));
       console.log(

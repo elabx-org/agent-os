@@ -49,6 +49,8 @@ import {
 } from "@/lib/server-name";
 import { cn } from "@/lib/utils";
 import { Chevron } from "./SettingGroup";
+import { copiedWord, copyAge, sizeText } from "@/lib/backup/types";
+import { openCopies } from "@/stores/copiesSheet";
 
 /** Polled while this screen is open, to see a Mac arrive and connect */
 const POLL_MS = 2000;
@@ -281,8 +283,12 @@ function LinkedRow({
   const online = isOnline(machine);
   const { data: count } = useSessionCount(machine.id, online);
   const [renaming, setRenaming] = useState(false);
+  const copies = machine.copies ?? 0;
+  const unconfirmed = machine.unconfirmed ?? 0;
   const detail = !online
-    ? "Offline"
+    ? copies > 0
+      ? `Offline · ${copiedWord(copies)}, newest ${copyAge(Date.now() - (machine.newestCopyAt ?? Date.now()))} ago`
+      : "Offline"
     : machine.sameVersion === false
       ? "Online · needs the same AgentOS version"
       : count == null
@@ -292,8 +298,17 @@ function LinkedRow({
   const remove = async () => {
     const ok = await confirmAction({
       title: `Remove ${machine.name}?`,
-      message:
+      message: [
         "It's cut off at once. Its sessions stay on it; link it again to see them here.",
+        copies > 0 || unconfirmed > 0
+          ? "The copies of its sessions kept here are deleted too."
+          : "",
+        unconfirmed > 0
+          ? `${machine.name} was never told that ${unconfirmed} session(s) continued here; they may still be running on it.`
+          : "",
+      ]
+        .filter(Boolean)
+        .join(" "),
       confirmLabel: "Remove",
       destructive: true,
     });
@@ -309,7 +324,27 @@ function LinkedRow({
     if (machine.id === tab) switchMachine(null);
   };
 
-  const patch = async (change: { agents: boolean } | { usesHub: boolean }) => {
+  const deleteCopies = async () => {
+    const ok = await confirmAction({
+      title: `Delete the copies of ${machine.name}'s sessions?`,
+      message: `Only the copies on this server go. The sessions on ${machine.name} stay as they are.`,
+      confirmLabel: "Delete copies",
+      destructive: true,
+    });
+    if (!ok) return;
+    const res = await fetchAsUser(`/api/machines/${machine.id}/backups`, {
+      method: "DELETE",
+    });
+    if (!res.ok) {
+      toast.error(refusalText(await res.json().catch(() => ({}))));
+      return;
+    }
+    onChange();
+  };
+
+  const patch = async (
+    change: { agents: boolean } | { usesHub: boolean } | { backup: boolean }
+  ) => {
     const res = await fetchAsUser(`/api/machines/${machine.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -373,6 +408,15 @@ function LinkedRow({
                 <Pencil className="h-4 w-4" />
                 Rename
               </DropdownMenuItem>
+              {copies > 0 && (
+                <DropdownMenuItem
+                  variant="destructive"
+                  onSelect={() => void deleteCopies()}
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Delete its copies
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem variant="destructive" onSelect={remove}>
                 <Trash2 className="h-4 w-4" />
                 Remove
@@ -390,6 +434,11 @@ function LinkedRow({
         machine={machine}
         needsUpdate={online && machine.up === false}
         onChange={allowUsesHub}
+      />
+      <BackupRow
+        machine={machine}
+        onSwitch={(on) => patch({ backup: on })}
+        onDeleted={onChange}
       />
       <ActivityRow machine={machine} machineName={machineName} />
       {online && <ReposFolderRow target={machine.id} name={machine.name} />}
@@ -482,6 +531,136 @@ function UsesHubRow({
         }}
       />
     </div>
+  );
+}
+
+/**
+ * "Keep a copy of its sessions on this server" (lib/backup): the switch,
+ * what is copied, and the way into the copies. Turning it off asks
+ * whether the copies already here stay
+ */
+function BackupRow({
+  machine,
+  onSwitch,
+  onDeleted,
+}: {
+  machine: MachineView;
+  onSwitch: (on: boolean) => Promise<void>;
+  onDeleted: () => void;
+}) {
+  const [saving, setSaving] = useState(false);
+  const [asking, setAsking] = useState(false);
+  const { name } = machine;
+  const on = !!machine.backup;
+  const copies = machine.copies ?? 0;
+  const unconfirmed = machine.unconfirmed ?? 0;
+  const tooOld = on && machine.canTakeOver === false;
+  const id = `machine-backup-${machine.id}`;
+
+  const stop = async (drop: boolean) => {
+    setAsking(false);
+    setSaving(true);
+    await onSwitch(false);
+    if (drop) {
+      const res = await fetchAsUser(`/api/machines/${machine.id}/backups`, {
+        method: "DELETE",
+      });
+      if (!res.ok) toast.error(refusalText(await res.json().catch(() => ({}))));
+      onDeleted();
+    }
+    setSaving(false);
+  };
+
+  return (
+    <>
+      <div className="row items-start gap-3 py-3 pl-[68px]">
+        <label htmlFor={id} className="min-w-0 flex-1">
+          <span className="block text-[15px]">
+            Keep a copy of its sessions on this server
+          </span>
+          <span className="text-muted-foreground block text-[13px]">
+            {!on
+              ? `Off: nothing new from ${name} is copied here.`
+              : tooOld
+                ? `Starts once ${name} has updated itself.`
+                : `After each reply, ${name} sends its Claude conversations and unfinished code here. If ${name} goes offline you can read them and carry on here. The copies stay on this server, where its sessions could read them.`}
+          </span>
+          {machine.copiesFull && (
+            <span className="block text-[13px] text-[var(--del)]">
+              Copies of {name} have reached 20 GB, so new changes aren&apos;t
+              being copied. Delete copies you no longer need.
+            </span>
+          )}
+          {unconfirmed > 0 && (
+            <span className="block text-[13px] text-[var(--del)]">
+              {name} hasn&apos;t confirmed it paused {unconfirmed} session(s)
+              that continued here. Don&apos;t use those sessions on {name}.
+            </span>
+          )}
+        </label>
+        <Switch
+          id={id}
+          checked={on}
+          disabled={saving}
+          onCheckedChange={async (next) => {
+            if (!next && copies > 0) {
+              setAsking(true);
+              return;
+            }
+            setSaving(true);
+            await onSwitch(next);
+            setSaving(false);
+          }}
+        />
+      </div>
+      {copies > 0 && (
+        <button
+          type="button"
+          onClick={() => openCopies(machine.id)}
+          className="row w-full items-center gap-3 py-3 pl-[68px] text-left active:opacity-70"
+        >
+          <span className="text-muted-foreground min-w-0 flex-1 text-[13px]">
+            {copiedWord(copies)} · newest{" "}
+            {copyAge(Date.now() - (machine.newestCopyAt ?? Date.now()))} ago ·{" "}
+            {sizeText(machine.copyBytes ?? 0)}
+          </span>
+          <Chevron />
+        </button>
+      )}
+      <Sheet open={asking} onOpenChange={setAsking}>
+        <SheetContent>
+          <SheetHeader>
+            <SheetTitle>Stop copying {name}&apos;s sessions?</SheetTitle>
+            <SheetDescription>
+              The {copies} copies already here stay until you delete them.
+            </SheetDescription>
+          </SheetHeader>
+          <SheetBody className="flex flex-col gap-2 pb-4">
+            <button
+              type="button"
+              onClick={() => void stop(false)}
+              className="pill pill-primary w-full active:opacity-80"
+            >
+              Stop and keep copies
+            </button>
+            <button
+              type="button"
+              onClick={() => void stop(true)}
+              className="pill pill-secondary w-full text-[var(--del)] active:opacity-80"
+            >
+              Stop and delete copies
+            </button>
+            <button
+              type="button"
+              onClick={() => setAsking(false)}
+              className="pill pill-secondary w-full active:opacity-80"
+            >
+              Cancel
+            </button>
+          </SheetBody>
+        </SheetContent>
+      </Sheet>
+    </>
   );
 }
 

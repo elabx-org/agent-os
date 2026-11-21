@@ -27,6 +27,7 @@ import {
   useRemoveDevServer,
 } from "@/data/dev-servers";
 import { sessionKeys } from "@/data/sessions/keys";
+import { parseMovedTo } from "@/lib/session-move-types";
 
 interface UseSessionListMutationsOptions {
   onSelectSession: (sessionId: string) => void;
@@ -88,14 +89,27 @@ export function useSessionListMutations({
 
   // Deletes go at once with a few seconds to undo, instead of a confirm
   const handleDeleteSession = useCallback(
-    (sessionId: string) =>
-      removeWithUndo({
+    (sessionId: string) => {
+      // Continued on the server from a copy, with work done here after
+      // it: the server keeps its folder (app/api/sessions/[id] DELETE)
+      const went = parseMovedTo(
+        queryClient
+          .getQueryData<{ sessions: Session[] }>(sessionKeys.list())
+          ?.sessions.find((s) => s.id === sessionId)?.moved_to
+      );
+      const ahead = went?.takeover?.ahead;
+      const kept =
+        ahead && (ahead.conversation || ahead.code)
+          ? ` Its folder is kept: it holds work that isn't on ${went.name}.`
+          : "";
+      return removeWithUndo({
         kind: "sessions",
         id: sessionId,
-        message: `Deleted “${nameOf("session", sessionId) ?? "session"}”`,
+        message: `Deleted “${nameOf("session", sessionId) ?? "session"}”${kept}`,
         commit: () => deleteSessionMutation.mutateAsync(sessionId),
-      }),
-    [deleteSessionMutation, nameOf]
+      });
+    },
+    [deleteSessionMutation, nameOf, queryClient]
   );
 
   const handleTogglePinSession = useCallback(

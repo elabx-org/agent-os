@@ -14,6 +14,7 @@ import {
   BIN_BODY,
   BIN_UP,
   BIN_WS,
+  CAP_TAKE,
   CAP_UP,
   LINK_MAX_FRAME,
   LINK_PATH,
@@ -26,6 +27,8 @@ import {
   type HubFrame,
   type LinkNotice,
   type MachineFrame,
+  type TakenResult,
+  type TakenSession,
   type UpAllowed,
   type UpKind,
 } from "./protocol";
@@ -105,6 +108,12 @@ export interface LinkClientOptions {
   onUpAllowed?: (up: UpAllowed | null) => void;
   /** Tests: how long to wait for an answer to an upward request */
   upWaitMs?: Partial<Record<UpKind, number>>;
+  /**
+   * The hub continued these sessions from their copies: pause them here.
+   * Called at once when the list arrives (before any later frame); what it
+   * resolves to goes back as taken-ack (lib/backup/machine.ts pauseTaken)
+   */
+  onTaken?: (sessions: TakenSession[]) => Promise<TakenResult[]>;
 }
 
 const RETRY_MS = [1000, 2000, 5000, 10_000, 30_000];
@@ -168,6 +177,8 @@ export class LinkClient {
   hubCaps = new Set<string>();
   /** What the hub lets this machine ask; null when unknown */
   upAllowed: UpAllowed | null = null;
+  /** The hub's "taken" list has come on this connection: copies may start */
+  takenSeen = false;
   private ups = new Map<number, UpCall>();
   private upNext = 1;
 
@@ -392,7 +403,7 @@ export class LinkClient {
         sha: this.options.sha,
         hubHost: this.hub.host,
         code: this.options.code,
-        caps: [CAP_UP],
+        caps: [CAP_UP, CAP_TAKE],
       });
     });
 
@@ -427,6 +438,8 @@ export class LinkClient {
         case "up-res-error":
         case "up-credit":
           return this.fromHubUp(frame);
+        case "taken":
+          return this.taken(ws, frame.sessions);
         case "welcome":
           this.attempt = 0;
           this.agents =
@@ -439,6 +452,7 @@ export class LinkClient {
               : []
           );
           this.upNext = 1;
+          this.takenSeen = false;
           this.setUpAllowed(
             frame.status === "approved" ? upAllowedOf(frame.up) : null
           );
@@ -483,6 +497,7 @@ export class LinkClient {
       if (this.ws === ws) this.ws = null;
       this.agents = null;
       this.hubCaps = new Set();
+      this.takenSeen = false;
       this.dropAll();
       if (this.upAllowed) this.setUpAllowed(null);
       if (this.stopped) return;
@@ -503,6 +518,22 @@ export class LinkClient {
     ws.on("error", () => {
       // "close" follows; nothing else to do
     });
+  }
+
+  /** Pauses what the hub continued, then says what it did */
+  private taken(ws: WebSocket, sessions: unknown): void {
+    if (this.state.status !== "linked") return;
+    const list = Array.isArray(sessions) ? (sessions as TakenSession[]) : [];
+    const done = this.options.onTaken?.(list) ?? Promise.resolve([]);
+    this.takenSeen = true;
+    done.then(
+      (results) => {
+        if (this.ws === ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ t: "taken-ack", results } as MachineFrame));
+        }
+      },
+      (error) => console.error("[link] pausing what the hub took:", error)
+    );
   }
 
   private dropAll(): void {
