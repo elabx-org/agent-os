@@ -99,6 +99,13 @@ equal("launch --after-update bare", parse("--after-update"), .app(opts))
 opts.atLogin = true
 equal("launch --after-update window=0 --at-login", parse("--after-update", "window=0", "--at-login"), .app(opts))
 
+equal("channel args absent", LaunchMode.channelArguments(nil), [])
+equal("channel args strings", LaunchMode.channelArguments(["a", "b"] as [Any]), ["a", "b"])
+equal("channel args number first", LaunchMode.channelArguments([1, "abc"] as [Any]), nil)
+equal("channel args number last", LaunchMode.channelArguments(["abc", 2] as [Any]), nil)
+equal("channel args not a list", LaunchMode.channelArguments("abc"), nil)
+equal("channel args NSArray", LaunchMode.channelArguments(NSArray(array: ["x"])), ["x"])
+
 // MARK: WindowMemory
 
 equal("memory drops session", WindowMemory.sanitize(path: "/?session=abc"), "/")
@@ -108,6 +115,9 @@ equal("memory drops fragment", WindowMemory.sanitize(path: "/a#b"), "/a")
 equal("memory rejects //evil", WindowMemory.sanitize(path: "//evil/x"), nil)
 equal("memory rejects https", WindowMemory.sanitize(path: "https://x/"), nil)
 equal("memory rejects relative", WindowMemory.sanitize(path: "x"), nil)
+equal("memory rejects the proxy", WindowMemory.sanitize(path: "/proxy/5173/"), nil)
+equal("memory rejects an encoded proxy", WindowMemory.sanitize(path: "/a/../%70roxy/1/"), nil)
+equal("memory keeps /proxyfoo", WindowMemory.sanitize(path: "/proxyfoo"), "/proxyfoo")
 let longPath = "/?view=" + String(repeating: "a", count: 400)
 check("memory caps the length", (WindowMemory.sanitize(path: longPath)?.count ?? 0) <= 256)
 let suite = "com.agentos.mac.tests.\(getpid())"

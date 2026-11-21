@@ -51,6 +51,21 @@ enum LaunchMode: Equatable {
   }
 }
 
+extension LaunchMode {
+  /// The `args` of a command-channel message: absent means none; otherwise
+  /// it must be a list of strings only (nil: refuse the message)
+  static func channelArguments(_ raw: Any?) -> [String]? {
+    guard let raw else { return [] }
+    guard let list = raw as? [Any] else { return nil }
+    var out: [String] = []
+    for item in list {
+      guard let text = item as? String else { return nil }
+      out.append(text)
+    }
+    return out
+  }
+}
+
 struct AppOptions: Equatable {
   var atLogin = false
   var afterUpdate = false

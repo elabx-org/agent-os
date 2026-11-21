@@ -87,6 +87,8 @@ enum CommandChannel {
     s.utf8.count == 32 && s.utf8.allSatisfy { ($0 >= 0x30 && $0 <= 0x39) || ($0 >= 0x61 && $0 <= 0x66) }
   }
 
+  static func arguments(_ raw: Any?) -> [String]? { LaunchMode.channelArguments(raw) }
+
   static func isCaptureName(_ s: String) -> Bool {
     (1...32).contains(s.utf8.count)
       && s.utf8.allSatisfy { ($0 >= 0x30 && $0 <= 0x39) || ($0 >= 0x61 && $0 <= 0x7A) || $0 == 0x2D }
@@ -114,8 +116,14 @@ enum CommandChannel {
       guard let info = note.userInfo, let token = info["token"] as? String, CommandChannel.isToken(token),
         let cmd = info["cmd"] as? String
       else { return }
-      let args = (info["args"] as? [Any])?.compactMap { $0 as? String } ?? []
       CommandChannel.handling += 1
+      // Arguments are strings or nothing; a list with anything else in it is
+      // refused whole, so a dropped item can't shift the rest into place
+      guard let args = CommandChannel.arguments(info["args"]) else {
+        TestFiles.publish(name: "reply-\(token).json", data: TestFiles.json(["error": "bad args"]))
+        CommandChannel.handling -= 1
+        return
+      }
       handle(cmd, args) { reply in
         TestFiles.publish(name: "reply-\(token).json", data: TestFiles.json(reply))
         CommandChannel.handling -= 1

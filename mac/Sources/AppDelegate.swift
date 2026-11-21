@@ -197,7 +197,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WindowHost, StatusMenu
     let wasShown = controller.isShown
     controller.open(.home, activate: false)
     var files: [String] = []
+    var finished = false
     let finish: @MainActor () -> Void = { [weak self] in
+      // Once: a page that never answers must not hold the channel (and so
+      // every menu Click) forever; after 8 s the reply goes without it
+      guard !finished else { return }
+      finished = true
       guard let self else { return done(files) }
       for (variant, appearanceName, highlight) in [
         ("light", NSAppearance.Name.aqua, false), ("dark", .darkAqua, false), ("highlight", .aqua, true),
@@ -216,9 +221,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WindowHost, StatusMenu
     }
     let webView = controller.pane.webView
     webView.callAsyncJavaScript(
-      "await new Promise(r => requestAnimationFrame(() => r()))", arguments: [:], in: nil, in: .page
+      // A hidden or locked screen draws no frames: wait for one at most 0.5 s
+      "await new Promise(r => { requestAnimationFrame(() => r()); setTimeout(r, 500); })", arguments: [:],
+      in: nil, in: .page
     ) { _ in
       webView.takeSnapshot(with: nil) { image, _ in
+        guard !finished else { return }
         if let image, let tiff = image.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff),
           let png = rep.representation(using: .png, properties: [:]),
           let url = TestFiles.write(name: "\(name)-window.png", data: png)
@@ -228,6 +236,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WindowHost, StatusMenu
         finish()
       }
     }
+    DispatchQueue.main.asyncAfter(deadline: .now() + 8) { finish() }
   }
 }
 

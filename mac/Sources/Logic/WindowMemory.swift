@@ -14,6 +14,10 @@ enum WindowMemory {
     let kept = (parts.queryItems ?? []).filter { keptQueryKeys.contains($0.name) }
     parts.queryItems = kept.isEmpty ? nil : kept
     guard let result = parts.string, result.hasPrefix("/"), !result.hasPrefix("//") else { return nil }
+    // The port proxy's pages never load in the window, so never reopen one
+    if let url = URL(string: "http://127.0.0.1" + result), LinkPolicy.isProxyPath(LinkPolicy.normalisedPath(url)) {
+      return nil
+    }
     if result.count <= maxLength { return result }
     let bare = parts.percentEncodedPath
     return bare.count <= maxLength ? bare : "/"
