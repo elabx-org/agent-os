@@ -467,26 +467,41 @@ export function ProjectList({
         )}
       >
         <div className={cn("flex flex-col", wide ? "gap-3.5" : "gap-3")}>
-          {appBar && (
-            <button
-              type="button"
-              onClick={() => runNav("back")}
-              aria-label="Back to Now"
-              className="text-muted-foreground active:bg-accent -mb-2 -ml-2 flex h-[44px] w-[44px] items-center justify-center rounded-full"
-            >
-              <ChevronLeft className="h-5 w-5" />
-            </button>
-          )}
-          <header className="flex items-end justify-between gap-3">
+          {/* With its own buttons: one compact row (Back, title, buttons) */}
+          <header
+            className={cn(
+              "flex justify-between",
+              ownButtons ? "-my-1.5 items-center gap-1" : "items-end gap-3"
+            )}
+          >
             {/* The count after the title when buttons hold the right
                 (E-Projects has it alone on the right) */}
-            <div className="flex min-w-0 items-baseline gap-2">
-              <h1 className="t-large shrink-0">Projects</h1>
+            <div
+              className={cn(
+                "flex min-w-0 gap-2",
+                ownButtons ? "items-center" : "items-baseline"
+              )}
+            >
+              {appBar && (
+                <button
+                  type="button"
+                  onClick={() => runNav("back")}
+                  aria-label="Back to Now"
+                  className="text-muted-foreground active:bg-accent -mr-2 -ml-3 flex h-[44px] w-[44px] shrink-0 items-center justify-center self-center rounded-full"
+                >
+                  <ChevronLeft className="h-5 w-5" />
+                </button>
+              )}
+              <h1
+                className={cn("shrink-0", ownButtons ? "t-title" : "t-large")}
+              >
+                Projects
+              </h1>
               {ownButtons && count}
               {/* Gives way (its name shortens) before it reaches the buttons */}
               <MachineChip className="min-w-[2.9rem] shrink self-center" home />
             </div>
-            <div className="flex shrink-0 items-end gap-1">
+            <div className="flex shrink-0 items-center gap-0">
               {ownButtons && (
                 <>
                   <Button
