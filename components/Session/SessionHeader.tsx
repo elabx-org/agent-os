@@ -45,6 +45,12 @@ export function StartedByLine({
   );
 }
 
+/** The same words for a crumb (the desktop's one-line header) */
+const startedByText = (session: Session) => {
+  const by = parseStartedBy(session.started_by);
+  return by ? startedByLine(by) : null;
+};
+
 /** What every header says about the session */
 export interface HeaderInfo {
   session: Session;
@@ -399,7 +405,11 @@ export function DesktopHeader({
         <span className="t-head truncate leading-tight">{info.title}</span>
         <Crumb
           info={info}
-          extra={[branch, count > 0 ? agentsLabel(count) : null]}
+          extra={[
+            branch,
+            count > 0 ? agentsLabel(count) : null,
+            startedByText(info.session),
+          ]}
           className="text-[13px]"
         />
       </div>

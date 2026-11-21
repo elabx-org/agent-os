@@ -132,8 +132,10 @@ export async function POST(request: NextRequest) {
         return fromMachineRefusal("too_many_running");
       }
     }
-    // Sessions starting each other across machines: one more hop
-    const chain = chainOf(request);
+    // Sessions starting each other across machines: one more hop. A start
+    // from another machine is always marked, chain or not, so the running
+    // cap above counts it
+    const chain = chainOf(request) ?? (from ? 0 : null);
     if (chain !== null) {
       const depth = chain + 1;
       if (depth > MAX_CHAIN) return fromMachineRefusal("chain_too_deep");

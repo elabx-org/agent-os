@@ -127,6 +127,22 @@ test("from a machine: a Claude session that asks first, in the project's folder"
   assert.equal(by.machine, "another machine");
 });
 
+test("from a machine without a chain header: still marked, so the running cap counts it", async () => {
+  const from = nextMachine();
+  const res = await sessions.POST(
+    post(
+      "/api/sessions",
+      { projectId, name: "No chain", launch: false },
+      { "x-agentos-from-machine": from, "x-agentos-origin": "agent" }
+    )
+  );
+  assert.equal(res.status, 201);
+  const { session } = (await res.json()) as { session: Session };
+  const by = JSON.parse(row(session.id).started_by!);
+  assert.equal(by.machineId, from);
+  assert.equal(by.depth, 1);
+});
+
 test("from a machine: a project is required, and a branch name must be plain", async () => {
   const from = nextMachine();
   const headers = {
