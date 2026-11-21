@@ -12,9 +12,12 @@ case .selfTest(let only):
   SelfTest.run(only)
 case .app(let opts):
   if CommandChannel.forwardIfRunning(opts) { exit(0) }
-  let app = NSApplication.shared
-  let delegate = AppDelegate(opts)
-  app.delegate = delegate
-  app.setActivationPolicy(.accessory)
-  app.run()
+  MainActor.assumeIsolated {
+    let app = NSApplication.shared
+    let delegate = AppDelegate(opts)
+    app.delegate = delegate
+    app.setActivationPolicy(.accessory)
+    app.run()
+    withExtendedLifetime(delegate) {}
+  }
 }
