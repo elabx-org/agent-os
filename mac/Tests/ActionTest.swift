@@ -312,6 +312,7 @@ func runAll() {
   check("reply on a permission post sends nothing", appRequests().isEmpty, json(appRequests()))
   check("offers: deny-only has no allow", !Notifier.offers("PERMISSION_DENY", "allow") && Notifier.offers("PERMISSION_DENY", "deny"))
   check("offers: info has none", !Notifier.offers("INFO", "deny") && !Notifier.offers("INFO", "reply"))
+  stub("prompt=v1")
 
   // A tap on the body opens the window, sends nothing
   notifier.consider([entry("finished")], prompts: [:])

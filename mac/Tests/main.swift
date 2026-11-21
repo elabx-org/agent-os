@@ -327,7 +327,8 @@ check("600 characters and an ellipsis of its own: allowed", !MenuModel.serverCut
 var editPrompt = prompt(detail: "")
 editPrompt.question = "Do you want to make this edit to " + String(repeating: "a", count: 60) + "/settings.json?"
 let editMenu = rows(session(prompt: editPrompt))
-check("long question: file name shown", editMenu.contains { $0.title.contains("settings.json?") })
+check("long question: file name shown", editMenu.filter { $0.style == .plain && !$0.enabled }.map(\.title).joined()
+  .contains("/settings.json?"))
 check("long question: allow enabled", titled(editMenu, "Yes")?.enabled == true)
 editPrompt.question = String(repeating: "word ", count: 60)
 check("question past 3 lines: allow disabled", titled(rows(session(prompt: editPrompt)), "Yes")?.enabled == false)
