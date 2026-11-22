@@ -227,6 +227,8 @@ export function ProjectList({
   );
 
   const agentsByProject = useBackgroundAgentsByProject(projects);
+  // Before the All sessions return below: a hook runs on every render
+  const chipShown = useMachineChipShown(true);
 
   // Sessions and background agents together, by their state, and when each
   // project's sessions last changed
@@ -454,7 +456,6 @@ export function ProjectList({
   const ownButtons = appBar || mode === "phone" || mode === "desktop";
   // Back sits in the title row (the desktop sidebar and the iOS app's bar)
   const back = appBar || mode === "desktop";
-  const chipShown = useMachineChipShown(true);
   const count = (
     <span className="text-muted-foreground text-[14px] tabular-nums">
       {movable.length}
