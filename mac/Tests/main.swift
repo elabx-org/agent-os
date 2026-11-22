@@ -204,7 +204,8 @@ equal("title is the app's", posted?.title, "Build needs you")
 equal("subtitle is the project", posted?.subtitle, "App")
 equal("needsYou category", posted?.category, .permission)
 check("needsYou sound", posted?.sound == true)
-check("body from the prompt", posted?.body.hasPrefix("Bash command: touch inbox-test.txt\nDo you want") == true,
+check("body from the prompt",
+  posted?.body.hasPrefix("Bash command: Create empty file\ntouch inbox-test.txt\nDo you want") == true,
   posted?.body ?? "")
 check("suppressed when the prompt has gone",
   NotifyRules.decide(event("needsYou"), ctx, prompt: reply(nil), sessionName: "Build", features: true) == nil)
@@ -276,9 +277,9 @@ equal("long one line", NotifyRules.category(for: prompt(detail: String(repeating
 
 // The real shape (tests/unit/fixtures/screens/claude-permission.ansi): the
 // command is in description, detail is empty
-func current(_ command: String, _ about: String = "Create an empty file") -> PermissionPrompt {
+func current(_ command: String, _ about: String? = "Create an empty file") -> PermissionPrompt {
   var p = prompt(detail: "")
-  p.description = command + "\n" + about
+  p.description = about.map { command + "\n" + $0 } ?? command
   return p
 }
 equal("current shape: short command allows once", NotifyRules.category(for: current("touch e2e-perm.txt"), features: true),
@@ -293,7 +294,7 @@ equal("current shape: long command deny only",
   NotifyRules.category(for: current("echo " + String(repeating: "ok ", count: 60)), features: true), .permissionDenyOnly)
 let cutDescription = String(repeating: "echo ok; ", count: 70).prefix(600) + "…"
 equal("current shape: server-cut description deny only",
-  NotifyRules.category(for: current(String(cutDescription)), features: true), .permissionDenyOnly)
+  NotifyRules.category(for: current(String(cutDescription), nil), features: true), .permissionDenyOnly)
 check("shownText holds description", current("x\u{202E}").shownText.contains("\u{202E}"))
 
 // MARK: Stage 2: MenuModel
@@ -370,7 +371,8 @@ let hugeMenu = rows(session(prompt: current((1...14).map { "echo line \($0)" }.j
 check("current menu: past 12 lines allow off", titled(hugeMenu, "Yes")?.enabled == false)
 check("current menu: past 12 lines Too long", titled(hugeMenu, Strings.tooLong) != nil)
 check("current menu: past 12 lines deny on", titled(hugeMenu, "No")?.enabled == true)
-let cutDescMenu = rows(session(prompt: current(String(cutDescription))))
+// The server cuts the whole description, so its "…" comes last
+let cutDescMenu = rows(session(prompt: current(String(cutDescription), nil)))
 check("current menu: server-cut description allow off", titled(cutDescMenu, "Yes")?.enabled == false)
 check("current menu: bidi in description allow off", titled(rows(session(prompt: current("rm \u{202E}x"))), "Yes")?.enabled == false)
 var both = prompt(detail: (1...8).map { "+ line \($0)" }.joined(separator: "\n"))
