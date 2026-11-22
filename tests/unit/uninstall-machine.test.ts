@@ -507,3 +507,82 @@ test("uninstall leaves the target of a linked repo or ~/.agent-os", () => {
     "its target stays"
   );
 });
+
+test("uninstall --reexec typed by hand never removes the script's own folder", () => {
+  const f = fixture();
+  const dir = path.join(f.root, "scripts");
+  fs.mkdirSync(dir);
+  const copy = path.join(dir, "agentos-uninstall.sh");
+  fs.copyFileSync(SCRIPT, copy);
+  fs.writeFileSync(path.join(dir, "agent-os"), "#!/bin/sh\n");
+  for (const env of [{}, { AGENTOS_UNINSTALL_COPY: "/elsewhere" }]) {
+    const r = spawnSync("/bin/bash", [copy, "--reexec", "--dry-run"], {
+      env: { ...f.env, ...env } as unknown as NodeJS.ProcessEnv,
+      encoding: "utf8",
+    });
+    assert.equal(r.status, 64, r.stderr);
+    assert.equal(fs.existsSync(path.join(dir, "agent-os")), true);
+    assert.equal(fs.existsSync(copy), true);
+  }
+});
+
+test("uninstall shows a session with an empty name by its tmux name", () => {
+  const f = fixture();
+  const db = new Database(path.join(f.ah, "agent-os.db"));
+  db.prepare("UPDATE sessions SET name = '' WHERE id = ?").run(ID);
+  db.close();
+  const r = uninstall(f, ["--dry-run", "--json"]);
+  assert.equal(r.code, 0, r.err);
+  const plan = JSON.parse(r.out);
+  assert.deepEqual(
+    plan.sessions.map((s: { name: string }) => s.name),
+    [`claude-${ID}`]
+  );
+});
+
+test("uninstall keeps ~/.agent-os when repositories live inside it", () => {
+  const f = fixture();
+  const inside = path.join(f.ah, "repos", "mine");
+  fs.mkdirSync(inside, { recursive: true });
+  fs.writeFileSync(path.join(inside, "file"), "mine\n");
+  const db = new Database(path.join(f.ah, "agent-os.db"));
+  db.prepare("INSERT INTO preferences (key, value) VALUES (?, ?)").run(
+    "repos_dir",
+    JSON.stringify("~/.agent-os/repos")
+  );
+  db.close();
+  const plan = JSON.parse(uninstall(f, ["--dry-run", "--json"]).out);
+  assert.equal(plan.repos, path.join(f.ah, "repos"));
+  assert.match(plan.warnings.join("\n"), /~\/\.agent-os stays/);
+  const r = uninstall(f, ["--yes", "--json"]);
+  assert.equal(r.code, 3, r.out);
+  assert.equal(fs.readFileSync(path.join(inside, "file"), "utf8"), "mine\n");
+  const left = JSON.parse(r.out).done.left;
+  assert.ok(
+    left.some((l: { path: string }) => l.path === f.ah),
+    JSON.stringify(left)
+  );
+});
+
+test("uninstall keeps ~/.agent-os when a kept worktree's repository is in it", () => {
+  const f = fixture();
+  const repo = path.join(f.ah, "own-repo");
+  execFileSync("git", ["init", "-q", "-b", "main", repo]);
+  fs.writeFileSync(path.join(repo, "file"), "x\n");
+  git(repo, "add", "-A");
+  git(repo, "commit", "-q", "-m", "first");
+  fs.mkdirSync(path.join(f.ah, "worktrees"));
+  const wt = path.join(f.ah, "worktrees", "work");
+  git(repo, "worktree", "add", "-q", wt, "-b", "wt-work");
+  fs.writeFileSync(path.join(wt, "file"), "not pushed\n");
+  git(wt, "commit", "-q", "-am", "local only");
+  const r = uninstall(f, ["--yes", "--json"]);
+  assert.equal(r.code, 3, r.out);
+  assert.equal(fs.existsSync(path.join(repo, ".git")), true);
+  const kept = path.join(f.home, "AgentOS", "Kept from AgentOS", "work");
+  assert.equal(
+    fs.readFileSync(path.join(kept, "file"), "utf8"),
+    "not pushed\n"
+  );
+  assert.match(git(kept, "log", "--oneline", "-1"), /local only/);
+});

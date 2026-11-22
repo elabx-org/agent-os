@@ -79,7 +79,10 @@ enum CommandChannel {
     guard othersRunning() else { return false }
     if opts.atLogin { return true }
     let rc: Int32
-    if let id = opts.openSession, SessionLink.isValidId(id) {
+    if opts.applyUpdate {
+      // The service's kick: the running copy decides (never shows a window)
+      rc = send("apply-update", [], timeout: 3, quiet: true)
+    } else if let id = opts.openSession, SessionLink.isValidId(id) {
       rc = send("open-session", [id], timeout: 3, quiet: true)
     } else {
       rc = send("show", [], timeout: 3, quiet: true)

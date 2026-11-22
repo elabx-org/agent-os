@@ -146,15 +146,17 @@ is_hub() {
 plan_sessions() {
   local rows line id tmux name dir agent
   [ -f "$AH/agent-os.db" ] || return 0
-  local clean="replace(replace(replace(coalesce(name,''),char(9),' '),char(10),' '),char(13),' ')"
-  rows=$(run sqlite3 -separator "$(printf '\t')" "$AH/agent-os.db" \
+  local clean="replace(replace(replace(replace(coalesce(name,''),char(9),' '),char(10),' '),char(13),' '),char(31),' ')"
+  # A separator that isn't white space: an empty name stays an empty field
+  local sep=$'\037'
+  rows=$(run sqlite3 -separator "$sep" "$AH/agent-os.db" \
     "select id, coalesce(tmux_name, agent_type||'-'||id), $clean, coalesce(worktree_path, working_directory, '') from sessions" 2>/dev/null) ||
-    rows=$(run sqlite3 -separator "$(printf '\t')" "$AH/agent-os.db" \
+    rows=$(run sqlite3 -separator "$sep" "$AH/agent-os.db" \
       "select id, coalesce(tmux_name, agent_type||'-'||id), $clean, '' from sessions" 2>/dev/null) || {
       WARN+=("Couldn't read the list of sessions")
       return 0
     }
-  while IFS="$(printf '\t')" read -r id tmux name dir; do
+  while IFS="$sep" read -r id tmux name dir; do
     [ -n "$id" ] || continue
     [[ "$id" =~ $ID_RE ]] || continue
     # The tmux name must be "<agent>-<this row's id>", nothing else
@@ -174,7 +176,7 @@ EOF
 # Where kept worktrees go: the repositories folder, if it is under the home
 # folder and outside ~/.agent-os, else ~/AgentOS
 plan_kept_folder() {
-  local value="" base
+  local value="" base inside=""
   if [ -f "$AH/agent-os.db" ]; then
     value=$(run sqlite3 "$AH/agent-os.db" "select value from preferences where key='repos_dir'" 2>/dev/null | head -n 1)
   fi
@@ -199,12 +201,19 @@ plan_kept_folder() {
   real_home=$(cd -P "$HOME" && pwd)
   case "$base" in
     "$real_home"/* | "$HOME"/*)
-      case "$base/" in "$AH"/* | "$AH_LINK"/*) base="" ;; esac
+      case "$base/" in
+        "$AH"/* | "$AH_LINK"/*)
+          # Repositories inside ~/.agent-os would go with it: it stays
+          INSIDE+=("your repositories folder ($(tildify "$base")) is in it")
+          inside="$base"
+          base=""
+          ;;
+      esac
       ;;
     *) base="" ;;
   esac
   [ -n "$base" ] || base="$HOME/AgentOS"
-  REPOS="$base"
+  REPOS="${inside:-$base}"
   KEPT="$base/Kept from AgentOS"
 }
 
@@ -258,6 +267,11 @@ plan_worktrees() {
       fi
     fi
     W_PATH+=("$wt"); W_NAME+=("$name"); W_MAIN+=("$main")
+    if [ -n "$why" ] || [ -z "$main" ]; then
+      # A kept worktree's commits live in its repository: one inside
+      # ~/.agent-os would go with it, so ~/.agent-os stays
+      case "$main/" in "$AH"/* | "$AH_LINK"/*) INSIDE+=("the repository of the worktree $(plain "$name") is in it") ;; esac
+    fi
     if [ -z "$why" ] && [ -n "$main" ]; then
       W_KIND+=("clean"); W_WHY+=(""); W_TO+=("")
     else
@@ -479,7 +493,7 @@ forget_key() {
 }
 
 handle_worktrees() {
-  local i wt main to
+  local i wt main to real_kept
   for ((i = 0; i < ${#W_PATH[@]}; i++)); do
     wt="${W_PATH[$i]}"
     main="${W_MAIN[$i]}"
@@ -493,6 +507,13 @@ handle_worktrees() {
       keep)
         to="${W_TO[$i]}"
         mkdir -p "$KEPT" 2>/dev/null
+        real_kept=$(cd -P "$KEPT" 2>/dev/null && pwd) || real_kept=""
+        case "$real_kept/" in
+          / | "$AH"/* | "$AH_LINK"/*)
+            left "$wt" "couldn't move it to $(tildify "$to")"
+            continue
+            ;;
+        esac
         if [ -e "$to" ] || [ -L "$to" ]; then
           left "$wt" "$(tildify "$to") is already there"
           continue
@@ -565,6 +586,10 @@ remove_command() {
 
 remove_home() {
   home_ok "$AGENT_OS_HOME" || { left "$AH_LINK" "it no longer looks like AgentOS's folder"; return; }
+  if [ ${#INSIDE[@]} -gt 0 ]; then
+    left "$AH_LINK" "${INSIDE[0]}"
+    return
+  fi
   if [ -d "$AH/worktrees" ] && [ -n "$(ls -A "$AH/worktrees" 2>/dev/null)" ]; then
     left "$AH_LINK" "worktrees are still in it"
     return
@@ -580,15 +605,21 @@ remove_home() {
 # ---------------------------------------------------------------- main
 
 main() {
-  # It deletes its own folder: run from a copy
-  if [ "${1:-}" != "--reexec" ]; then
-    local copy
+  # It deletes its own folder: run from a copy. Only that copy, in the
+  # folder made for it here, removes its folder when it ends; a --reexec
+  # typed by hand runs from a fresh copy like any other run.
+  local here copy
+  here=$(cd -P "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd) || here=""
+  if [ "${1:-}" != "--reexec" ] || [ -z "${AGENTOS_UNINSTALL_COPY:-}" ] ||
+    [ "$AGENTOS_UNINSTALL_COPY" != "$here" ]; then
     copy=$(mktemp -d "${TMPDIR:-/tmp}/agentos-uninstall.XXXXXX") || exit 1
+    copy=$(cd -P "$copy" && pwd) || exit 1
     cp "${BASH_SOURCE[0]}" "$copy/agentos-uninstall.sh" || exit 1
-    exec /bin/bash "$copy/agentos-uninstall.sh" --reexec "$@"
+    AGENTOS_UNINSTALL_COPY="$copy" exec /bin/bash "$copy/agentos-uninstall.sh" --reexec "$@"
   fi
   shift
-  WORK=$(dirname "${BASH_SOURCE[0]}")
+  unset AGENTOS_UNINSTALL_COPY
+  WORK="$here"
   trap 'rm -rf "$WORK"' EXIT
 
   DRY=0 YES=0 KEEP_SESSIONS=0 JSON=0 FROM_APP=0
@@ -652,7 +683,7 @@ main() {
   # --- The plan (probes only)
   S_ID=() S_TMUX=() S_NAME=() S_DIR=()
   W_PATH=() W_NAME=() W_KIND=() W_WHY=() W_TO=() W_MAIN=()
-  TOOLS=() APPS=() WARN=() REMOVED=() LEFT_PATH=() LEFT_WHY=()
+  TOOLS=() APPS=() WARN=() REMOVED=() LEFT_PATH=() LEFT_WHY=() INSIDE=()
   COMMAND="" STOPPED=0 KEPT_N=0 MOVING_WARNING=0
   plan_sessions
   plan_kept_folder
@@ -660,6 +691,8 @@ main() {
   plan_tools
   plan_apps
   plan_command
+  local w
+  for w in ${INSIDE[@]+"${INSIDE[@]}"}; do WARN+=("$(tildify "$AH_LINK") stays: $w"); done
   if [ "$KEEP_SESSIONS" = 1 ]; then
     local i j
     for ((i = 0; i < ${#S_ID[@]}; i++)); do

@@ -247,9 +247,12 @@ enum Swapper {
       let target = paths.target(bundlePath: paths.staged, existing: { FileManager.default.fileExists(atPath: $0) })
     else { return 1 }
     let old = Bundle(path: target)?.object(forInfoDictionaryKey: "AgentOSSourceHash") as? String
+    // An installed app with the updater swaps itself, when its window is
+    // closed; this copy only stands in for one without it (or none)
+    if let old, UpdateDecision.isHash(old) { return 1 }
     let input = SwapScript.Input(
       pid: getpid(), executable: exe, target: target, staged: paths.staged, paths: paths,
-      fromHash: old.flatMap { UpdateDecision.isHash($0) ? $0 : nil } ?? "unknown", toHash: own, window: false,
+      fromHash: "unknown", toHash: own, window: false,
       path: nil, installing: true)
     return start(input) ? 0 : 1
   }
