@@ -4,6 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
+  parsePermissionPrompt,
   promptFingerprint,
   type PermissionPrompt,
 } from "../../lib/permission-prompt";
@@ -127,4 +128,24 @@ test("GET /api/build lists the three features", async () => {
   for (const f of ["promptFingerprint", "replyGuard", "askLabels"]) {
     assert.ok(body.features.includes(f), f);
   }
+});
+
+// The Mac app's menu and notifications show `description` as what will run:
+// current Claude Code draws no dashed block around a Bash command, so the
+// command lands in description and detail is empty (mac/Tests/main.swift
+// builds its prompts in this shape)
+test("a current Bash prompt puts the command in description", () => {
+  const lines = fs
+    .readFileSync(
+      path.join(__dirname, "fixtures", "screens", "claude-permission.ansi"),
+      "utf8"
+    )
+    .replace(/\n$/, "")
+    .split("\n");
+  const p = parsePermissionPrompt(lines, 120);
+  assert.ok(p);
+  assert.equal(p.title, "Bash command");
+  assert.equal(p.detail, "");
+  assert.equal(p.description, "touch e2e-perm.txt\nCreate an empty file");
+  assert.equal(p.question, "Do you want to proceed?");
 });

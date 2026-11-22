@@ -91,6 +91,10 @@ struct Snapshot {
   var hubURL: URL?
   var installed = false
   var sessions: [SessionRow] = []
+  /// /api/build, /api/sessions and /api/sessions/status all answered, so
+  /// `sessions` is the whole truth; a poll where any failed or timed out
+  /// must not be read as "nobody is waiting"
+  var sessionsComplete = false
   /// Whether the server's sessions may use this Mac; nil when not linked
   var agents: Bool?
   /// Where this Mac keeps repositories, as the user set it ("~/AgentOS")
@@ -333,9 +337,11 @@ enum Backend {
     snap.agents = (request("/api/link/agents") as? [String: Any])?["allowed"] as? Bool
     snap.reposDir =
       ((request("/api/preferences?key=repos_dir") as? [String: Any])?["value"] as? String) ?? "~/AgentOS"
-    let list = (request("/api/sessions") as? [String: Any])?["sessions"] as? [[String: Any]] ?? []
-    let statuses =
-      (request("/api/sessions/status") as? [String: Any])?["statuses"] as? [String: [String: Any]] ?? [:]
+    let listRead = (request("/api/sessions") as? [String: Any])?["sessions"] as? [[String: Any]]
+    let statusRead = (request("/api/sessions/status") as? [String: Any])?["statuses"] as? [String: [String: Any]]
+    snap.sessionsComplete = listRead != nil && statusRead != nil
+    let list = listRead ?? []
+    let statuses = statusRead ?? [:]
     let order = ["waiting": 0, "running": 1, "idle": 2]
     for row in list {
       if let id = row["id"] as? String, let name = row["name"] as? String { snap.names[id] = name }

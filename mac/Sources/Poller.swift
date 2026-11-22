@@ -35,6 +35,8 @@ final class Poller {
   private var timer: Timer?
   private var inFlight = false
   private var again = false
+  /// Who was waiting at the last poll that read every session
+  private var waitingSeen: Set<String> = []
 
   /// Poll every 3 s instead of 5 (the offline view is up)
   var fast = false {
@@ -155,20 +157,25 @@ final class Poller {
       let next = Backend.snapshot(downSince: downSince)
       DispatchQueue.main.async {
         guard let self else { return }
-        let wasWaiting = Set(self.snapshot.sessions.filter { $0.state == "waiting" }.map(\.id))
         self.snapshot = next
         self.inFlight = false
-        let live = Set(next.sessions.map(\.id))
-        let nowWaiting = Set(next.sessions.filter { $0.state == "waiting" }.map(\.id))
-        // What a session asked before it moved on is not what it asks now:
-        // dropped when it starts or stops waiting, so the menu never offers
-        // an old prompt's or question's answers in the meantime
-        self.details = self.details.filter {
-          live.contains($0.key) && wasWaiting.contains($0.key) == nowWaiting.contains($0.key)
+        // A poll that didn't read every session says nothing about who
+        // stopped waiting: details stay until a whole poll says so
+        if next.sessionsComplete {
+          let wasWaiting = self.waitingSeen
+          let live = Set(next.sessions.map(\.id))
+          let nowWaiting = Set(next.sessions.filter { $0.state == "waiting" }.map(\.id))
+          self.waitingSeen = nowWaiting
+          // What a session asked before it moved on is not what it asks now:
+          // dropped when it starts or stops waiting, so the menu never offers
+          // an old prompt's or question's answers in the meantime
+          self.details = self.details.filter {
+            live.contains($0.key) && wasWaiting.contains($0.key) == nowWaiting.contains($0.key)
+          }
+          // A session that just turned "waiting": read what it asks
+          let newly = next.sessions.filter { $0.state == "waiting" && !wasWaiting.contains($0.id) }.map(\.id)
+          if !newly.isEmpty { self.fetchDetails(newly) }
         }
-        // A session that just turned "waiting": read what it asks
-        let newly = next.sessions.filter { $0.state == "waiting" && !wasWaiting.contains($0.id) }.map(\.id)
-        if !newly.isEmpty { self.fetchDetails(newly) }
         for observer in self.observers { observer(next) }
         if self.again {
           self.again = false

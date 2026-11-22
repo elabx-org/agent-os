@@ -128,43 +128,46 @@ final class StatusMenu: NSObject, NSMenuDelegate {
       button.setAccessibilityLabel(tooltip)
     }
 
-    menu.removeAllItems()
+    // Built aside and then synced into the menu: items that stay keep their
+    // NSMenuItem, so a refresh while the menu is open never closes the
+    // submenu under the pointer or drops the item being clicked
+    var rows: [NSMenuItem] = []
     let state = busy ?? (snap.on ? Strings.isOn : snap.installed ? Strings.isOff : Strings.notInstalled)
-    menu.addItem(label(state, bold: true))
+    rows.append(label(state, bold: true))
     var facts: [String] = []
     if let hub = snap.hub { facts.append(Strings.linkedTo(hub)) } else if snap.installed { facts.append(Strings.notLinked) }
     if let version = snap.version { facts.append(Strings.version(version)) }
     let updater = host?.updater
     if updater?.decision == .offer { facts.append(Strings.updateReady) }
-    if !facts.isEmpty { menu.addItem(label(facts.joined(separator: " · "))) }
-    if updater?.decision == .offer { menu.addItem(action(Strings.restartToUpdate, #selector(restartToUpdate))) }
-    if updater?.failedSwap == true { menu.addItem(label(Strings.updateFailed)) }
-    if updater?.buildFailed == true { menu.addItem(label(Strings.buildFailed)) }
-    if snap.hubURL != nil { menu.addItem(action(Strings.openServer, #selector(openServer))) }
+    if !facts.isEmpty { rows.append(label(facts.joined(separator: " · "))) }
+    if updater?.decision == .offer { rows.append(action(Strings.restartToUpdate, #selector(restartToUpdate))) }
+    if updater?.failedSwap == true { rows.append(label(Strings.updateFailed)) }
+    if updater?.buildFailed == true { rows.append(label(Strings.buildFailed)) }
+    if snap.hubURL != nil { rows.append(action(Strings.openServer, #selector(openServer))) }
 
     if snap.on {
-      menu.addItem(.separator())
-      for entry in model() { menu.addItem(item(for: entry, topLevel: true)) }
+      rows.append(.separator())
+      for entry in model() { rows.append(item(for: entry, topLevel: true)) }
     }
-    menu.addItem(.separator())
-    menu.addItem(action(Strings.openAgentOS, #selector(openApp), key: "o"))
-    menu.addItem(item(for: notificationsEntry(), topLevel: true))
+    rows.append(.separator())
+    rows.append(action(Strings.openAgentOS, #selector(openApp), key: "o"))
+    rows.append(item(for: notificationsEntry(), topLevel: true))
 
     if snap.installed {
-      menu.addItem(.separator())
+      rows.append(.separator())
       let toggle = action(snap.on ? Strings.turnOff : Strings.turnOn, #selector(togglePower))
       toggle.isEnabled = busy == nil
-      menu.addItem(toggle)
-      if snap.on { menu.addItem(label(Strings.offNote)) }
+      rows.append(toggle)
+      if snap.on { rows.append(label(Strings.offNote)) }
     }
 
     if snap.on {
-      menu.addItem(.separator())
+      rows.append(.separator())
       if let agents = snap.agents {
         let allow = action(Strings.letServerSessions, #selector(toggleAgents(_:)))
         allow.state = agents ? .on : .off
         allow.isEnabled = busy == nil
-        menu.addItem(allow)
+        rows.append(allow)
       }
       let folder = snap.reposDir ?? "~/AgentOS"
       let repos = NSMenuItem(title: Strings.reposFolder(folder), action: nil, keyEquivalent: "")
@@ -174,21 +177,22 @@ final class StatusMenu: NSObject, NSMenuDelegate {
       sub.addItem(action(Strings.chooseFolder, #selector(chooseRepos(_:))))
       if folder != "~/AgentOS" { sub.addItem(action(Strings.useDefaultFolder, #selector(defaultRepos(_:)))) }
       repos.submenu = sub
-      menu.addItem(repos)
+      rows.append(repos)
     }
 
-    menu.addItem(.separator())
+    rows.append(.separator())
     if FileManager.default.fileExists(atPath: Backend.agentHome.path) {
       let login = action(Strings.startAtLogin, #selector(toggleLogin))
       login.state = StartAtLogin.wanted ? .on : .off
-      menu.addItem(login)
+      rows.append(login)
     }
     if snap.installed {
       let remove = action(Strings.uninstall, #selector(uninstall))
       remove.isEnabled = busy == nil
-      menu.addItem(remove)
+      rows.append(remove)
     }
-    menu.addItem(action(Strings.quit, #selector(quit), key: "q"))
+    rows.append(action(Strings.quit, #selector(quit), key: "q"))
+    MenuSync.sync(menu, rows)
   }
 
   /// One line per item: indent, title, [on]/[off], enabled/disabled
@@ -250,6 +254,8 @@ final class StatusMenu: NSObject, NSMenuDelegate {
     }
     // A session row: its state as a dot
     if topLevel, case .open(let id)? = e.action, let session = snap.sessions.first(where: { $0.id == id }) {
+      // Kept by session, not by title (the title carries the state word)
+      row.identifier = NSUserInterfaceItemIdentifier("row:" + id)
       let dot = ["waiting": "exclamationmark.circle.fill", "running": "circle.fill", "idle": "circle"][session.state] ?? "circle"
       row.image = NSImage(systemSymbolName: dot, accessibilityDescription: Strings.stateWord(session.state))
     }
@@ -514,13 +520,68 @@ final class StatusMenu: NSObject, NSMenuDelegate {
 /// The flag file the service reads at login (scripts/agentos-machine.sh run)
 enum StartAtLogin {
   static var file: URL { Backend.agentHome.appendingPathComponent("app-at-login") }
+  /// The person chose (scripts/link-machine.sh then leaves the flag alone)
+  static var chosen: URL { Backend.agentHome.appendingPathComponent("app-at-login-set") }
   static var wanted: Bool { FileManager.default.fileExists(atPath: file.path) }
 
   static func set(_ on: Bool) {
+    if !FileManager.default.fileExists(atPath: chosen.path) {
+      FileManager.default.createFile(atPath: chosen.path, contents: Data())
+    }
     if on {
       FileManager.default.createFile(atPath: file.path, contents: Data())
     } else {
       try? FileManager.default.removeItem(at: file)
     }
+  }
+}
+
+/// Brings a menu's items in line with freshly built ones without removing
+/// what stays: an item with the same key (its identifier, else its title)
+/// at the same place, and the same kind (separator, submenu), is updated in
+/// place and its submenu synced the same way; anything else is replaced.
+@MainActor
+enum MenuSync {
+  static func key(_ item: NSMenuItem) -> String {
+    if item.isSeparatorItem { return "---" }
+    return item.identifier?.rawValue ?? ("t:" + item.title)
+  }
+
+  static func sync(_ menu: NSMenu, _ fresh: [NSMenuItem]) {
+    for (i, new) in fresh.enumerated() {
+      guard i < menu.items.count else {
+        menu.addItem(new)
+        continue
+      }
+      let old = menu.items[i]
+      if old === new { continue }
+      if key(old) == key(new) && (old.submenu == nil) == (new.submenu == nil) {
+        copy(new, into: old)
+        if let oldSub = old.submenu, let newSub = new.submenu {
+          let kids = newSub.items
+          newSub.removeAllItems()
+          sync(oldSub, kids)
+        }
+      } else {
+        menu.removeItem(at: i)
+        menu.insertItem(new, at: i)
+      }
+    }
+    while menu.items.count > fresh.count { menu.removeItem(at: menu.items.count - 1) }
+  }
+
+  private static func copy(_ new: NSMenuItem, into old: NSMenuItem) {
+    if old.isSeparatorItem { return }
+    old.title = new.title
+    old.attributedTitle = new.attributedTitle
+    old.action = new.action
+    old.target = new.target
+    old.representedObject = new.representedObject
+    old.isEnabled = new.isEnabled
+    old.state = new.state
+    old.keyEquivalent = new.keyEquivalent
+    old.keyEquivalentModifierMask = new.keyEquivalentModifierMask
+    old.image = new.image
+    old.toolTip = new.toolTip
   }
 }

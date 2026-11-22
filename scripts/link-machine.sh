@@ -98,8 +98,10 @@ main() {
   ln -sf "$REPO_DIR/scripts/agent-os" "$HOME/.local/bin/agent-os"
 
   step "4 of 5  Adding AgentOS to the menu bar"
-  # The app starts with the Mac (its menu's "Start at login")
-  touch "$AGENT_OS_HOME/app-at-login"
+  # The app starts with the Mac (its menu's "Start at login"), unless the
+  # person has set that option in the menu: app-at-login-set records it,
+  # so running this again never turns it back on
+  [ -e "$AGENT_OS_HOME/app-at-login-set" ] || touch "$AGENT_OS_HOME/app-at-login"
   if ! /bin/bash "$REPO_DIR/scripts/agentos-machine.sh" app update; then
     say "The menu bar app didn't build; AgentOS works without it. Try again later with: agent-os link app"
   fi

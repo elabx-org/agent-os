@@ -23,7 +23,9 @@ while [ $# -gt 0 ]; do
 done
 
 fail() { echo "build.sh: $*" >&2; exit 1; }
-SWIFTC=(xcrun swiftc -swift-version 5 -target arm64-apple-macos13.0)
+# This Mac's own architecture: an Intel Mac (macOS 13 and later) builds and
+# runs its own copy, as the app did before this round
+SWIFTC=(xcrun swiftc -swift-version 5 -target "$(uname -m)-apple-macos13.0")
 FRAMEWORKS=(-framework AppKit -framework WebKit -framework UserNotifications -framework ServiceManagement -framework Security)
 
 # --- Guards on the sources (R2) ---

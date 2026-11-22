@@ -51,8 +51,10 @@ enum NotifyRules {
     guard features, let p else { return .info }
     let hasDeny = p.options.contains { $0.kind == "deny" }
     let hasAllow = p.options.contains { $0.kind == "allow" }
-    let text = p.title + " " + p.detail + " " + p.question
-    if hasAllow && hasDeny && !TextSafety.hasUnsafe(p.title + p.detail + p.question)
+    // The command can be in description (current Claude Code) or detail
+    let text = [p.title, p.description, p.detail, p.question].filter { !$0.isEmpty }.joined(separator: " ")
+    if hasAllow && hasDeny && !TextSafety.hasUnsafe(p.shownText)
+      && !MenuModel.serverCut(p.description) && !MenuModel.serverCut(p.detail)
       && !TextSafety.wrap(text, width: 90, maxLines: 2).cut
     {
       return .permission
@@ -60,9 +62,10 @@ enum NotifyRules {
     return hasDeny ? .permissionDenyOnly : .info
   }
 
+  /// The title, then what will run (description and detail), then the question
   static func needsYouBody(_ p: PermissionPrompt) -> String {
-    let detail = p.detail.components(separatedBy: "\n").prefix(3).joined(separator: "\n")
-    return TextSafety.cap(TextSafety.clean(p.title + ": " + detail + "\n" + p.question), bodyLimit)
+    let runs = p.whatRuns.components(separatedBy: "\n").prefix(3).joined(separator: "\n")
+    return TextSafety.cap(TextSafety.clean(p.title + ": " + runs + "\n" + p.question), bodyLimit)
   }
 
   static func decide(

@@ -217,6 +217,9 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
   /// After each poll: a "needs you" post goes once its session stops
   /// waiting, or once the window shows it; a newer prompt is posted again
   func reconcile(_ snap: Snapshot, details: [String: SessionDetails]) {
+    // A poll that failed or timed out has no sessions: that isn't "nobody
+    // is waiting", and the events cursor has passed those posts already
+    guard snap.sessionsComplete else { return }
     let showing = host?.windowShowingSession
     var states: [String: String] = [:]
     for s in snap.sessions { states[s.id] = s.state }
@@ -353,7 +356,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         return .changed
       }
       guard Backend.build()?.answers == true else { return .refused }
-      guard !TextSafety.hasUnsafe(p.title + p.detail + p.question) else { return .changed }
+      guard !TextSafety.hasUnsafe(p.shownText) else { return .changed }
       if action == "allow" && NotifyRules.category(for: p, features: true) != .permission { return .changed }
       guard let pick = p.first(action) else { return .changed }
       return Backend.asUser(

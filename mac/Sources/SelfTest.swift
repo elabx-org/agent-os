@@ -37,7 +37,7 @@ final class SelfTestRunner: WindowHost {
 
   init(only: [String]) { self.only = Set(only) }
 
-  func updatePolicy() { AppPolicy.apply(controller?.window) }
+  func updatePolicy() { AppPolicy.apply(inUse: controller?.inUse ?? false) }
 
   private func report(_ name: String, _ v: Verdict) {
     switch v {

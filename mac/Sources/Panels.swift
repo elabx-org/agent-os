@@ -27,7 +27,8 @@ enum Panels {
   }
 
   static func showNewSession(host: PanelHost) {
-    if let c = newSessionController, c.panel.isVisible {
+    // Still open, perhaps stepped aside while another app was in front
+    if let c = newSessionController {
       c.show()
       return
     }
@@ -56,7 +57,9 @@ enum Panels {
     panel.isFloatingPanel = true
     panel.level = .floating
     panel.isReleasedWhenClosed = false
-    panel.hidesOnDeactivate = false
+    // Floating only over our own app: when the person switches to another
+    // app the panel steps aside (text kept) and comes back with ours
+    panel.hidesOnDeactivate = true
     return panel
   }
 

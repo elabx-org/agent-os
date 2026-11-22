@@ -46,6 +46,14 @@ struct PermissionPrompt: Codable, Equatable {
   var options: [PromptOption]
   var selected: Int
 
+  /// What will run: current Claude Code puts a Bash command in
+  /// `description` (no dashed block, so `detail` is empty); an edit's diff
+  /// goes in `detail`. Both are shown, wrapped, never cut silently.
+  var whatRuns: String { [description, detail].filter { !$0.isEmpty }.joined(separator: "\n") }
+
+  /// Everything the person is shown, for the unsafe-character checks
+  var shownText: String { title + "\n" + description + "\n" + detail + "\n" + question }
+
   func first(_ kind: String) -> (position: Int, option: PromptOption)? {
     guard let i = options.firstIndex(where: { $0.kind == kind }) else { return nil }
     return (i, options[i])

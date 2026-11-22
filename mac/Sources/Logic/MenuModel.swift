@@ -50,9 +50,10 @@ enum MenuModel {
   /// to this many UTF-16 units and adds "…"
   static let serverDetailLimit = 600
 
-  /// A detail the server cut short (so the screen holds more than it sent)
-  static func serverCut(_ detail: String) -> Bool {
-    detail.hasSuffix("…") && detail.utf16.count > serverDetailLimit
+  /// A description or detail the server cut short (so the screen holds
+  /// more than it sent)
+  static func serverCut(_ text: String) -> Bool {
+    text.hasSuffix("…") && text.utf16.count > serverDetailLimit
   }
 
   static func build(_ s: MenuSnapshot) -> [MenuEntry] {
@@ -103,23 +104,32 @@ enum MenuModel {
     -> [MenuEntry]
   {
     var out: [MenuEntry] = [.label(TextSafety.oneLine(TextSafety.clean(p.title), max: detailWidth), .bold)]
-    if !p.description.isEmpty {
-      out.append(.label(TextSafety.oneLine(TextSafety.clean(p.description), max: detailWidth), .secondary))
-    }
-    let wrapped = TextSafety.wrap(TextSafety.clean(p.detail), width: detailWidth, maxLines: detailLines)
-    if !p.detail.isEmpty { out += wrapped.lines.map { .label($0, .mono) } }
+    // What will run, in full: current Claude Code puts a Bash command in
+    // description (detail empty); an edit's diff is in detail. The two share
+    // the 12 lines, and neither is ever cut silently.
+    let none: (lines: [String], cut: Bool) = ([], false)
+    let described =
+      p.description.isEmpty
+      ? none : TextSafety.wrap(TextSafety.clean(p.description), width: detailWidth, maxLines: detailLines)
+    out += described.lines.map { .label($0, .secondary) }
+    let room = detailLines - described.lines.count
+    let wrapped =
+      p.detail.isEmpty ? none : TextSafety.wrap(TextSafety.clean(p.detail), width: detailWidth, maxLines: max(0, room))
+    out += wrapped.lines.map { .label($0, .mono) }
     // The question can name the file (an edit's "…to <file>?"): wrapped, not cut
     let question = TextSafety.wrap(TextSafety.clean(p.question), width: detailWidth, maxLines: questionLines)
-    // Anything not shown in full keeps allow off: the detail past 12 lines,
-    // a detail the server itself cut, a title or question too long to show
+    // Anything not shown in full keeps allow off: description and detail
+    // past 12 lines, text the server itself cut, a title or question too
+    // long to show
     let hidden =
-      wrapped.cut || question.cut || serverCut(p.detail) || !TextSafety.fitsOneLine(p.title, max: detailWidth)
+      described.cut || wrapped.cut || question.cut || serverCut(p.description) || serverCut(p.detail)
+      || !TextSafety.fitsOneLine(p.title, max: detailWidth)
     if hidden { out.append(.label(Strings.tooLong, .secondary)) }
     if !p.question.isEmpty { out += question.lines.map { .label($0) } }
     let canAnswer = features && fingerprint != nil
     if !canAnswer { out.append(.label(Strings.needsUpdate, .secondary)) }
     out.append(.separator)
-    let unsafe = TextSafety.hasUnsafe(p.title + p.description + p.detail + p.question)
+    let unsafe = TextSafety.hasUnsafe(p.shownText)
     for (position, option) in p.options.enumerated() {
       let safeOption = !TextSafety.hasUnsafe(option.label)
       let quiet = option.kind == "deny" || option.kind == "other"

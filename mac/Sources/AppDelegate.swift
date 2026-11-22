@@ -65,8 +65,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WindowHost, StatusMenu
   }
 
   func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-    open(.home, activate: true)
+    // A click on our Dock icon brings the window in front. Any other
+    // process's `open` of the running app arrives as the same reopen event:
+    // that one only shows the window, and never in front of another app (D5).
+    open(.home, activate: reopenIsFromDock())
     return false
+  }
+
+  /// The reopen Apple event was sent by the Dock
+  private func reopenIsFromDock() -> Bool {
+    guard let event = NSAppleEventManager.shared().currentAppleEvent,
+      let sender = event.attributeDescriptor(forKeyword: AEKeyword(keySenderPIDAttr))
+    else { return false }
+    let pid = pid_t(sender.int32Value)
+    guard pid > 0 else { return false }
+    return NSRunningApplication(processIdentifier: pid)?.bundleIdentifier == "com.apple.dock"
   }
 
   func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
@@ -136,7 +149,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WindowHost, StatusMenu
   var isRegular: Bool { NSApp.activationPolicy() == .regular }
 
   func updatePolicy() {
-    AppPolicy.apply(main?.window)
+    AppPolicy.apply(inUse: main?.inUse ?? false)
     NSApp.dockTile.badgeLabel = isRegular && poller.snapshot.waiting > 0 ? "\(poller.snapshot.waiting)" : nil
   }
 
@@ -160,10 +173,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WindowHost, StatusMenu
 
   // MARK: Updater
 
-  var windowVisible: Bool { main?.isShown ?? false }
+  /// Shown, minimised or hidden with the app (⌘H): the same test as the
+  /// Dock icon's, so a window the person will come back to is never lost
+  /// to a swap, and a forced swap brings it back
+  var windowVisible: Bool { main?.inUse ?? false }
   var menuIsOpen: Bool { status?.isOpen ?? false }
   var isBusy: Bool {
-    (status?.isBusy ?? false) || Panels.reply?.isVisible == true || Panels.newSession?.isVisible == true
+    // An open panel counts even while it has stepped aside for another app
+    (status?.isBusy ?? false) || Panels.reply != nil || Panels.newSession != nil
+      // An alert or open panel (runModal) or a sheet is up: the person's
+      // answer to it would be lost to a swap
+      || NSApp.modalWindow != nil || NSApp.windows.contains { $0.attachedSheet != nil }
   }
   var windowPath: String? { main?.pane.currentPath }
   func updaterChanged() { status?.render() }

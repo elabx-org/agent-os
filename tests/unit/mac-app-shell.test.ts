@@ -39,3 +39,20 @@ test("the uninstaller never touches Claude's files or the tmux server", () => {
   assert.doesNotMatch(code, /rm [^\n]*\.claude/);
   assert.doesNotMatch(code, /--force/);
 });
+
+test("pasting the install command again keeps the person's Start at login choice", () => {
+  const text = fs.readFileSync(path.join(scripts, "link-machine.sh"), "utf8");
+  const touches = text
+    .split("\n")
+    .filter((line) => /touch "\$AGENT_OS_HOME\/app-at-login"/.test(line));
+  assert.equal(touches.length, 1);
+  assert.match(
+    touches[0],
+    /\[ -e "\$AGENT_OS_HOME\/app-at-login-set" \] \|\| touch/
+  );
+  const app = fs.readFileSync(
+    path.resolve(__dirname, "../../mac/Sources/StatusMenu.swift"),
+    "utf8"
+  );
+  assert.match(app, /app-at-login-set/);
+});
