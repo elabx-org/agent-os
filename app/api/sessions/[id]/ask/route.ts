@@ -12,6 +12,7 @@ import {
 } from "@/lib/ask-screen";
 import { PERMISSION_RELOAD } from "@/lib/agent-origin";
 import { requireUser } from "@/lib/user-proof";
+import { askLabelsMatch } from "@/lib/session-guards";
 
 const execFileAsync = promisify(execFile);
 
@@ -63,6 +64,7 @@ export async function POST(
   const body = (await request.json().catch(() => null)) as {
     questions?: AskQuestionSpec[];
     answers?: AskAnswer[];
+    labels?: string[][];
   } | null;
   const questions = body?.questions;
   const answers = body?.answers;
@@ -81,7 +83,28 @@ export async function POST(
   const target =
     session.tmux_name || `${session.agent_type || "claude"}-${session.id}`;
   try {
-    await answerAsk(tmuxIO(target), questions, answers);
+    const io = tmuxIO(target);
+    if (body?.labels !== undefined) {
+      // One question shows at a time: the labels cover the one on screen
+      const screen = await io.read();
+      const onScreen =
+        screen?.kind === "question"
+          ? [
+              {
+                options: screen.rows
+                  .slice(0, questions[0]?.optionCount ?? 0)
+                  .map((r) => ({ label: r.label })),
+              },
+            ]
+          : [];
+      if (!askLabelsMatch(onScreen, body.labels)) {
+        return NextResponse.json(
+          { error: "The question changed; check the session" },
+          { status: 409 }
+        );
+      }
+    }
+    await answerAsk(io, questions, answers);
     return NextResponse.json({ success: true });
   } catch (error) {
     if (error instanceof AskError) {

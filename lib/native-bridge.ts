@@ -96,6 +96,7 @@ export interface NativeState {
 /** A column item as the app gets it: the SF Symbol, not the web icon */
 export type NativeColumnItem = Omit<ColumnItem, "icon">;
 
+// The Mac app sends only the "open" event and never sets agentosNative, so the desktop layout stays.
 export const NATIVE_EVENT = "agentos-native";
 
 declare global {

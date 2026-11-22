@@ -221,17 +221,47 @@ agent-os install
 
 ## Uninstalling
 
-```bash
-agent-os uninstall
-```
-
-This removes:
-
-- The `~/.agent-os` directory
-- Auto-start configuration (launchd/systemd)
-
-The `agent-os` CLI script itself is not removed. Delete it manually:
+These steps remove AgentOS from a Mac linked to your AgentOS server. On the
+Mac, open AgentOS in the menu bar and choose **Uninstall AgentOS…**, or run
+this in Terminal:
 
 ```bash
-rm $(which agent-os)
+agent-os uninstall              # shows what goes, then asks you to type yes
+agent-os uninstall --dry-run    # only lists what would go and what stays
+agent-os uninstall --yes        # doesn't ask
+agent-os uninstall --keep-sessions   # leaves running sessions running
+agent-os uninstall --json       # the plan (and the result) as JSON
 ```
+
+**These go:**
+
+- AgentOS and its updates (`~/.agent-os/repo`)
+- Its list of sessions, settings, logs, saved checkpoints and handoffs (`~/.agent-os`)
+- The key that links the Mac to your server (in your Keychain)
+- Starting AgentOS at login (the `com.agentos.machine` service)
+- The `agent-os` command (`~/.local/bin/agent-os`)
+- The menu bar app and its window settings
+- AgentOS's tools in Codex and Gemini
+
+**Running sessions** are stopped unless you pass `--keep-sessions` (in the
+menu: tick "Keep my running sessions running"). Their conversations stay in
+Claude.
+
+**Worktrees** that AgentOS made under `~/.agent-os/worktrees` are checked one
+by one. One with changed, untracked or ignored files, commits not pushed, or
+unsaved submodules is moved to `Kept from AgentOS` in your repositories folder
+(`~/AgentOS` unless you chose another), as `<name>`, `<name> 2` and so on,
+never into a folder that already exists. A worktree with nothing unsaved is
+removed; its branch stays in the repository.
+
+**These stay:** your repositories and everything in them, Claude's
+conversations and settings (`~/.claude` and `~/.claude.json`, including any
+AgentOS tool entry there), Homebrew, Node and tmux, and the app's entry in
+System Settings › Notifications (remove it by hand if you want).
+
+**Your server still lists the Mac.** Remove it there too: AgentOS on your
+phone, Settings, Machines. Removing it there only cuts the Mac off; AgentOS
+stays installed on the Mac until you uninstall it there.
+
+`agent-os uninstall` refuses on the server itself (the AgentOS your Macs link
+to), as root, and inside an AgentOS session: run it in Terminal.

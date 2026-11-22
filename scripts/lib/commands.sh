@@ -500,57 +500,6 @@ cmd_disable() {
     fi
 }
 
-cmd_uninstall() {
-    echo ""
-    log_warn "This will remove AgentOS and all its data."
-
-    if ! prompt_yn "Are you sure?" "n"; then
-        log_info "Cancelled"
-        exit 0
-    fi
-
-    # Detect if installed via npm (check if script is in node_modules)
-    local installed_via_npm=false
-    if [[ "$SCRIPT_DIR" == *"node_modules"* ]]; then
-        installed_via_npm=true
-    fi
-
-    # Stop if running
-    if is_running; then
-        cmd_stop
-    fi
-
-    # Disable auto-start
-    cmd_disable 2>/dev/null || true
-
-    # Remove CLI symlink (only for non-npm installs)
-    if [[ "$installed_via_npm" == false ]]; then
-        if [[ -L "$HOME/.local/bin/agent-os" ]]; then
-            log_info "Removing CLI symlink..."
-            rm -f "$HOME/.local/bin/agent-os"
-        elif [[ -L "/usr/local/bin/agent-os" ]]; then
-            # Legacy location
-            log_info "Removing CLI symlink..."
-            sudo rm -f "/usr/local/bin/agent-os"
-        fi
-    fi
-
-    # Remove installation directory
-    if [[ -d "$AGENT_OS_HOME" ]]; then
-        log_info "Removing $AGENT_OS_HOME..."
-        rm -rf "$AGENT_OS_HOME"
-    fi
-
-    log_success "AgentOS uninstalled"
-
-    # If installed via npm, provide instructions to remove the global package
-    if [[ "$installed_via_npm" == true ]]; then
-        echo ""
-        log_info "To completely remove the CLI, run:"
-        echo "  npm uninstall -g @elabx-org/agent-os"
-    fi
-}
-
 cmd_start_foreground() {
     if [[ ! -d "$REPO_DIR" ]]; then
         log_error "AgentOS is not installed."
@@ -585,7 +534,7 @@ cmd_help() {
     echo "  deploy      Deploy from local dev repo (rsync + build + restart)"
     echo "  enable      Enable auto-start on boot"
     echo "  disable     Disable auto-start"
-    echo "  uninstall   Remove AgentOS completely"
+    echo "  uninstall   Remove AgentOS from this Mac (asks first; --dry-run lists what goes)"
     echo ""
     echo "Environment variables:"
     echo "  AGENT_OS_HOME   Installation directory (default: ~/.agent-os)"

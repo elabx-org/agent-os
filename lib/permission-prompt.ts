@@ -16,6 +16,8 @@
  *    Esc to cancel · Tab to amend   footer: the prompt is live
  */
 
+import { createHash } from "node:crypto";
+
 export type PromptOptionKind = "allow" | "always" | "deny" | "other";
 
 export interface PromptOption {
@@ -221,4 +223,16 @@ function joinWrapped(rows: string[], width: number): string {
     out += (isHardWrap(prev, width) ? "" : " ") + piece;
   });
   return out;
+}
+
+/** Which prompt this is, so a late answer can't land on a newer one */
+export function promptFingerprint(p: PermissionPrompt): string {
+  const text = [
+    p.title,
+    p.description,
+    p.detail,
+    p.question,
+    ...p.options.map((o) => o.label),
+  ].join("\u0000");
+  return createHash("sha256").update(text).digest("hex").slice(0, 16);
 }

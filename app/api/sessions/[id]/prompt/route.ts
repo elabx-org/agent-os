@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import { queries, getDb, type Session } from "@/lib/db";
-import type { PermissionPrompt } from "@/lib/permission-prompt";
+import {
+  promptFingerprint,
+  type PermissionPrompt,
+} from "@/lib/permission-prompt";
+import { staleAnswer } from "@/lib/session-guards";
 import {
   agentMayAnswer,
   PERMISSION_RELOAD,
@@ -30,7 +34,8 @@ function tmuxName(session: Session): string {
   return session.tmux_name || `${session.agent_type || "claude"}-${session.id}`;
 }
 
-// GET /api/sessions/[id]/prompt - The selection prompt Claude Code is showing, if any
+// GET /api/sessions/[id]/prompt - The selection prompt Claude Code is showing,
+// if any, and its fingerprint, which an answer can carry
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -42,15 +47,20 @@ export async function GET(
   }
   const target = tmuxName(session);
   try {
-    return NextResponse.json({ prompt: await readPrompt(target) });
+    const prompt = await readPrompt(target);
+    return NextResponse.json({
+      prompt,
+      fingerprint: prompt ? promptFingerprint(prompt) : null,
+    });
   } catch {
     // tmux session not running
-    return NextResponse.json({ prompt: null });
+    return NextResponse.json({ prompt: null, fingerprint: null });
   }
 }
 
-// POST /api/sessions/[id]/prompt - Answer it: { index, label }
-// The label must still match, so a stale tap can't answer a different prompt.
+// POST /api/sessions/[id]/prompt - Answer it: { index, label, fingerprint? }
+// The label (and the fingerprint, when sent) must still match, so a stale tap
+// can't answer a different prompt.
 // Without proof that it's the user (lib/user-proof.ts), including every
 // request from an agent (x-agentos-origin: agent), only a question can be
 // answered: permission requests are the user's. Agents' answers and every
@@ -60,9 +70,10 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const { index, label } = (await request.json()) as {
+  const { index, label, fingerprint } = (await request.json()) as {
     index?: number;
     label?: string;
+    fingerprint?: string;
   };
   const session = getSession(id);
   if (!session) {
@@ -80,9 +91,21 @@ export async function POST(
     return NextResponse.json({ error: "Session not running" }, { status: 409 });
   }
   const option = prompt?.options[index ?? -1];
-  if (!prompt || !option || option.label !== label) {
+  if (
+    !prompt ||
+    !option ||
+    staleAnswer(prompt, {
+      index: index ?? -1,
+      label: label ?? "",
+      fingerprint: typeof fingerprint === "string" ? fingerprint : undefined,
+    })
+  ) {
     return NextResponse.json(
-      { error: "The prompt changed; check the session", prompt },
+      {
+        error: "The prompt changed; check the session",
+        prompt,
+        fingerprint: prompt ? promptFingerprint(prompt) : null,
+      },
       { status: 409 }
     );
   }

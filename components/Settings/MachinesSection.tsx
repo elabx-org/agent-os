@@ -425,6 +425,16 @@ function LinkedRow({
           </DropdownMenu>
         }
       />
+      {machine.platform === "darwin" && (
+        <div className="row py-3 pl-[68px]">
+          <p className="text-muted-foreground min-w-0 flex-1 text-[13px]">
+            To remove AgentOS from the Mac itself: on the Mac, open AgentOS in
+            the menu bar and choose Uninstall AgentOS…, or run agent-os
+            uninstall in Terminal. Remove here only cuts it off; AgentOS stays
+            installed on the Mac.
+          </p>
+        </div>
+      )}
       <AgentsRow
         name={machine.name}
         allowed={!!machine.agents}

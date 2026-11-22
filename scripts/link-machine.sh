@@ -8,7 +8,7 @@
 #
 # It installs AgentOS under ~/.agent-os, signs you in, and starts it at
 # login. Nothing is opened to the network: this Mac only dials out.
-# To undo:  ~/.agent-os/repo/scripts/agent-os link remove
+# To undo:  agent-os uninstall
 
 set -u
 
@@ -49,7 +49,7 @@ main() {
   done
   export PATH
 
-  step "1 of 4  Checking this Mac"
+  step "1 of 5  Checking this Mac"
   xcode-select -p >/dev/null 2>&1 || {
     xcode-select --install >/dev/null 2>&1
     die "Apple's developer tools are needed. A window has opened to install them; when it finishes, paste the command again."
@@ -72,7 +72,7 @@ main() {
       try { const v = JSON.parse(Buffer.from(s, "base64url").toString()).sha; process.stdout.write(/^[0-9a-f]{40}$/.test(v) ? v : ""); } catch {}
     })')
 
-  step "2 of 4  Downloading AgentOS"
+  step "2 of 5  Downloading AgentOS"
   mkdir -p "$AGENT_OS_HOME"
   if [ -d "$REPO_DIR/.git" ]; then
     (cd "$REPO_DIR" && git fetch -q origin) || die "Couldn't update the copy in $REPO_DIR"
@@ -86,7 +86,7 @@ main() {
     git checkout -q origin/main
   fi
 
-  step "3 of 4  Building (a few minutes)"
+  step "3 of 5  Building (a few minutes)"
   # Modules left by an install that failed, or built for another Node, go
   built_with="$AGENT_OS_HOME/.installed-node"
   [ "$(cat "$built_with" 2>/dev/null)" = "$(node -v)" ] || rm -rf node_modules
@@ -97,7 +97,16 @@ main() {
   mkdir -p "$HOME/.local/bin"
   ln -sf "$REPO_DIR/scripts/agent-os" "$HOME/.local/bin/agent-os"
 
-  step "4 of 4  Linking"
+  step "4 of 5  Adding AgentOS to the menu bar"
+  # The app starts with the Mac (its menu's "Start at login"), unless the
+  # person has set that option in the menu: app-at-login-set records it,
+  # so running this again never turns it back on
+  [ -e "$AGENT_OS_HOME/app-at-login-set" ] || touch "$AGENT_OS_HOME/app-at-login"
+  if ! /bin/bash "$REPO_DIR/scripts/agentos-machine.sh" app update; then
+    say "The menu bar app didn't build; AgentOS works without it. Try again later with: agent-os link app"
+  fi
+
+  step "5 of 5  Linking"
   exec /bin/bash "$REPO_DIR/scripts/agentos-machine.sh" link "$INVITE"
 }
 
