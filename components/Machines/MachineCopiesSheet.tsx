@@ -4,7 +4,13 @@ import { useState } from "react";
 import { useSnapshot } from "valtio";
 import { ChevronLeft } from "lucide-react";
 import { serverNameOr } from "@/lib/server-name";
-import { isOnline, useMachineCopies, useMachines } from "@/data/machines";
+import {
+  isOnline,
+  useHubPeer,
+  useMachineCopies,
+  useMachines,
+} from "@/data/machines";
+import { HUB_PEER_ID } from "@/lib/backup/share-types";
 import { copyAge } from "@/lib/backup/types";
 import { closeCopies, copiesSheetStore, openCopy } from "@/stores/copiesSheet";
 import {
@@ -50,9 +56,16 @@ function Body({
   const { data: machines } = useMachines(5000);
   const { data } = useMachineCopies(machineId, 5000);
   const [taking, setTaking] = useState(false);
+  // On a linked machine's own window the copies are its server's sessions
+  const { data: peer } = useHubPeer(machineId === HUB_PEER_ID ? 5000 : 0);
+  const ofHub = machineId === HUB_PEER_ID && !!peer?.machine;
   const machine = machines?.machines.find((m) => m.id === machineId);
-  const name = machine?.name ?? "that machine";
-  const hubName = serverNameOr(machines?.serverName);
+  const name = ofHub
+    ? (peer?.hubName ?? "the server")
+    : (machine?.name ?? "that machine");
+  const hubName = ofHub
+    ? (peer?.name ?? "this machine")
+    : serverNameOr(machines?.serverName);
   const copies = data?.copies ?? [];
   const copy = sessionId
     ? copies.find((c) => c.sessionId === sessionId)
@@ -94,7 +107,7 @@ function Body({
     );
   }
 
-  const online = !!machine && isOnline(machine);
+  const online = ofHub ? !!peer?.linked : !!machine && isOnline(machine);
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 pt-1">
       <div className="min-w-0">
@@ -103,7 +116,9 @@ function Body({
         </SheetTitle>
         <p className="text-muted-foreground mt-1 text-[13px]">
           {online
-            ? `${name} is online. Open it to use these sessions.`
+            ? ofHub
+              ? `${name} is online. These sessions run there.`
+              : `${name} is online. Open it to use these sessions.`
             : `${name} is offline. These are as it last sent them.`}
         </p>
       </div>

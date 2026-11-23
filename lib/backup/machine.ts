@@ -153,8 +153,27 @@ export function eligible(session: Session): boolean {
     !(isSettled(session) && session.settled_reason === "moved") &&
     !isLeaving(session.id) &&
     !heldSessions().has(session.id) &&
-    BACKUP_SESSION_ID.test(session.id)
+    BACKUP_SESSION_ID.test(session.id) &&
+    !unconfirmedTake(session.id)
   );
+}
+
+/**
+ * Continued here from a copy, and the side it came from hasn't said it
+ * paused its own yet: a copy sent now would be answered "we have it" and
+ * pause this one instead
+ */
+function unconfirmedTake(sessionId: string): boolean {
+  try {
+    return !!getDb()
+      .prepare(
+        `SELECT 1 FROM machine_backups WHERE session_id = ? AND state = 'taken'
+           AND machine_paused_at IS NULL AND orphan = 0`
+      )
+      .get(sessionId);
+  } catch {
+    return false;
+  }
 }
 
 /** Read again: a move or a pause may have started while a copy was made */
@@ -682,7 +701,9 @@ async function stopped(session: Session, deps: PauseDeps): Promise<boolean> {
  */
 export async function pauseTaken(
   list: TakenSession[],
-  deps: PauseDeps = livePause()
+  deps: PauseDeps = livePause(),
+  /** Who carries them on: the hub, or on the hub the machine's id */
+  peer: { id: string } = { id: "hub" }
 ): Promise<TakenResult[]> {
   const valid = list.filter(
     (t) =>
@@ -697,7 +718,7 @@ export async function pauseTaken(
   const results: TakenResult[] = [];
   for (const t of valid) {
     try {
-      results.push(await pauseOne(t, deps));
+      results.push(await pauseOne(t, deps, peer));
     } catch (error) {
       console.error("[backup] pausing a continued session:", error);
       results.push({
@@ -707,20 +728,30 @@ export async function pauseTaken(
       });
     }
   }
+  // On the hub a paused session is settled as moved: that alone keeps it
+  // from starting or being copied, and it can come back by a move
+  if (peer.id !== "hub") {
+    for (const r of results) {
+      if (r.state !== "failed") heldSessions().delete(r.sessionId);
+    }
+  }
   // Right after each list: what changed while offline is copied
-  setTimeout(() => void sweep().catch(() => {}), 1000).unref();
+  if (peer.id === "hub") {
+    setTimeout(() => void sweep().catch(() => {}), 1000).unref();
+  }
   return results;
 }
 
 async function pauseOne(
   t: TakenSession,
-  deps: PauseDeps
+  deps: PauseDeps,
+  peer: { id: string }
 ): Promise<TakenResult> {
   const base = { sessionId: t.sessionId, takeId: t.takeId };
   // 2. Not here, or it went on to another machine since
   const session = deps.getSession(t.sessionId);
   const went = session ? parseMovedTo(session.moved_to) : null;
-  if (!session || (went && went.machine !== "hub")) {
+  if (!session || (went && went.machine !== peer.id)) {
     return { ...base, state: "gone" };
   }
   // Which conversation it is on, asked of the live pane while there is one
@@ -770,7 +801,7 @@ async function pauseOne(
   }
   // 8. Marked as continued on the hub
   deps.write(t.sessionId, {
-    machine: "hub",
+    machine: peer.id,
     name: typeof t.hubName === "string" ? t.hubName.slice(0, 80) : "the server",
     at: deps.now(),
     head: now?.head ?? "",

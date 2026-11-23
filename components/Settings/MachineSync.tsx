@@ -56,7 +56,11 @@ function whenText(row: SyncRow, online: boolean, machineName: string): string {
       ? `Last synced ${ageText(Date.now() - row.syncedAt)} ago`
       : "Not copied yet";
   }
-  if (row.state === "elsewhere") return "Carried on from this copy";
+  if (row.state === "elsewhere") {
+    return row.direction === "to"
+      ? `Carried on by ${machineName} while this server was off`
+      : "Carried on from this copy";
+  }
   if (row.state === "waiting") {
     if (!online) return `Waiting for ${machineName} to come online`;
     return row.syncedAt

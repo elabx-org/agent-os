@@ -69,4 +69,12 @@ export const BACKUP_UP_RULES: UpRule[] = [
     maxBody: 0,
     headMs: SHORT_MS,
   },
+  {
+    kind: "system",
+    method: "POST",
+    path: /^\/api\/link\/inbox\/peer\/taken$/,
+    relay: false,
+    maxBody: MiB,
+    headMs: LONG_MS,
+  },
 ];

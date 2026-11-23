@@ -15,7 +15,7 @@ export async function GET(request: Request, { params }: Context) {
   const no = ownerRead(request);
   if (no) return no;
   const { id, session } = await params;
-  const row = /^m_[0-9a-f]{12}$/.test(id) ? backupRow(id, session) : null;
+  const row = /^(m_[0-9a-f]{12}|hub)$/.test(id) ? backupRow(id, session) : null;
   if (!row) return NextResponse.json({ notFound: true });
   let file: string;
   try {

@@ -139,6 +139,8 @@ const PATHNAME = /^\/[A-Za-z0-9/_-]+$/;
 const RELAY = /^\/m\/(m_[0-9a-f]{12})(\/.*)$/;
 const QUERY_VALUE = /^[\w.:-]{0,200}$/;
 const METHODS = new Set(["GET", "POST", "PUT", "DELETE"]);
+/** What a machine says about the hub's own sessions (lib/backup/peer-taken.ts) */
+const PEER_INBOX = "/api/link/inbox/peer/";
 const KINDS = new Set(["agent", "system"]);
 const BODY_TYPES = new Set(["application/json", "application/octet-stream"]);
 
@@ -212,7 +214,12 @@ export function decideUp(
   if (kind === "agent" && machine.uses_hub !== 1) {
     return upRefusal("hub_agents_off");
   }
-  if (kind === "system" && machine.backup !== 1) {
+  // Saying which of the hub's sessions it carried on is never switched off
+  if (
+    kind === "system" &&
+    machine.backup !== 1 &&
+    !pathname.startsWith(PEER_INBOX)
+  ) {
     return upRefusal("backup_off");
   }
 

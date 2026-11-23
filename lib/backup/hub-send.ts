@@ -35,6 +35,7 @@ import {
   backupOne,
   eligible,
   liveDeps,
+  pauseTaken,
   readBackupState,
   signature,
   writeBackupState,
@@ -42,6 +43,7 @@ import {
   type CopyStatus,
   type RunOutcome,
 } from "./machine";
+import { parseMovedTo } from "../session-move-types";
 import { inShare, shareOf } from "./share";
 import type { SyncRow, SyncState, SyncView } from "./share-types";
 import { backupRows } from "./store";
@@ -72,7 +74,7 @@ const state = () =>
 const recordFile = (machineId: string) =>
   path.join(home(), "peer-state", `${machineId}.json`);
 
-const readRecord = (machineId: string) =>
+export const readRecord = (machineId: string) =>
   readBackupState(machineId, recordFile(machineId));
 
 const writeRecord = (machineId: string, record: BackupState) =>
@@ -186,8 +188,16 @@ async function sendOne(machine: MachineRow, session: Session): Promise<void> {
     outcome = await backupOne(session, record, {
       ...liveDeps(),
       upload,
-      // Continuing a copy on a machine comes with its own pause
-      pause: async () => {},
+      // The machine carries this session on from its copy: ours pauses
+      // (only this one, and under this server's own name for the machine)
+      pause: (list) =>
+        pauseTaken(
+          list
+            .filter((t) => t?.sessionId === session.id)
+            .map((t) => ({ ...t, hubName: machine.name })),
+          undefined,
+          { id: machine.id }
+        ),
     });
     if (outcome === "failed") error = seen.error ?? FAILED;
     if (outcome === "off") error = `${machine.name} isn't taking copies.`;
@@ -398,6 +408,24 @@ export function syncView(machine: MachineRow): SyncView {
       ...(sync === "failed" && status?.error ? { error: status.error } : {}),
     };
   });
+  // Sessions the machine carried on from its copy while this server was
+  // off: paused here, and said to be there
+  for (const session of queries.getAllSessions(getDb()).all() as Session[]) {
+    const went = session.settled_at ? parseMovedTo(session.moved_to) : null;
+    if (went?.machine !== machine.id || !went.takeover) continue;
+    rows.push({
+      sessionId: session.id,
+      name: session.name,
+      projectName:
+        (session.project_id && names.get(session.project_id)) || null,
+      direction: "to",
+      state: "elsewhere",
+      syncedAt: went.takeover.copyAt || null,
+      head: went.head || null,
+      unsaved: null,
+      entries: null,
+    });
+  }
   for (const row of backupRows(machine.id)) {
     rows.push({
       sessionId: row.session_id,

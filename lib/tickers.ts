@@ -77,6 +77,11 @@ export function startTickers(): void {
   // the copied repositories daily
   if (isMachineMode()) {
     startMachineBackup();
+    try {
+      recoverTakes();
+    } catch (error) {
+      console.error("[tickers] take-overs:", error);
+    }
     // The copies of its hub's sessions kept here are packed daily too
     setInterval(() => {
       gcRepos().catch((error) => console.error("[tickers] copies gc:", error));

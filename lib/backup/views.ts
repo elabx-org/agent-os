@@ -4,9 +4,9 @@
  */
 
 import { getDb, queries, type Session } from "../db";
-import { linkHub } from "../link/server";
-import { machineById, machineCaps } from "../link/store";
+import { machineCaps } from "../link/store";
 import { CAP_TAKE } from "../link/protocol";
+import { peerOfflineFor, peerOnline, peerRow } from "./peer";
 import {
   BACKUP_LIMITS,
   backupRows,
@@ -37,7 +37,7 @@ export async function copyBytes(machineId: string): Promise<number> {
 /** GET /api/machines: what each machine's row says about its copies */
 export async function copySummary(machineId: string) {
   const totals = copyTotals(machineId);
-  const machine = machineById(machineId);
+  const machine = peerRow(machineId);
   const bytes = await copyBytes(machineId);
   return {
     backup: machine?.backup === 1,
@@ -57,10 +57,9 @@ export async function copyViews(machineId: string): Promise<{
   unconfirmed: number;
 }> {
   const db = getDb();
-  const machine = machineById(machineId);
-  const hub = linkHub();
-  const online = hub.presence(machineId) === "online";
-  const offlineMs = hub.offlineFor(machineId);
+  const machine = peerRow(machineId);
+  const online = peerOnline(machineId);
+  const offlineMs = peerOfflineFor(machineId);
   const rows = machine ? backupRows(machineId, db) : [];
   const copies = rows.map((row): BackupView => {
     const hubSession =

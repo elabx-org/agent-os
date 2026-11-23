@@ -20,15 +20,8 @@ import path from "path";
 import { Readable } from "stream";
 import type Database from "better-sqlite3";
 import { getDb, queries, type Session } from "../db";
-import { linkHub } from "../link/server";
-import {
-  machineById,
-  machineCaps,
-  serverName,
-  type MachineRow,
-} from "../link/store";
+import { machineCaps, type MachineRow } from "../link/store";
 import { CAP_TAKE } from "../link/protocol";
-import { serverNameOr } from "../server-name";
 import {
   cancelMoveIn,
   importMove,
@@ -54,6 +47,13 @@ import {
   repoDir,
   type BackupRow,
 } from "./store";
+import {
+  here,
+  peerOfflineFor,
+  peerOnline,
+  peerRow,
+  tellPeerTaken,
+} from "./peer";
 import { TAKE_WHY_NOT, type TakeJob } from "./types";
 
 /** Offline at least this long before a copy may be continued */
@@ -120,6 +120,8 @@ export interface TakeDeps {
   offlineFor(id: string): number;
   tellTaken(id: string): void;
   hubName(): string;
+  /** This side as the move names it; the hub when absent */
+  here?(): { machine: string; name: string };
   prepareMoveIn: typeof prepareMoveIn;
   moveInState: typeof moveInState;
   receiveMoveFile: typeof receiveMoveFile;
@@ -181,11 +183,12 @@ const pinRefs = (row: BackupRow, takeId: string) => ({
 
 export const liveTakeDeps = (): TakeDeps => ({
   db: getDb(),
-  machine: machineById,
-  online: (id) => linkHub().presence(id) === "online",
-  offlineFor: (id) => linkHub().offlineFor(id),
-  tellTaken: (id) => linkHub().tellTaken(id),
-  hubName: () => serverNameOr(serverName()),
+  machine: peerRow,
+  online: peerOnline,
+  offlineFor: peerOfflineFor,
+  tellTaken: tellPeerTaken,
+  hubName: () => here().name,
+  here,
   prepareMoveIn,
   moveInState,
   receiveMoveFile,
@@ -349,7 +352,7 @@ async function runTake(run: Running, row: BackupRow, deps: TakeDeps) {
         takeId,
         copyAt: row.copied_at,
       },
-      { machine: "hub", name: job.hubName },
+      deps.here?.() ?? { machine: "hub", name: job.hubName },
       { takeover: true }
     );
     const ready = await waitFor(deps, takeId, ["ready"], PREPARE_MS, run);
