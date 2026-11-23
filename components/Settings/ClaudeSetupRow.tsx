@@ -78,10 +78,17 @@ export function ClaudeSetupRow({ id, name }: { id: string; name: string }) {
   });
 
   const pending = useMemo(() => data?.rows.filter(toCopy) ?? [], [data]);
+  /** Edited on the machine; the server's is as it was */
+  const edited = useMemo(
+    () => data?.rows.filter((row) => row.state === "back") ?? [],
+    [data]
+  );
+  /** Different on both: the user says which one wins, or leaves them */
   const kept = useMemo(
     () => data?.rows.filter((row) => row.state === "kept") ?? [],
     [data]
   );
+  const [picks, setPicks] = useState<Record<string, "hub" | "machine">>({});
 
   // Starts from what was left out last time, plus anything that leans on
   // tools the machine may not have
@@ -119,14 +126,26 @@ export function ClaudeSetupRow({ id, name }: { id: string; name: string }) {
   };
 
   const chosen = pending.filter((row) => !off?.has(row.item.key));
+  const sendBack = edited.filter((row) => !off?.has(row.item.key));
+  const picked = kept.filter((row) => picks[row.item.key]);
+  const changes = chosen.length + sendBack.length + picked.length;
   const copy = async () => {
+    const keysOf = (rows: SetupRow[]) => rows.map((row) => row.item.key);
     const ok = await send({
-      keys: chosen.map((row) => row.item.key),
-      skip: pending
-        .filter((row) => off?.has(row.item.key))
-        .map((r) => r.item.key),
+      keys: keysOf(chosen),
+      back: [
+        ...keysOf(sendBack),
+        ...keysOf(picked.filter((r) => picks[r.item.key] === "machine")),
+      ],
+      force: keysOf(picked.filter((r) => picks[r.item.key] === "hub")),
+      skip: keysOf(
+        [...pending, ...edited].filter((row) => off?.has(row.item.key))
+      ),
     });
-    if (ok) toast.success(`Copying to ${name}`);
+    if (ok) {
+      setPicks({});
+      toast.success(chosen.length === changes ? `Copying to ${name}` : "Done");
+    }
   };
 
   const hubName = data?.hubName ?? "this server";
@@ -146,7 +165,11 @@ export function ClaudeSetupRow({ id, name }: { id: string; name: string }) {
               : "Copying…"
             : pending.length
               ? `${hubName} has ${countSentence(pending.map((r) => r.item))} that ${name} doesn't.`
-              : `${name} has everything ${hubName} has.`;
+              : edited.length
+                ? `${countSentence(edited.map((r) => r.item))} edited on ${name}, not yet on ${hubName}.`
+                : kept.length
+                  ? `${countSentence(kept.map((r) => r.item))} differ between ${name} and ${hubName}.`
+                  : `${name} has everything ${hubName} has.`;
 
   const toggle = (key: string) =>
     setOff((prev) => {
@@ -207,8 +230,8 @@ export function ClaudeSetupRow({ id, name }: { id: string; name: string }) {
           {pending.length > 0 && (
             <>
               <p className="text-muted-foreground text-[13px]">
-                Tick what to copy to {name}. It only adds: nothing already on{" "}
-                {name} is changed or removed.
+                Tick what to copy to {name}. Nothing {name} already has is
+                changed or removed.
               </p>
               {GROUPS.map(([kind, title]) => {
                 const rows = pending.filter((row) => row.item.kind === kind);
@@ -257,23 +280,119 @@ export function ClaudeSetupRow({ id, name }: { id: string; name: string }) {
                   </fieldset>
                 );
               })}
-              <button
-                type="button"
-                onClick={() => void copy()}
-                disabled={
-                  busy || chosen.length === 0 || job?.state === "running"
-                }
-                className="bg-primary text-primary-foreground min-h-11 w-full rounded-lg px-4 text-[15px] font-medium disabled:opacity-50"
-              >
-                {busy || job?.state === "running"
-                  ? "Copying…"
-                  : chosen.length
-                    ? `Copy ${chosen.length} to ${name}`
-                    : "Nothing ticked"}
-              </button>
             </>
           )}
-          <OwnList name={name} kept={kept} own={data.own} />
+          {edited.length > 0 && (
+            <fieldset className="min-w-0">
+              <legend className="text-muted-foreground pb-1 text-[13px] font-medium">
+                Edited on {name} ({edited.length})
+              </legend>
+              <p className="text-muted-foreground pb-1 text-[13px]">
+                Tick to send {name}&apos;s version to {hubName}. {hubName}
+                &apos;s current one is kept in a backup folder.
+              </p>
+              <ul className="divide-border divide-y">
+                {edited.map((row) => {
+                  const boxId = `setup-back-${id}-${row.item.key}`;
+                  return (
+                    <li key={row.item.key}>
+                      <label
+                        htmlFor={boxId}
+                        className="flex min-h-11 items-center gap-3 py-2"
+                      >
+                        <input
+                          id={boxId}
+                          type="checkbox"
+                          className="accent-primary h-5 w-5 shrink-0"
+                          checked={!off?.has(row.item.key)}
+                          onChange={() => toggle(row.item.key)}
+                        />
+                        <span className="min-w-0 flex-1 text-[15px] break-words">
+                          {shortName(row.item)} ({row.item.kind})
+                        </span>
+                      </label>
+                    </li>
+                  );
+                })}
+              </ul>
+            </fieldset>
+          )}
+          {kept.length > 0 && (
+            <fieldset className="min-w-0">
+              <legend className="text-muted-foreground pb-1 text-[13px] font-medium">
+                Different on both ({kept.length})
+              </legend>
+              <p className="text-muted-foreground pb-1 text-[13px]">
+                Nothing happens to these until you pick one. The version that is
+                replaced is kept in a backup folder.
+              </p>
+              <ul className="divide-border divide-y">
+                {kept.map((row) => {
+                  const pick = picks[row.item.key] ?? "";
+                  const label = `${shortName(row.item)} (${row.item.kind})`;
+                  const choose = (value: "" | "hub" | "machine") =>
+                    setPicks((prev) => {
+                      const next = { ...prev };
+                      if (value) next[row.item.key] = value;
+                      else delete next[row.item.key];
+                      return next;
+                    });
+                  const options: ["" | "hub" | "machine", string][] = [
+                    ["", "Leave both"],
+                    ["hub", `Use ${hubName}'s`],
+                    ["machine", `Use ${name}'s`],
+                  ];
+                  return (
+                    <li key={row.item.key} className="py-2">
+                      <span className="block text-[15px] break-words">
+                        {label}
+                      </span>
+                      <span
+                        role="radiogroup"
+                        aria-label={label}
+                        className="mt-1.5 flex flex-wrap gap-1.5"
+                      >
+                        {options.map(([value, text]) => (
+                          <button
+                            key={value}
+                            type="button"
+                            role="radio"
+                            aria-checked={pick === value}
+                            onClick={() => choose(value)}
+                            className={cn(
+                              "min-h-9 rounded-full border px-3 text-[13px]",
+                              pick === value
+                                ? "border-primary bg-primary text-primary-foreground"
+                                : "border-border text-muted-foreground"
+                            )}
+                          >
+                            {text}
+                          </button>
+                        ))}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            </fieldset>
+          )}
+          {pending.length + edited.length + kept.length > 0 && (
+            <button
+              type="button"
+              onClick={() => void copy()}
+              disabled={busy || changes === 0 || job?.state === "running"}
+              className="bg-primary text-primary-foreground min-h-11 w-full rounded-lg px-4 text-[15px] font-medium disabled:opacity-50"
+            >
+              {busy || job?.state === "running"
+                ? "Working…"
+                : changes === 0
+                  ? "Nothing chosen"
+                  : changes === chosen.length
+                    ? `Copy ${changes} to ${name}`
+                    : `Apply ${changes} ${changes === 1 ? "change" : "changes"}`}
+            </button>
+          )}
+          <OwnList name={name} own={data.own} />
           <p className="text-muted-foreground text-[13px]">
             Never copied: your Claude sign-in, settings, and connections to
             other services or their keys. A chat already open on {name} may need
@@ -286,7 +405,7 @@ export function ClaudeSetupRow({ id, name }: { id: string; name: string }) {
               </span>
               <span className="text-muted-foreground block text-[13px]">
                 {data.follow
-                  ? `When you add or update a skill or plugin on ${hubName}, it is copied to ${name} within about 10 minutes. Anything you unticked stays out.`
+                  ? `Within about 10 minutes, what you add or change on ${hubName} is copied to ${name}, and a skill you edit on ${name} is sent back to ${hubName}. If both changed, nothing happens until you pick one. Anything you unticked stays out.`
                   : `Off: nothing is copied to ${name} unless you press Copy.`}
               </span>
             </label>
@@ -303,25 +422,16 @@ export function ClaudeSetupRow({ id, name }: { id: string; name: string }) {
   );
 }
 
-/** What the machine has of its own: shown so it's clear it stays */
-function OwnList({
-  name,
-  kept,
-  own,
-}: {
-  name: string;
-  kept: SetupRow[];
-  own: SetupItem[];
-}) {
-  const items = [...kept.map((row) => row.item), ...own];
-  if (!items.length) return null;
+/** What only the machine has: shown so it's clear it stays */
+function OwnList({ name, own }: { name: string; own: SetupItem[] }) {
+  if (!own.length) return null;
   return (
     <div className="text-[13px]">
       <p className="text-muted-foreground font-medium">
-        Already on {name}, left alone ({items.length})
+        Only on {name}, left alone ({own.length})
       </p>
       <p className="text-muted-foreground break-words">
-        {items.map(shortName).join(", ")}
+        {own.map(shortName).join(", ")}
       </p>
     </div>
   );

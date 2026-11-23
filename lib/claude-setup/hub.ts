@@ -9,9 +9,14 @@ import { caller } from "../link/move";
 import { linkHub, ownSha } from "../link/server";
 import { listMachines, machineById, serverName } from "../link/store";
 import { serverNameOr } from "../server-name";
-import { packSetup } from "./install";
+import { installSetup, packSetup } from "./install";
 import { listItems } from "./inventory";
-import { SETUP_FOLLOW_HEADER, SETUP_PROOF_HEADER, setupProof } from "./proof";
+import {
+  SETUP_FOLLOW_HEADER,
+  SETUP_FORCE_HEADER,
+  SETUP_PROOF_HEADER,
+  setupProof,
+} from "./proof";
 import {
   SETUP_KEY,
   followKeys,
@@ -73,21 +78,34 @@ export async function machineSetup(
   };
 }
 
-/** Packs these of the server's items and hands them to the machine */
+/**
+ * Packs these of the server's items and hands them to the machine.
+ * `force`: the ones to replace even though the machine has its own
+ * version (the user picked the server's; needs the user's headers)
+ */
 export async function copySetup(
   machineId: string,
   keys: string[],
-  headers: Headers
+  headers: Headers,
+  force: string[] = []
 ): Promise<SetupJob> {
   ready(machineId);
   const clean = [...new Set(keys.filter((key) => SETUP_KEY.test(key)))];
   const pack = await packSetup(clean, serverNameOr(serverName()));
+  const forced = force.filter((key) => clean.includes(key));
+  const call = caller(
+    forced.length
+      ? {
+          ...headers,
+          [SETUP_FORCE_HEADER]: forced.map(encodeURIComponent).join(","),
+        }
+      : headers
+  );
   try {
-    const answer = await caller(headers)(
-      machineId,
-      "/api/claude-setup/receive",
-      { method: "POST", stream: pack.stream }
-    );
+    const answer = await call(machineId, "/api/claude-setup/receive", {
+      method: "POST",
+      stream: pack.stream,
+    });
     await pack.done;
     return await answer.json<SetupJob>();
   } catch (error) {
@@ -96,6 +114,37 @@ export async function copySetup(
     await pack.done;
     throw error;
   }
+}
+
+/**
+ * Takes the machine's version of these skills, commands and agents as
+ * the server's own. The server's replaced versions go to its backups
+ * folder; the machine then counts them as the copy both started from
+ */
+export async function takeBack(
+  machineId: string,
+  keys: string[],
+  headers: Headers
+): Promise<SetupJob> {
+  ready(machineId);
+  const clean = [
+    ...new Set(
+      keys.filter((key) => SETUP_KEY.test(key) && !key.startsWith("plugin:"))
+    ),
+  ];
+  const call = caller(headers);
+  const answer = await call(
+    machineId,
+    `/api/claude-setup/pack?keys=${clean.map(encodeURIComponent).join(",")}`
+  );
+  const job = await installSetup(answer.stream, { force: "all" });
+  if (job.copied.length) {
+    await call(machineId, "/api/claude-setup", {
+      method: "PATCH",
+      json: { adopt: job.copied },
+    });
+  }
+  return job;
 }
 
 async function followOnce(): Promise<void> {
@@ -109,7 +158,8 @@ async function followOnce(): Promise<void> {
       const setup = await machineSetup(machine.id, headers);
       if (!setup.follow || setup.job?.state === "running") continue;
       const keys = followKeys(setup, setup.skip);
-      if (keys.length) await copySetup(machine.id, keys, headers);
+      if (keys.back.length) await takeBack(machine.id, keys.back, headers);
+      if (keys.to.length) await copySetup(machine.id, keys.to, headers);
     } catch (error) {
       if (!(error instanceof SetupUnavailable)) {
         console.error(

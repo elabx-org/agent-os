@@ -13,9 +13,10 @@ import fs from "fs";
 import fsp from "fs/promises";
 import os from "os";
 import path from "path";
-import { Readable } from "stream";
+import { PassThrough, type Readable } from "stream";
 import { pipeline } from "stream/promises";
 import { claudeDir } from "../claude-transcript";
+import { home } from "../link/secrets";
 import {
   claudeBinary,
   hashEntry,
@@ -94,7 +95,11 @@ export async function packSetup(
   });
   // The caller pipes the stream; a failed tar ends it early and `done` says why
   done.catch(() => {});
-  return { stream: child.stdout, done };
+  // Read from the first moment: Node drops what a finished child wrote
+  // if nothing was reading it yet
+  const stream = new PassThrough();
+  child.stdout.pipe(stream);
+  return { stream, done };
 }
 
 function run(
@@ -170,6 +175,31 @@ function validNote(value: unknown): PackNote {
   };
 }
 
+/** Where a version the user chose to replace is kept */
+export const backupsPath = () => path.join(home(), "claude-setup-old");
+const BACKUPS_KEPT = 30;
+
+async function keepOld(
+  target: string,
+  at: { kind: SetupKind; entry: string },
+  dir: string
+): Promise<void> {
+  await fsp.mkdir(dir, { recursive: true });
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const to = path.join(dir, `${stamp} ${at.kind} ${at.entry}`);
+  try {
+    await fsp.rename(target, to);
+  } catch {
+    // Another disk: copy, then remove
+    await fsp.cp(target, to, { recursive: true });
+    await fsp.rm(target, { recursive: true, force: true });
+  }
+  const old = (await fsp.readdir(dir)).sort();
+  for (const name of old.slice(0, Math.max(0, old.length - BACKUPS_KEPT))) {
+    await fsp.rm(path.join(dir, name), { recursive: true, force: true });
+  }
+}
+
 export interface InstallDeps {
   root?: string;
   record?: string;
@@ -177,6 +207,12 @@ export interface InstallDeps {
   claude?: (args: string[]) => Promise<{ ok: boolean; out: string }>;
   /** Tests wait for the plugins too */
   waitForPlugins?: boolean;
+  /**
+   * Entries to replace even when this machine has its own version: the
+   * user picked this side. The replaced one goes to the backups folder
+   */
+  force?: "all" | Set<string>;
+  backups?: string;
 }
 
 const lastLine = (text: string) =>
@@ -284,7 +320,12 @@ export async function installSetup(
       fs.createWriteStream(file)
     );
     const listed = await run("tar", ["-tzf", file]);
-    if (!listed.ok) throw new SetupRefused("That isn't a copy AgentOS made");
+    if (!listed.ok) {
+      console.error(
+        `[claude-setup] unreadable pack (${size} bytes): ${lastLine(listed.out)}`
+      );
+      throw new SetupRefused("That isn't a copy AgentOS made");
+    }
     const names = listed.out.split("\n").filter(Boolean);
     const found = new Map<string, { kind: SetupKind; entry: string }>();
     for (const name of names) {
@@ -323,11 +364,18 @@ export async function installSetup(
           // The same already: nothing to do, and not ours unless it was
           continue;
         }
-        if (mine === null || record.placed[key] !== mine) {
+        const theirs = record.placed[key] !== mine;
+        const forced = deps.force === "all" || deps.force?.has(key) === true;
+        if (mine === null || (theirs && !forced)) {
           job.kept.push(key);
           continue;
         }
-        await fsp.rename(target, path.join(work, `old-${n++}`));
+        if (theirs) {
+          // The owner's own version, replaced because they said so: kept
+          await keepOld(target, at, deps.backups ?? backupsPath());
+        } else {
+          await fsp.rename(target, path.join(work, `old-${n++}`));
+        }
       }
       await fsp.mkdir(path.dirname(target), { recursive: true });
       await fsp.rename(incoming, target);

@@ -142,7 +142,24 @@ test("diff: missing, same, update only for AgentOS's own copy, kept otherwise", 
     ["missing", "same", "update", "kept", "same"]
   );
   assert.deepEqual(keysOf(diff.own), ["skill:own"]);
-  assert.deepEqual(followKeys(diff, ["skill:a"]), ["skill:c"]);
+  assert.deepEqual(followKeys(diff, ["skill:a"]), {
+    to: ["skill:c"],
+    back: [],
+  });
+  // The machine edited AgentOS's copy and the server's is as it was
+  const edited = setupDiff(
+    [item("skill:e", "base"), item("skill:f", "base")],
+    [item("skill:e", "edited"), item("skill:f", "edited")],
+    { "skill:e": "base", "skill:f": "base" }
+  );
+  assert.deepEqual(
+    edited.rows.map((r) => r.state),
+    ["back", "back"]
+  );
+  assert.deepEqual(followKeys(edited, ["skill:f"]), {
+    to: [],
+    back: ["skill:e"],
+  });
   assert.equal(countSentence(hub), "4 skills and 1 plugin");
 });
 
@@ -289,5 +306,45 @@ test("copy: a pack with a path outside or a link pointing out is refused whole",
       record,
     }),
     SetupRefused
+  );
+});
+
+test("copy: a forced entry replaces the owner's version and keeps the old one", async () => {
+  const hub = hubHome();
+  const mac = tmp();
+  const record = path.join(tmp(), "r.json");
+  const backups = path.join(tmp(), "old");
+  write(mac, "commands/duo.md", "my own duo command");
+  write(mac, "skills/duo/SKILL.md", "my own duo skill");
+  setSetupJob(null);
+  const pack = await packSetup(["command:duo.md", "skill:duo"], "Unraid", hub);
+  const job = await installSetup(pack.stream, {
+    root: mac,
+    record,
+    backups,
+    waitForPlugins: true,
+    force: new Set(["command:duo.md"]),
+  });
+  await pack.done;
+  assert.deepEqual(job.copied, ["command:duo.md"]);
+  assert.deepEqual(job.kept, ["skill:duo"]);
+  assert.equal(
+    fs.readFileSync(path.join(mac, "commands/duo.md"), "utf8"),
+    "run duo"
+  );
+  assert.equal(
+    fs.readFileSync(path.join(mac, "skills/duo/SKILL.md"), "utf8"),
+    "my own duo skill"
+  );
+  const old = fs.readdirSync(backups);
+  assert.equal(old.length, 1);
+  assert.match(old[0], / command duo\.md$/);
+  assert.equal(
+    fs.readFileSync(path.join(backups, old[0]), "utf8"),
+    "my own duo command"
+  );
+  assert.equal(
+    readRecord(record).placed["command:duo.md"],
+    hashEntry(path.join(hub, "commands/duo.md")).hash
   );
 });

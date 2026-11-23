@@ -10,7 +10,9 @@ import { randomBytes, timingSafeEqual } from "crypto";
 export const SETUP_PROOF_HEADER = "x-agentos-link-setup";
 /** Reaches the machine: this copy is "keep matching", not the user's tap */
 export const SETUP_FOLLOW_HEADER = "x-agentos-setup-follow";
-export const SETUP_PATH = /^\/api\/claude-setup(\/receive)?(\?|$)/;
+/** Its owner's choice to replace their own versions: only with the user's proof */
+export const SETUP_FORCE_HEADER = "x-agentos-setup-force";
+export const SETUP_PATH = /^\/api\/claude-setup(\/receive|\/pack)?(\?|$)/;
 
 const shared = globalThis as typeof globalThis & {
   __agentosSetupProof?: string;
