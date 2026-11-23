@@ -660,7 +660,12 @@ do {
 
   equal("tabs: none without a session", ToolbarModel.tabs(hostile).count, 0)
   equal("tabs: none without a state", ToolbarModel.tabs(nil).count, 0)
-  equal("tabs: four for a session", ToolbarModel.tabs(front).map(\.action), [.chat, .changes, .terminal, .files])
+  equal("tabs: five for a session", ToolbarModel.tabs(front).map(\.action), [.chat, .changes, .terminal, .files, .preview])
+  var previewing = front
+  previewing?.view = .preview
+  equal("tabs: Preview is selected while it shows", ToolbarModel.selected(previewing), 4)
+  check("state: the page may say the preview is in front",
+    PageState.parse(#"{"v":1,"session":"s1","title":"t","detail":"","view":"preview"}"#)?.view == .preview)
   equal("tabs: Changes carries its count", ToolbarModel.tabs(front)[1].label, "Changes 4")
   equal("tabs: the open one is selected", ToolbarModel.selected(front), 1)
   check("tabs: nothing selected without a view", ToolbarModel.selected(odd) == nil)
@@ -672,7 +677,8 @@ do {
   equal("title: the page's without a state", ToolbarModel.title(nil, pageTitle: "Sign in").title, "Sign in")
   equal("title: the app's without either", ToolbarModel.title(nil, pageTitle: nil).title, "AgentOS")
   check("actions: every word is one the page knows", PageAction.allCases.map(\.rawValue).sorted() == [
-    "agents", "all", "changes", "chat", "files", "find", "inspector", "new", "settings", "sidebar", "terminal",
+    "agents", "all", "changes", "chat", "files", "find", "inspector", "new", "preview", "settings", "sidebar",
+    "terminal",
   ])
 
   let rows: [[String: Any]] = [

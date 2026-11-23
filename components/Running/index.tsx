@@ -327,7 +327,7 @@ function IconButton({
 }
 
 /** One server's page: its address bar, the app itself, who started it */
-function Preview({
+export function Preview({
   server,
   onBack,
   expanded,

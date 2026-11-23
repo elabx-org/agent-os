@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type DragEvent,
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
@@ -24,6 +25,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { uploadFilesToTemp } from "@/lib/file-upload";
+import { carriesFiles, splitDropped } from "@/lib/dropped-files";
 import { sendWithVideos, videoStore } from "@/stores/videoUploads";
 import type { SpreadPages } from "@/components/views/SessionSpread";
 import type { ComposerEngine } from "./useComposer";
@@ -596,12 +598,53 @@ export function ComposerCard({
     />
   );
 
+  // Files dragged in from the desktop: pictures become pills and videos
+  // frames, anything else is uploaded and its path put in the message, as
+  // from the + button
+  const [dropping, setDropping] = useState(false);
+  const dropFiles = async (e: DragEvent<HTMLDivElement>) => {
+    if (!carriesFiles(e.dataTransfer.types)) return;
+    e.preventDefault();
+    setDropping(false);
+    const { media, others } = splitDropped(
+      [...e.dataTransfer.items].map((item) => ({
+        kind: item.kind,
+        directory: item.webkitGetAsEntry?.()?.isDirectory,
+        file: item.getAsFile(),
+      }))
+    );
+    if (media.length) void composer.attach(media);
+    if (!others.length) return;
+    try {
+      const paths = await uploadFilesToTemp(others);
+      if (paths.length) composer.insert(`${paths.join(" ")} `, true);
+    } catch {
+      toast.error("Couldn't upload the file");
+    }
+  };
+
   return (
     <div
       // Over the pane's dim while the menu is open (SendMenuDim)
-      className={cn("relative", showMenu && "z-30", className)}
+      className={cn(
+        "relative",
+        showMenu && "z-30",
+        dropping && "composer-dropping",
+        className
+      )}
       style={pages ? { ...style, width: pages.left - 10 } : style}
       onTouchEnd={(e) => e.stopPropagation()}
+      onDragOver={(e) => {
+        if (!carriesFiles(e.dataTransfer.types)) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "copy";
+        if (!dropping) setDropping(true);
+      }}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null))
+          setDropping(false);
+      }}
+      onDrop={dropFiles}
     >
       <ComposerPopover composer={composer} />
       <SendMenu

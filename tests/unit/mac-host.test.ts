@@ -178,3 +178,16 @@ test("a page can put its own line under the window's title", () => {
   );
   assert.ok(isMacAction("all"));
 });
+
+test("the Preview is a view of the session in front, never of a page", () => {
+  const state = macState({ ...base, viewMode: "terminal", preview: true });
+  assert.equal(state.view, "preview");
+  assert.equal(state.session, base.session?.id);
+  // A page or Settings over the session has no views at all
+  assert.equal(
+    macState({ ...base, preview: true, covered: "Settings" }).view,
+    null
+  );
+  assert.equal(macState({ ...base, preview: false }).view, macState(base).view);
+  assert.ok(isMacAction("preview"));
+});

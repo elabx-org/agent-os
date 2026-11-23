@@ -62,6 +62,7 @@ enum MainMenu {
       item(Strings.showChanges, "showChanges:", "2"),
       item(Strings.showTerminal, "showTerminal:", "3"),
       item(Strings.showFiles, "showFiles:", "4"),
+      item(Strings.tabPreview, "showPreview:", "5"),
       .separator(),
       item(Strings.showSidebar, "toggleSidebarPane:", "s", [.command, .control]),
       item(Strings.showInspector, "toggleInspectorPane:", "i", [.command, .option]),

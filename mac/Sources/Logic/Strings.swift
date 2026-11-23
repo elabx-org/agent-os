@@ -286,6 +286,7 @@ enum Strings {
   static let tabTerminal = "Terminal"
   static let tabFiles = "Files"
   static let tabAgents = "Agents"
+  static let tabPreview = "Preview"
   /// "Changes", or "Changes 4" with the number of changed files
   static func tabChanges(_ files: Int) -> String { files > 0 ? "Changes \(files)" : "Changes" }
   static let viewsLabel = "View"
@@ -378,7 +379,7 @@ enum Strings {
 
   static var toolbar: [String] {
     [
-      tabChat, tabTerminal, tabFiles, tabAgents, tabChanges(0), tabChanges(12), viewsLabel, sidebarLabel,
+      tabChat, tabTerminal, tabFiles, tabAgents, tabPreview, tabChanges(0), tabChanges(12), viewsLabel, sidebarLabel,
       sidebarTip, inspectorLabel, inspectorTip, findLabel, findTip, newChatLabel, newChatTip, openInLabel,
       openInTip, openInFinder, openInXcode, openInTerminal, showSidebar, hideSidebar, showInspector,
       hideInspector, findMenu, allSessionsMenu, noFolderTitle, noFolderBody, noAppTitle("Xcode"),

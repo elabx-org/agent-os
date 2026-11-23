@@ -303,6 +303,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
   @objc func showChanges(_ sender: Any?) { pane.act(.changes) }
   @objc func showTerminal(_ sender: Any?) { pane.act(.terminal) }
   @objc func showFiles(_ sender: Any?) { pane.act(.files) }
+  @objc func showPreview(_ sender: Any?) { pane.act(.preview) }
 
   /// The View menu's two pane items say what they will do
   func validateMenuItem(_ item: NSMenuItem) -> Bool {
@@ -314,10 +315,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     case #selector(toggleInspectorPane(_:)):
       item.title = state?.inspector == true ? Strings.hideInspector : Strings.showInspector
       return state?.session != nil
-    case #selector(showChat(_:)), #selector(showChanges(_:)), #selector(showTerminal(_:)), #selector(showFiles(_:)):
+    case #selector(showChat(_:)), #selector(showChanges(_:)), #selector(showTerminal(_:)), #selector(showFiles(_:)),
+      #selector(showPreview(_:)):
       let views: [Selector: PageAction] = [
         #selector(showChat(_:)): .chat, #selector(showChanges(_:)): .changes,
         #selector(showTerminal(_:)): .terminal, #selector(showFiles(_:)): .files,
+        #selector(showPreview(_:)): .preview,
       ]
       item.state = item.action.flatMap { views[$0] } == state?.view && state?.view != nil ? .on : .off
       return state?.session != nil

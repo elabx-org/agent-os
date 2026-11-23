@@ -65,6 +65,14 @@ const GitPanel = dynamic(
   { ssr: false, loading: () => <GitPanelSkeleton /> }
 );
 
+const SessionPreview = dynamic(
+  () =>
+    import("@/components/Running/SessionPreview").then(
+      (mod) => mod.SessionPreview
+    ),
+  { ssr: false }
+);
+
 /** Narrower than this, the web leaves the live activity rail out */
 const RAIL_MIN_VIEWPORT = 1100;
 /** Focus on the web: the pane at reading width */
@@ -319,6 +327,8 @@ export function SessionSpread({
   // The Mac window's inspector button puts the rail away by itself
   const showRail =
     railWanted && !(mac && desktop && !inspectorShown(macChoice, viewMode));
+  // The Mac toolbar's Preview takes the pane's place
+  const previewOn = mac && desktop && !!session && macChoice.preview;
   // Flat there's no gutter: the pages meet at the hinge
   const spreadStart = book ? book.start : hingeX;
   const spreadEnd = book ? book.end : hingeX;
@@ -593,13 +603,18 @@ export function SessionSpread({
           style={focus && !duo ? { maxWidth: FOCUS_MAX_WIDTH } : undefined}
         >
           {/* Hidden rather than unmounted: the terminal refits when shown */}
-          <div className={cn("h-full w-full", pageOpen && "hidden")}>
+          <div
+            className={cn("h-full w-full", (pageOpen || previewOn) && "hidden")}
+          >
             <SpreadContext.Provider value={spreadFold}>
               <SpreadPanesContext.Provider value={spreadPanes}>
                 {children}
               </SpreadPanesContext.Provider>
             </SpreadContext.Provider>
           </div>
+          {previewOn && !pageOpen && session && (
+            <SessionPreview session={session} />
+          )}
           <SpreadContext.Provider value={spreadFold}>
             {page}
           </SpreadContext.Provider>

@@ -14,7 +14,19 @@ export const macHostStore = proxy<{
   split: boolean;
   /** A page's own line for under the window's title ("5 on 2 machines") */
   pageDetail: string | null;
-}>({ inspector: true, reviewInspector: false, split: false, pageDetail: null });
+  /** The toolbar's Preview: the page a session's server serves, over its views */
+  preview: boolean;
+}>({
+  inspector: true,
+  reviewInspector: false,
+  split: false,
+  pageDetail: null,
+  preview: false,
+});
+
+export function setMacPreview(shown: boolean) {
+  macHostStore.preview = shown;
+}
 
 export function setMacPageDetail(detail: string | null) {
   macHostStore.pageDetail = detail;

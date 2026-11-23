@@ -15,7 +15,12 @@ import { runNav } from "@/lib/nav-actions";
 import { useHereName, useMachines, useTabMachineId } from "@/data/machines";
 import { useGitStatus } from "@/data/git/queries";
 import { displayTitle, useListTitles } from "@/hooks/useSessionTitles";
-import { loadMacHost, macHostStore, setMacInspector } from "@/stores/macHost";
+import {
+  loadMacHost,
+  macHostStore,
+  setMacInspector,
+  setMacPreview,
+} from "@/stores/macHost";
 import { mobileNavActions, mobileNavStore } from "@/stores/mobileNav";
 import { closeSettings, settingsPageStore } from "@/stores/settingsPage";
 import {
@@ -95,7 +100,8 @@ export function useMacHost({
   needs,
 }: MacHostOptions) {
   const mac = useMacApp();
-  const { viewMode, changes, agentCount } = useSnapshot(mobileNavStore);
+  const { viewMode, changes, agentCount, request } =
+    useSnapshot(mobileNavStore);
   const { page } = useSnapshot(workspacePageStore);
   const { open: settingsOpen } = useSnapshot(settingsPageStore);
   const macChoice = useSnapshot(macHostStore);
@@ -113,6 +119,14 @@ export function useMacHost({
     if (mac) loadMacHost();
   }, [mac]);
 
+  // The Preview covers the session's views: another session, or anything
+  // that asks for one of its views (a card's "open the terminal"), ends it
+  const sessionId = session?.id;
+  const asked = request?.timestamp;
+  useEffect(() => {
+    setMacPreview(false);
+  }, [sessionId, asked]);
+
   useEffect(() => {
     if (!mac) return;
     const act = (action: MacAction) => {
@@ -122,10 +136,15 @@ export function useMacHost({
       else if (action === "new") runNav("new");
       else if (action === "settings") runNav("settings");
       else if (action === "all") openPage({ kind: "all" });
-      else {
+      else if (action === "preview") {
+        closeSettings();
+        closePage();
+        setMacPreview(true);
+      } else {
         // A view picked over a page or Settings goes back to the session
         closeSettings();
         closePage();
+        setMacPreview(false);
         mobileNavActions.requestViewMode(VIEW_MODE[action]);
       }
     };
@@ -159,6 +178,7 @@ export function useMacHost({
           covered,
           coverDetail,
           viewMode,
+          preview: macChoice.preview,
           changes,
           agents: agentCount,
           sidebar: sidebarOpen,
@@ -185,6 +205,7 @@ export function useMacHost({
     covered,
     coverDetail,
     viewMode,
+    macChoice.preview,
     changes,
     agentCount,
     sidebarOpen,
