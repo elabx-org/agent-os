@@ -379,9 +379,15 @@ export class LinkClient {
         this.setState({ status: "signin", httpStatus: 0 });
         return this.again(true);
       }
+      // "fetch failed" alone doesn't say whether it was the name lookup
+      // (ENOTFOUND), the network or the sign-in service
+      const code = (error as { cause?: { code?: unknown } })?.cause?.code;
       this.setState({
         status: "offline",
-        reason: error instanceof Error ? error.message : "sign-in failed",
+        reason:
+          error instanceof Error
+            ? `${error.message}${typeof code === "string" ? ` (${code})` : ""}`
+            : "sign-in failed",
       });
       return this.again();
     }

@@ -269,6 +269,20 @@ export function parseJobRule(raw: unknown): JobRule {
 export const isDefaultJobRule = (rule: JobRule): boolean =>
   rule.send === DEFAULT_JOB_RULE.send && rule.off === DEFAULT_JOB_RULE.off;
 
+/**
+ * Claude's own line when its turn never ran (no network, signed out, out of
+ * credit): the job didn't happen, so it failed rather than finished
+ */
+export function claudeFailure(text: string): string | null {
+  const line = text.trim();
+  if (!line || line.length > 500 || line.includes("\n\n")) return null;
+  return /^(API Error\b|Invalid API key|Not logged in|Please run \/login|Credit balance is too low)/i.test(
+    line
+  )
+    ? line
+    : null;
+}
+
 /** The user's message names the machine with @ ("@Mac Studio", any case) */
 export function namesMachine(text: string, name: string): boolean {
   const clean = (s: string) => s.toLowerCase().replace(/[\u2018\u2019]/g, "'");

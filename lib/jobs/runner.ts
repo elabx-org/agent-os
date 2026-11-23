@@ -60,6 +60,7 @@ import {
   RESULT_MAX,
   TASK_MAX,
   TITLE_MAX,
+  claudeFailure,
   isActive,
   isOver,
   jobPrompt,
@@ -771,10 +772,17 @@ async function look(row: JobRow): Promise<void> {
     }
     if (Date.now() - first < SETTLE_MS) return;
     seenDone.delete(row.id);
-    await finish(
-      row,
-      context.text || context.excerpt || "It finished without a message."
-    );
+    const said = context.text || context.excerpt || "";
+    // Claude never got to work (no network, signed out): not a result
+    const failure = claudeFailure(said);
+    if (failure) {
+      ended(`Claude couldn't work on this machine. It said: ${failure}`);
+      await settleSession(session, { reason: "job_done", force: true }).catch(
+        (error) => console.error("[jobs] ending the session of", row.id, error)
+      );
+      return;
+    }
+    await finish(row, said || "It finished without a message.");
   } finally {
     checking.delete(row.id);
   }

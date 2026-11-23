@@ -8,6 +8,7 @@ import {
   DEFAULT_JOB_RULE,
   JOB_MODES,
   changedText,
+  claudeFailure,
   cleanJobMode,
   cleanReport,
   cleanSpace,
@@ -466,4 +467,29 @@ test("the user's own @ names a machine; near misses don't", () => {
   assert.ok(!namesMachine("@Mac Studios are nice", "Mac Studio"));
   assert.ok(!namesMachine("mail me@mac studio", ""));
   assert.ok(!namesMachine("@Old Mac", "Mac Studio"));
+});
+
+test("Claude never getting to work is a failed job, not a result", () => {
+  const dns =
+    "API Error: Can't reach the API server \u2014 check your internet or DNS (ENOTFOUND)";
+  assert.equal(claudeFailure(dns), dns);
+  assert.equal(
+    claudeFailure("  Not logged in \u00b7 Please run /login "),
+    "Not logged in \u00b7 Please run /login"
+  );
+  assert.equal(
+    claudeFailure("Credit balance is too low"),
+    "Credit balance is too low"
+  );
+  // A real answer that mentions an error is still a result
+  assert.equal(
+    claudeFailure("The build failed with an API error in step 3."),
+    null
+  );
+  assert.equal(
+    claudeFailure("API Error handling was added.\n\nFiles changed: a.ts"),
+    null
+  );
+  assert.equal(claudeFailure(""), null);
+  assert.equal(claudeFailure("API Error: " + "x".repeat(600)), null);
 });
