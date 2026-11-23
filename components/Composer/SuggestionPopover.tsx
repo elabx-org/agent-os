@@ -131,7 +131,8 @@ export function SuggestionPopover({
                 {item.plain ? (
                   <span
                     className={cn(
-                      "min-w-0 flex-1 truncate text-[15px]",
+                      // The name first: what it has gives way on a phone
+                      "max-w-[70%] shrink-0 truncate text-[15px]",
                       i === selected && "text-[#6D28D9] dark:text-[#C4B5FD]"
                     )}
                   >
@@ -156,7 +157,11 @@ export function SuggestionPopover({
                 <span
                   className={cn(
                     "text-muted-foreground truncate",
-                    kind === "at" ? "shrink-0" : "min-w-0 flex-1"
+                    item.plain
+                      ? "min-w-0 flex-1 text-right"
+                      : kind === "at"
+                        ? "shrink-0"
+                        : "min-w-0 flex-1"
                   )}
                 >
                   {item.detail}

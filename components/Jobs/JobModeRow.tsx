@@ -78,7 +78,7 @@ export function JobModeRow({ target, name }: { target: string; name: string }) {
             aria-pressed={m === mode}
             disabled={saving}
             onClick={() => void choose(m)}
-            className="min-w-0 flex-1 px-2"
+            className="min-w-0 flex-1 px-1 whitespace-nowrap max-sm:text-[13px]"
           >
             {JOB_MODE_LABELS[m]}
           </button>
