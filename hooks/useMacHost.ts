@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useSnapshot } from "valtio";
 import type { Session } from "@/lib/db";
 import {
+  inspectorShown,
   isMacAction,
   isMacApp,
   macState,
@@ -41,6 +42,15 @@ export function useMacHereName(): string | null {
   if (tab) return there;
   if (!data) return null;
   return data.serverName?.trim() || "This Mac";
+}
+
+/** The inspector button, and the rail's own Hide: over Changes it is that view's */
+export function toggleMacInspector() {
+  const reviewing = mobileNavStore.viewMode === "git";
+  setMacInspector(
+    !inspectorShown(macHostStore, mobileNavStore.viewMode),
+    reviewing
+  );
 }
 
 const PAGE_TITLE: Record<WorkspacePageKind, string> = {
@@ -86,7 +96,7 @@ export function useMacHost({
   const { viewMode, changes, agentCount } = useSnapshot(mobileNavStore);
   const { page } = useSnapshot(workspacePageStore);
   const { open: settingsOpen } = useSnapshot(settingsPageStore);
-  const { inspector } = useSnapshot(macHostStore);
+  const inspector = inspectorShown(useSnapshot(macHostStore), viewMode);
   const machine = useMacHereName();
   const titles = useListTitles(mac && session ? [session] : []);
   // The branch its folder is on (the pane asks for the same status)
@@ -103,7 +113,7 @@ export function useMacHost({
     if (!mac) return;
     const act = (action: MacAction) => {
       if (action === "sidebar") setSidebarOpen(!sidebarOpen);
-      else if (action === "inspector") setMacInspector(!macHostStore.inspector);
+      else if (action === "inspector") toggleMacInspector();
       else if (action === "find") runNav("search");
       else if (action === "new") runNav("new");
       else if (action === "settings") runNav("settings");

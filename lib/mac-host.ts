@@ -18,6 +18,17 @@ export function macChrome(userAgent: string): number {
   return match ? Number(match[1]) : 0;
 }
 
+/**
+ * Whether the inspector shows: its own choice, except over the Changes view,
+ * where it stays away until asked for
+ */
+export function inspectorShown(
+  choice: { inspector: boolean; reviewInspector: boolean },
+  viewMode: string
+): boolean {
+  return viewMode === "git" ? choice.reviewInspector : choice.inspector;
+}
+
 export function isMacApp(): boolean {
   return (
     typeof document !== "undefined" &&

@@ -29,6 +29,11 @@ import { setGitMenu } from "@/stores/gitMenu";
 import { gitPlace, setGitPlace } from "@/stores/gitPlace";
 import { moveSheetStore, openMoveSheet } from "@/stores/moveSheet";
 import { cn } from "@/lib/utils";
+import { useMacApp } from "@/hooks/useMacHost";
+import { macHostStore, setMacSplit } from "@/stores/macHost";
+import { addQuote } from "@/stores/replyQuotes";
+import { mobileNavActions } from "@/stores/mobileNav";
+import { reviewTotals } from "@/lib/mac-review";
 import type { GitFile } from "@/lib/git-status";
 import type { ProjectRepository } from "@/lib/db";
 
@@ -106,6 +111,11 @@ function GitPanelContent({
   // The closed Duo: E-Git's insets, and its column holds Pull, Push and New pull request
   const closed = useLayoutMode() === "duo-closed";
   const columnActions = !!active && closed && narrow;
+  // The Mac window's review: the first change open at once, side by side
+  // on request, and a bar under it to commit or open the pull request
+  const macReview = useMacApp() && !narrow;
+  const { split } = useSnapshot(macHostStore);
+  const commitField = useRef<HTMLDivElement>(null);
 
   // A fold, a turn or a reload remounts the view: it opens where it was
   // (stores/gitPlace)
@@ -159,6 +169,14 @@ function GitPanelContent({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const shownFile = openFile?.file ?? null;
+  // Once: closing the diff afterwards shows the pull request and history
+  const opened = useRef(!!kept?.file || !!kept?.commitHash);
+  const firstFile = m.files[0];
+  useEffect(() => {
+    if (!macReview || opened.current || !firstFile || tab !== "changes") return;
+    opened.current = true;
+    void showFile(firstFile);
+  }, [macReview, firstFile, tab, showFile]);
   useEffect(() => {
     if (reopening.current) {
       if (!shownFile) return;
@@ -307,6 +325,8 @@ function GitPanelContent({
       onOpen={showFile}
       onStage={fileActions.onStage}
       onUnstage={fileActions.onUnstage}
+      split={macReview && split}
+      onSplit={macReview ? setMacSplit : undefined}
     />
   ) : commitHash ? (
     <CommitDetail
@@ -483,7 +503,9 @@ function GitPanelContent({
                   onOpen={showFile}
                   {...fileActions}
                 />
-                <CommitBox {...m} />
+                <div ref={commitField} className="flex flex-col gap-3.5">
+                  <CommitBox {...m} />
+                </div>
               </>
             ) : (
               <p className="text-muted-foreground px-1 text-[14px]">
@@ -529,8 +551,89 @@ function GitPanelContent({
             )}
           </div>
         )}
+        {macReview && !body && (
+          <ReviewBar
+            files={m.files}
+            canAsk={!!sessionId && !!openFile}
+            onAsk={() => {
+              if (!sessionId || !openFile) return;
+              addQuote(sessionId, openFile.file.path);
+              mobileNavActions.requestViewMode("chat", sessionId);
+            }}
+            onCommit={() => {
+              const field = commitField.current?.querySelector("textarea");
+              field?.scrollIntoView({ block: "nearest" });
+              field?.focus();
+            }}
+            pr={m.pr ? `#${m.pr.number}` : null}
+            onPullRequest={newPullRequest}
+          />
+        )}
       </main>
       {prModal}
+    </div>
+  );
+}
+
+/**
+ * Under the Mac window's review: how much changed, and what to do with it.
+ * Commit goes to the message beside the list; the pull request opens as it
+ * does elsewhere (or its review, once there is one)
+ */
+function ReviewBar({
+  files,
+  canAsk,
+  onAsk,
+  onCommit,
+  pr,
+  onPullRequest,
+}: {
+  files: AnyGitFile[];
+  canAsk: boolean;
+  onAsk: () => void;
+  onCommit: () => void;
+  pr: string | null;
+  onPullRequest: () => void;
+}) {
+  const total = reviewTotals(files, (f) => ("repoPath" in f ? f.repoPath : ""));
+  return (
+    <div
+      role="toolbar"
+      aria-label="Review"
+      className="border-border flex flex-none items-center gap-2 border-t px-4 py-2.5"
+    >
+      <span className="text-muted-foreground mr-auto flex min-w-0 items-baseline gap-2 truncate text-[13px]">
+        {total.files} {total.files === 1 ? "file" : "files"}
+        {total.additions > 0 && (
+          <span className="n-add font-mono">+{total.additions}</span>
+        )}
+        {total.deletions > 0 && (
+          <span className="n-del font-mono">−{total.deletions}</span>
+        )}
+      </span>
+      <button
+        type="button"
+        onClick={onAsk}
+        disabled={!canAsk}
+        className="pill pill-secondary pill-sm flex-none active:opacity-80 disabled:opacity-50"
+      >
+        Ask for a change
+      </button>
+      <button
+        type="button"
+        onClick={onCommit}
+        disabled={total.files === 0}
+        className="pill pill-secondary pill-sm flex-none active:opacity-80 disabled:opacity-50"
+      >
+        Commit
+      </button>
+      <button
+        type="button"
+        onClick={onPullRequest}
+        className="pill pill-primary pill-sm flex-none active:opacity-80"
+      >
+        {pr ? `Pull request ${pr}` : "Open pull request"}
+      </button>
     </div>
   );
 }

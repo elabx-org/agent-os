@@ -40,6 +40,7 @@ import { resetSwap, toggleSwap } from "@/stores/paneOrder";
 import { focusStore } from "@/stores/focus";
 import { macHostStore } from "@/stores/macHost";
 import { useMacApp } from "@/hooks/useMacHost";
+import { inspectorShown } from "@/lib/mac-host";
 import { mobileNavActions, mobileNavStore } from "@/stores/mobileNav";
 import { ContextPanel } from "@/components/ReplyContext/ContextPanel";
 import { ChangesPage } from "@/components/Changes/ChangesPage";
@@ -253,7 +254,7 @@ export function SessionSpread({
   const hingeX = useHinge(duo && !fold);
   const { on: focus } = useSnapshot(focusStore);
   const mac = useMacApp();
-  const { inspector: macInspector } = useSnapshot(macHostStore);
+  const macChoice = useSnapshot(macHostStore);
   const { viewMode, liveOpen, changesOpen } = useSnapshot(mobileNavStore);
   const { open: review } = useSnapshot(diffReviewStore);
   const reviewOpen = !!review && review.sessionId === session?.id;
@@ -316,7 +317,8 @@ export function SessionSpread({
     reviewOpen,
   });
   // The Mac window's inspector button puts the rail away by itself
-  const showRail = railWanted && !(mac && desktop && !macInspector);
+  const showRail =
+    railWanted && !(mac && desktop && !inspectorShown(macChoice, viewMode));
   // Flat there's no gutter: the pages meet at the hinge
   const spreadStart = book ? book.start : hingeX;
   const spreadEnd = book ? book.end : hingeX;
