@@ -41,6 +41,7 @@ import {
 import { useViewport } from "@/hooks/useViewport";
 import { useViewportHeight } from "@/hooks/useViewportHeight";
 import { useNativeBridge } from "@/hooks/useNativeBridge";
+import { useMacHost } from "@/hooks/useMacHost";
 import { useSessionLinks } from "@/hooks/useSessionLinks";
 import { useOtherMachinesNow } from "@/components/Machines/useOtherMachinesNow";
 import { othersNeedCount } from "@/lib/machine-now";
@@ -1019,6 +1020,14 @@ function HomeContent() {
     (s) => s.id === focusedActiveTab?.sessionId
   );
   useScriptShortcuts(activeSession?.project_id, activeSession?.id);
+  // Inside the Mac app: its toolbar shows and switches what is in front
+  useMacHost({
+    session: activeSession,
+    projects,
+    sidebarOpen,
+    setSidebarOpen,
+    needs: needsCount,
+  });
   useFreshSessionCleanup(focusedActiveTab?.sessionId ?? undefined);
   const startDevServerProject = startDevServerProjectId
     ? (projects.find((p) => p.id === startDevServerProjectId) ?? null)

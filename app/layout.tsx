@@ -5,6 +5,7 @@ import { Providers } from "@/components/Providers";
 import { DENSITY_BOOT_SCRIPT } from "@/lib/display-density";
 import { BACKGROUND_BOOT_SCRIPT } from "@/lib/background";
 import { LOOK_BOOT_SCRIPT } from "@/lib/look";
+import { MAC_BOOT_SCRIPT } from "@/lib/mac-host";
 import "./globals.css";
 
 // Inter and JetBrains Mono: the modern look's type (variable names kept for
@@ -67,6 +68,8 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: LOOK_BOOT_SCRIPT }} />
         {/* This device's own background, if any, over the theme's */}
         <script dangerouslySetInnerHTML={{ __html: BACKGROUND_BOOT_SCRIPT }} />
+        {/* Inside the Mac app: the floating-pane layout, before paint */}
+        <script dangerouslySetInnerHTML={{ __html: MAC_BOOT_SCRIPT }} />
       </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} ${plexMono.variable} font-sans antialiased`}

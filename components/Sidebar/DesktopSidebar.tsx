@@ -40,6 +40,8 @@ import {
   sidebarProjects,
 } from "./model";
 import { UsageCard } from "./UsageCard";
+import { NeedsYouCard } from "@/components/Chat/NeedsYouCard";
+import { useMacApp } from "@/hooks/useMacHost";
 
 export interface DesktopSidebarProps {
   /** Sessions, projects, statuses and the handlers (New, Find, open) */
@@ -94,16 +96,24 @@ function SessionRows({
   statuses,
   selectedId,
   onOpenSession,
+  detail,
 }: {
   sessions: Session[];
   state: "needs" | "limited" | "work" | "idle";
   statuses: Record<string, SessionStatus>;
   selectedId?: string;
   onOpenSession: (session: Session) => void;
+  /** A second line with what the session is doing */
+  detail?: boolean;
 }) {
   const titles = useListTitles(sessions);
   return sessions.map((s) => {
     const { title } = displayTitle(s, titles);
+    // What it is doing, under its name (the Mac window's sidebar)
+    const line =
+      detail && (state === "work" || state === "needs")
+        ? statuses[s.id]?.lastLine?.trim()
+        : undefined;
     return (
       <button
         key={s.id}
@@ -114,17 +124,61 @@ function SessionRows({
         title={statuses[s.id]?.lastLine || undefined}
         className={cn(
           "srow hover:bg-foreground/5 w-full flex-none text-left",
+          line && "h-12",
           s.id === selectedId && "sel hover:bg-primary/20"
         )}
       >
         <StateDot state={state} />
-        <span className="min-w-0 flex-1 truncate">{title}</span>
+        {line ? (
+          <span className="flex min-w-0 flex-1 flex-col leading-tight">
+            <span className="truncate">{title}</span>
+            <span className="text-muted-foreground truncate text-[12px]">
+              {line}
+            </span>
+          </span>
+        ) : (
+          <span className="min-w-0 flex-1 truncate">{title}</span>
+        )}
         <span className="text-muted-foreground text-[13px] tabular-nums">
           {shortAge(s.updated_at)}
         </span>
       </button>
     );
   });
+}
+
+/**
+ * The Mac window's sidebar pins what waits on you, with its answer in
+ * place: the first waiting session's question or permission request
+ */
+function PinnedNeedsYou({
+  session,
+  onOpen,
+}: {
+  session: Session;
+  onOpen: () => void;
+}) {
+  const { title } = displayTitle(session, useListTitles([session]));
+  return (
+    <section
+      aria-label={`${title} needs you`}
+      className="flex flex-none flex-col gap-1.5"
+    >
+      <button
+        type="button"
+        onClick={onOpen}
+        className="truncate px-2.5 text-left text-[13px] font-semibold hover:underline"
+      >
+        {title} needs you
+      </button>
+      <NeedsYouCard
+        session={session}
+        variant="sheet"
+        noHead
+        onOpenTerminal={onOpen}
+      />
+    </section>
+  );
 }
 
 /** Rows from the other linked machines: tagged, a click moves the tab there */
@@ -199,6 +253,7 @@ export function DesktopSidebar({
   const { open: newOpen } = useSnapshot(newSurfaceStore);
   const { homeTab } = useSnapshot(mobileNavStore);
   const { enabled: running, runners } = useSnapshot(runningStore);
+  const mac = useMacApp();
   // The server renders the Mac's; others see their own once mounted
   const [findKey, setFindKey] = useState("⌘K");
   useEffect(() => {
@@ -277,7 +332,8 @@ export function DesktopSidebar({
       aria-label="Sessions and projects"
       className="bg-page flex h-full flex-col gap-3.5 border-r border-[var(--hair)] px-3 py-[18px]"
     >
-      <div className="flex items-center gap-2.5 px-1.5">
+      {/* Inside the Mac app the window names the app and has New */}
+      <div className="mac-hide flex items-center gap-2.5 px-1.5">
         <span className="bg-primary flex h-7 w-7 flex-none items-center justify-center rounded-lg text-white">
           <AppLogo className="h-4 w-4" />
         </span>
@@ -324,6 +380,13 @@ export function DesktopSidebar({
         </button>
       )}
 
+      {mac && !newOpen && waiting[0] && (
+        <PinnedNeedsYou
+          session={waiting[0]}
+          onOpen={() => onOpenSession(waiting[0])}
+        />
+      )}
+
       <nav
         aria-label="Sessions"
         className="-mx-1 flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-1"
@@ -339,6 +402,7 @@ export function DesktopSidebar({
               statuses={sessionStatuses}
               selectedId={selectedId}
               onOpenSession={onOpenSession}
+              detail={mac}
             />
             <OtherRows
               sessions={others.needs}
@@ -356,6 +420,7 @@ export function DesktopSidebar({
               statuses={sessionStatuses}
               selectedId={selectedId}
               onOpenSession={onOpenSession}
+              detail={mac}
             />
           </>
         )}
@@ -370,6 +435,7 @@ export function DesktopSidebar({
               statuses={sessionStatuses}
               selectedId={selectedId}
               onOpenSession={onOpenSession}
+              detail={mac}
             />
             <OtherRows
               sessions={others.working}
@@ -441,6 +507,7 @@ export function DesktopSidebar({
               statuses={sessionStatuses}
               selectedId={selectedId}
               onOpenSession={onOpenSession}
+              detail={mac}
             />
             {loose.length > looseShown.length && noProjectId && (
               <button

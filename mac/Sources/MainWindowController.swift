@@ -25,10 +25,25 @@ enum AppPolicy {
   }
 }
 
-/// The one window: this Mac's AgentOS, desktop layout
+/// The one window: this Mac's AgentOS. The window draws the toolbar (the
+/// session's name, its views, Find, New, Open In and the two pane buttons)
+/// over a blurred backdrop; the page lays its panes out under it. The
+/// toolbar shows what the page says is in front (PageState) and its buttons
+/// send the page one fixed word each (PageAction).
 @MainActor
-final class MainWindowController: NSWindowController, NSWindowDelegate {
+final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolbarDelegate, NSMenuItemValidation {
   let pane: WebPane
+  /// Finds the folder of a session for Open In. A seam for the self-test.
+  var sessionRows: () -> [[String: Any]] = {
+    ((Backend.request("/api/sessions") as? [String: Any])?["sessions"] as? [[String: Any]]) ?? []
+  }
+  /// Opens a file or folder with an app. A seam for the self-test.
+  var openWith: (URL, URL) -> Void = { target, app in
+    NSWorkspace.shared.open([target], withApplicationAt: app, configuration: NSWorkspace.OpenConfiguration())
+  }
+  private let views = NSSegmentedControl()
+  private var tabs: [ToolbarModel.Tab] = []
+  private var toolbarItems: [NSToolbarItem.Identifier: NSToolbarItem] = [:]
   weak var host: WindowHost?
   private var notes: [NSObjectProtocol] = []
   /// The window was shown or minimised when the app was hidden (⌘H)
@@ -41,19 +56,49 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     self.host = host
     let window = NSWindow(
       contentRect: NSRect(x: 0, y: 0, width: 1200, height: 800),
-      styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
+      styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered,
+      defer: false)
     window.isReleasedWhenClosed = false
     window.tabbingMode = .disallowed
     window.isRestorable = false
     window.collectionBehavior = [.fullScreenPrimary]
     window.minSize = NSSize(width: 480, height: 360)
     window.title = Strings.appName
-    window.contentView = pane
+    window.titlebarAppearsTransparent = true
+    window.toolbarStyle = .unified
+    // The backdrop the page's panes float over, behind the toolbar too
+    let backdrop = NSVisualEffectView()
+    backdrop.material = .sidebar
+    backdrop.blendingMode = .behindWindow
+    backdrop.state = .followsWindowActiveState
+    window.contentView = backdrop
+    pane.translatesAutoresizingMaskIntoConstraints = false
+    backdrop.addSubview(pane)
+    // The page starts under the toolbar, not behind it
+    let top = (window.contentLayoutGuide as? NSLayoutGuide)?.topAnchor ?? backdrop.topAnchor
+    NSLayoutConstraint.activate([
+      pane.leadingAnchor.constraint(equalTo: backdrop.leadingAnchor),
+      pane.trailingAnchor.constraint(equalTo: backdrop.trailingAnchor),
+      pane.topAnchor.constraint(equalTo: top),
+      pane.bottomAnchor.constraint(equalTo: backdrop.bottomAnchor),
+    ])
     if !window.setFrameUsingName(autosaveName) { window.center() }
     window.setFrameAutosaveName(autosaveName)
     super.init(window: window)
     window.delegate = self
+    views.segmentStyle = .automatic
+    views.trackingMode = .selectOne
+    views.target = self
+    views.action = #selector(pickView(_:))
+    let toolbar = NSToolbar(identifier: "AgentOSMain")
+    toolbar.delegate = self
+    toolbar.displayMode = .iconOnly
+    toolbar.allowsUserCustomization = false
+    if #available(macOS 13.0, *) { toolbar.centeredItemIdentifiers = [Self.viewsItem] }
+    window.toolbar = toolbar
     pane.onChange = { [weak self] in self?.titleChanged() }
+    pane.onState = { [weak self] _ in self?.stateChanged() }
+    stateChanged()
     let center = NotificationCenter.default
     for name in [NSWindow.didBecomeKeyNotification, NSWindow.didMiniaturizeNotification,
       NSWindow.didDeminiaturizeNotification]
@@ -82,7 +127,209 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
   required init?(coder: NSCoder) { fatalError("not used") }
 
   private func titleChanged() {
-    window?.title = Strings.windowTitle(pane.webView.title)
+    let shown = ToolbarModel.title(pane.state, pageTitle: pane.webView.title)
+    window?.title = shown.title
+    window?.subtitle = shown.subtitle
+  }
+
+  // MARK: Toolbar
+
+  static let sidebarItem = NSToolbarItem.Identifier("sidebar")
+  static let viewsItem = NSToolbarItem.Identifier("views")
+  static let newItem = NSToolbarItem.Identifier("new")
+  static let findItem = NSToolbarItem.Identifier("find")
+  static let openInItem = NSToolbarItem.Identifier("openIn")
+  static let inspectorItem = NSToolbarItem.Identifier("inspector")
+
+  func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+    [
+      Self.sidebarItem, .flexibleSpace, Self.viewsItem, .flexibleSpace, Self.newItem, Self.findItem,
+      Self.openInItem, Self.inspectorItem,
+    ]
+  }
+
+  func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+    toolbarDefaultItemIdentifiers(toolbar)
+  }
+
+  private func button(
+    _ id: NSToolbarItem.Identifier, _ label: String, _ tip: String, symbol: String, _ action: Selector
+  ) -> NSToolbarItem {
+    let item = NSToolbarItem(itemIdentifier: id)
+    item.label = label
+    item.toolTip = tip
+    item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)
+    item.isBordered = true
+    item.target = self
+    item.action = action
+    return item
+  }
+
+  func toolbar(
+    _ toolbar: NSToolbar, itemForItemIdentifier id: NSToolbarItem.Identifier, willBeInsertedIntoToolbar flag: Bool
+  ) -> NSToolbarItem? {
+    let item: NSToolbarItem
+    switch id {
+    case Self.sidebarItem:
+      item = button(id, Strings.sidebarLabel, Strings.sidebarTip, symbol: "sidebar.left", #selector(toggleSidebarPane(_:)))
+    case Self.inspectorItem:
+      item = button(
+        id, Strings.inspectorLabel, Strings.inspectorTip, symbol: "sidebar.right", #selector(toggleInspectorPane(_:)))
+    case Self.newItem:
+      item = button(id, Strings.newChatLabel, Strings.newChatTip, symbol: "square.and.pencil", #selector(newChat(_:)))
+    case Self.findItem:
+      item = button(id, Strings.findLabel, Strings.findTip, symbol: "magnifyingglass", #selector(findInPage(_:)))
+    case Self.viewsItem:
+      item = NSToolbarItem(itemIdentifier: id)
+      item.label = Strings.viewsLabel
+      item.view = views
+    case Self.openInItem:
+      let menu = NSMenuToolbarItem(itemIdentifier: id)
+      menu.label = Strings.openInLabel
+      menu.toolTip = Strings.openInTip
+      menu.image = NSImage(systemSymbolName: "arrow.up.forward.app", accessibilityDescription: Strings.openInLabel)
+      menu.showsIndicator = true
+      let list = NSMenu()
+      list.autoenablesItems = false
+      for app in OpenIn.App.allCases {
+        let row = NSMenuItem(title: app.title, action: #selector(openIn(_:)), keyEquivalent: "")
+        row.target = self
+        row.representedObject = app.rawValue
+        list.addItem(row)
+      }
+      menu.menu = list
+      item = menu
+    default:
+      return nil
+    }
+    toolbarItems[id] = item
+    applyState()
+    return item
+  }
+
+  private func stateChanged() {
+    titleChanged()
+    applyState()
+    // The window's look follows the page's: light or dark
+    window?.appearance = pane.state.map { NSAppearance(named: $0.dark ? .darkAqua : .aqua) } ?? nil
+  }
+
+  /// The toolbar from the page's state: with no state (another page, the
+  /// offline view) only the window's own buttons stay
+  private func applyState() {
+    let state = pane.state
+    let next = ToolbarModel.tabs(state)
+    if next != tabs {
+      tabs = next
+      views.segmentCount = next.count
+      for (i, tab) in next.enumerated() {
+        views.setLabel(tab.label, forSegment: i)
+        views.setWidth(0, forSegment: i)
+      }
+      views.sizeToFit()
+    }
+    if let index = ToolbarModel.selected(state) {
+      views.selectedSegment = index
+    } else {
+      for i in 0..<views.segmentCount { views.setSelected(false, forSegment: i) }
+    }
+    let known = state != nil
+    let session = state?.session != nil
+    func set(_ id: NSToolbarItem.Identifier, shown: Bool) {
+      guard let item = toolbarItems[id] else { return }
+      if #available(macOS 15.0, *) { item.isHidden = !shown }
+      item.isEnabled = shown
+    }
+    set(Self.viewsItem, shown: session)
+    set(Self.openInItem, shown: session)
+    for id in [Self.sidebarItem, Self.inspectorItem, Self.newItem, Self.findItem] { set(id, shown: known) }
+  }
+
+  /// What the toolbar shows now, for the state dump
+  var toolbarDump: [String: Any] {
+    let state = pane.state
+    func shown(_ id: NSToolbarItem.Identifier) -> Bool { toolbarItems[id]?.isEnabled ?? false }
+    return [
+      "known": state != nil,
+      "session": state?.session ?? NSNull() as Any,
+      "tabs": tabs.map(\.label),
+      "selected": views.selectedSegment,
+      "views": shown(Self.viewsItem),
+      "openIn": shown(Self.openInItem),
+      "panes": shown(Self.sidebarItem) && shown(Self.inspectorItem),
+      "sidebar": state?.sidebar ?? false,
+      "inspector": state?.inspector ?? false,
+      "dark": state?.dark ?? false,
+      "seeThrough": !(pane.webView.value(forKey: "drawsBackground") as? Bool ?? true),
+    ]
+  }
+
+  @objc private func pickView(_ sender: NSSegmentedControl) {
+    let index = sender.selectedSegment
+    guard tabs.indices.contains(index) else { return }
+    pane.act(tabs[index].action)
+  }
+
+  @objc func toggleSidebarPane(_ sender: Any?) { pane.act(.sidebar) }
+  @objc func toggleInspectorPane(_ sender: Any?) { pane.act(.inspector) }
+  @objc func findInPage(_ sender: Any?) { pane.act(.find) }
+  @objc func newChat(_ sender: Any?) { pane.act(.new) }
+
+  /// The View menu's two pane items say what they will do
+  func validateMenuItem(_ item: NSMenuItem) -> Bool {
+    let state = pane.state
+    switch item.action {
+    case #selector(toggleSidebarPane(_:)):
+      item.title = state?.sidebar == true ? Strings.hideSidebar : Strings.showSidebar
+      return state != nil
+    case #selector(toggleInspectorPane(_:)):
+      item.title = state?.inspector == true ? Strings.hideInspector : Strings.showInspector
+      return state?.session != nil
+    case #selector(findInPage(_:)):
+      return state != nil
+    default:
+      return true
+    }
+  }
+
+  // MARK: Open In
+
+  /// The folder comes from this Mac's AgentOS, not from the page: the page
+  /// only says which session is in front
+  @objc private func openIn(_ sender: NSMenuItem) {
+    guard let raw = sender.representedObject as? String, let app = OpenIn.App(rawValue: raw),
+      let id = pane.state?.session
+    else { return }
+    let rows = sessionRows
+    let home = NSHomeDirectory()
+    DispatchQueue.global(qos: .userInitiated).async {
+      let folder = OpenIn.folder(of: id, in: rows(), home: home)
+      var isFolder: ObjCBool = false
+      let there = folder.map { FileManager.default.fileExists(atPath: $0, isDirectory: &isFolder) && isFolder.boolValue }
+      let entries = (folder.flatMap { try? FileManager.default.contentsOfDirectory(atPath: $0) }) ?? []
+      DispatchQueue.main.async { [weak self] in
+        MainActor.assumeIsolated {
+          guard let self else { return }
+          guard let folder, there == true else {
+            return self.tell(Strings.noFolderTitle, Strings.noFolderBody)
+          }
+          guard let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: app.bundleId) else {
+            return self.tell(Strings.noAppTitle(app.title), "")
+          }
+          let target = app == .xcode ? OpenIn.xcodeTarget(folder: folder, entries: entries) : folder
+          self.openWith(URL(fileURLWithPath: target), appURL)
+        }
+      }
+    }
+  }
+
+  private func tell(_ title: String, _ body: String) {
+    guard let window else { return }
+    let alert = NSAlert()
+    alert.messageText = title
+    alert.informativeText = body
+    alert.addButton(withTitle: Strings.ok)
+    alert.beginSheetModal(for: window)
   }
 
   var isShown: Bool { window?.isVisible == true }

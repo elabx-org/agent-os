@@ -23,7 +23,7 @@ export function DesktopLiveButton() {
       aria-pressed={liveOpen}
       title="Live activity"
       className={cn(
-        "hover:bg-accent hover:text-foreground flex h-9 w-9 shrink-0 items-center justify-center rounded-full",
+        "hover:bg-accent hover:text-foreground mac-hide flex h-9 w-9 shrink-0 items-center justify-center rounded-full",
         liveOpen ? "text-primary" : "text-muted-foreground"
       )}
     >

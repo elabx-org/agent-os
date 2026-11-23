@@ -1,0 +1,100 @@
+/* =============================================================================
+   Inside the Mac app (html[data-mac], set before paint by lib/mac-host.ts).
+   The window draws the toolbar and a blurred backdrop; the desktop layout's
+   three panes float over it. Unlayered on purpose: these rules win over the
+   utilities they restyle. Nothing here applies in a browser.
+   ============================================================================= */
+
+:root {
+  --mac-glass: rgba(255, 255, 255, 0.58);
+  --mac-edge: rgba(0, 0, 0, 0.1);
+  --mac-shadow: 0 1px 2px rgba(0, 0, 0, 0.06), 0 8px 24px rgba(0, 0, 0, 0.08);
+  --mac-ground: #dcdce2;
+}
+.dark {
+  --mac-glass: rgba(30, 30, 34, 0.55);
+  --mac-edge: rgba(255, 255, 255, 0.11);
+  --mac-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 10px 28px rgba(0, 0, 0, 0.35);
+  --mac-ground: #26262b;
+}
+
+/* What the toolbar already shows: the view tabs, the title, the Live button */
+html[data-mac] .mac-hide {
+  display: none !important;
+}
+.mac-spacer {
+  display: none;
+}
+html[data-mac] .mac-spacer {
+  display: block;
+  flex: 1 1 0;
+}
+
+/* The system's own text face */
+html[data-mac] body.font-sans {
+  font-family:
+    -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+}
+
+/* Only the desktop layout is see-through; a narrow window, the sign-in page
+   and anything else keep their own background */
+html[data-mac]:has([data-mac-root]) body {
+  background: transparent;
+}
+/* A window that can't be seen through: the panes float on a plain ground */
+html[data-mac][data-mac-opaque]:has([data-mac-root]) body {
+  background: var(--mac-ground);
+}
+html[data-mac] [data-mac-root] {
+  background: transparent;
+  padding: 2px 8px 8px;
+}
+
+html[data-mac] [data-mac-pane] {
+  overflow: hidden;
+  border: 0.5px solid var(--mac-edge);
+  border-radius: 14px;
+  box-shadow: var(--mac-shadow);
+}
+html[data-mac] [data-mac-pane="main"] {
+  background: hsl(var(--background));
+}
+html[data-mac] [data-mac-pane="side"],
+html[data-mac] [data-mac-pane="inspector"] {
+  background: var(--mac-glass);
+}
+html[data-mac] [data-mac-pane="side"] {
+  margin-right: 8px;
+}
+html[data-mac] [data-mac-pane="inspector"] {
+  margin-left: 8px;
+}
+/* Put away: no edge left behind */
+html[data-mac] [data-mac-pane="side"][data-open="false"] {
+  margin-right: 0;
+  border: 0;
+  box-shadow: none;
+}
+/* The panes' own fills step aside for the glass */
+html[data-mac] [data-mac-pane="side"] .bg-page,
+html[data-mac] [data-mac-pane="side"] .bg-sidebar-background {
+  background: transparent;
+}
+html[data-mac] [data-mac-pane="side"] aside {
+  border-right: 0;
+}
+
+/* The session's bar keeps its chips; the toolbar has the rest */
+html[data-mac] [data-mac-pane="main"] header.h-16 {
+  height: 3rem;
+  padding-inline: 1rem;
+}
+
+/* Settings covers the panes: one pane of its own, inside the window's edge */
+html[data-mac] .mac-cover {
+  inset: 2px 8px 8px;
+  overflow: hidden;
+  border: 0.5px solid var(--mac-edge);
+  border-radius: 14px;
+  box-shadow: var(--mac-shadow);
+}

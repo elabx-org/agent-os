@@ -400,8 +400,12 @@ export function DesktopHeader({
         dimmed && "opacity-70"
       )}
     >
-      <Avatar {...agentAvatar(info.session.agent_type)} size="sm" />
-      <div className="flex min-w-0 flex-1 flex-col">
+      {/* Inside the Mac app the window's toolbar names the session and
+          holds the view tabs (styles/mac.css) */}
+      <span className="mac-hide contents">
+        <Avatar {...agentAvatar(info.session.agent_type)} size="sm" />
+      </span>
+      <div className="mac-hide flex min-w-0 flex-1 flex-col">
         <span className="t-head truncate leading-tight">{info.title}</span>
         <Crumb
           info={info}
@@ -413,19 +417,20 @@ export function DesktopHeader({
           className="text-[13px]"
         />
       </div>
+      <span aria-hidden className="mac-spacer" />
       <MachineChip />
       {/* A narrow bar keeps Chat | Terminal (Changes is the ⋯'s drawer) */}
       <ViewSeg
         viewMode={viewMode}
         onViewModeChange={onViewModeChange}
-        className="bg-card @min-[640px]/bar:hidden"
+        className="bg-card mac-hide @min-[640px]/bar:hidden"
         views={CHAT_TERMINAL}
       />
       <ViewSeg
         // `workers` is the agents view too
         viewMode={agentsView ? "agents" : viewMode}
         onViewModeChange={onViewModeChange}
-        className="bg-card @max-[640px]/bar:hidden"
+        className="bg-card mac-hide @max-[640px]/bar:hidden"
         views={[
           ...CHAT_TERMINAL,
           {

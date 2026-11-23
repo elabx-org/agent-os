@@ -228,6 +228,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WindowHost, StatusMenu
 
   func channelReload() { main?.pane.reload() }
 
+  func channelToolbar(_ action: PageAction) { main?.pane.act(action) }
+
   func channelQuit() {
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { NSApp.terminate(nil) }
   }
@@ -254,6 +256,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WindowHost, StatusMenu
         "path": main?.pane.currentPath ?? null as Any, "title": w?.title ?? null as Any,
         "overlay": main?.pane.overlay?.rawValue ?? "none",
         "showingSession": windowShowingSession ?? null as Any,
+        "subtitle": w?.subtitle ?? null as Any,
+        "toolbar": main?.toolbarDump ?? null as Any,
       ] as [String: Any],
       "icon": [
         "state": state.name, "count": state.count, "linkDown": status.linkDown, "tooltip": status.tooltip,
@@ -378,6 +382,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WindowHost, StatusMenu
           let url = TestFiles.write(name: "\(name)-window.png", data: png)
         {
           files.append(url.path)
+        }
+        // The window's own parts (title bar, toolbar): the page's area is
+        // drawn by another process and stays empty here
+        if let frame = controller.window?.contentView?.superview,
+          let rep = frame.bitmapImageRepForCachingDisplay(in: frame.bounds)
+        {
+          frame.cacheDisplay(in: frame.bounds, to: rep)
+          if let png = rep.representation(using: .png, properties: [:]),
+            let url = TestFiles.write(name: "\(name)-frame.png", data: png)
+          {
+            files.append(url.path)
+          }
         }
         finish()
       }

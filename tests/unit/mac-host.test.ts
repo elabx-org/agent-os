@@ -1,0 +1,120 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import {
+  MAC_ACTIONS,
+  MAC_BOOT_SCRIPT,
+  isMacAction,
+  macChrome,
+  macState,
+  macView,
+  type MacStateInput,
+} from "../../lib/mac-host";
+
+const base: MacStateInput = {
+  session: { id: "s1", title: "Widget preview", branch: "main" },
+  project: "fusionha-ios",
+  machine: "Mac Studio",
+  covered: null,
+  viewMode: "git",
+  changes: 4,
+  agents: 0,
+  sidebar: true,
+  inspector: true,
+  dark: true,
+  needs: 1,
+};
+
+test("the Mac app is known by its user agent", () => {
+  assert.equal(macChrome("Mozilla/5.0 AgentOSMac/0.5.0 MacChrome/1"), 1);
+  assert.equal(macChrome("Mozilla/5.0 AgentOSMac/0.5.0"), 0);
+  assert.equal(macChrome("Mozilla/5.0 Chrome/140 Safari/537"), 0);
+});
+
+test("the session in front, with its line", () => {
+  const state = macState(base);
+  assert.equal(state.session, "s1");
+  assert.equal(state.title, "Widget preview");
+  assert.equal(state.detail, "fusionha-ios · main · Mac Studio");
+  assert.equal(state.view, "changes");
+  assert.equal(state.changes, 4);
+});
+
+test("a page or Settings over the session: no views, the page's name", () => {
+  const state = macState({ ...base, covered: "Settings" });
+  assert.equal(state.session, null);
+  assert.equal(state.title, "Settings");
+  assert.equal(state.detail, "Mac Studio");
+  assert.equal(state.view, null);
+  assert.equal(state.changes, 0);
+  assert.equal(state.agents, false);
+});
+
+test("no session open", () => {
+  const state = macState({ ...base, session: null });
+  assert.equal(state.session, null);
+  assert.equal(state.title, "");
+  assert.equal(state.view, null);
+});
+
+test("parts that aren't known are left out of the line", () => {
+  const state = macState({
+    ...base,
+    project: null,
+    session: { id: "s1", title: "T", branch: null },
+  });
+  assert.equal(state.detail, "Mac Studio");
+});
+
+test("the pane's views map to the toolbar's", () => {
+  assert.equal(macView("git"), "changes");
+  assert.equal(macView("workers"), "agents");
+  assert.equal(macView("chat"), "chat");
+  assert.equal(macView("nope"), null);
+  assert.equal(macView(null), null);
+});
+
+test("Agents is offered once the session has any", () => {
+  assert.equal(macState({ ...base, agents: 2 }).agents, true);
+  assert.equal(macState(base).agents, false);
+});
+
+test("counts are whole and never negative", () => {
+  const state = macState({ ...base, changes: -3, needs: 2.7 });
+  assert.equal(state.changes, 0);
+  assert.equal(state.needs, 2);
+});
+
+test("only the toolbar's own words are actions", () => {
+  for (const action of MAC_ACTIONS) assert.ok(isMacAction(action));
+  assert.equal(isMacAction("stop"), false);
+  assert.equal(isMacAction(7), false);
+  assert.equal(isMacAction(undefined), false);
+});
+
+/** Runs the boot script as a page with this user agent would */
+function boot(userAgent: string): Record<string, string> {
+  const set: Record<string, string> = {};
+  const run = new Function("navigator", "document", MAC_BOOT_SCRIPT);
+  run(
+    { userAgent },
+    {
+      documentElement: {
+        setAttribute: (name: string, value: string) => (set[name] = value),
+      },
+    }
+  );
+  return set;
+}
+
+test("the boot script marks the page before paint", () => {
+  assert.deepEqual(boot("Mozilla/5.0 AgentOSMac/0.5.0 MacChrome/1"), {
+    "data-mac": "1",
+  });
+  assert.deepEqual(
+    boot("Mozilla/5.0 AgentOSMac/0.5.0 MacChrome/1 MacOpaque/1"),
+    { "data-mac": "1", "data-mac-opaque": "" }
+  );
+  // A browser, and an older Mac app, are left alone
+  assert.deepEqual(boot("Mozilla/5.0 Chrome/140 Safari/537"), {});
+  assert.deepEqual(boot("Mozilla/5.0 AgentOSMac/0.4.0 MacOpaque/1"), {});
+});

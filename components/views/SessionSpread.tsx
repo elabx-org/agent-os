@@ -38,6 +38,8 @@ import { isNative, nativeCaps, onNativeEvent } from "@/lib/native-bridge";
 import { postureStore } from "@/stores/posture";
 import { resetSwap, toggleSwap } from "@/stores/paneOrder";
 import { focusStore } from "@/stores/focus";
+import { macHostStore } from "@/stores/macHost";
+import { useMacApp } from "@/hooks/useMacHost";
 import { mobileNavActions, mobileNavStore } from "@/stores/mobileNav";
 import { ContextPanel } from "@/components/ReplyContext/ContextPanel";
 import { ChangesPage } from "@/components/Changes/ChangesPage";
@@ -250,6 +252,8 @@ export function SessionSpread({
   const book = fold?.axis === "vertical" ? fold : null;
   const hingeX = useHinge(duo && !fold);
   const { on: focus } = useSnapshot(focusStore);
+  const mac = useMacApp();
+  const { inspector: macInspector } = useSnapshot(macHostStore);
   const { viewMode, liveOpen, changesOpen } = useSnapshot(mobileNavStore);
   const { open: review } = useSnapshot(diffReviewStore);
   const reviewOpen = !!review && review.sessionId === session?.id;
@@ -286,7 +290,7 @@ export function SessionSpread({
     changesBeside,
     reviewRoom,
     reviewBeside,
-    showRail,
+    showRail: railWanted,
     paneLeft,
     paneRight,
     paneWide,
@@ -311,6 +315,8 @@ export function SessionSpread({
     roomForRail,
     reviewOpen,
   });
+  // The Mac window's inspector button puts the rail away by itself
+  const showRail = railWanted && !(mac && desktop && !macInspector);
   // Flat there's no gutter: the pages meet at the hinge
   const spreadStart = book ? book.start : hingeX;
   const spreadEnd = book ? book.end : hingeX;
@@ -492,6 +498,8 @@ export function SessionSpread({
       {/* The home: a sidebar on the web, the left page on the open Duo */}
       <div
         ref={homeRef}
+        data-mac-pane={desktop ? "side" : undefined}
+        data-open={homeOpen ? "true" : "false"}
         className={cn(
           "kb-compact-hide bg-sidebar-background relative flex-shrink-0 overflow-hidden transition-all duration-200",
           !homeWidth && "shadow-xl shadow-black/10 dark:shadow-black/30",
@@ -574,6 +582,7 @@ export function SessionSpread({
       <div
         // A spread page keeps its controls on its own pages
         data-spread={paneWide && !pageWide ? "wide" : undefined}
+        data-mac-pane={desktop ? "main" : undefined}
         className={cn("flex min-w-0", paneLeft ? "flex-shrink-0" : "flex-1")}
         style={paneLeft ? { width: leftPage } : undefined}
       >
@@ -642,6 +651,7 @@ export function SessionSpread({
       {showRail && session && (
         <aside
           aria-label="Live activity"
+          data-mac-pane={desktop ? "inspector" : undefined}
           className={cn(
             "bg-background flex min-h-0 flex-col",
             pages

@@ -3,6 +3,8 @@
 import { Check, ChevronDown, EyeOff } from "lucide-react";
 import type { Session } from "@/lib/db";
 import { setFocus } from "@/stores/focus";
+import { setMacInspector } from "@/stores/macHost";
+import { isMacApp } from "@/lib/mac-host";
 import { BesideItems } from "@/components/BesideItems";
 import {
   DropdownMenu,
@@ -74,7 +76,13 @@ export function ActivityRail({
             <BesideItems exclude={[session.id]} />
             <DropdownMenuSeparator />
             {/* The pane takes both pages (or the width): Focus */}
-            <DropdownMenuItem onSelect={onClose ?? (() => setFocus(true))}>
+            <DropdownMenuItem
+              onSelect={
+                onClose ??
+                // The Mac window's inspector button brings it back
+                (() => (isMacApp() ? setMacInspector(false) : setFocus(true)))
+              }
+            >
               <EyeOff className="h-4 w-4" />
               {onClose ? "Close" : "Hide"}
             </DropdownMenuItem>

@@ -280,6 +280,37 @@ enum Strings {
   static let appName = "AgentOS"
   static let bringAllToFront = "Bring All to Front"
 
+  // MARK: The window's toolbar
+
+  static let tabChat = "Chat"
+  static let tabTerminal = "Terminal"
+  static let tabFiles = "Files"
+  static let tabAgents = "Agents"
+  /// "Changes", or "Changes 4" with the number of changed files
+  static func tabChanges(_ files: Int) -> String { files > 0 ? "Changes \(files)" : "Changes" }
+  static let viewsLabel = "View"
+  static let sidebarLabel = "Sidebar"
+  static let sidebarTip = "Show or hide the sidebar"
+  static let inspectorLabel = "Inspector"
+  static let inspectorTip = "Show or hide the inspector"
+  static let findLabel = "Find"
+  static let findTip = "Find sessions, files and projects"
+  static let newChatLabel = "New Chat"
+  static let newChatTip = "Start a new chat"
+  static let openInLabel = "Open In"
+  static let openInTip = "Open this session's folder in another app"
+  static let openInFinder = "Finder"
+  static let openInXcode = "Xcode"
+  static let openInTerminal = "Terminal"
+  static let showSidebar = "Show Sidebar"
+  static let hideSidebar = "Hide Sidebar"
+  static let showInspector = "Show Inspector"
+  static let hideInspector = "Hide Inspector"
+  static let findMenu = "Find…"
+  static let noFolderTitle = "This session's folder isn't on this Mac"
+  static let noFolderBody = "The folder may have been moved or removed. The session itself is not affected."
+  static func noAppTitle(_ app: String) -> String { "\(app) isn't installed on this Mac" }
+
   static func aboutCredits(_ version: String) -> String {
     "AgentOS on this Mac, version \(version). This window shows the sessions on this Mac. Closing or quitting this app doesn't stop your sessions."
   }
@@ -312,8 +343,17 @@ enum Strings {
       quitAgentOS, fileMenu, newSession, closeWindow, editMenu, undo, redo, cut, copy, paste,
       pasteAndMatchStyle, selectAll, viewMenu, reloadPage, back, forward, enterFullScreen, windowMenu,
       minimize, zoom, appName, bringAllToFront, windowTitle(nil), aboutCredits("0.5.0"),
-    ] + stage2 + stage3 + alertDestructiveWords + offline + IconState.samples.map(tooltipFirst)
+    ] + toolbar + stage2 + stage3 + alertDestructiveWords + offline + IconState.samples.map(tooltipFirst)
       + [tooltipFirst(.needsYou(1)), tooltipFirst(.working(3))]
+  }
+
+  static var toolbar: [String] {
+    [
+      tabChat, tabTerminal, tabFiles, tabAgents, tabChanges(0), tabChanges(12), viewsLabel, sidebarLabel,
+      sidebarTip, inspectorLabel, inspectorTip, findLabel, findTip, newChatLabel, newChatTip, openInLabel,
+      openInTip, openInFinder, openInXcode, openInTerminal, showSidebar, hideSidebar, showInspector,
+      hideInspector, findMenu, noFolderTitle, noFolderBody, noAppTitle("Xcode"),
+    ]
   }
 
   static var stage2: [String] {

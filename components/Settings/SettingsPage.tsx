@@ -339,7 +339,8 @@ function SettingsLayer(props: NotificationsSectionProps) {
   );
 
   const layer =
-    "bg-background fixed inset-0 z-[45] flex pt-[env(safe-area-inset-top)] outline-none";
+    // mac-cover: inside the Mac app it is one more floating pane
+    "bg-background mac-cover fixed inset-0 z-[45] flex pt-[env(safe-area-inset-top)] outline-none";
   // Clear of the iOS app's system column on the right. In a browser with the
   // nav rail in that column, stop at the rail and leave it usable
   const rightInset = railWidth
