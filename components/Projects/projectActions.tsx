@@ -4,6 +4,7 @@ import { Fragment } from "react";
 import {
   Bot,
   FolderOpen,
+  Laptop,
   Pencil,
   Plus,
   Server,
@@ -32,6 +33,8 @@ export interface ProjectActionHandlers {
   onEdit?: () => void;
   onOpenInEditor?: () => void;
   onStartDevServer?: () => void;
+  /** The whole project, to a linked machine (lib/project-move-types.ts) */
+  onContinueElsewhere?: () => void;
   onDelete?: () => void;
 }
 
@@ -90,6 +93,13 @@ export function projectActionGroups(
       label: "Start dev server",
       icon: Server,
       onSelect: h.onStartDevServer,
+    });
+
+  if (h.onContinueElsewhere)
+    own.push({
+      label: "Continue on another machine",
+      icon: Laptop,
+      onSelect: h.onContinueElsewhere,
     });
 
   const remove: SheetAction[] = h.onDelete

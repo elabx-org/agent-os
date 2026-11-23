@@ -8,6 +8,7 @@
 
 import { capForAgent, normalizeMode } from "./permission-mode";
 import type { MoveSnapshot } from "./worktree-move-git";
+import type { ProjectCard } from "./project-move-types";
 
 /** "hub" or a machine id, as the hub names them */
 export type MachineRef = string;
@@ -133,6 +134,8 @@ export interface MoveManifest {
   };
   /** Uncommitted work as a hidden commit, null when the folder is clean */
   snapshot: MoveSnapshot | null;
+  /** The project it is in, for a machine that doesn't have it yet */
+  project?: ProjectCard | null;
 }
 
 /** Why a session can't leave (409 unless noted) */

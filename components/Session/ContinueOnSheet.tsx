@@ -25,6 +25,7 @@ import { mobileNavStore } from "@/stores/mobileNav";
 import { closeContinueSheet, continueSheetStore } from "@/stores/continueSheet";
 import { useLayoutMode } from "@/hooks/useLayoutMode";
 import { copySetupGap, useSetupGap } from "./SetupGap";
+import { ProjectContinueBody } from "./ProjectContinueBody";
 import {
   Sheet,
   SheetContent,
@@ -42,7 +43,7 @@ const STEPS: MoveStep[] = [
   "starting",
 ];
 
-interface Target {
+export interface Target {
   id: string;
   name: string;
   kind: "mac" | "server";
@@ -73,7 +74,7 @@ export function useCanContinueElsewhere(
   return mine !== null || data.machines.some((m) => m.status === "approved");
 }
 
-function useTargets(from: string): Target[] {
+export function useTargets(from: string): Target[] {
   const { data } = useMachines(5000);
   return useMemo(() => {
     if (!data?.enabled) return [];
@@ -625,7 +626,18 @@ export function ContinueOnSheetHost() {
           Continue this session on another linked machine, with the same
           conversation, branch and uncommitted changes
         </SheetDescription>
-        {current ? (
+        {current?.project ? (
+          <ProjectContinueBody
+            key={`project:${current.project.id ?? current.from}`}
+            project={current.project}
+            from={current.from ?? mine ?? HUB_TARGET}
+            prefer={current.from ? (mine ?? HUB_TARGET) : undefined}
+            back={!!current.from}
+            onClose={closeContinueSheet}
+            confirmRef={confirmRef}
+            busyRef={busyRef}
+          />
+        ) : current ? (
           <Body
             key={current.sessionId}
             sessionId={current.sessionId}
