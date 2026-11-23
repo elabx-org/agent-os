@@ -57,6 +57,7 @@ import {
 import { buildSummary } from "./summarize";
 import { sendText } from "./tmux-send";
 import { locateTranscript, type LocatedTranscript } from "./transcript-locate";
+import { TRUST_SCREEN, answerTrust, tmuxTrustPane } from "./trust-screen";
 import * as moveGit from "./worktree-move-git";
 import type { MoveSnapshot, WorkingTreeState } from "./worktree-move-git";
 import {
@@ -1202,10 +1203,6 @@ export function inRepository(folder: string, toplevel: string): boolean {
   return f === top || f.startsWith(top + path.sep);
 }
 
-/** Claude's folder trust screen (lib/session-ready.ts CLAUDE_DIALOGS) */
-export const TRUST_SCREEN =
-  /trust (the files in |the contents of )?this (folder|directory|project)|Is this a project you created or one you trust/i;
-
 /**
  * Claude trusts `cwd` (or a folder above it) in its config: read only,
  * never written (Claude rewrites that file itself)
@@ -1284,18 +1281,10 @@ const liveDeps = (): WorktreeMoveDeps => {
       }, `setup-worktree-${sessionId}`);
     },
     acceptTrust: async (session, sourceCwd) => {
-      const pane = `=${tmuxNameOf(session)}:`;
-      const { stdout } = await execFileAsync("tmux", [
-        "capture-pane",
-        "-p",
-        "-t",
-        pane,
-      ]);
-      const bottom = String(stdout).trimEnd().split("\n").slice(-20).join("\n");
-      if (!TRUST_SCREEN.test(bottom)) return false;
+      const pane = tmuxTrustPane(`=${tmuxNameOf(session)}:`);
+      if (!TRUST_SCREEN.test(await pane.read())) return false;
       if (!(await folderTrusted(sourceCwd))) return false;
-      await execFileAsync("tmux", ["send-keys", "-t", pane, "Enter"]);
-      return true;
+      return answerTrust(pane);
     },
     findPort: findAvailablePort,
     tmux: async (args) => {
