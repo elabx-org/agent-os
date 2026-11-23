@@ -11,7 +11,7 @@ import {
   type MacAction,
 } from "@/lib/mac-host";
 import { runNav } from "@/lib/nav-actions";
-import { useHereName } from "@/data/machines";
+import { useHereName, useMachines, useTabMachineId } from "@/data/machines";
 import { useGitStatus } from "@/data/git/queries";
 import { displayTitle, useListTitles } from "@/hooks/useSessionTitles";
 import { loadMacHost, macHostStore, setMacInspector } from "@/stores/macHost";
@@ -28,6 +28,19 @@ export function useMacApp(): boolean {
   const [mac, setMac] = useState(false);
   useEffect(() => setMac(isMacApp()), []);
   return mac;
+}
+
+/**
+ * What the Mac window calls the machine it shows: the linked machine the
+ * tab looks at, else this Mac's own AgentOS by its name, or "This Mac"
+ */
+export function useMacHereName(): string | null {
+  const tab = useTabMachineId();
+  const there = useHereName();
+  const { data } = useMachines();
+  if (tab) return there;
+  if (!data) return null;
+  return data.serverName?.trim() || "This Mac";
 }
 
 const PAGE_TITLE: Record<WorkspacePageKind, string> = {
@@ -74,7 +87,7 @@ export function useMacHost({
   const { page } = useSnapshot(workspacePageStore);
   const { open: settingsOpen } = useSnapshot(settingsPageStore);
   const { inspector } = useSnapshot(macHostStore);
-  const machine = useHereName();
+  const machine = useMacHereName();
   const titles = useListTitles(mac && session ? [session] : []);
   // The branch its folder is on (the pane asks for the same status)
   const { data: git } = useGitStatus(session?.working_directory ?? "", {

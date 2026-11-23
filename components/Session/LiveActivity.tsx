@@ -32,9 +32,9 @@ import {
   workingLine,
 } from "./activity-format";
 import { PanelClose } from "@/components/ui/page-panel";
-import { useMacApp } from "@/hooks/useMacHost";
+import { useMacApp, useMacHereName } from "@/hooks/useMacHost";
 import { useClaudeState } from "@/hooks/useClaudeState";
-import { useHereName, usePlaces, useTabMachineId } from "@/data/machines";
+import { usePlaces, useTabMachineId } from "@/data/machines";
 import { placeText } from "@/lib/backup/share-types";
 import { ageText } from "@/lib/session-move-types";
 
@@ -386,7 +386,7 @@ export function shortFolder(path: string): string {
 
 /** The inspector's Where: the machine, the folder, the copy elsewhere */
 function WhereSection({ session }: { session: Session }) {
-  const machine = useHereName();
+  const machine = useMacHereName();
   const { data } = usePlaces([session.id], useTabMachineId());
   const place = data?.places[session.id]?.find((p) => p.state !== "elsewhere");
   const folder = session.worktree_path || session.working_directory;
