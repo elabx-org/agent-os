@@ -69,7 +69,7 @@ function nameOf(machine: MachineRef): string {
 }
 
 /** What makes a call the user's on either machine */
-function userHeaders(request: Request): Record<string, string> {
+export function userHeaders(request: Request): Record<string, string> {
   const out: Record<string, string> = {};
   for (const name of [
     "cookie",
@@ -121,7 +121,7 @@ interface Answer {
  * link for a machine. Plain http, so a long transfer has no client
  * timeout of its own
  */
-function caller(headers: Record<string, string>) {
+export function caller(headers: Record<string, string>) {
   const port = Number(process.env.PORT || "3011");
   return (machine: MachineRef, path: string, init: CallInit = {}) =>
     new Promise<Answer>((resolve, reject) => {

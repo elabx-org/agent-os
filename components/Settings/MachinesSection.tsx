@@ -49,6 +49,7 @@ import {
 } from "@/lib/server-name";
 import { cn } from "@/lib/utils";
 import { Chevron } from "./SettingGroup";
+import { ClaudeSetupRow } from "./ClaudeSetupRow";
 import { copiedWord, copyAge, sizeText } from "@/lib/backup/types";
 import { openCopies } from "@/stores/copiesSheet";
 
@@ -452,6 +453,9 @@ function LinkedRow({
       />
       <ActivityRow machine={machine} machineName={machineName} />
       {online && <ReposFolderRow target={machine.id} name={machine.name} />}
+      {online && machine.sameVersion !== false && (
+        <ClaudeSetupRow id={machine.id} name={machine.name} />
+      )}
     </>
   );
 }

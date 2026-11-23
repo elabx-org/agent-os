@@ -21,6 +21,11 @@ import { announceRefusal, announceUp } from "./up-announce";
 import { linkProof } from "./up-guard";
 import { allowStartDown, beforeUp } from "./up-policy";
 import { CHAIN_HEADER } from "./from-machine";
+import {
+  SETUP_PATH,
+  SETUP_PROOF_HEADER,
+  isSetupProof,
+} from "../claude-setup/proof";
 import { getDb } from "../db";
 import { depthOfActor } from "../session-started-by";
 import { onTakenAck, takenFor } from "../backup/taken";
@@ -212,8 +217,18 @@ export function machineEntry(
   return browser || machine.agents === 1 ? "ok" : "agents_off";
 }
 
-const entryOf = (machineId: string, req: IncomingMessage) =>
-  machineEntry(store.machineById(machineId), fromBrowser(req));
+/**
+ * This server's own "keep matching" calls (lib/claude-setup/hub.ts): its
+ * per-boot proof, and only for a machine's Claude setup routes
+ */
+const ownSetupCall = (req: IncomingMessage, path: string) =>
+  SETUP_PATH.test(path) && isSetupProof(first(req.headers[SETUP_PROOF_HEADER]));
+
+const entryOf = (machineId: string, req: IncomingMessage, path: string) =>
+  machineEntry(
+    store.machineById(machineId),
+    fromBrowser(req) || ownSetupCall(req, path)
+  );
 
 /**
  * "no_proof" is what the page's own calls retry on after fetching a fresh
@@ -238,7 +253,7 @@ export function linkRequest(
   if (!machinesOn()) return false;
   const target = targetOf(req, url);
   if (!target) return false;
-  const entry = entryOf(target.machineId, req);
+  const entry = entryOf(target.machineId, req, target.path);
   if (entry === "unknown") {
     res.writeHead(404, {
       "Content-Type": "application/json",
@@ -321,7 +336,7 @@ export function linkUpgrade(
   const url = new URL(request.url ?? "/", "http://hub");
   const target = targetOf(request, url);
   if (!target) return false;
-  const entry = entryOf(target.machineId, request);
+  const entry = entryOf(target.machineId, request, "");
   if (entry !== "ok") {
     socket.write(
       entry === "unknown"
