@@ -202,6 +202,12 @@ const BASE = {
     icon: "GalleryVerticalEnd",
     label: "Mocks",
   },
+  runners: {
+    id: "runners",
+    symbol: "cpu",
+    icon: "Laptop",
+    label: "Runners",
+  },
   chat: {
     id: "chat",
     symbol: "bubble.left",
@@ -696,6 +702,8 @@ export interface MoreSources {
   shown: NavAction[];
   /** Labs' Running is on */
   running: boolean;
+  /** A machine is linked: the Runners page has something to show */
+  runners?: boolean;
   /** Two pages (the open Duo, desktop): a session shows beside Now */
   wide?: boolean;
   /** The focused session's ⋯ (stores/sessionActions.ts) */
@@ -733,6 +741,8 @@ export function moreExtras(src: MoreSources): Base[] {
   if (src.surface === "beside") out.push(BASE.closeAll);
   if (src.running && src.surface !== "running") out.push(BASE.running);
   if (MOCKS_FROM.includes(src.surface)) out.push(BASE.mocks);
+  // Beside Mocks: the machines chats hand work to, and their jobs
+  if (src.runners && MOCKS_FROM.includes(src.surface)) out.push(BASE.runners);
   return out.filter((it) => !src.shown.includes(it.id));
 }
 
@@ -1074,6 +1084,7 @@ export function columnFor(
       return [back(ctx), item(BASE.more, sep)];
     case "running":
     case "mocks":
+    case "runners":
       // Its own page, not the session's: back (to the session it was
       // opened from) | More (the list has Show all itself)
       return [back(ctx), item(BASE.more, sep)];

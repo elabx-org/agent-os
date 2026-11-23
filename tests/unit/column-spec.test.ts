@@ -761,6 +761,19 @@ test("moreExtras: the other view, the session's actions, Running, Mocks (21, DPD
     ids({ running: false, surface: "now", shown: ["mocks"] }),
     []
   );
+  // A machine is linked: Runners beside Mocks, and not on its own page
+  assert.deepEqual(ids({ running: false, runners: true, surface: "now" }), [
+    "mocks",
+    "runners",
+  ]);
+  assert.deepEqual(
+    ids({ running: false, runners: true, surface: "runners", viewMode: null }),
+    []
+  );
+  assert.deepEqual(
+    ids({ running: false, runners: true, surface: "settings" }),
+    []
+  );
 });
 
 test("More offers a session's agents while the column leaves them out", () => {

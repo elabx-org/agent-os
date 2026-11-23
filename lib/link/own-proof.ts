@@ -11,7 +11,7 @@ import { randomBytes, timingSafeEqual } from "crypto";
 
 export const OWN_PROOF_HEADER = "x-agentos-link-own";
 /** Only a machine's inbox: nothing else is this server's own call */
-export const OWN_PATH = /^\/api\/link\/inbox\/(backup|peer)\/[^\s]*$/;
+export const OWN_PATH = /^\/api\/link\/inbox\/(backup|peer|job)\/[^\s]*$/;
 
 const shared = globalThis as typeof globalThis & {
   __agentosOwnProof?: string;

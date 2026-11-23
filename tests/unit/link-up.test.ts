@@ -17,6 +17,7 @@ import { LinkClient, UpUnavailable } from "../../lib/link/client";
 import { generateMachineKey, signProof } from "../../lib/link/keys";
 import {
   BIN_UP,
+  CAP_JOBS,
   CAP_PEER,
   CAP_TAKE,
   CAP_UP,
@@ -363,7 +364,7 @@ test("up: the machine hears what it may ask, at welcome and when it changes", as
   });
   assert.equal(
     r.deps.rows.get(MACHINE_ID)!.caps,
-    JSON.stringify([CAP_UP, CAP_TAKE, CAP_PEER])
+    JSON.stringify([CAP_UP, CAP_TAKE, CAP_PEER, CAP_JOBS])
   );
   assert.equal(r.hub.hasCap(MACHINE_ID, CAP_UP), true);
   assert.equal(r.hub.hasCap("m_ffffffffffff", CAP_UP), null);

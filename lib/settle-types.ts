@@ -19,6 +19,8 @@ export const SETTLE_REASONS = [
   "pr_merged_here",
   /** It went on to another machine (lib/session-move.ts) */
   "moved",
+  /** It ran a job for another machine's chat, and the job is done (lib/jobs) */
+  "job_done",
 ] as const;
 export type SettleReason = (typeof SETTLE_REASONS)[number];
 
@@ -219,6 +221,7 @@ export function settledLine(
     const to = parseMovedTo(session.moved_to);
     return to ? `Continued on ${to.name}` : "Paused to move";
   }
+  if (session.settled_reason === "job_done") return "Its job is finished";
   const pr =
     session.pr_number != null && session.pr_status === "merged"
       ? `PR #${session.pr_number} merged`

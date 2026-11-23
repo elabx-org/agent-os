@@ -14,6 +14,7 @@ import {
   BIN_BODY,
   BIN_UP,
   BIN_WS,
+  CAP_JOBS,
   CAP_PEER,
   HUB_PEER,
   LINK_MACHINE_HEADER,
@@ -409,7 +410,7 @@ export class LinkClient {
         sha: this.options.sha,
         hubHost: this.hub.host,
         code: this.options.code,
-        caps: [CAP_UP, CAP_TAKE, CAP_PEER],
+        caps: [CAP_UP, CAP_TAKE, CAP_PEER, CAP_JOBS],
       });
     });
 

@@ -249,6 +249,8 @@ test("the tool script asks another machine only what the table allows", () => {
   for (const [, raw, method = "GET"] of calls) {
     const p = raw.replace(/\$\{[^}]+\}/g, SID);
     if (LOCAL.has(p) || p.startsWith("/api/running/")) continue;
+    // Jobs are sent by the server the chat is on, and asked of it alone
+    if (/^\/api\/jobs([/?]|$)/.test(p)) continue;
     // create_project is refused through the server before it asks
     if (p === "/api/projects" && method === "POST") continue;
     const d = ask(method, p);

@@ -245,7 +245,8 @@ export function DesktopView(props: ViewProps) {
           (page?.kind === "project" && !sidebarOpen) ||
           page?.kind === "inbox" ||
           page?.kind === "running" ||
-          page?.kind === "mocks"
+          page?.kind === "mocks" ||
+          page?.kind === "runners"
         }
         page={
           pageOpen && (

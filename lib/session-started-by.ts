@@ -17,6 +17,8 @@ export interface StartedBy {
   /** 1 for a session a person's session started; each hop adds one */
   depth: number;
   at: number;
+  /** It is a job that machine's chat handed this one (lib/jobs) */
+  job?: { id: string; title: string; chat: string | null };
 }
 
 /** Starts across machines in a row; the next one is the user's to make */
@@ -39,6 +41,11 @@ export function parseStartedBy(
 }
 
 export function startedByLine(s: StartedBy): string {
+  if (s.job) {
+    return s.job.chat
+      ? `A job from ${s.job.chat} on ${s.machine}`
+      : `A job from a chat on ${s.machine}`;
+  }
   return `Started by a session on ${s.machine}`;
 }
 

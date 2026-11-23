@@ -439,6 +439,7 @@ const server = new McpServer(
       "The user is on their phone, not this machine: a server you start (a dev server, a preview, a test page) is reachable only through AgentOS's port proxy. When you start one, give the user its preview_url link, never a localhost or 0.0.0.0 address, and don't open ports to the network. Bind to 127.0.0.1 or 0.0.0.0 on any free port. list_servers shows what runs; stop_server stops only servers your own session started.",
       "Linked machines (list_machines), e.g. the user's Mac: pass `machine` to the project and session tools to work there, for what only that machine can do (Xcode, the iOS simulator, macOS-only tools). A session there is its own agent on that machine with its own files: give it a complete task, and move code between machines with git. It only works when the user has allowed it for that machine in Settings, Machines; if it's refused, tell the user.",
       "When the user approves, rejects or drops a mock you published, record it with set_mock_status (with the PR once it's built).",
+      "A job (run_job) hands one piece of work to a linked machine while your chat stays here: the machine gets your code as it is, runs it, and the result comes back. Prefer it to start_session with `machine` when you want something done with your current code (a build, tests, the simulator) rather than a separate line of work.",
       ...(ROLE
         ? [
             `This machine is linked to the user's server (${hubName(ROLE)}). list_machines shows it and the user's other machines: pass machine to work there. It only works when the user has allowed it in Settings, Machines; if it's refused, tell the user. Sessions you start elsewhere are announced to the user and always ask before acting.`,
@@ -998,6 +999,162 @@ server.registerTool(
       body: { url, status, note, ...(pr ? { pr } : {}) },
     });
     return `Marked ${status}`;
+  })
+);
+
+/** A job as the chat that sent it needs it */
+function jobOut(job) {
+  const out = {
+    job: job.id,
+    title: job.title,
+    machine: job.machineName,
+    state: job.state,
+  };
+  if (job.state === "queued") {
+    out.note =
+      job.step ||
+      (job.ahead > 0
+        ? `Waiting its turn: ${job.ahead} ahead of it on ${job.machineName}.`
+        : "Waiting its turn.");
+  }
+  if (job.state === "sending")
+    out.note = job.step || "Its code is being copied.";
+  if (job.state === "waiting") {
+    out.question = job.question || "It asks the user something.";
+    out.note = `It waits for the user, who answers it in AgentOS (the job's card in this chat opens it on ${job.machineName}). You can't answer for them. Tell the user, then wait_for_job again.`;
+  }
+  if (job.code) {
+    out.code_sent =
+      job.code.unsaved > 0
+        ? `This chat's code at ${job.code.head.slice(0, 7)} with ${job.code.unsaved} unsaved file(s)`
+        : `This chat's code at ${job.code.head.slice(0, 7)}`;
+    if (job.code.skipped > 0) {
+      out.left_behind = `${job.code.skipped} file(s) were not sent (too large, or a nested repository).`;
+    }
+  }
+  if (job.state === "done") {
+    out.result = job.result || "It finished without a message.";
+    const files = job.changed?.files ?? [];
+    if (files.length > 0) {
+      out.changed_files = files.map((f) => f.path);
+      out.changes = job.patch
+        ? `Its changes are NOT in your folder yet. To take them, from your repository's top folder: git apply --3way ${job.patch}`
+        : job.changed.tooBig
+          ? "Its changes were too large to bring back; they are lost with its folder unless the job is run again and told to push them."
+          : "Its changes could not be brought back.";
+    } else {
+      out.changes = "It changed no files.";
+    }
+  }
+  if (job.state === "failed") out.error = job.error || "It failed.";
+  if (job.state === "stopped") out.note = "It was stopped.";
+  return out;
+}
+
+/** Waits in short asks, so no single call outlasts a proxy or fetch timeout */
+async function waitJob(id, seconds) {
+  const end = Date.now() + seconds * 1000;
+  for (;;) {
+    const left = Math.ceil((end - Date.now()) / 1000);
+    const { job } = await api(
+      `/api/jobs/${encodeURIComponent(id)}${left > 0 ? `?wait=${Math.min(25, left)}` : ""}`
+    );
+    const over = ["done", "failed", "stopped", "waiting"].includes(job.state);
+    if (over || left <= 0) return job;
+  }
+}
+
+server.registerTool(
+  "run_job",
+  {
+    description:
+      "Hand one piece of work to a linked machine while this chat stays here: a build, a test run, the iOS simulator, anything this machine can't do and that one can (\"The machine you run on\" in your notes says what each has). The machine gets this chat's code as it is now, unsaved files included, in a throwaway folder, runs the task as a session of its own, and sends back its last message plus a patch of any files it changed. Use it when the user names a machine with @, or when the work needs something only that machine has. Write the task so it stands alone: what to run, what counts as success, what to report. One job per machine runs at a time; others wait. The job's session asks the user before it runs commands (they answer in AgentOS, so a job can sit at \"needs the user\"), and this project's own Claude files (.claude, .mcp.json: settings, hooks, skills, MCP servers) are not loaded there, only what is set up on that machine. Returns once the job is over or needs the user, or after wait_seconds (then call wait_for_job).",
+    inputSchema: {
+      machine: z
+        .string()
+        .describe("The machine to run it on: its name (e.g. Mac Studio) or id"),
+      title: z
+        .string()
+        .describe(
+          "A few words the user sees, e.g. 'Widget tests on the simulator'"
+        ),
+      task: z
+        .string()
+        .describe(
+          "The whole task for the session that runs it. It sees the code but not this conversation"
+        ),
+      wait_seconds: z
+        .number()
+        .int()
+        .min(0)
+        .max(1800)
+        .optional()
+        .describe("How long to wait for it here (default 600, max 1800)"),
+    },
+  },
+  tool(async ({ machine, title, task, wait_seconds = 600 }) => {
+    const { job } = await api("/api/jobs", {
+      method: "POST",
+      body: { machine, title, task },
+    });
+    return jobOut(wait_seconds > 0 ? await waitJob(job.id, wait_seconds) : job);
+  })
+);
+
+server.registerTool(
+  "wait_for_job",
+  {
+    description:
+      "Wait until a job you sent with run_job is over or needs the user, then return its state, result and changed files. Also the way to check on one without waiting (timeout_seconds 0).",
+    inputSchema: {
+      job: z.string().describe("The job id run_job returned"),
+      timeout_seconds: z
+        .number()
+        .int()
+        .min(0)
+        .max(1800)
+        .optional()
+        .describe("How long to wait (default 600, max 1800)"),
+    },
+  },
+  tool(async ({ job, timeout_seconds = 600 }) => {
+    return jobOut(await waitJob(job, timeout_seconds));
+  })
+);
+
+server.registerTool(
+  "list_jobs",
+  {
+    description:
+      "The jobs this chat sent to other machines with run_job, newest first, and which machines can take one now.",
+    inputSchema: {},
+  },
+  tool(async () => {
+    const view = await api("/api/jobs?limit=20");
+    return {
+      machines: view.machines.map((m) => ({
+        name: m.name,
+        id: m.id,
+        can_take_a_job: !m.blocked,
+        ...(m.blocked ? { why_not: m.blocked } : {}),
+      })),
+      jobs: view.jobs.map(jobOut),
+    };
+  })
+);
+
+server.registerTool(
+  "stop_job",
+  {
+    description:
+      "Stop a job you sent with run_job. Its session and folder on the machine are removed; nothing comes back.",
+    inputSchema: { job: z.string().describe("The job id") },
+  },
+  tool(async ({ job }) => {
+    const out = await api(`/api/jobs/${encodeURIComponent(job)}`, {
+      method: "DELETE",
+    });
+    return jobOut(out.job);
   })
 );
 

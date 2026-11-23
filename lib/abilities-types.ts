@@ -151,7 +151,11 @@ const plainName = (name: string): string =>
  * The part of a session's starting note about its machine and the others
  * linked with it; null when there is nothing to compare it with
  */
-export function machineSection(view: AbilitiesView): string | null {
+export function machineSection(
+  view: AbilitiesView,
+  /** Whether sessions here can hand a job to another machine (run_job) */
+  jobs = false
+): string | null {
   if (view.peers.length === 0) return null;
   const mine = view.abilities;
   const missing = missingText(mine);
@@ -177,7 +181,9 @@ export function machineSection(view: AbilitiesView): string | null {
   }
   lines.push(
     "",
-    `When a task needs something this machine lacks and another has (an iOS build or the simulator needs Xcode, say), don't work around it silently and don't assume it can't be done: tell the user which machine has it. They can move this chat there in AgentOS with "Work on" and the machine's name. This list was checked when this session started.`
+    jobs
+      ? `When a task needs something this machine lacks and another has (an iOS build or the simulator needs Xcode, say), don't work around it silently and don't assume it can't be done: hand that piece to the machine that has it with the run_job tool, and say in your reply which machine you sent it to and why. Your chat stays here; the machine gets your code as it is now, unsaved files included, and its result comes back to you. When the user writes @ and a machine's name, that is their say-so to run that request there with run_job. If the machine refuses (the user hasn't allowed it, or it is off), tell the user what it said. To move the whole chat instead, the user picks "Work on" and the machine's name in AgentOS. This list was checked when this session started.`
+      : `When a task needs something this machine lacks and another has (an iOS build or the simulator needs Xcode, say), don't work around it silently and don't assume it can't be done: tell the user which machine has it. They can move this chat there in AgentOS with "Work on" and the machine's name. This list was checked when this session started.`
   );
   return lines.join("\n");
 }

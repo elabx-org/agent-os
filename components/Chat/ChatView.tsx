@@ -35,6 +35,7 @@ import { PausedBar } from "@/components/Session/PausedBar";
 import { PausedHistory } from "@/components/Session/PausedHistory";
 import { AheadLine } from "@/components/Session/AheadLine";
 import { PlaceLine } from "@/components/Session/PlaceLine";
+import { ChatJobs } from "@/components/Jobs/ChatJobs";
 import { SettledBar } from "@/components/Session/SettledBar";
 import { isEnded, isSettled } from "@/lib/settle-types";
 import {
@@ -912,6 +913,9 @@ export function ChatView({
                 ))}
               {!paused && <AheadLine session={session} />}
               {!paused && <PlaceLine session={session} />}
+              {!paused && (
+                <ChatJobs session={session} working={status === "running"} />
+              )}
               {!paused && (
                 <RewindSheet
                   live={live}

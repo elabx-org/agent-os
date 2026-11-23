@@ -149,7 +149,7 @@ function MoreMenu({ shown, ...props }: MoreProps) {
   const { actions: git } = useSnapshot(gitMenuStore);
   const { offer: movable } = useSnapshot(moveSheetStore);
   const { offer: portable } = useSnapshot(continueSheetStore);
-  const { enabled: running } = useSnapshot(runningStore);
+  const { enabled: running, runners } = useSnapshot(runningStore);
   const actions = useSnapshot(sessionActionsStore);
   const inSession = surface === "session" || surface === "beside";
   const wide = mode === "duo-open" || mode === "book" || mode === "desktop";
@@ -177,6 +177,7 @@ function MoreMenu({ shown, ...props }: MoreProps) {
     viewMode,
     shown: [...shown],
     running,
+    runners,
     wide,
     session: {
       model: actions.model,

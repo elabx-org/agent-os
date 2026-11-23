@@ -109,11 +109,17 @@ export function sharedSessions(machine: MachineRow): Session[] {
   );
 }
 
+/** How much of a machine's answer is read, and how long it may go quiet */
+export interface AnswerLimits {
+  maxBytes?: number;
+  idleMs?: number;
+}
+
 /** A call to a machine's inbox, with what it answered when it refused */
-function uploader(machineId: string) {
+export function uploader(machineId: string) {
   const port = Number(process.env.PORT || "3011");
   const seen: { error: string | null } = { error: null };
-  const upload = (init: UpInit) =>
+  const upload = (init: UpInit, limits: AnswerLimits = {}) =>
     new Promise<UpAnswer>((resolve, reject) => {
       const request = http.request(
         {
@@ -126,7 +132,16 @@ function uploader(machineId: string) {
         },
         (res) => {
           const chunks: Buffer[] = [];
-          res.on("data", (chunk: Buffer) => chunks.push(chunk));
+          let bytes = 0;
+          res.on("data", (chunk: Buffer) => {
+            bytes += chunk.length;
+            // Another machine's answer: no more of it is kept than asked for
+            if (limits.maxBytes !== undefined && bytes > limits.maxBytes) {
+              request.destroy(new Error("The machine's answer was too large"));
+              return;
+            }
+            chunks.push(chunk);
+          });
           res.on("error", reject);
           res.on("end", () => {
             const body = Buffer.concat(chunks);
@@ -149,6 +164,11 @@ function uploader(machineId: string) {
         }
       );
       request.on("error", reject);
+      if (limits.idleMs !== undefined) {
+        request.setTimeout(limits.idleMs, () =>
+          request.destroy(new Error("The machine took too long to answer"))
+        );
+      }
       if (init.body && !Buffer.isBuffer(init.body)) {
         init.body.on("error", (error) => request.destroy(error));
         init.body.pipe(request);

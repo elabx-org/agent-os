@@ -83,6 +83,7 @@ export const NAV_ACTIONS = [
   "upload",
   "running",
   "mocks",
+  "runners",
   "settle",
   "copyId",
   "model",
@@ -331,6 +332,8 @@ function pageName(page: WorkspacePage): string {
       return "Running";
     case "mocks":
       return "Mocks";
+    case "runners":
+      return "Runners";
     case "new":
       return "New session";
     case "agent":
@@ -360,6 +363,8 @@ function surfaceName(surface: Surface): string {
       return "Running";
     case "mocks":
       return "Mocks";
+    case "runners":
+      return "Runners";
     case "now":
     case "search":
       return "Now";
@@ -641,6 +646,13 @@ export const NAV_ROUTES: Record<NavAction, (leftPage: boolean) => void> = {
     const sessionId =
       (surface === "session" || surface === "beside") && runningStore.sessionId;
     openPage(sessionId ? { kind: "mocks", sessionId } : { kind: "mocks" });
+  },
+  // The machines chats hand work to and their jobs; from a chat, its own
+  runners: () => {
+    const surface = currentSurface();
+    const sessionId =
+      (surface === "session" || surface === "beside") && runningStore.sessionId;
+    openPage(sessionId ? { kind: "runners", sessionId } : { kind: "runners" });
   },
 };
 

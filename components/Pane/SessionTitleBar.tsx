@@ -267,7 +267,7 @@ export function SessionTitleBar({
   // A phone on its side has no bar under the session (phoneBar): its
   // views and places are here
   const short = useShortScreen();
-  const { enabled: running } = useSnapshot(runningStore);
+  const { enabled: running, runners } = useSnapshot(runningStore);
 
   const variant = headerVariant({
     hasSession: !!session,
@@ -511,6 +511,12 @@ export function SessionTitleBar({
               <GalleryVerticalEnd className="h-4 w-4" />
               Mocks
             </DropdownMenuItem>
+            {runners && (
+              <DropdownMenuItem onSelect={() => runNav("runners")}>
+                <Laptop className="h-4 w-4" />
+                Runners
+              </DropdownMenuItem>
+            )}
             <DropdownMenuSeparator />
           </>
         )}

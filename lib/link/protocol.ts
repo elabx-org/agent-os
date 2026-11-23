@@ -34,6 +34,8 @@ export const LINK_MACHINE_HEADER = "x-agentos-link-machine";
 export const HUB_PEER = "hub";
 /** Takes copies of its hub's sessions (lib/backup/hub-send.ts) */
 export const CAP_PEER = "peer1";
+/** Runs jobs its hub's chats hand it (lib/jobs) */
+export const CAP_JOBS = "jobs1";
 
 /** agent: a session's tool call; system: AgentOS itself (copies) */
 export type UpKind = "agent" | "system";
