@@ -30,6 +30,7 @@ import {
 } from "../../lib/link/protocol";
 import type { MachineRow } from "../../lib/link/store";
 import { BASE_UP_RULES, decideUp, type UpRule } from "../../lib/link/up";
+import { BACKUP_UP_RULES } from "../../lib/link/up-backup-rules";
 import { MACHINE_ID, TEST_PROOF, listen, rig } from "./link-rig";
 
 const OTHER = "m_abcdefabcdef";
@@ -925,4 +926,33 @@ test("fromMachine: only the hub's own marker or a machine id", async () => {
   assert.equal(fromMachine(req(MACHINE_ID)), MACHINE_ID);
   assert.equal(fromMachine(req("m_x")), null);
   assert.equal(fromMachine(req(`${MACHINE_ID}, hub`)), null);
+});
+
+test("up: saying what it carried on isn't behind the copies switch", () => {
+  const off = row({ backup: 0 });
+  const call = (path: string) =>
+    decideUp(
+      BACKUP_UP_RULES,
+      off,
+      { kind: "system", method: "POST", path, headers: {} },
+      env
+    );
+  assert.equal(call("/api/link/inbox/peer/taken").ok, true);
+  const copies = call("/api/link/inbox/backup/sessions");
+  assert.equal(!copies.ok && copies.code, "backup_off");
+  // Only that one path, and only as the machine's own AgentOS
+  const other = call("/api/link/inbox/peer/sweep");
+  assert.equal(other.ok, false);
+  const agent = decideUp(
+    BACKUP_UP_RULES,
+    row({ backup: 1 }),
+    {
+      kind: "agent",
+      method: "POST",
+      path: "/api/link/inbox/peer/taken",
+      headers: {},
+    },
+    env
+  );
+  assert.equal(agent.ok, false);
 });

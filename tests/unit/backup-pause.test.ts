@@ -261,3 +261,30 @@ test("a bad id in the list is ignored, not held", async () => {
   assert.deepEqual(r, []);
   assert.equal(hold.isHeld("-rf"), false);
 });
+
+test("on the server: paused for the machine that carried it on", async () => {
+  const { deps, seen } = fakes();
+  const peer = { id: "m_0123456789ab" };
+  const [result] = await machine.pauseTaken(
+    [taken({ hubName: "Mac Studio" })],
+    deps,
+    peer
+  );
+  assert.equal(result.state, "paused");
+  assert.equal(seen.written?.machine, "m_0123456789ab");
+  assert.equal(seen.written?.name, "Mac Studio");
+  assert.equal(seen.written?.takeover?.takeId, TAKE);
+  // Settled as moved is what keeps it from starting: no hold is left
+  assert.equal(hold.heldSessions().has(SID), false);
+});
+
+test("on the server: one that went to another machine is left alone", async () => {
+  const went = JSON.stringify({ machine: "m_ffffffffffff", name: "Other" });
+  const { deps, seen } = fakes({}, session({ moved_to: went }));
+  const [result] = await machine.pauseTaken([taken()], deps, {
+    id: "m_0123456789ab",
+  });
+  assert.equal(result.state, "gone");
+  assert.equal(seen.kills, 0);
+  assert.equal(seen.written, null);
+});

@@ -8,11 +8,11 @@ import { createHash } from "crypto";
 import type Database from "better-sqlite3";
 import { getDb, queries, type Session } from "../db";
 import type { TakenResult, TakenSession } from "../link/protocol";
-import { serverName, type MachineRow } from "../link/store";
+import type { MachineRow } from "../link/store";
 import { recordNotification, setDelivered } from "../push/history";
 import { sendPush } from "../push/send";
-import { serverNameOr } from "../server-name";
 import { parseMovedFrom, parseMovedTo } from "../session-move-types";
+import { here } from "./peer";
 import { takenRows, takenSessionOf, type BackupRow } from "./store";
 
 /** "taken" for a session the hub itself has, built from its own row */
@@ -30,7 +30,7 @@ export function takenFromSession(
     takeId,
     at: from?.at ?? Date.now(),
     copyAt: from?.copyAt ?? row?.copied_at ?? from?.at ?? Date.now(),
-    hubName: serverNameOr(serverName()),
+    hubName: here().name,
     claudeSessionId: session.claude_session_id ?? row?.claude_session_id ?? "",
     // Unknown counts as more: the machine keeps what it has
     transcriptBytes: row?.file_bytes ?? 0,
@@ -46,7 +46,7 @@ export function takenFromRow(row: BackupRow): TakenSession {
     takeId: row.take_id ?? "",
     at: row.taken_at ?? row.copied_at,
     copyAt: row.copied_at,
-    hubName: serverNameOr(serverName()),
+    hubName: here().name,
     claudeSessionId: row.claude_session_id,
     transcriptBytes: row.file_bytes,
     head: row.head,

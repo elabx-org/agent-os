@@ -86,3 +86,6 @@ export function syncSummary(view: Pick<SyncView, "rows" | "online">): string {
   }
   return "Everything is in sync";
 }
+
+/** A linked machine's id for its server, as the copy routes take it */
+export const HUB_PEER_ID = "hub";

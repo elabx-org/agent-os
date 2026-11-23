@@ -238,6 +238,34 @@ export function useMachineActivity(id: string, pollMs?: number) {
   });
 }
 
+/** GET /api/hub on a linked machine's own window; { linked: false } on a server */
+export interface HubPeer {
+  linked: boolean;
+  /** Only a linked machine says this */
+  machine?: boolean;
+  hubName?: string;
+  name?: string;
+  offlineMs?: number;
+  canContinue?: boolean;
+  copies?: number;
+  newestCopyAt?: number | null;
+}
+
+/**
+ * What this AgentOS knows of the server it is linked to. Read from the
+ * page's own origin: it matters in a machine's own window, where the
+ * server may be off
+ */
+export function useHubPeer(pollMs?: number) {
+  return useQuery({
+    queryKey: [...machineKeys.all, "hub-peer"] as const,
+    queryFn: () => readJson<HubPeer>(HUB_TARGET, "/api/hub"),
+    staleTime: (query) => (query.state.data?.machine ? 2000 : Infinity),
+    refetchInterval: (query) =>
+      pollMs && query.state.data?.machine ? pollMs : false,
+  });
+}
+
 /** The copies of a machine's sessions kept on this server */
 export function useMachineCopies(id: string | null, pollMs?: number) {
   return useQuery({

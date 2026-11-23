@@ -11,6 +11,7 @@ import { BrowserUndo } from "@/components/BrowserUndo";
 import { BrowserOpenListener } from "@/components/BrowserOpenListener";
 import { VideoReview } from "@/components/Composer/VideoReview";
 import { MachineGate } from "@/components/Machines/MachineGate";
+import { HubOfflineBanner } from "@/components/Machines/HubOfflineBanner";
 import { ContinueOnSheetHost } from "@/components/Session/ContinueOnSheet";
 import { MachineCopiesSheetHost } from "@/components/Machines/MachineCopiesSheet";
 import { createQueryClient } from "@/lib/query-client";
@@ -71,6 +72,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
             <BrowserOpenListener />
             <VideoReview />
             <MachineGate />
+            <HubOfflineBanner />
             <ContinueOnSheetHost />
             <MachineCopiesSheetHost />
           </TooltipProvider>

@@ -93,6 +93,54 @@ export function loadOrCreateKey(hubUrl: string): MachineKey {
   return key;
 }
 
+// --- What this machine remembers of its hub while the hub is off ---
+
+interface HubMemo {
+  machineId: string | null;
+  hubName: string | null;
+  name: string | null;
+}
+
+const hubMemoPath = () => path.join(home(), "hub-peer.json");
+
+/** Its id on the hub and both names, as last heard (lib/backup/peer.ts) */
+export function hubMemo(): HubMemo {
+  try {
+    const v = JSON.parse(fs.readFileSync(hubMemoPath(), "utf8")) as HubMemo;
+    return {
+      machineId:
+        typeof v.machineId === "string" && /^m_[0-9a-f]{12}$/.test(v.machineId)
+          ? v.machineId
+          : null,
+      hubName: typeof v.hubName === "string" ? v.hubName.slice(0, 80) : null,
+      name: typeof v.name === "string" ? v.name.slice(0, 80) : null,
+    };
+  } catch {
+    return { machineId: null, hubName: null, name: null };
+  }
+}
+
+function rememberHub(patch: Partial<HubMemo>): void {
+  const now = hubMemo();
+  const next = { ...now, ...patch };
+  if (JSON.stringify(now) === JSON.stringify(next)) return;
+  try {
+    fs.mkdirSync(home(), { recursive: true });
+    fs.writeFileSync(hubMemoPath(), JSON.stringify(next), { mode: 0o600 });
+  } catch {
+    // Only names for the pages
+  }
+}
+
+const hubSince = () =>
+  (shared.__agentosHubSince ??= { linked: false, at: Date.now() });
+
+/** How long the hub has been out of reach; 0 while linked */
+export function hubOfflineFor(): number {
+  const since = hubSince();
+  return since.linked ? 0 : Date.now() - since.at;
+}
+
 // --- Running the link ---
 
 export interface LinkStatusFile {
@@ -153,6 +201,8 @@ function matchHub(sha: string): void {
 // process: the link lives on globalThis so routes can reach it
 const shared = globalThis as typeof globalThis & {
   __agentosLinkClient?: LinkClient | null;
+  /** Whether the hub is reachable, and since when */
+  __agentosHubSince?: { linked: boolean; at: number };
 };
 
 /** Whether the hub's sessions may use this machine; null when not linked */
@@ -282,6 +332,13 @@ export function startMachineLink(localPort: number): LinkClient | null {
     onTaken,
     onUpAllowed: (up) => {
       writeState(config, client.state, upState(client));
+      if (up) {
+        rememberHub({ hubName: up.hubName, name: up.name || null });
+        // Asking is allowed from here on: what was carried on is told
+        void import("../backup/peer-taken")
+          .then((m) => m.tellHubTaken())
+          .catch((error) => console.error("[link] hub back:", error));
+      }
       // Copies just turned on: what changed is sent soon
       if (up?.backup) {
         void import("../backup/machine").then((m) => m.sweep()).catch(() => {});
@@ -289,6 +346,19 @@ export function startMachineLink(localPort: number): LinkClient | null {
     },
     onState: (state) => {
       writeState(config, state, upState(client));
+      const since = hubSince();
+      const linked = state.status === "linked";
+      if (linked !== since.linked) {
+        shared.__agentosHubSince = { linked, at: Date.now() };
+      }
+      if (state.status === "linked") {
+        rememberHub({ machineId: state.machineId });
+        // A copy being continued here gives way, and the hub hears which
+        // of its sessions this machine carried on (lib/backup/peer-taken.ts)
+        void import("../backup/peer-taken")
+          .then((m) => m.onHubBack())
+          .catch((error) => console.error("[link] hub back:", error));
+      }
       console.log(
         `[link] ${state.status}${"reason" in state ? `: ${state.reason}` : ""}${state.status === "pending" ? ` (code ${state.code})` : ""}`
       );
