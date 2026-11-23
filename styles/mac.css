@@ -9,11 +9,13 @@
   --mac-glass: rgba(255, 255, 255, 0.58);
   --mac-edge: rgba(0, 0, 0, 0.1);
   --mac-shadow: 0 1px 2px rgba(0, 0, 0, 0.06), 0 8px 24px rgba(0, 0, 0, 0.08);
+  --mac-ground: #dcdce2;
 }
 .dark {
   --mac-glass: rgba(30, 30, 34, 0.55);
   --mac-edge: rgba(255, 255, 255, 0.11);
   --mac-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 10px 28px rgba(0, 0, 0, 0.35);
+  --mac-ground: #26262b;
 }
 
 /* What the toolbar already shows: the view tabs, the title, the Live button */
@@ -38,6 +40,10 @@ html[data-mac] body.font-sans {
    and anything else keep their own background */
 html[data-mac]:has([data-mac-root]) body {
   background: transparent;
+}
+/* A window that can't be seen through: the panes float on a plain ground */
+html[data-mac][data-mac-opaque]:has([data-mac-root]) body {
+  background: var(--mac-ground);
 }
 html[data-mac] [data-mac-root] {
   background: transparent;

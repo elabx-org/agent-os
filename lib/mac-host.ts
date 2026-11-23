@@ -6,8 +6,11 @@
  * state and sends the fixed actions below.
  */
 
-/** Sets html[data-mac] before paint */
-export const MAC_BOOT_SCRIPT = `(function(){try{var m=/\\bMacChrome\\/(\\d+)/.exec(navigator.userAgent);if(m)document.documentElement.setAttribute("data-mac",m[1])}catch(e){}})()`;
+/**
+ * Sets html[data-mac] before paint, and data-mac-opaque when the app says
+ * its window can't be seen through (the page then keeps a ground of its own)
+ */
+export const MAC_BOOT_SCRIPT = `(function(){try{var u=navigator.userAgent,d=document.documentElement,m=/\\bMacChrome\\/(\\d+)/.exec(u);if(m){d.setAttribute("data-mac",m[1]);if(/\\bMacOpaque\\/\\d+/.test(u))d.setAttribute("data-mac-opaque","")}}catch(e){}})()`;
 
 /** The window chrome's version in a user agent; 0 outside the Mac app */
 export function macChrome(userAgent: string): number {

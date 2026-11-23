@@ -171,7 +171,12 @@ function PinnedNeedsYou({
       >
         {title} needs you
       </button>
-      <NeedsYouCard session={session} variant="sheet" noHead />
+      <NeedsYouCard
+        session={session}
+        variant="sheet"
+        noHead
+        onOpenTerminal={onOpen}
+      />
     </section>
   );
 }

@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   MAC_ACTIONS,
+  MAC_BOOT_SCRIPT,
   isMacAction,
   macChrome,
   macState,
@@ -88,4 +89,32 @@ test("only the toolbar's own words are actions", () => {
   assert.equal(isMacAction("stop"), false);
   assert.equal(isMacAction(7), false);
   assert.equal(isMacAction(undefined), false);
+});
+
+/** Runs the boot script as a page with this user agent would */
+function boot(userAgent: string): Record<string, string> {
+  const set: Record<string, string> = {};
+  const run = new Function("navigator", "document", MAC_BOOT_SCRIPT);
+  run(
+    { userAgent },
+    {
+      documentElement: {
+        setAttribute: (name: string, value: string) => (set[name] = value),
+      },
+    }
+  );
+  return set;
+}
+
+test("the boot script marks the page before paint", () => {
+  assert.deepEqual(boot("Mozilla/5.0 AgentOSMac/0.5.0 MacChrome/1"), {
+    "data-mac": "1",
+  });
+  assert.deepEqual(
+    boot("Mozilla/5.0 AgentOSMac/0.5.0 MacChrome/1 MacOpaque/1"),
+    { "data-mac": "1", "data-mac-opaque": "" }
+  );
+  // A browser, and an older Mac app, are left alone
+  assert.deepEqual(boot("Mozilla/5.0 Chrome/140 Safari/537"), {});
+  assert.deepEqual(boot("Mozilla/5.0 AgentOSMac/0.4.0 MacOpaque/1"), {});
 });
