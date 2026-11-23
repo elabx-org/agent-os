@@ -32,6 +32,37 @@ export const RESULT_MAX = 12000;
 /** A patch larger than this stays on the machine that made it */
 export const PATCH_MAX = 8 * 1024 * 1024;
 
+/**
+ * How much a job's session may do on the machine without asking. The
+ * machine's own setting, the user's alone to change; never Full access
+ */
+export const JOB_MODES = ["manual", "acceptEdits", "auto"] as const;
+export type JobMode = (typeof JOB_MODES)[number];
+
+export const JOB_MODE_LABELS: Record<JobMode, string> = {
+  manual: "Ask first",
+  acceptEdits: "Accept edits",
+  auto: "Auto",
+};
+
+export const jobModeHint = (mode: JobMode, name: string): string =>
+  mode === "manual"
+    ? `A job asks you before every edit and command, so a build waits until you answer it on ${name}.`
+    : mode === "acceptEdits"
+      ? "A job edits files in its own folder freely and asks you before it runs commands."
+      : "A job works by itself and asks you only before something risky. Builds and tests run without waiting for you.";
+
+/** The same, in a line on the Runners page */
+export const jobModeLine = (mode: JobMode): string =>
+  mode === "manual"
+    ? "Jobs here ask you before every edit and command."
+    : mode === "acceptEdits"
+      ? "Jobs here edit files freely and ask you before commands."
+      : "Jobs here work by themselves and ask only before something risky.";
+
+export const cleanJobMode = (value: unknown): JobMode | null =>
+  JOB_MODES.includes(value as JobMode) ? (value as JobMode) : null;
+
 /** How it was sent: the user named the machine, a rule did, or the chat chose */
 export type JobVia = "mention" | "rule" | "chat" | "again";
 

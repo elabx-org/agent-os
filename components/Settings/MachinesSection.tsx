@@ -32,6 +32,7 @@ import {
 } from "@/data/machines";
 import { activityLine, activitySummary } from "./machine-activity";
 import { fetchAsUser, refusalText, reprove } from "@/lib/client/user-fetch";
+import { JobModeRow } from "@/components/Jobs/JobModeRow";
 import { AbilitiesRow } from "./AbilitiesRow";
 import { fetchOn, switchMachine } from "@/lib/client/machine";
 import {
@@ -415,11 +416,16 @@ function LinkedRow({
 
   // The same rows, on the page and in the set-up walk
   const agentsRow = (
-    <AgentsRow
-      name={machine.name}
-      allowed={!!machine.agents}
-      onChange={allowAgents}
-    />
+    <>
+      <AgentsRow
+        name={machine.name}
+        allowed={!!machine.agents}
+        onChange={allowAgents}
+      />
+      {online && machine.agents && machine.sameVersion !== false && (
+        <JobModeRow target={machine.id} name={machine.name} />
+      )}
+    </>
   );
   const usesHubRow = (
     <UsesHubRow

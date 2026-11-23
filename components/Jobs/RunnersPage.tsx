@@ -6,14 +6,14 @@ import { toast } from "sonner";
 import type { PageProps } from "@/components/WorkspacePage";
 import { PAGE_BARS } from "@/components/ControlColumn/columnState";
 import { confirmAction } from "@/components/ui/confirm";
-import { useJobActions, useJobSpace, useJobs } from "@/data/jobs";
+import { useJobActions, useJobMode, useJobSpace, useJobs } from "@/data/jobs";
 import { useMachines, useTargetAbilities } from "@/data/machines";
 import { useIsNative } from "@/hooks/useIsNative";
 import { useLayoutMode } from "@/hooks/useLayoutMode";
 import { shortText, systemText } from "@/lib/abilities-types";
 import { sizeText } from "@/lib/backup/types";
 import type { JobsMachine } from "@/lib/jobs/hub";
-import { isOver, tookText, type Job } from "@/lib/jobs/types";
+import { isOver, jobModeLine, tookText, type Job } from "@/lib/jobs/types";
 import { HUB_TARGET } from "@/lib/machine-marker";
 import { nativeCaps } from "@/lib/native-bridge";
 import { runNav } from "@/lib/nav-actions";
@@ -153,6 +153,29 @@ function Space({ machine }: { machine: JobsMachine }) {
   );
 }
 
+/** How much a job may do there without asking, and where to change it */
+function ModeLine({ machine }: { machine: JobsMachine }) {
+  const { data: mode } = useJobMode(
+    machine.id,
+    machine.online && !machine.blocked
+  );
+  if (!mode || !machine.online || machine.blocked) return null;
+  return (
+    <div className="flex items-center gap-2 px-3 py-1 text-[13px]">
+      <p className="text-muted-foreground min-w-0 flex-1">
+        {jobModeLine(mode)}
+      </p>
+      <button
+        type="button"
+        onClick={() => openSettings("machines")}
+        className="text-primary min-h-[40px] flex-none px-2 font-semibold active:opacity-70"
+      >
+        Change
+      </button>
+    </div>
+  );
+}
+
 function MachineCard({
   machine,
   jobs,
@@ -258,6 +281,7 @@ function MachineCard({
               onOpen={(j) => openJob(j.id)}
             />
           ))}
+      <ModeLine machine={machine} />
       <Space machine={machine} />
     </section>
   );

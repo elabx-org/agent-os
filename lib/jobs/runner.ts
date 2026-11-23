@@ -35,6 +35,7 @@ import { sessionReplyContext } from "../session-reply-context";
 import { parseStartedBy } from "../session-started-by";
 import { settleSession } from "../settle";
 import { git } from "../turns-git";
+import { jobMode } from "./settings";
 import {
   materialise,
   verifyMaterialised,
@@ -545,10 +546,11 @@ async function setUp(row: JobRow): Promise<void> {
       workingDirectory: cwd,
       projectId: projectOf(row.repo),
       agentType: "claude",
-      // Asks before it runs or changes anything, whatever this machine's or
-      // the project's default is
+      // What the user chose for jobs on this machine (Ask first unless they
+      // said otherwise), whatever its or the project's default is. Never
+      // full access
       autoApprove: false,
-      permissionMode: "manual",
+      permissionMode: jobMode(),
       useWorktree: false,
       initialPrompt: jobPrompt({
         title: row.title,
