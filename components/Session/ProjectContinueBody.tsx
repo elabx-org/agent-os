@@ -177,7 +177,7 @@ export function ProjectContinueBody({
     <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 pt-1 [html[data-fold=horizontal]_&]:gap-2.5">
       <div className="min-w-0">
         <SheetTitle className="t-title text-[20px] leading-tight font-bold tracking-normal">
-          {back ? "Bring its chats back" : "Continue on another machine"}
+          {target ? `Work on ${target.name}` : "Work on another machine"}
         </SheetTitle>
         <p className="text-muted-foreground mt-1 truncate text-[13px]">
           {project.name}
@@ -301,6 +301,14 @@ export function ProjectContinueBody({
                   that goes says where it went. You can bring them back the same
                   way.
                 </li>
+                {from === HUB_TARGET && target && project.id && (
+                  <li>
+                    From now on {target.name} also gets a copy of this
+                    project&apos;s chats that stay on {fromName}, so you can
+                    carry on there if {fromName} is off. Change it in Settings,
+                    Machines.
+                  </li>
+                )}
               </>
             )}
             {gap && target && (
@@ -428,11 +436,7 @@ export function ProjectContinueBody({
                 ? `Moving to ${toName}`
                 : !target
                   ? "Continue"
-                  : back && target.id === mine
-                    ? going.length === 1
-                      ? "Bring 1 chat back here"
-                      : `Bring ${going.length} chats back here`
-                    : `Continue on ${target.name}`}
+                  : `Work on ${target.name}`}
             </span>
           </button>
         )}

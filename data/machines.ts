@@ -6,6 +6,8 @@ import type { Session } from "@/lib/db";
 import type { MachineAction } from "@/lib/link/machine-actions";
 import { fetchOn, tabMachine } from "@/lib/client/machine";
 import { HUB_TARGET } from "@/lib/machine-marker";
+import { serverNameOr } from "@/lib/server-name";
+import type { PlaceView } from "@/lib/backup/share-types";
 import type { AgentLike, MachineSource, MachineTag } from "@/lib/machine-now";
 import type { SessionStatus } from "@/components/views/types";
 import type { ProjectWithRepositories } from "@/lib/projects";
@@ -94,6 +96,15 @@ const onServer = () => null;
  */
 export function useTabMachineId(): string | null {
   return useSyncExternalStore(never, tabMachine, onServer);
+}
+
+/** What the machine this tab looks at is called, null until it is known */
+export function useHereName(): string | null {
+  const id = useTabMachineId();
+  const { data } = useMachines();
+  if (!data) return null;
+  if (id) return data.machines.find((m) => m.id === id)?.name ?? null;
+  return serverNameOr(data.serverName, "this server");
 }
 
 /** The tab's machine, with its name and state from the list */
@@ -263,6 +274,30 @@ export function useHubPeer(pollMs?: number) {
     staleTime: (query) => (query.state.data?.machine ? 2000 : Infinity),
     refetchInterval: (query) =>
       pollMs && query.state.data?.machine ? pollMs : false,
+  });
+}
+
+/**
+ * Where the copies of these sessions are and how fresh (lib/backup/place.ts).
+ * `on` is the machine they live on, null for this server. Asked only once
+ * a machine is linked
+ */
+export function usePlaces(ids: readonly string[], on: string | null) {
+  const { data: machines } = useMachines();
+  const linked =
+    !!machines?.enabled &&
+    machines.machines.some((m) => m.status === "approved");
+  const key = [...ids].sort().join(",");
+  return useQuery({
+    queryKey: [...machineKeys.all, "place", on ?? "hub", key] as const,
+    queryFn: () =>
+      readJson<PlaceView>(
+        HUB_TARGET,
+        `/api/machines/place?ids=${encodeURIComponent(key)}${on ? `&on=${on}` : ""}`
+      ),
+    enabled: linked && ids.length > 0,
+    staleTime: 5000,
+    refetchInterval: linked && ids.length > 0 ? 15000 : false,
   });
 }
 

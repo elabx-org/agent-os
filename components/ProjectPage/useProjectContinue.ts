@@ -33,6 +33,8 @@ export function useProjectContinue(
 ): {
   continueElsewhere?: () => void;
   away: AwayChats[];
+  /** The chats that live on this machine */
+  hereIds: string[];
   bringBack: (group: AwayChats) => void;
 } {
   const { data } = useMachines();
@@ -87,6 +89,7 @@ export function useProjectContinue(
           })
       : undefined,
     away,
+    hereIds: here.map((c) => c.id),
     bringBack: (group) =>
       openProjectContinueSheet(
         { name: project.name, chats: group.chats },

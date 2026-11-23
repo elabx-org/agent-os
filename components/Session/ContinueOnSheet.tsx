@@ -271,7 +271,7 @@ function Body({
     <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 pt-1 [html[data-fold=horizontal]_&]:gap-2.5">
       <div className="min-w-0">
         <SheetTitle className="t-title text-[20px] leading-tight font-bold tracking-normal">
-          {back ? "Bring it back" : "Continue on another machine"}
+          {target ? `Work on ${target.name}` : "Work on another machine"}
         </SheetTitle>
         <p className="text-muted-foreground mt-1 truncate text-[13px]">
           {name}
@@ -530,9 +530,7 @@ function Body({
                 : failed
                   ? "Try again"
                   : target
-                    ? back && target.id === mine
-                      ? "Bring it back here"
-                      : `Continue on ${target.name}`
+                    ? `Work on ${target.name}`
                     : "Continue"}
             </span>
           </button>
@@ -650,9 +648,7 @@ export function ContinueOnSheetHost() {
             busyRef={busyRef}
           />
         ) : (
-          <SheetTitle className="sr-only">
-            Continue on another machine
-          </SheetTitle>
+          <SheetTitle className="sr-only">Work on another machine</SheetTitle>
         )}
       </SheetContent>
     </Sheet>
