@@ -69,9 +69,13 @@ export async function resumeIfSuspended(
       "-t",
       tmuxName,
       "-p",
-      "#{pane_pid}\t#{pane_current_command}",
+      // A space, not a tab: tmux without a UTF-8 locale prints tabs as "_"
+      "#{pane_pid} #{pane_current_command}",
     ]);
-    const [pidText, command = ""] = stdout.trim().split("\t");
+    const line = stdout.trim();
+    const gap = line.indexOf(" ");
+    const pidText = gap < 0 ? line : line.slice(0, gap);
+    const command = gap < 0 ? "" : line.slice(gap + 1);
     const pid = Number(pidText);
     if (!Number.isInteger(pid) || pid <= 1 || isShell(command)) return false;
 

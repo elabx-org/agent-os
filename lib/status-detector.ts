@@ -153,6 +153,25 @@ const WAITING_PATTERNS = [
   /allow all commands/i,
 ];
 
+/**
+ * The activity time first, then a space, then the name. Never a tab: tmux
+ * 3.5+ run without a UTF-8 locale (a launchd service on macOS) prints
+ * control characters as "_", which read every session as gone
+ */
+export const SESSION_LIST_FORMAT = "#{session_activity} #{session_name}";
+
+/** tmux's session list in SESSION_LIST_FORMAT: name -> last activity */
+export function parseSessionList(stdout: string): Map<string, number> {
+  const sessions = new Map<string, number>();
+  for (const line of stdout.split("\n")) {
+    const at = line.indexOf(" ");
+    if (at <= 0) continue;
+    const name = line.slice(at + 1).trim();
+    if (name) sessions.set(name, parseInt(line.slice(0, at), 10) || 0);
+  }
+  return sessions;
+}
+
 export type SessionStatus = "running" | "waiting" | "idle" | "dead";
 
 interface StateTracker {
@@ -217,17 +236,10 @@ class SessionStatusDetector {
 
     try {
       const { stdout } = await execAsync(
-        `tmux list-sessions -F '#{session_name}\t#{session_activity}' 2>/dev/null || echo ""`
+        `tmux list-sessions -F '${SESSION_LIST_FORMAT}' 2>/dev/null || echo ""`
       );
 
-      const newData = new Map<string, number>();
-      for (const line of stdout.trim().split("\n")) {
-        if (!line) continue;
-        const [name, activity] = line.split("\t");
-        if (name && activity) newData.set(name, parseInt(activity, 10) || 0);
-      }
-
-      this.cache = { data: newData, updatedAt: Date.now() };
+      this.cache = { data: parseSessionList(stdout), updatedAt: Date.now() };
     } catch {
       // Keep existing cache on error
     }
