@@ -13,6 +13,7 @@ import type { DevServer, Session } from "@/lib/db";
 import type { ProjectWithRepositories } from "@/lib/projects";
 import { handedOffLine, withoutPaused } from "@/lib/paused";
 import { isPaused } from "@/lib/handoff-types";
+import { isLive } from "@/components/Sidebar/model";
 import { sortQuietSessions } from "./now-summary";
 import { limitedSessions } from "@/components/Chat/limited-model";
 import { useLimitClock } from "@/hooks/useSessionLimit";
@@ -222,7 +223,9 @@ export function useNowItems(
         !byId.has(s.id) &&
         !limitedIds.has(s.id) &&
         !settledIds.has(s.id) &&
-        (!s.project_id || uncategorized.has(s.project_id))
+        (!s.project_id || uncategorized.has(s.project_id)) &&
+        // A terminal whose tmux is gone has nothing left to open
+        (s.agent_type !== "shell" || isLive(s, statuses))
     )
   );
   const handoffs: Record<string, string> = {};

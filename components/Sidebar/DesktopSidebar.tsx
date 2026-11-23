@@ -31,7 +31,13 @@ import { newSurfaceStore } from "@/stores/newSurface";
 import { mobileNavStore } from "@/stores/mobileNav";
 import { runningStore } from "@/stores/running";
 import { cn } from "@/lib/utils";
-import { SIDEBAR_PROJECTS, shortAge, sidebarProjects } from "./model";
+import {
+  SIDEBAR_LOOSE,
+  SIDEBAR_PROJECTS,
+  looseSessions,
+  shortAge,
+  sidebarProjects,
+} from "./model";
 import { UsageCard } from "./UsageCard";
 
 export interface DesktopSidebarProps {
@@ -78,6 +84,7 @@ const STATE_LABEL = {
   needs: "needs you",
   limited: "limited",
   work: "working",
+  idle: "idle",
 } as const;
 
 function SessionRows({
@@ -88,7 +95,7 @@ function SessionRows({
   onOpenSession,
 }: {
   sessions: Session[];
-  state: "needs" | "limited" | "work";
+  state: "needs" | "limited" | "work" | "idle";
   statuses: Record<string, SessionStatus>;
   selectedId?: string;
   onOpenSession: (session: Session) => void;
@@ -232,6 +239,19 @@ export function DesktopSidebar({
   );
   const shown = listed.slice(0, SIDEBAR_PROJECTS);
   const more = listed.length - shown.length;
+  // Quiet sessions outside any project: otherwise nothing here shows them
+  const loose = useMemo(
+    () =>
+      looseSessions(
+        active,
+        projects,
+        sessionStatuses,
+        new Set([...waiting, ...limited, ...working].map((s) => s.id))
+      ),
+    [active, projects, sessionStatuses, waiting, limited, working]
+  );
+  const looseShown = loose.slice(0, SIDEBAR_LOOSE);
+  const noProjectId = projects.find((p) => p.is_uncategorized)?.id;
 
   // Only what the main area shows is marked
   const selectedId = !page && !newOpen ? activeSessionId : undefined;
@@ -396,6 +416,40 @@ export function DesktopSidebar({
                 className="srow text-muted-foreground hover:bg-foreground/5 w-full flex-none text-left text-[13px]"
               >
                 {more} more
+              </button>
+            )}
+          </>
+        )}
+        {!newOpen && looseShown.length > 0 && (
+          <>
+            <SectionLabel
+              first={
+                needsCount +
+                  limited.length +
+                  working.length +
+                  otherWorking +
+                  shown.length ===
+                0
+              }
+            >
+              No project
+            </SectionLabel>
+            <SessionRows
+              sessions={looseShown}
+              state="idle"
+              statuses={sessionStatuses}
+              selectedId={selectedId}
+              onOpenSession={onOpenSession}
+            />
+            {loose.length > looseShown.length && noProjectId && (
+              <button
+                type="button"
+                onClick={() =>
+                  openPage({ kind: "project", projectId: noProjectId })
+                }
+                className="srow text-muted-foreground hover:bg-foreground/5 w-full flex-none text-left text-[13px]"
+              >
+                {loose.length - looseShown.length} more
               </button>
             )}
           </>

@@ -30,6 +30,7 @@ import { promisify } from "util";
 import zlib from "zlib";
 import { claudeDir, projectDirFor } from "./claude-transcript";
 import { getDb, queries, type Project, type Session } from "./db";
+import { createProject } from "./projects";
 import { flagOnFor } from "./flags";
 import { slugify } from "./git";
 import { isPaused } from "./handoff-types";
@@ -1070,7 +1071,7 @@ async function placeTranscript(inn: Arriving, folder: string): Promise<void> {
   }
 }
 
-/** The project whose folder is this repository, else Uncategorized */
+/** The project whose folder is this repository; a new one when none is */
 function projectFor(top: string, repo: string): string {
   const real = (dir: string) => {
     try {
@@ -1084,6 +1085,14 @@ function projectFor(top: string, repo: string): string {
     if (p.is_uncategorized || !p.working_directory) continue;
     const dir = real(p.working_directory);
     if (dir && wanted.has(dir)) return p.id;
+  }
+  // No project for this repository here yet: one named after its folder,
+  // so the session isn't left outside every project
+  try {
+    const name = path.basename(expandHome(repo)).slice(0, 80);
+    if (name) return createProject({ name, workingDirectory: repo }).id;
+  } catch (error) {
+    console.error("[move] making a project for it:", error);
   }
   return "uncategorized";
 }

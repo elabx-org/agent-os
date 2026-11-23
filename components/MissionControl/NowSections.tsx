@@ -44,6 +44,8 @@ import type { NowItems } from "./useNowItems";
 
 /** Quiet projects listed on Now; the rest are under Projects */
 const QUIET_SHOWN = 3;
+/** Rows this machine's project-less sessions get even when projects fill Quiet */
+const QUIET_LOOSE = 2;
 const NO_LAST_USED: ReadonlyMap<string, string> = new Map();
 /** Done today rows on the wide page; the rest are a tap away */
 const DONE_SHOWN = 3;
@@ -698,11 +700,17 @@ export function QuietSection({
     0,
     QUIET_SHOWN
   );
-  const loose = now.loose.slice(0, QUIET_SHOWN - projects.length);
+  // This machine's sessions outside any project always get a couple of
+  // rows: with the projects filling the list (often another machine's),
+  // nothing else on this page would show them
+  const loose = now.loose.slice(
+    0,
+    Math.max(QUIET_LOOSE, QUIET_SHOWN - projects.length)
+  );
   // The other machines' own loose sessions, in what room is left
   const otherLoose = others.loose.slice(
     0,
-    QUIET_SHOWN - projects.length - loose.length
+    Math.max(0, QUIET_SHOWN - projects.length - loose.length)
   );
   if (!projects.length && !loose.length && !otherLoose.length) return null;
   const quietRow = (label: string) => (

@@ -53,6 +53,40 @@ export function sidebarProjects<
     .map(({ project }) => ({ project, live: live.get(project.id) ?? 0 }));
 }
 
+/** How many sessions outside any project the sidebar lists before "N more" */
+export const SIDEBAR_LOOSE = 5;
+
+/**
+ * Sessions outside any project that no other section shows (not waiting,
+ * working or limited): listed so a machine without projects still shows
+ * what it has. Most recent first; a terminal whose tmux is gone has
+ * nothing left to open and is left out
+ */
+export function looseSessions<
+  S extends Pick<
+    Session,
+    "id" | "project_id" | "conductor_session_id" | "updated_at" | "agent_type"
+  >,
+>(
+  sessions: S[],
+  projects: Pick<Project, "id" | "is_uncategorized">[],
+  statuses: Record<string, Pick<SessionStatus, "status">>,
+  shownElsewhere: ReadonlySet<string>
+): S[] {
+  const none = new Set(
+    projects.filter((p) => p.is_uncategorized).map((p) => p.id)
+  );
+  return sessions
+    .filter(
+      (s) =>
+        !s.conductor_session_id &&
+        !shownElsewhere.has(s.id) &&
+        (!s.project_id || none.has(s.project_id)) &&
+        (s.agent_type !== "shell" || isLive(s, statuses))
+    )
+    .sort((a, b) => b.updated_at.localeCompare(a.updated_at));
+}
+
 const RAIL_RANK: Record<string, number> = { waiting: 0, running: 1 };
 
 /**
