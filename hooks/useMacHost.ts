@@ -12,6 +12,7 @@ import {
 } from "@/lib/mac-host";
 import { runNav } from "@/lib/nav-actions";
 import { useHereName } from "@/data/machines";
+import { useGitStatus } from "@/data/git/queries";
 import { displayTitle, useListTitles } from "@/hooks/useSessionTitles";
 import { loadMacHost, macHostStore, setMacInspector } from "@/stores/macHost";
 import { mobileNavActions, mobileNavStore } from "@/stores/mobileNav";
@@ -75,6 +76,11 @@ export function useMacHost({
   const { inspector } = useSnapshot(macHostStore);
   const machine = useHereName();
   const titles = useListTitles(mac && session ? [session] : []);
+  // The branch its folder is on (the pane asks for the same status)
+  const { data: git } = useGitStatus(session?.working_directory ?? "", {
+    enabled: mac && !!session,
+  });
+  const branch = git?.branch ?? session?.branch_name;
 
   useEffect(() => {
     if (mac) loadMacHost();
@@ -119,9 +125,7 @@ export function useMacHost({
     const report = () =>
       publishMacState(
         macState({
-          session: session
-            ? { id: session.id, title, branch: session.branch_name }
-            : null,
+          session: session ? { id: session.id, title, branch } : null,
           project: project && !project.is_uncategorized ? project.name : null,
           machine,
           covered,
@@ -146,6 +150,7 @@ export function useMacHost({
     mac,
     session,
     title,
+    branch,
     project,
     machine,
     covered,

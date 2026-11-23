@@ -83,3 +83,12 @@ html[data-mac] [data-mac-pane="main"] header.h-16 {
   height: 3rem;
   padding-inline: 1rem;
 }
+
+/* Settings covers the panes: one pane of its own, inside the window's edge */
+html[data-mac] .mac-cover {
+  inset: 2px 8px 8px;
+  overflow: hidden;
+  border: 0.5px solid var(--mac-edge);
+  border-radius: 14px;
+  box-shadow: var(--mac-shadow);
+}
