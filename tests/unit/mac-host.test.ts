@@ -160,3 +160,21 @@ test("the review bar counts a file once and adds up its lines", () => {
     2
   );
 });
+
+test("a page can put its own line under the window's title", () => {
+  const all = macState({
+    ...base,
+    covered: "All sessions",
+    coverDetail: "5 on 2 machines",
+  });
+  assert.equal(all.title, "All sessions");
+  assert.equal(all.detail, "5 on 2 machines");
+  assert.equal(all.session, null);
+  // Without one, and for the session itself, nothing changes
+  assert.equal(macState({ ...base, covered: "Mocks" }).detail, "Mac Studio");
+  assert.equal(
+    macState({ ...base, coverDetail: "5 on 2 machines" }).detail,
+    "fusionha-ios · main · Mac Studio"
+  );
+  assert.ok(isMacAction("all"));
+});

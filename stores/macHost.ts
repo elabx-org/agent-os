@@ -12,7 +12,13 @@ export const macHostStore = proxy<{
   inspector: boolean;
   reviewInspector: boolean;
   split: boolean;
-}>({ inspector: true, reviewInspector: false, split: false });
+  /** A page's own line for under the window's title ("5 on 2 machines") */
+  pageDetail: string | null;
+}>({ inspector: true, reviewInspector: false, split: false, pageDetail: null });
+
+export function setMacPageDetail(detail: string | null) {
+  macHostStore.pageDetail = detail;
+}
 
 export function loadMacHost() {
   try {

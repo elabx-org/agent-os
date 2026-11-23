@@ -273,6 +273,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
   @objc func toggleSidebarPane(_ sender: Any?) { pane.act(.sidebar) }
   @objc func toggleInspectorPane(_ sender: Any?) { pane.act(.inspector) }
   @objc func findInPage(_ sender: Any?) { pane.act(.find) }
+  @objc func showAllSessions(_ sender: Any?) { pane.act(.all) }
   @objc func newChat(_ sender: Any?) { pane.act(.new) }
 
   /// The View menu's two pane items say what they will do
@@ -285,7 +286,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     case #selector(toggleInspectorPane(_:)):
       item.title = state?.inspector == true ? Strings.hideInspector : Strings.showInspector
       return state?.session != nil
-    case #selector(findInPage(_:)):
+    case #selector(findInPage(_:)), #selector(showAllSessions(_:)):
       return state != nil
     default:
       return true

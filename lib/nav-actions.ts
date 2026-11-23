@@ -328,6 +328,8 @@ function pageName(page: WorkspacePage): string {
       return "project settings";
     case "inbox":
       return "Needs you";
+    case "all":
+      return "All sessions";
     case "running":
       return "Running";
     case "mocks":

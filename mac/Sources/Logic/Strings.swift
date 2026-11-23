@@ -307,6 +307,7 @@ enum Strings {
   static let showInspector = "Show Inspector"
   static let hideInspector = "Hide Inspector"
   static let findMenu = "Find…"
+  static let allSessionsMenu = "All Sessions"
   static let noFolderTitle = "This session's folder isn't on this Mac"
   static let noFolderBody = "The folder may have been moved or removed. The session itself is not affected."
   static func noAppTitle(_ app: String) -> String { "\(app) isn't installed on this Mac" }
@@ -352,7 +353,7 @@ enum Strings {
       tabChat, tabTerminal, tabFiles, tabAgents, tabChanges(0), tabChanges(12), viewsLabel, sidebarLabel,
       sidebarTip, inspectorLabel, inspectorTip, findLabel, findTip, newChatLabel, newChatTip, openInLabel,
       openInTip, openInFinder, openInXcode, openInTerminal, showSidebar, hideSidebar, showInspector,
-      hideInspector, findMenu, noFolderTitle, noFolderBody, noAppTitle("Xcode"),
+      hideInspector, findMenu, allSessionsMenu, noFolderTitle, noFolderBody, noAppTitle("Xcode"),
     ]
   }
 

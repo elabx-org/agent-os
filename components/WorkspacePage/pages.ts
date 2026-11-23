@@ -56,4 +56,11 @@ export const PAGES: { [K in WorkspacePageKind]: ComponentType<PageProps<K>> } =
       () => import("@/components/Jobs/RunnersPage").then((m) => m.RunnersPage),
       { ssr: false }
     ),
+    all: dynamic(
+      () =>
+        import("@/components/AllSessions/AllSessionsPage").then(
+          (m) => m.AllSessionsPage
+        ),
+      { ssr: false }
+    ),
   };

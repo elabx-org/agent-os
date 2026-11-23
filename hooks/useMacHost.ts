@@ -20,6 +20,7 @@ import { mobileNavActions, mobileNavStore } from "@/stores/mobileNav";
 import { closeSettings, settingsPageStore } from "@/stores/settingsPage";
 import {
   closePage,
+  openPage,
   workspacePageStore,
   type WorkspacePageKind,
 } from "@/stores/workspacePage";
@@ -62,6 +63,7 @@ const PAGE_TITLE: Record<WorkspacePageKind, string> = {
   running: "Running",
   mocks: "Mocks",
   runners: "Runners",
+  all: "All sessions",
 };
 
 const VIEW_MODE = {
@@ -96,7 +98,9 @@ export function useMacHost({
   const { viewMode, changes, agentCount } = useSnapshot(mobileNavStore);
   const { page } = useSnapshot(workspacePageStore);
   const { open: settingsOpen } = useSnapshot(settingsPageStore);
-  const inspector = inspectorShown(useSnapshot(macHostStore), viewMode);
+  const macChoice = useSnapshot(macHostStore);
+  const inspector = inspectorShown(macChoice, viewMode);
+  const coverDetail = page ? macChoice.pageDetail : null;
   const machine = useMacHereName();
   const titles = useListTitles(mac && session ? [session] : []);
   // The branch its folder is on (the pane asks for the same status)
@@ -117,6 +121,7 @@ export function useMacHost({
       else if (action === "find") runNav("search");
       else if (action === "new") runNav("new");
       else if (action === "settings") runNav("settings");
+      else if (action === "all") openPage({ kind: "all" });
       else {
         // A view picked over a page or Settings goes back to the session
         closeSettings();
@@ -152,6 +157,7 @@ export function useMacHost({
           project: project && !project.is_uncategorized ? project.name : null,
           machine,
           covered,
+          coverDetail,
           viewMode,
           changes,
           agents: agentCount,
@@ -177,6 +183,7 @@ export function useMacHost({
     project,
     machine,
     covered,
+    coverDetail,
     viewMode,
     changes,
     agentCount,

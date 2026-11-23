@@ -11,7 +11,8 @@ export type WorkspacePage =
   | { kind: "inbox" }
   | { kind: "running"; sessionId?: string; port?: number }
   | { kind: "mocks"; sessionId?: string }
-  | { kind: "runners"; sessionId?: string };
+  | { kind: "runners"; sessionId?: string }
+  | { kind: "all" };
 
 export type WorkspacePageKind = WorkspacePage["kind"];
 
