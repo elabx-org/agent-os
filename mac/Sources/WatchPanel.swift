@@ -177,7 +177,12 @@ final class WatchPanel: NSObject, NSWindowDelegate {
 
   func hide() { panel.orderOut(nil) }
 
-  func windowWillClose(_ notification: Notification) { onClose?() }
+  /// Only the person's own close (the panel's button): quitting the app or
+  /// hiding the panel doesn't change what they chose
+  func windowShouldClose(_ sender: NSWindow) -> Bool {
+    onClose?()
+    return true
+  }
 
   func update(force: Bool = false) {
     guard let host, force || isShown else { return }

@@ -487,6 +487,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WindowHost, StatusMenu
       ] as [String: Any],
       "update": updateState(),
       "watch": watch?.dump ?? ["shown": false],
+      // What Answer would show for each session that needs the person
+      "answers": Dictionary(
+        uniqueKeysWithValues: snap.sessions.filter { $0.state == "waiting" }.map {
+          ($0.id, MenuModel.text(status.answerEntries($0.id)))
+        }),
       "quick": quick?.dump ?? ["shown": false],
       "quickKey": ["choice": quickKey.rawValue, "failed": HotKey.failed],
       "dock": Glance.dock(sessions: status.sessions(), recent: snap.recentProjects, watching: watching)

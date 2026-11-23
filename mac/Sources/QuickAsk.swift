@@ -274,6 +274,8 @@ final class QuickAsk: NSObject, NSWindowDelegate, NSTextFieldDelegate {
     pinned = true
     host?.answer(session: sender.sessionId, under: sender)
     pinned = was
+    // The answer opened something else (the reply panel, the window)
+    if !pinned && !panel.isKeyWindow { hide() }
   }
 
   // MARK: Start
