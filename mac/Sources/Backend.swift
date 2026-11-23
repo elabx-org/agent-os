@@ -101,6 +101,11 @@ struct Snapshot {
   var reposDir: String?
   var facts = ServiceFacts()
   var lastPollAt = Date.distantPast
+  /// This Mac's projects, and which of them its sessions were last active in
+  var projects: [Project] = []
+  var uses: [ProjectUse] = []
+
+  var recentProjects: [Project] { Glance.recent(projects, uses: uses) }
 
   var waiting: Int { sessions.filter { $0.state == "waiting" }.count }
   var running: Int { sessions.filter { $0.state == "running" }.count }
@@ -345,6 +350,11 @@ enum Backend {
     let order = ["waiting": 0, "running": 1, "idle": 2]
     for row in list {
       if let id = row["id"] as? String, let name = row["name"] as? String { snap.names[id] = name }
+    }
+    snap.projects = decode(ProjectList.self, "/api/projects")?.projects ?? []
+    snap.uses = list.compactMap { row -> ProjectUse? in
+      guard let project = row["project_id"] as? String, let at = row["updated_at"] as? String else { return nil }
+      return ProjectUse(projectId: project, at: at)
     }
     snap.sessions = list.compactMap { row -> SessionRow? in
       guard let id = row["id"] as? String, !(row["settled_at"] is NSNumber),

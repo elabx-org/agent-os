@@ -26,7 +26,7 @@ fail() { echo "build.sh: $*" >&2; exit 1; }
 # This Mac's own architecture: an Intel Mac (macOS 13 and later) builds and
 # runs its own copy, as the app did before this round
 SWIFTC=(xcrun swiftc -swift-version 5 -target "$(uname -m)-apple-macos13.0")
-FRAMEWORKS=(-framework AppKit -framework WebKit -framework UserNotifications -framework ServiceManagement -framework Security)
+FRAMEWORKS=(-framework AppKit -framework WebKit -framework UserNotifications -framework ServiceManagement -framework Security -framework Carbon)
 
 # --- Guards on the sources (R2) ---
 # Only Click.swift may make a Click.

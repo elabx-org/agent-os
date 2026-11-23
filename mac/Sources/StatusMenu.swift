@@ -7,6 +7,13 @@ protocol StatusMenuHost: AnyObject {
   func turnOn(then: (() -> Void)?)
   var isRegular: Bool { get }
   func openPanel(_ kind: PanelKind)
+  func showQuickAsk()
+  func toggleWatch()
+  var watching: Bool { get }
+  var quickKey: QuickKey { get }
+  /// The shortcut couldn't be taken (another app has it)
+  var quickKeyFailed: Bool { get }
+  func setQuickKey(_ key: QuickKey)
   /// The menu opened: ask for notifications once, read session details
   func menuOpened()
   var notifier: Notifier? { get }
@@ -26,6 +33,12 @@ final class ActionBox: NSObject {
 final class StatusMenu: NSObject, NSMenuDelegate {
   /// The status menu. Clicks.fromMenu accepts only items under it.
   static let menu = NSMenu()
+
+  /// A waiting session's answers, the same entries as under its row here,
+  /// shown under a button of the watch panel or quick ask. Its items run
+  /// through runItem, and Clicks.fromMenu checks the click the same way.
+  static let answers = NSMenu()
+  private var answersFor: String?
 
   private let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
   private var menu: NSMenu { Self.menu }
@@ -80,15 +93,48 @@ final class StatusMenu: NSObject, NSMenuDelegate {
     menu.update()
   }
 
-  /// The session part of the menu as data (also for dump-menu and plan)
-  func model() -> [MenuEntry] {
+  /// The sessions with what was last read of their prompts
+  func sessions() -> [MenuSession] {
     let details = host?.details ?? [:]
-    let sessions = snap.sessions.map { row in
+    return snap.sessions.map { row in
       MenuSession(
         id: row.id, name: row.name, state: row.state, lastLine: row.lastLine, prompt: details[row.id]?.prompt,
         context: details[row.id]?.context)
     }
-    return MenuModel.build(MenuSnapshot(on: snap.on, sessions: sessions, features: snap.features))
+  }
+
+  /// The session part of the menu as data (also for dump-menu and plan)
+  func model() -> [MenuEntry] {
+    MenuModel.build(MenuSnapshot(on: snap.on, sessions: sessions(), features: snap.features))
+  }
+
+  /// What a session's row holds in the menu, as entries
+  func answerEntries(_ id: String) -> [MenuEntry] {
+    guard snap.on, let session = sessions().first(where: { $0.id == id }) else { return [] }
+    return MenuModel.children(session, features: snap.features)
+  }
+
+  private func syncAnswers() {
+    guard let id = answersFor else { return }
+    MenuSync.sync(Self.answers, answerEntries(id).map { item(for: $0, topLevel: false) })
+    Self.answers.update()
+  }
+
+  /// Shows a session's answers under `view` (a button in one of our
+  /// panels) and waits for the choice. They stay in step with the menu
+  /// bar's while they show.
+  func popUpAnswers(for id: String, under view: NSView) {
+    guard SessionLink.isValidId(id), view.window != nil else { return }
+    Self.answers.autoenablesItems = false
+    answersFor = id
+    syncAnswers()
+    defer { answersFor = nil }
+    guard !Self.answers.items.isEmpty else {
+      host?.open(.session(id), activate: true)
+      return
+    }
+    let below = NSPoint(x: 0, y: view.isFlipped ? view.bounds.height + 4 : -4)
+    Self.answers.popUp(positioning: nil, at: below, in: view)
   }
 
   func notificationsEntry() -> MenuEntry {
@@ -151,7 +197,29 @@ final class StatusMenu: NSObject, NSMenuDelegate {
     }
     rows.append(.separator())
     rows.append(action(Strings.openAgentOS, #selector(openApp), key: "o"))
+    if snap.on {
+      rows.append(action(Strings.quickAskMenu, #selector(quickAsk)))
+      let watch = action(Strings.watchPanelMenu, #selector(toggleWatch))
+      watch.state = host?.watching == true ? .on : .off
+      rows.append(watch)
+    }
     rows.append(item(for: notificationsEntry(), topLevel: true))
+    let keys = NSMenuItem(title: Strings.quickKeyMenu, action: nil, keyEquivalent: "")
+    let keyMenu = NSMenu()
+    keyMenu.autoenablesItems = false
+    let chosen = host?.quickKey ?? .optionSpace
+    for key in QuickKey.allCases {
+      let row = action(key.title, #selector(pickQuickKey(_:)))
+      row.representedObject = key.rawValue
+      row.state = key == chosen ? .on : .off
+      keyMenu.addItem(row)
+    }
+    if host?.quickKeyFailed == true {
+      keyMenu.addItem(.separator())
+      keyMenu.addItem(label(Strings.quickKeyTaken))
+    }
+    keys.submenu = keyMenu
+    rows.append(keys)
 
     if snap.installed {
       rows.append(.separator())
@@ -193,6 +261,7 @@ final class StatusMenu: NSObject, NSMenuDelegate {
     }
     rows.append(action(Strings.quit, #selector(quit), key: "q"))
     MenuSync.sync(menu, rows)
+    syncAnswers()
   }
 
   /// One line per item: indent, title, [on]/[off], enabled/disabled
@@ -324,6 +393,19 @@ final class StatusMenu: NSObject, NSMenuDelegate {
   // MARK: Actions
 
   @objc private func openApp() { host?.open(.home, activate: true) }
+
+  @objc private func quickAsk() { host?.showQuickAsk() }
+
+  @objc private func toggleWatch() {
+    host?.toggleWatch()
+    render()
+  }
+
+  @objc private func pickQuickKey(_ sender: NSMenuItem) {
+    guard let raw = sender.representedObject as? String, let key = QuickKey(rawValue: raw) else { return }
+    host?.setQuickKey(key)
+    render()
+  }
 
   @objc private func openServer() {
     if let url = snap.hubURL { NSWorkspace.shared.open(url) }

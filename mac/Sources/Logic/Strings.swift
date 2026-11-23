@@ -312,6 +312,34 @@ enum Strings {
   static let noFolderBody = "The folder may have been moved or removed. The session itself is not affected."
   static func noAppTitle(_ app: String) -> String { "\(app) isn't installed on this Mac" }
 
+  // MARK: Watch panel, quick ask and the Dock
+
+  static let watchPanelMenu = "Watch Panel"
+  static let watchEmpty = "Nothing needs you and nothing is working"
+  static let answerButton = "Answer"
+  static let answerTip = "See what it asks and answer"
+  static let openSessionTip = "Open this session in the window"
+  static let quickAskMenu = "Quick Ask…"
+  static let quickPlaceholder = "Ask, or start a chat…"
+  static let quickStartsIn = "Starts in"
+  static let quickHintStart = "Return to start"
+  static let quickHintOpen = "⌘Return to start and open it"
+  static let quickHintClose = "Esc to close"
+  static let quickKeyMenu = "Quick Ask Shortcut"
+  static let quickKeyOff = "Off"
+  static let quickKeyTaken = "Another app already uses that shortcut"
+  static func dockNewIn(_ project: String) -> String { "New Chat in \(project)" }
+  static func dropAbout(_ paths: [String], more: Int) -> String {
+    let list = paths.joined(separator: ", ")
+    return more > 0 ? "About \(list) and \(more) more: " : "About \(list): "
+  }
+  static let settingsMenu = "Settings…"
+  static let newWindowMenu = "Open Chat in New Window"
+  static let showChat = "Chat"
+  static let showChanges = "Changes"
+  static let showTerminal = "Terminal"
+  static let showFiles = "Files"
+
   static func aboutCredits(_ version: String) -> String {
     "AgentOS on this Mac, version \(version). This window shows the sessions on this Mac. Closing or quitting this app doesn't stop your sessions."
   }
@@ -344,7 +372,7 @@ enum Strings {
       quitAgentOS, fileMenu, newSession, closeWindow, editMenu, undo, redo, cut, copy, paste,
       pasteAndMatchStyle, selectAll, viewMenu, reloadPage, back, forward, enterFullScreen, windowMenu,
       minimize, zoom, appName, bringAllToFront, windowTitle(nil), aboutCredits("0.5.0"),
-    ] + toolbar + stage2 + stage3 + alertDestructiveWords + offline + IconState.samples.map(tooltipFirst)
+    ] + toolbar + glance + stage2 + stage3 + alertDestructiveWords + offline + IconState.samples.map(tooltipFirst)
       + [tooltipFirst(.needsYou(1)), tooltipFirst(.working(3))]
   }
 
@@ -355,6 +383,15 @@ enum Strings {
       openInTip, openInFinder, openInXcode, openInTerminal, showSidebar, hideSidebar, showInspector,
       hideInspector, findMenu, allSessionsMenu, noFolderTitle, noFolderBody, noAppTitle("Xcode"),
     ]
+  }
+
+  static var glance: [String] {
+    [
+      watchPanelMenu, watchEmpty, answerButton, answerTip, openSessionTip, quickAskMenu, quickPlaceholder,
+      quickStartsIn, quickHintStart, quickHintOpen, quickHintClose, quickKeyMenu, quickKeyOff, quickKeyTaken,
+      dockNewIn("fusionha-ios"), dropAbout(["~/AgentOS/app/Settings.swift", "~/AgentOS/app/Tests"], more: 2),
+      settingsMenu, newWindowMenu, showChat, showChanges, showTerminal, showFiles,
+    ] + QuickKey.allCases.map(\.title)
   }
 
   static var stage2: [String] {

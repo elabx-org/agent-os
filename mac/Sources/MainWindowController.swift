@@ -50,8 +50,18 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
   private var shownBeforeAppHide = false
   /// hide() was asked for in full screen: it runs once full screen has ended
   private var pendingHide = false
+  /// A chat in a window of its own: it closes for good, and joins the other
+  /// chat windows as a tab. The first window only hides.
+  let secondary: Bool
+  /// A secondary window closed
+  var onClosed: (() -> Void)?
+  /// A menu's action for a page that is still loading
+  private var pendingAction: (action: PageAction, at: Date)?
 
-  init(port: Int, persistent: Bool, inspectable: Bool, autosaveName: String, host: WindowHost) {
+  init(
+    port: Int, persistent: Bool, inspectable: Bool, autosaveName: String, host: WindowHost, secondary: Bool = false
+  ) {
+    self.secondary = secondary
     pane = WebPane(port: port, persistent: persistent, inspectable: inspectable)
     self.host = host
     let window = NSWindow(
@@ -59,7 +69,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
       styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered,
       defer: false)
     window.isReleasedWhenClosed = false
-    window.tabbingMode = .disallowed
+    window.tabbingMode = secondary ? .preferred : .disallowed
+    if secondary { window.tabbingIdentifier = "AgentOSChats" }
     window.isRestorable = false
     window.collectionBehavior = [.fullScreenPrimary]
     window.minSize = NSSize(width: 480, height: 360)
@@ -207,9 +218,22 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     return item
   }
 
+  /// Tells the page now, or as soon as it says it is there (within 15 s)
+  func actWhenReady(_ action: PageAction) {
+    if pane.state != nil {
+      pane.act(action)
+    } else {
+      pendingAction = (action, Date())
+    }
+  }
+
   private func stateChanged() {
     titleChanged()
     applyState()
+    if let pending = pendingAction, pane.state != nil {
+      pendingAction = nil
+      if Date().timeIntervalSince(pending.at) < 15 { pane.act(pending.action) }
+    }
     // The window's look follows the page's: light or dark
     window?.appearance = pane.state.map { NSAppearance(named: $0.dark ? .darkAqua : .aqua) } ?? nil
   }
@@ -275,6 +299,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
   @objc func findInPage(_ sender: Any?) { pane.act(.find) }
   @objc func showAllSessions(_ sender: Any?) { pane.act(.all) }
   @objc func newChat(_ sender: Any?) { pane.act(.new) }
+  @objc func showChat(_ sender: Any?) { pane.act(.chat) }
+  @objc func showChanges(_ sender: Any?) { pane.act(.changes) }
+  @objc func showTerminal(_ sender: Any?) { pane.act(.terminal) }
+  @objc func showFiles(_ sender: Any?) { pane.act(.files) }
 
   /// The View menu's two pane items say what they will do
   func validateMenuItem(_ item: NSMenuItem) -> Bool {
@@ -285,6 +313,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
       return state != nil
     case #selector(toggleInspectorPane(_:)):
       item.title = state?.inspector == true ? Strings.hideInspector : Strings.showInspector
+      return state?.session != nil
+    case #selector(showChat(_:)), #selector(showChanges(_:)), #selector(showTerminal(_:)), #selector(showFiles(_:)):
+      let views: [Selector: PageAction] = [
+        #selector(showChat(_:)): .chat, #selector(showChanges(_:)): .changes,
+        #selector(showTerminal(_:)): .terminal, #selector(showFiles(_:)): .files,
+      ]
+      item.state = item.action.flatMap { views[$0] } == state?.view && state?.view != nil ? .on : .off
       return state?.session != nil
     case #selector(findInPage(_:)), #selector(showAllSessions(_:)):
       return state != nil
@@ -402,7 +437,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
   }
 
   func windowShouldClose(_ sender: NSWindow) -> Bool {
+    if secondary { return true }
     hide()
     return false
+  }
+
+  func windowWillClose(_ notification: Notification) {
+    guard secondary else { return }
+    pane.forgetSession()
+    onClosed?()
   }
 }
