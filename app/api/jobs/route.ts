@@ -3,6 +3,7 @@ import { agentActorSessionId } from "@/lib/agent-actions";
 import { isAgentOrigin } from "@/lib/agent-origin";
 import { ownerRead, ownerWrite } from "@/lib/backup/owner";
 import { JobRefused, createJob, jobsView, runAgain } from "@/lib/jobs/hub";
+import { userNamedMachine } from "@/lib/jobs/named";
 
 export const dynamic = "force-dynamic";
 
@@ -94,7 +95,10 @@ export async function POST(request: Request) {
       machine: body.machine,
       title: body.title,
       task: body.task,
-      via: "chat",
+      // Read from the user's own message, not taken on the chat's word
+      via: (await userNamedMachine(sessionId, body.machine))
+        ? "mention"
+        : "chat",
     });
     return NextResponse.json({ job }, { headers: noStore });
   } catch (error) {

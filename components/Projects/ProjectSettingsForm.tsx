@@ -23,9 +23,12 @@ import {
   ScrollText,
   Webhook,
   Settings2,
+  Laptop,
 } from "lucide-react";
 import { FolderPicker } from "@/components/FolderPicker";
 import { useUpdateProject, projectKeys } from "@/data/projects";
+import { useMachines, useTabMachineId } from "@/data/machines";
+import { DEFAULT_JOB_RULE, parseJobRule, type JobRule } from "@/lib/jobs/types";
 import { useQueryClient } from "@tanstack/react-query";
 import { devServerKeys } from "@/data/dev-servers";
 import { repositoryKeys } from "@/data/repositories";
@@ -94,6 +97,7 @@ export function useProjectSettingsForm(
   const [defaultModel, setDefaultModel] = useState("sonnet");
   const [initialPrompt, setInitialPrompt] = useState("");
   const [instructions, setInstructions] = useState("");
+  const [jobRule, setJobRule] = useState<JobRule>(DEFAULT_JOB_RULE);
   const [hooks, setHooks] = useState<ProjectHook[]>([]);
   const [suggestions, setSuggestions] = useState<ProjectSuggestion[]>([]);
   const [note, setNote] = useState<string | null>(null);
@@ -163,6 +167,7 @@ export function useProjectSettingsForm(
       setDefaultModel(project.default_model);
       setInitialPrompt(project.initial_prompt || "");
       setInstructions(project.instructions || "");
+      setJobRule(parseJobRule(project.job_rule));
       setHooks(parseProjectHooks(project.hooks));
       setDevServers(
         project.devServers.map((ds) => ({
@@ -378,6 +383,7 @@ export function useProjectSettingsForm(
         initialPrompt: initialPrompt.trim() || null,
         instructions: instructions.trim() || null,
         hooks: hooks.filter((h) => h.command.trim()),
+        jobRule,
       });
 
       // Handle dev server changes
@@ -494,6 +500,8 @@ export function useProjectSettingsForm(
     setInitialPrompt,
     instructions,
     setInstructions,
+    jobRule,
+    setJobRule,
     hooks,
     setHooks,
     suggestions,
@@ -555,6 +563,39 @@ function Section({
   );
 }
 
+/** One of a few, as a segmented control */
+function Choice<T extends string>({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string;
+  value: T;
+  onChange: (value: T) => void;
+  options: [T, string][];
+}) {
+  return (
+    <div
+      className="seg border-foreground/10 border bg-[var(--block)]"
+      role="group"
+      aria-label={label}
+    >
+      {options.map(([id, text]) => (
+        <button
+          key={id}
+          type="button"
+          aria-pressed={id === value}
+          onClick={() => onChange(id)}
+          className="min-w-0 flex-1 px-2"
+        >
+          {text}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function Field({ label, children }: { label: ReactNode; children: ReactNode }) {
   return (
     <div className="min-w-0 space-y-2">
@@ -592,7 +633,17 @@ export function ProjectSettingsForm({
   const unsaved =
     !!project &&
     (form.instructions.trim() !== (project.instructions ?? "").trim() ||
-      form.initialPrompt.trim() !== (project.initial_prompt ?? "").trim());
+      form.initialPrompt.trim() !== (project.initial_prompt ?? "").trim() ||
+      JSON.stringify(form.jobRule) !==
+        JSON.stringify(parseJobRule(project.job_rule)));
+  // Only where this project's chats can send work on: a server with a
+  // linked machine, seen from the server's own tab
+  const { data: machines } = useMachines();
+  const elsewhere = useTabMachineId();
+  const canSendJobs =
+    !elsewhere &&
+    !!machines?.enabled &&
+    machines.machines.some((m) => m.status === "approved");
 
   return (
     <form
@@ -737,6 +788,47 @@ export function ProjectSettingsForm({
           </details>
         )}
       </Section>
+
+      {canSendJobs && (
+        <Section
+          icon={<Laptop />}
+          title="Work for another machine"
+          hint="A machine takes work only while its own switch in Settings, Machines allows it."
+        >
+          <Field label="When a chat's work needs something only another machine has">
+            <Choice
+              label="When work needs another machine"
+              value={form.jobRule.send}
+              onChange={(send) => form.setJobRule({ ...form.jobRule, send })}
+              options={[
+                ["auto", "Send it there"],
+                ["ask", "Ask me first"],
+              ]}
+            />
+            <p className="text-muted-foreground text-xs">
+              {form.jobRule.send === "auto"
+                ? "The chat sends that part to the machine as a job and tells you which machine and why. The chat itself stays here."
+                : "The chat says which machine it would use and waits for your yes. Naming a machine with @ is a yes."}
+            </p>
+          </Field>
+          <Field label="If that machine is off">
+            <Choice
+              label="If that machine is off"
+              value={form.jobRule.off}
+              onChange={(off) => form.setJobRule({ ...form.jobRule, off })}
+              options={[
+                ["wait", "Tell me and wait"],
+                ["actions", "Use GitHub Actions"],
+              ]}
+            />
+            <p className="text-muted-foreground text-xs">
+              {form.jobRule.off === "wait"
+                ? "The chat tells you the machine is off and does nothing else with that part."
+                : "The chat runs that part with the project's GitHub Actions workflow instead, when it has one, and says so."}
+            </p>
+          </Field>
+        </Section>
+      )}
 
       {/* Hooks: Claude Code hooks every session in the project gets */}
       <Section

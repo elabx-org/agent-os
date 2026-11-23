@@ -793,6 +793,15 @@ const migrations: Migration[] = [
       `);
     }),
   },
+  {
+    id: 46,
+    name: "add_job_rule_to_projects",
+    up: (db) => {
+      // When a project's chats send work to another machine, and what they
+      // do when it is off (lib/jobs/types.ts JobRule, JSON; NULL: the default)
+      db.exec(`ALTER TABLE projects ADD COLUMN job_rule TEXT`);
+    },
+  },
 ];
 
 export function runMigrations(db: Database.Database): void {

@@ -35,6 +35,7 @@ import { sessionReplyContext } from "../session-reply-context";
 import { parseStartedBy } from "../session-started-by";
 import { settleSession } from "../settle";
 import { git } from "../turns-git";
+import { jobMode } from "./settings";
 import {
   materialise,
   verifyMaterialised,
@@ -59,6 +60,7 @@ import {
   RESULT_MAX,
   TASK_MAX,
   TITLE_MAX,
+  claudeFailure,
   isActive,
   isOver,
   jobPrompt,
@@ -545,10 +547,11 @@ async function setUp(row: JobRow): Promise<void> {
       workingDirectory: cwd,
       projectId: projectOf(row.repo),
       agentType: "claude",
-      // Asks before it runs or changes anything, whatever this machine's or
-      // the project's default is
+      // What the user chose for jobs on this machine (Ask first unless they
+      // said otherwise), whatever its or the project's default is. Never
+      // full access
       autoApprove: false,
-      permissionMode: "manual",
+      permissionMode: jobMode(),
       useWorktree: false,
       initialPrompt: jobPrompt({
         title: row.title,
@@ -769,10 +772,17 @@ async function look(row: JobRow): Promise<void> {
     }
     if (Date.now() - first < SETTLE_MS) return;
     seenDone.delete(row.id);
-    await finish(
-      row,
-      context.text || context.excerpt || "It finished without a message."
-    );
+    const said = context.text || context.excerpt || "";
+    // Claude never got to work (no network, signed out): not a result
+    const failure = claudeFailure(said);
+    if (failure) {
+      ended(`Claude couldn't work on this machine. It said: ${failure}`);
+      await settleSession(session, { reason: "job_done", force: true }).catch(
+        (error) => console.error("[jobs] ending the session of", row.id, error)
+      );
+      return;
+    }
+    await finish(row, said || "It finished without a message.");
   } finally {
     checking.delete(row.id);
   }

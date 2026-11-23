@@ -5,7 +5,13 @@ import { fetchOn } from "@/lib/client/machine";
 import { refusalText, reprove } from "@/lib/client/user-fetch";
 import { HUB_TARGET } from "@/lib/machine-marker";
 import type { JobsView } from "@/lib/jobs/hub";
-import { isOver, type Job, type JobSpace } from "@/lib/jobs/types";
+import {
+  cleanJobMode,
+  isOver,
+  type Job,
+  type JobMode,
+  type JobSpace,
+} from "@/lib/jobs/types";
 import { useMachines } from "./machines";
 
 export const jobKeys = {
@@ -140,4 +146,28 @@ export function useJobActions() {
       return res.ok ? null : said(res);
     },
   };
+}
+
+export const jobModeKey = (machine: string) =>
+  [...jobKeys.all, "mode", machine] as const;
+
+/**
+ * How much a job may do on a machine without asking: that machine's own
+ * setting (`target` as fetchOn takes it). Nothing while it can't be asked
+ */
+export function useJobMode(target: string, on = true) {
+  return useQuery({
+    queryKey: jobModeKey(target),
+    queryFn: async (): Promise<JobMode> => {
+      const res = await fetchOn(target, "/api/jobs/settings");
+      const mode = res.ok
+        ? cleanJobMode(((await res.json()) as { mode?: unknown }).mode)
+        : null;
+      if (!mode) throw new Error("Failed to read it");
+      return mode;
+    },
+    enabled: on,
+    staleTime: 30_000,
+    retry: false,
+  });
 }

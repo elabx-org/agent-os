@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { isDefaultJobRule, parseJobRule } from "@/lib/jobs/types";
+import { requireUser } from "@/lib/user-proof";
 import {
   getProjectWithDevServers,
   updateProject,
@@ -53,6 +55,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       hooks,
       pinned,
       groupName,
+      jobRule,
     } = body;
 
     if (
@@ -64,6 +67,23 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
         { error: "groupName must be a string of at most 40 characters" },
         { status: 400 }
       );
+    }
+
+    // When its chats send work to another machine is the user's to say: a
+    // session can't loosen "ask me first" for itself
+    const rule = jobRule === undefined ? null : parseJobRule(jobRule);
+    const ruleChanged =
+      !!rule &&
+      JSON.stringify(rule) !==
+        JSON.stringify(parseJobRule(getProject(id)?.job_rule));
+    if (ruleChanged) {
+      const proof = requireUser(request);
+      if (!proof.ok) {
+        return NextResponse.json(
+          { error: "user_only", reason: proof.reason },
+          { status: 403 }
+        );
+      }
     }
 
     if (hooks !== undefined) {
@@ -89,6 +109,16 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
           id
         );
       syncInstructionsFile(getProject(id));
+    }
+
+    // When its chats send work to another machine (Project settings)
+    if (rule && ruleChanged) {
+      const { getDb } = await import("@/lib/db");
+      getDb()
+        .prepare(
+          "UPDATE projects SET job_rule = ?, updated_at = datetime('now') WHERE id = ? AND is_uncategorized = 0"
+        )
+        .run(isDefaultJobRule(rule) ? null : JSON.stringify(rule), id);
     }
 
     // Handle expanded toggle separately

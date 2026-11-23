@@ -7,6 +7,8 @@
  * in other sessions' instructions. Safe for the client.
  */
 
+import { DEFAULT_JOB_RULE, type JobRule } from "./jobs/types";
+
 export const ABILITY_LABELS = {
   xcode: "Xcode",
   swift: "Swift",
@@ -154,7 +156,9 @@ const plainName = (name: string): string =>
 export function machineSection(
   view: AbilitiesView,
   /** Whether sessions here can hand a job to another machine (run_job) */
-  jobs = false
+  jobs = false,
+  /** The project's say on when to send one (Project settings) */
+  rule: JobRule = DEFAULT_JOB_RULE
 ): string | null {
   if (view.peers.length === 0) return null;
   const mine = view.abilities;
@@ -182,7 +186,15 @@ export function machineSection(
   lines.push(
     "",
     jobs
-      ? `When a task needs something this machine lacks and another has (an iOS build or the simulator needs Xcode, say), don't work around it silently and don't assume it can't be done: hand that piece to the machine that has it with the run_job tool, and say in your reply which machine you sent it to and why. Your chat stays here; the machine gets your code as it is now, unsaved files included, and its result comes back to you. When the user writes @ and a machine's name, that is their say-so to run that request there with run_job. If the machine refuses (the user hasn't allowed it, or it is off), tell the user what it said. To move the whole chat instead, the user picks "Work on" and the machine's name in AgentOS. This list was checked when this session started.`
+      ? `When a task needs something this machine lacks and another has (an iOS build or the simulator needs Xcode, say), don't work around it silently and don't assume it can't be done: ${
+          rule.send === "ask"
+            ? "in this project the user wants to be asked first. Say which machine has it and what you would run there, and use the run_job tool once they say yes"
+            : "hand that piece to the machine that has it with the run_job tool, and say in your reply which machine you sent it to and why"
+        }. Your chat stays here; the machine gets your code as it is now, unsaved files included, and its result comes back to you. When the user writes @ and a machine's name, that is their say-so to run that request there with run_job. ${
+          rule.off === "actions"
+            ? "If the machine is off, in this project use the project's GitHub Actions workflow for that work instead when it has one, and say that you did; if it refuses for another reason (the user hasn't allowed it), tell the user what it said."
+            : "If the machine refuses (the user hasn't allowed it, or it is off), tell the user what it said."
+        } To move the whole chat instead, the user picks "Work on" and the machine's name in AgentOS. This list was checked when this session started.`
       : `When a task needs something this machine lacks and another has (an iOS build or the simulator needs Xcode, say), don't work around it silently and don't assume it can't be done: tell the user which machine has it. They can move this chat there in AgentOS with "Work on" and the machine's name. This list was checked when this session started.`
   );
   return lines.join("\n");

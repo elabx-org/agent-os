@@ -10,6 +10,7 @@ import { withClaudeState, type HookGroup } from "./claude-state";
 import { isClaudeModel } from "./handoff-types";
 import { proxyEnabled } from "./port-proxy-config";
 import { machineNote } from "./abilities-view";
+import { parseJobRule } from "./jobs/types";
 import { publicOrigin } from "./public-origin";
 import { isMachineMode } from "./link/machine";
 
@@ -70,7 +71,7 @@ export async function buildProjectNote(
   );
   const instructions = project.instructions?.trim();
   const proxy = proxyEnabled();
-  const machine = await machineNote();
+  const machine = await machineNote(parseJobRule(project.job_rule));
   if (!instructions && others.length === 0 && !proxy && !machine) return null;
 
   const rows = await Promise.all(

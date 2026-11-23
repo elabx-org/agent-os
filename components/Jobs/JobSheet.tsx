@@ -23,6 +23,7 @@ import {
   codeText,
   isOver,
   jobLine,
+  sentText,
   tookText,
   type Job,
 } from "@/lib/jobs/types";
@@ -281,7 +282,7 @@ function JobDetails({ job, now }: { job: Job; now: number }) {
         </p>
       </details>
       <p className="text-muted-foreground px-1 text-[13px]">
-        {job.sessionName ? `Sent by ${job.sessionName}. ` : ""}
+        {sentText(job)}{" "}
         {job.state === "done" || job.state === "failed"
           ? open
             ? `Its folder on ${job.machineName} is kept ${job.state === "done" ? "for an hour" : "for a day"}, then removed.`

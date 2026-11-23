@@ -74,6 +74,7 @@ export function ComposerPopover({ composer }: { composer: ComposerEngine }) {
         onHover={composer.setSelected}
         onChoose={composer.choose}
         tab={composer.atTab}
+        tabs={composer.atTabs}
         // Editing a queued message: files only
         onTab={composer.sessionsOff ? undefined : composer.setAtTab}
         sessions={

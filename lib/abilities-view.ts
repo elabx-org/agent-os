@@ -16,6 +16,7 @@ import {
   type AbilitiesView,
 } from "./abilities-types";
 import { here, hubNameHere } from "./backup/peer";
+import type { JobRule } from "./jobs/types";
 import { hubMemo, hubUp, isMachineMode, uploadToHub } from "./link/machine";
 import { HUB_PEER } from "./link/protocol";
 import { machinesOn } from "./link/server";
@@ -49,7 +50,7 @@ export async function abilitiesView(fresh = false): Promise<AbilitiesView> {
  * What a starting session is told about its machine; null when no other
  * machine is linked, or the check takes longer than a session should wait
  */
-export async function machineNote(): Promise<string | null> {
+export async function machineNote(rule?: JobRule): Promise<string | null> {
   try {
     if (peers().length === 0) return null;
     const view = await Promise.race([
@@ -57,7 +58,7 @@ export async function machineNote(): Promise<string | null> {
       new Promise<null>((resolve) => setTimeout(() => resolve(null), 4000)),
     ]);
     // Jobs go from the server to its machines (lib/jobs/hub.ts)
-    return view ? machineSection(view, !isMachineMode()) : null;
+    return view ? machineSection(view, !isMachineMode(), rule) : null;
   } catch (error) {
     console.error("[abilities] note:", error);
     return null;

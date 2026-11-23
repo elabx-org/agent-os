@@ -180,7 +180,7 @@
     font-size: 14px;
   }
 
-  /* Segmented control: buttons with aria-pressed */
+  /* Segmented control: buttons with aria-pressed, or tabs with aria-selected */
   .seg {
     display: flex;
     gap: 2px;
@@ -194,7 +194,8 @@
     font-size: 14px;
     color: hsl(var(--foreground) / 0.8);
   }
-  .seg > button[aria-pressed="true"] {
+  .seg > button[aria-pressed="true"],
+  .seg > button[aria-selected="true"] {
     background: hsl(var(--foreground) / 0.14);
     color: hsl(var(--foreground));
     font-weight: 600;

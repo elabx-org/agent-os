@@ -32,6 +32,37 @@ export const RESULT_MAX = 12000;
 /** A patch larger than this stays on the machine that made it */
 export const PATCH_MAX = 8 * 1024 * 1024;
 
+/**
+ * How much a job's session may do on the machine without asking. The
+ * machine's own setting, the user's alone to change; never Full access
+ */
+export const JOB_MODES = ["manual", "acceptEdits", "auto"] as const;
+export type JobMode = (typeof JOB_MODES)[number];
+
+export const JOB_MODE_LABELS: Record<JobMode, string> = {
+  manual: "Ask first",
+  acceptEdits: "Accept edits",
+  auto: "Auto",
+};
+
+export const jobModeHint = (mode: JobMode, name: string): string =>
+  mode === "manual"
+    ? `A job asks you before every edit and command, so a build waits until you answer it on ${name}.`
+    : mode === "acceptEdits"
+      ? "A job edits files in its own folder freely and asks you before it runs commands."
+      : "A job works by itself and asks you only before something risky. Builds and tests run without waiting for you.";
+
+/** The same, in a line on the Runners page */
+export const jobModeLine = (mode: JobMode): string =>
+  mode === "manual"
+    ? "Jobs here ask you before every edit and command."
+    : mode === "acceptEdits"
+      ? "Jobs here edit files freely and ask you before commands."
+      : "Jobs here work by themselves and ask only before something risky.";
+
+export const cleanJobMode = (value: unknown): JobMode | null =>
+  JOB_MODES.includes(value as JobMode) ? (value as JobMode) : null;
+
 /** How it was sent: the user named the machine, a rule did, or the chat chose */
 export type JobVia = "mention" | "rule" | "chat" | "again";
 
@@ -202,6 +233,80 @@ export function jobLine(job: Job, now: number): string {
       return `Failed on ${on}`;
     case "stopped":
       return `Stopped on ${on}`;
+  }
+}
+
+/**
+ * A project's say on work its chats' machine can't do (Project settings,
+ * projects.job_rule as JSON; NULL is DEFAULT_JOB_RULE)
+ */
+export interface JobRule {
+  /** The chat sends it to the machine that can, or asks the user first */
+  send: "auto" | "ask";
+  /** That machine is off: tell the user and wait, or use GitHub Actions */
+  off: "wait" | "actions";
+}
+
+export const DEFAULT_JOB_RULE: JobRule = { send: "auto", off: "wait" };
+
+/** From the stored JSON or a request's body; anything else is the default */
+export function parseJobRule(raw: unknown): JobRule {
+  let value = raw;
+  if (typeof raw === "string") {
+    try {
+      value = JSON.parse(raw);
+    } catch {
+      value = null;
+    }
+  }
+  const v = (value ?? {}) as Partial<JobRule>;
+  return {
+    send: v.send === "ask" ? "ask" : "auto",
+    off: v.off === "actions" ? "actions" : "wait",
+  };
+}
+
+export const isDefaultJobRule = (rule: JobRule): boolean =>
+  rule.send === DEFAULT_JOB_RULE.send && rule.off === DEFAULT_JOB_RULE.off;
+
+/**
+ * Claude's own line when its turn never ran (no network, signed out, out of
+ * credit): the job didn't happen, so it failed rather than finished
+ */
+export function claudeFailure(text: string): string | null {
+  const line = text.trim();
+  if (!line || line.length > 500 || line.includes("\n\n")) return null;
+  return /^(API Error\b|Invalid API key|Not logged in|Please run \/login|Credit balance is too low)/i.test(
+    line
+  )
+    ? line
+    : null;
+}
+
+/** The user's message names the machine with @ ("@Mac Studio", any case) */
+export function namesMachine(text: string, name: string): boolean {
+  const clean = (s: string) => s.toLowerCase().replace(/[\u2018\u2019]/g, "'");
+  const want = `@${clean(name).trim()}`;
+  if (want.length < 2) return false;
+  const hay = clean(text);
+  for (let at = hay.indexOf(want); at !== -1; at = hay.indexOf(want, at + 1)) {
+    // "@Mac Studios" isn't "@Mac Studio"
+    const next = hay[at + want.length] ?? "";
+    if (!/[\p{L}\p{N}_-]/u.test(next)) return true;
+  }
+  return false;
+}
+
+/** Who chose the machine, for the job's card */
+export function sentText(job: Pick<Job, "via" | "sessionName">): string {
+  const chat = job.sessionName ?? "A chat";
+  switch (job.via) {
+    case "mention":
+      return `You named this machine with @ in ${job.sessionName ?? "a chat"}.`;
+    case "again":
+      return `You ran it again. First sent by ${job.sessionName ?? "a chat"}.`;
+    default:
+      return `${chat} chose this machine for it.`;
   }
 }
 
