@@ -3,6 +3,7 @@
  * (lib/flags.ts) and AGENTOS_DISABLE_TICKERS.
  */
 
+import { startSetupFollow } from "./claude-setup/hub";
 import { getDb, queries, type Session } from "./db";
 import {
   getFlagSessions,
@@ -84,6 +85,9 @@ export function startTickers(): void {
     setInterval(() => {
       gcRepos().catch((error) => console.error("[tickers] copies gc:", error));
     }, DAY_MS).unref();
+    // Machines whose owner turned on "keep matching" get this server's
+    // new and changed skills and plugins (lib/claude-setup)
+    startSetupFollow();
   }
 
   // The end of a turn: Codex/Gemini post snapshots, Claude's turn journal

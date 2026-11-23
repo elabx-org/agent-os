@@ -24,6 +24,7 @@ import { isOnline, useMachines, useTabMachineId } from "@/data/machines";
 import { mobileNavStore } from "@/stores/mobileNav";
 import { closeContinueSheet, continueSheetStore } from "@/stores/continueSheet";
 import { useLayoutMode } from "@/hooks/useLayoutMode";
+import { copySetupGap, useSetupGap } from "./SetupGap";
 import {
   Sheet,
   SheetContent,
@@ -164,6 +165,9 @@ function Body({
     };
   }, [targetId, sessionId, from, asking]);
   const landing = plan && plan.to === targetId ? plan.plan : null;
+  // Skills and plugins the server has that the machine it goes to doesn't
+  const gap = useSetupGap(from, asking ? targetId : undefined);
+  const [copyFirst, setCopyFirst] = useState(true);
   const running = !!job && job.step !== "done" && job.step !== "failed";
   // A move in flight runs on the server: closing the sheet doesn't stop it
   busyRef.current = starting;
@@ -174,6 +178,15 @@ function Body({
     setError(null);
     setJob(null);
     try {
+      if (gap && copyFirst) {
+        const failed = await copySetupGap(target.id, gap, fetchAsUser);
+        if (failed) {
+          setError(
+            `Couldn't copy the skills and plugins: ${failed}. Untick "Copy them first" to move without them.`
+          );
+          return;
+        }
+      }
       const res = await fetchAsUser("/api/machines/move", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -190,7 +203,7 @@ function Body({
     } finally {
       setStarting(false);
     }
-  }, [target, starting, running, sessionId, from]);
+  }, [target, starting, running, sessionId, from, gap, copyFirst]);
   confirmRef.current = start;
 
   // The hub runs it; this only watches
@@ -343,6 +356,23 @@ function Body({
                     touched.
                   </>
                 )}
+              </li>
+            )}
+            {gap && target && (
+              <li>
+                <label className="flex items-start gap-2">
+                  <input
+                    type="checkbox"
+                    className="accent-primary mt-0.5 h-4 w-4 shrink-0"
+                    checked={copyFirst}
+                    onChange={(e) => setCopyFirst(e.target.checked)}
+                  />
+                  <span className="min-w-0">
+                    <span className="text-foreground">Copy them first:</span>{" "}
+                    {target.name} is missing {gap.sentence} that {fromName} has.
+                    Choose which in Settings, Machines.
+                  </span>
+                </label>
               </li>
             )}
             <li>
