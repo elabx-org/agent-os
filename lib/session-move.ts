@@ -80,7 +80,8 @@ import {
   verifyMaterialised,
   type MoveSnapshot,
 } from "./worktree-move-git";
-import { TRUST_SCREEN, folderTrusted } from "./worktree-move";
+import { TRUST_SCREEN, answerTrust, tmuxTrustPane } from "./trust-screen";
+import { folderTrusted } from "./worktree-move";
 
 const execFileAsync = promisify(execFile);
 
@@ -1202,10 +1203,8 @@ export async function trustScreen(
     }
     if (!TRUST_SCREEN.test(bottom)) continue;
     if (!sourceTrusted) return true;
-    await execFileAsync("tmux", ["send-keys", "-t", pane, "Enter"]).catch(
-      () => {}
-    );
-    return false;
+    // Left for the user when Yes couldn't be picked for certain
+    return !(await answerTrust(tmuxTrustPane(pane)).catch(() => false));
   }
   return false;
 }
