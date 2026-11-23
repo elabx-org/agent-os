@@ -51,6 +51,11 @@ enum MainMenu {
       item(Strings.selectAll, "selectAll:", "a"),
     ])
     _ = top(Strings.viewMenu, [
+      // These three go up the responder chain to the window's controller
+      item(Strings.showSidebar, "toggleSidebarPane:", "s", [.command, .control]),
+      item(Strings.showInspector, "toggleInspectorPane:", "i", [.command, .option]),
+      item(Strings.findMenu, "findInPage:", "k"),
+      .separator(),
       item(Strings.reloadPage, "reload:", "r"),
       item(Strings.back, "goBack:", "["),
       item(Strings.forward, "goForward:", "]"),

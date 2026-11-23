@@ -32,6 +32,11 @@ import {
   workingLine,
 } from "./activity-format";
 import { PanelClose } from "@/components/ui/page-panel";
+import { useMacApp } from "@/hooks/useMacHost";
+import { useClaudeState } from "@/hooks/useClaudeState";
+import { useHereName, usePlaces, useTabMachineId } from "@/data/machines";
+import { placeText } from "@/lib/backup/share-types";
+import { ageText } from "@/lib/session-move-types";
 
 const MAX_FILES = 5;
 const MAX_AGENTS = 5;
@@ -84,6 +89,8 @@ export function LiveActivity({
     activity;
   useTick(15_000);
   const rail = variant === "rail";
+  // The Mac window's inspector: answer in place, where it lives, its memory
+  const inspector = useMacApp() && rail;
   // The family tree (N-Tree) opens from here
   const { agentCount, agentLive } = useSnapshot(mobileNavStore);
 
@@ -151,7 +158,7 @@ export function LiveActivity({
       {state === "needs" ? (
         <NeedsYouCard
           session={session}
-          variant={rail ? "rail" : "sheet"}
+          variant={rail && !inspector ? "rail" : "sheet"}
           onOpenTerminal={() => {
             mobileNavActions.requestViewMode("terminal", session.id);
             onNavigate?.();
@@ -245,6 +252,9 @@ export function LiveActivity({
           <RunningRow server={devServer} />
         </Section>
       )}
+
+      {inspector && <WhereSection session={session} />}
+      {inspector && <MemorySection session={session} />}
 
       {pr && (
         <Section label="Pull request">
@@ -366,6 +376,76 @@ function Section({
       </div>
       {children}
     </section>
+  );
+}
+
+/** "~/AgentOS/fusionha-ios" for a folder under the home folder */
+export function shortFolder(path: string): string {
+  return path.replace(/^\/(?:Users|home)\/[^/]+(?=\/|$)/, "~");
+}
+
+/** The inspector's Where: the machine, the folder, the copy elsewhere */
+function WhereSection({ session }: { session: Session }) {
+  const machine = useHereName();
+  const { data } = usePlaces([session.id], useTabMachineId());
+  const place = data?.places[session.id]?.find((p) => p.state !== "elsewhere");
+  const folder = session.worktree_path || session.working_directory;
+  const rows: [string, string | null | undefined][] = [
+    ["Machine", machine],
+    ["Folder", folder ? shortFolder(folder) : null],
+    ["Copy", place ? placeText(place, ageText) : null],
+  ];
+  return (
+    <Section label="Where">
+      <dl className="flex flex-col gap-1.5 text-[13px]">
+        {rows.map(
+          ([label, value]) =>
+            value && (
+              <div key={label} className="flex min-w-0 items-baseline gap-3">
+                <dt className="text-muted-foreground w-14 shrink-0">{label}</dt>
+                <dd
+                  title={value}
+                  className={cn(
+                    "min-w-0 flex-1",
+                    label === "Folder" ? "truncate font-mono" : "break-words"
+                  )}
+                >
+                  {value}
+                </dd>
+              </div>
+            )
+        )}
+      </dl>
+    </Section>
+  );
+}
+
+/** How full the chat's memory (Claude's context window) is */
+function MemorySection({ session }: { session: Session }) {
+  const claude = (session.agent_type || "claude") === "claude";
+  const state = useClaudeState(claude ? session.id : null);
+  const used = state.status?.context_window?.used_percentage;
+  if (typeof used !== "number" || !Number.isFinite(used)) return null;
+  const percent = Math.max(0, Math.min(100, Math.round(used)));
+  return (
+    <Section label={`Memory used · ${percent}%`}>
+      <div
+        role="meter"
+        aria-label="Memory used"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={percent}
+        className="bg-foreground/10 h-1.5 overflow-hidden rounded-full"
+      >
+        <div
+          className={cn(
+            "h-full rounded-full",
+            percent >= 85 ? "bg-needs" : "bg-meter"
+          )}
+          style={{ width: `${percent}%` }}
+        />
+      </div>
+    </Section>
   );
 }
 

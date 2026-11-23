@@ -230,6 +230,8 @@ export function DesktopView(props: ViewProps) {
     // Pad once here for system columns (the iPhone Duo inner display keeps one
     // on the right); --safe-right: 0 stops children padding for it again
     <div
+      // Inside the Mac app the desktop's panes float (styles/mac.css)
+      data-mac-root={desktop ? "" : undefined}
       className="bg-background flex h-dvh overflow-hidden pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pl-[env(safe-area-inset-left)]"
       style={{ "--safe-right": "0px" } as React.CSSProperties}
     >

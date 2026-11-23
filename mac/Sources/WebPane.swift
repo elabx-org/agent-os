@@ -55,6 +55,80 @@ final class WebPane: NSView, WKNavigationDelegate, WKUIDelegate, WKDownloadDeleg
     window.removeEventListener('keydown', mark, { capture: true });
     """
 
+  /// The fixed code behind a toolbar button: `a` is one PageAction word
+  static let actionScript = "window.dispatchEvent(new CustomEvent('agentos-mac',{detail:{action:a}}));"
+
+  /// The fixed code that reads what the page says is in front, as soon as
+  /// it differs from `last` (at the latest after 20 s, to ask again)
+  static let stateScript = """
+    const read = () => JSON.stringify(window.__agentosMac || null);
+    if (read() !== last) return read();
+    return await new Promise((resolve) => {
+      let timer;
+      const done = () => {
+        window.removeEventListener('agentos-mac-state', done);
+        clearTimeout(timer);
+        resolve(read());
+      };
+      timer = setTimeout(done, 20000);
+      window.addEventListener('agentos-mac-state', done);
+    });
+    """
+
+  /// What the page says is in front, each time it changes; nil when the
+  /// page says nothing (another page, an older AgentOS, the offline view)
+  var onState: ((PageState?) -> Void)?
+  private(set) var state: PageState?
+  private var lastState = "null"
+  /// Each page load starts a new watch; answers to an older one are dropped
+  private var watch = 0
+
+  /// A toolbar button: tells the page, which does it (or ignores it)
+  func act(_ action: PageAction) {
+    guard overlay == nil, isOurs(webView.url) else { return }
+    webView.callAsyncJavaScript(
+      Self.actionScript, arguments: ["a": action.rawValue], in: nil, in: .page, completionHandler: { _ in })
+  }
+
+  private func setState(_ json: String) {
+    guard json != lastState else { return }
+    lastState = json
+    let next = PageState.parse(json)
+    guard next != state else { return }
+    state = next
+    onState?(next)
+  }
+
+  /// Reads the page's state and waits for its next change, for as long as
+  /// this watch is the current one
+  private func watchState(_ id: Int) {
+    guard id == watch else { return }
+    guard overlay == nil, isOurs(webView.url) else {
+      setState("null")
+      DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in self?.watchState(id) }
+      return
+    }
+    webView.callAsyncJavaScript(Self.stateScript, arguments: ["last": lastState], in: nil, in: .page) {
+      [weak self] result in
+      MainActor.assumeIsolated {
+        guard let self, id == self.watch else { return }
+        switch result {
+        case .success(let value):
+          self.setState((value as? String) ?? "null")
+          self.watchState(id)
+        case .failure:
+          // The page went away mid-wait, or isn't ready: ask again shortly
+          DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { [weak self] in self?.watchState(id) }
+        }
+      }
+    }
+  }
+
+  private func restartWatch() {
+    watch += 1
+    watchState(watch)
+  }
+
   init(port: Int, persistent: Bool, inspectable: Bool) {
     self.port = port
     policy = LinkPolicy(port: port)
@@ -62,9 +136,16 @@ final class WebPane: NSView, WKNavigationDelegate, WKUIDelegate, WKDownloadDeleg
     config.websiteDataStore = persistent ? .default() : .nonPersistent()
     config.preferences.javaScriptCanOpenWindowsAutomatically = true
     if #available(macOS 12.3, *) { config.preferences.isElementFullscreenEnabled = true }
-    config.applicationNameForUserAgent = "AgentOSMac/\(AppInfo.short)"
+    // MacChrome/1: this window draws the toolbar and reads the page's state
+    // for it (lib/mac-host.ts). MacOpaque/1: this WebKit can't be seen
+    // through, so the page keeps its own background.
+    let seeThrough = WKWebView.instancesRespond(to: NSSelectorFromString("_setDrawsBackground:"))
+    config.applicationNameForUserAgent =
+      "AgentOSMac/\(AppInfo.short) MacChrome/1" + (seeThrough ? "" : " MacOpaque/1")
     webView = WKWebView(frame: .zero, configuration: config)
     super.init(frame: .zero)
+    // The window's blurred backdrop shows between the page's panes
+    if seeThrough { webView.setValue(false, forKey: "drawsBackground") }
     webView.allowsBackForwardNavigationGestures = true
     webView.allowsMagnification = false
     if #available(macOS 13.3, *) { webView.isInspectable = inspectable }
@@ -156,6 +237,8 @@ final class WebPane: NSView, WKNavigationDelegate, WKUIDelegate, WKDownloadDeleg
   func showOffline(_ kind: OfflineView.Kind) {
     let was = overlay
     offline.show(kind)
+    // Nothing of the page is in front: the toolbar empties
+    setState("null")
     if was != kind { onOverlayChange?(kind) }
   }
 
@@ -271,6 +354,7 @@ final class WebPane: NSView, WKNavigationDelegate, WKUIDelegate, WKDownloadDeleg
 
   func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
     finishCount += 1
+    restartWatch()
     if overlay == .starting || overlay == .notAnswering || overlay == .off || overlay == .updating {
       hideOffline()
     }

@@ -634,5 +634,64 @@ equal("uninstall refusal session", UninstallText.refusal("inSession"), "Run this
 equal("uninstall refusal decodes", UninstallPlan.decode(Data(#"{"refused":"hub","message":"m"}"#.utf8))?.refused, "hub")
 equal("launch --uninstall-plan", parse("--uninstall-plan"), .uninstallPlan)
 
+// MARK: The window's toolbar (PageState, ToolbarModel, OpenIn)
+
+let frontJSON = #"{"v":1,"session":"a1b2-c3","title":"Widget preview","detail":"fusionha-ios · main · Mac Studio","view":"changes","changes":4,"agents":false,"sidebar":true,"inspector":false,"dark":true,"needs":2}"#
+let front = PageState.parse(frontJSON)
+equal("state: session", front?.session, "a1b2-c3")
+equal("state: view", front?.view, .changes)
+equal("state: changes", front?.changes, 4)
+check("state: flags", front?.sidebar == true && front?.inspector == false && front?.dark == true)
+equal("state: needs", front?.needs, 2)
+check("state: none is nil", PageState.parse("null") == nil && PageState.parse(nil) == nil)
+check("state: not JSON is nil", PageState.parse("{") == nil)
+check("state: another version is nil", PageState.parse(#"{"v":2,"session":"a"}"#) == nil)
+check("state: too long is nil", PageState.parse(#"{"v":1,"title":""# + String(repeating: "a", count: 5000) + #""}"#) == nil)
+let hostile = PageState.parse(#"{"v":1,"session":"../x","title":"a\u202Eb\nc","detail":"d","view":"settings","changes":-5,"agents":true,"needs":99999999}"#)
+check("state: a bad id is no session", hostile != nil && hostile?.session == nil)
+equal("state: title is cleaned to one line", hostile?.title, "a\u{FFFD}b c")
+check("state: no session, no view, changes or agents", hostile?.view == nil && hostile?.changes == 0 && hostile?.agents == false)
+equal("state: counts are capped", hostile?.needs, 9999)
+let odd = PageState.parse(#"{"v":1,"session":"s1","view":"sidebar","title":"T"}"#)
+check("state: a word that isn't a view is no view", odd?.session == "s1" && odd?.view == nil)
+let longTitle = PageState.parse(#"{"v":1,"session":"s1","title":""# + String(repeating: "w", count: 300) + #""}"#)
+equal("state: title is capped", longTitle?.title.count, 80)
+
+equal("tabs: none without a session", ToolbarModel.tabs(hostile).count, 0)
+equal("tabs: none without a state", ToolbarModel.tabs(nil).count, 0)
+equal("tabs: four for a session", ToolbarModel.tabs(front).map(\.action), [.chat, .changes, .terminal, .files])
+equal("tabs: Changes carries its count", ToolbarModel.tabs(front)[1].label, "Changes 4")
+equal("tabs: the open one is selected", ToolbarModel.selected(front), 1)
+check("tabs: nothing selected without a view", ToolbarModel.selected(odd) == nil)
+var withAgents = front
+withAgents?.agents = true
+equal("tabs: Agents joins when the session has any", ToolbarModel.tabs(withAgents).last?.action, .agents)
+equal("title: the session's", ToolbarModel.title(front, pageTitle: "x").title, "Widget preview")
+equal("title: its line", ToolbarModel.title(front, pageTitle: "x").subtitle, "fusionha-ios · main · Mac Studio")
+equal("title: the page's without a state", ToolbarModel.title(nil, pageTitle: "Sign in").title, "Sign in")
+equal("title: the app's without either", ToolbarModel.title(nil, pageTitle: nil).title, "AgentOS")
+check("actions: every word is one the page knows", PageAction.allCases.map(\.rawValue).sorted() == [
+  "agents", "changes", "chat", "files", "find", "inspector", "new", "settings", "sidebar", "terminal",
+])
+
+let rows: [[String: Any]] = [
+  ["id": "s1", "working_directory": "~/AgentOS/app", "worktree_path": NSNull()],
+  ["id": "s2", "working_directory": "/Users/me/AgentOS/app", "worktree_path": "/Users/me/AgentOS/.worktrees/x"],
+  ["id": "s3", "working_directory": "relative/path"],
+  ["id": "s4", "working_directory": "/Users/me/../other"],
+  ["id": "s5", "working_directory": "~"],
+]
+equal("open in: ~ is the home folder", OpenIn.folder(of: "s1", in: rows, home: "/Users/me"), "/Users/me/AgentOS/app")
+equal("open in: the worktree wins", OpenIn.folder(of: "s2", in: rows, home: "/Users/me"), "/Users/me/AgentOS/.worktrees/x")
+check("open in: a relative path is refused", OpenIn.folder(of: "s3", in: rows, home: "/Users/me") == nil)
+check("open in: .. is refused", OpenIn.folder(of: "s4", in: rows, home: "/Users/me") == nil)
+equal("open in: bare ~", OpenIn.folder(of: "s5", in: rows, home: "/Users/me"), "/Users/me")
+check("open in: an unknown session has no folder", OpenIn.folder(of: "nope", in: rows, home: "/Users/me") == nil)
+check("open in: a bad id has no folder", OpenIn.folder(of: "../s1", in: rows, home: "/Users/me") == nil)
+equal("xcode: the one workspace", OpenIn.xcodeTarget(folder: "/p", entries: ["App.xcodeproj", "App.xcworkspace", "README.md"]), "/p/App.xcworkspace")
+equal("xcode: the one project", OpenIn.xcodeTarget(folder: "/p/", entries: ["App.xcodeproj", "Sources"]), "/p/App.xcodeproj")
+equal("xcode: two projects, the folder", OpenIn.xcodeTarget(folder: "/p", entries: ["A.xcodeproj", "B.xcodeproj"]), "/p")
+equal("xcode: none, the folder", OpenIn.xcodeTarget(folder: "/p", entries: ["Package.swift"]), "/p")
+
 print("\(passed) passed, \(failed) failed")
 exit(failed == 0 ? 0 : 1)
