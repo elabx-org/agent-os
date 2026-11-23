@@ -77,4 +77,13 @@ export const BACKUP_UP_RULES: UpRule[] = [
     maxBody: MiB,
     headMs: LONG_MS,
   },
+  // What this machine can do, for what the server's can (lib/abilities-view.ts)
+  {
+    kind: "system",
+    method: "POST",
+    path: /^\/api\/link\/inbox\/peer\/abilities$/,
+    relay: false,
+    maxBody: MiB,
+    headMs: SHORT_MS,
+  },
 ];

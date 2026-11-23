@@ -20,7 +20,13 @@ import {
   type MoveStep,
 } from "@/lib/session-move-types";
 import type { MovePlan } from "@/lib/repos-dir";
-import { isOnline, useMachines, useTabMachineId } from "@/data/machines";
+import {
+  isOnline,
+  useMachines,
+  useTabMachineId,
+  useTargetAbilities,
+} from "@/data/machines";
+import { readyText } from "@/lib/abilities-types";
 import { mobileNavStore } from "@/stores/mobileNav";
 import { closeContinueSheet, continueSheetStore } from "@/stores/continueSheet";
 import { useLayoutMode } from "@/hooks/useLayoutMode";
@@ -127,6 +133,7 @@ function Body({
 }) {
   const queryClient = useQueryClient();
   const targets = useTargets(from);
+  const can = useTargetAbilities();
   const mine = useTabMachineId() ?? HUB_TARGET;
   const { data: machines } = useMachines();
   const fromName =
@@ -312,7 +319,7 @@ function Body({
                       {cap(t.name)}
                     </span>
                     <span className="text-muted-foreground block text-[13px]">
-                      {t.blocked ?? "Ready"}
+                      {t.blocked ?? readyText(can(t.id))}
                     </span>
                   </span>
                   {selected && (

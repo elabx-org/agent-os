@@ -31,6 +31,7 @@ import {
 } from "@/data/machines";
 import { activityLine, activitySummary } from "./machine-activity";
 import { fetchAsUser, refusalText, reprove } from "@/lib/client/user-fetch";
+import { AbilitiesRow } from "./AbilitiesRow";
 import { fetchOn, switchMachine } from "@/lib/client/machine";
 import {
   HUB_TARGET,
@@ -268,6 +269,7 @@ function ServerRow({
         }
       />
       <ReposFolderRow target={HUB_TARGET} name={name ?? "this server"} />
+      <AbilitiesRow target={HUB_TARGET} name={name ?? "this server"} />
     </>
   );
 }
@@ -455,6 +457,7 @@ function LinkedRow({
       <MachineSyncRow id={machine.id} name={machine.name} />
       <ActivityRow machine={machine} machineName={machineName} />
       {online && <ReposFolderRow target={machine.id} name={machine.name} />}
+      {online && <AbilitiesRow target={machine.id} name={machine.name} />}
       {online && machine.sameVersion !== false && (
         <ClaudeSetupRow id={machine.id} name={machine.name} />
       )}

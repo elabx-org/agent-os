@@ -8,6 +8,7 @@ import { fetchOn, tabMachine } from "@/lib/client/machine";
 import { HUB_TARGET } from "@/lib/machine-marker";
 import { serverNameOr } from "@/lib/server-name";
 import type { PlaceView } from "@/lib/backup/share-types";
+import type { Abilities, AbilitiesView } from "@/lib/abilities-types";
 import type { AgentLike, MachineSource, MachineTag } from "@/lib/machine-now";
 import type { SessionStatus } from "@/components/views/types";
 import type { ProjectWithRepositories } from "@/lib/projects";
@@ -299,6 +300,34 @@ export function usePlaces(ids: readonly string[], on: string | null) {
     staleTime: 5000,
     refetchInterval: linked && ids.length > 0 ? 15000 : false,
   });
+}
+
+export const abilitiesKey = (target: string) =>
+  [...machineKeys.all, "abilities", target] as const;
+
+/** What one machine can do (lib/abilities-types.ts); `target` as fetchOn takes it */
+export function useAbilities(target: string, on = true) {
+  return useQuery({
+    queryKey: abilitiesKey(target),
+    queryFn: () => readJson<AbilitiesView>(target, "/api/abilities"),
+    enabled: on,
+    staleTime: 60_000,
+  });
+}
+
+/**
+ * What each place a session can go can do, by its id ("hub" or a
+ * machine's), as this server last heard; null when it isn't known
+ */
+export function useTargetAbilities(): (id: string) => Abilities | null {
+  const { data: machines } = useMachines();
+  const { data } = useAbilities(HUB_TARGET, !!machines?.enabled);
+  return (id) =>
+    !data
+      ? null
+      : id === HUB_TARGET
+        ? data.abilities
+        : (data.peers.find((p) => p.id === id)?.abilities ?? null);
 }
 
 /** The copies of a machine's sessions kept on this server */
