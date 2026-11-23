@@ -62,6 +62,14 @@ test("tiles: what needs you first, then what works, newest first", () => {
       "here/idle-old/idle",
     ]
   );
+  // A working tile carries its lines; an idle pane's old screen is left out
+  assert.deepEqual(tiles[2].lines, ["Compiling"]);
+  assert.deepEqual(
+    allTiles([
+      { ...here, statuses: { loose: { status: "idle", lastLine: "Done" } } },
+    ]).find((t) => t.session.id === "loose")?.lines,
+    []
+  );
   // A conductor's worker is not a tile of its own
   assert.ok(!tiles.some((t) => t.session.id === "worker"));
   // The same id on two machines is two tiles
@@ -114,6 +122,16 @@ test("tiles: the last lines, without Claude's frame", () => {
     "npx tsc --noEmit",
   ]);
   assert.deepEqual(tileLines({ lastLine: "? for shortcuts" }), []);
+  assert.deepEqual(
+    tileLines({
+      recentLines: [
+        " ▐▛███▜▌   Claude Code v2.1.330",
+        "▝▜█████▛▘  Fable 5.2 · Claude Max",
+        "  ▘▘ ▝▝    ~/AgentOS/app",
+      ],
+    }),
+    []
+  );
   assert.deepEqual(tileLines(undefined), []);
 });
 

@@ -38,8 +38,8 @@ export interface Tile {
 
 const ORDER: Record<TileState, number> = { needs: 0, working: 1, idle: 2 };
 const LINES = 3;
-/** Claude's own frame around the input, not something it said */
-const CHROME = /^[\s─━│╭╮╰╯>❯?]*$|^\s*\? for shortcuts\s*$/;
+/** Claude's own frame around the input, and its start-up banner: not something it said */
+const CHROME = /^[\s─━│╭╮╰╯>❯?]*$|^\s*\? for shortcuts\s*$|^\s*[▐▛▜▌▝▘█▗▖▚▞▙▟]/;
 
 /** The last few lines worth showing: rules and the input box left out */
 export function tileLines(
@@ -76,7 +76,8 @@ export function allTiles(sources: readonly TileSource[]): Tile[] {
         tag: source.tag,
         session,
         state,
-        lines: tileLines(status),
+        // An idle pane holds an old screen, not news
+        lines: state === "idle" ? [] : tileLines(status),
         project: session.project_id ? names.get(session.project_id) : undefined,
       });
     }

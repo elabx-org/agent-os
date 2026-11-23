@@ -27,7 +27,7 @@ import {
 import { cn } from "@/lib/utils";
 import { setMacPageDetail } from "@/stores/macHost";
 
-const DOT = { needs: "needs", working: "work", idle: "done" } as const;
+const DOT = { needs: "needs", working: "work", idle: "idle" } as const;
 const WORD = { needs: "Needs you", working: "Working", idle: "Idle" } as const;
 
 /**
@@ -146,7 +146,7 @@ export function AllSessionsPage({ view, onOpenSession }: PageProps<"all">) {
                 : "No sessions on this machine."}
         </p>
       ) : (
-        <ul className="grid flex-none grid-cols-[repeat(auto-fill,minmax(270px,1fr))] gap-3">
+        <ul className="grid flex-none grid-cols-[repeat(auto-fill,minmax(270px,1fr))] items-start gap-3">
           {shown.map((tile) => (
             <SessionTile
               key={tile.key}
@@ -188,7 +188,7 @@ function SessionTile({
     <li
       data-state={state}
       className={cn(
-        "bg-card flex min-h-[164px] min-w-0 flex-col gap-2.5 rounded-[20px] p-3.5",
+        "bg-card flex min-h-[132px] min-w-0 flex-col gap-2.5 rounded-[20px] p-3.5",
         state === "needs" && "ring-1 ring-[var(--needs-edge)]"
       )}
     >
