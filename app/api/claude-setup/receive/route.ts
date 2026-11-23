@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 import { Readable } from "stream";
 import type { ReadableStream as NodeWebStream } from "stream/web";
-import { SETUP_FOLLOW_HEADER } from "@/lib/claude-setup/proof";
+import {
+  SETUP_FOLLOW_HEADER,
+  SETUP_FORCE_HEADER,
+} from "@/lib/claude-setup/proof";
+import { SETUP_KEY } from "@/lib/claude-setup/types";
 import { SetupRefused, installSetup } from "@/lib/claude-setup/install";
 import { readRecord } from "@/lib/claude-setup/inventory";
 import { requireUser } from "@/lib/user-proof";
@@ -26,8 +30,18 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Nothing was sent" }, { status: 400 });
   }
   try {
+    // Replacing the owner's own versions is never "keep matching"
+    const force = proof.ok
+      ? new Set(
+          (request.headers.get(SETUP_FORCE_HEADER) ?? "")
+            .split(",")
+            .map((key) => decodeURIComponent(key.trim()))
+            .filter((key) => SETUP_KEY.test(key))
+        )
+      : undefined;
     const job = await installSetup(
-      Readable.fromWeb(request.body as unknown as NodeWebStream)
+      Readable.fromWeb(request.body as unknown as NodeWebStream),
+      { force }
     );
     return NextResponse.json(job);
   } catch (error) {

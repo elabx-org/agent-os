@@ -65,11 +65,13 @@ export interface SetupInventory {
 export type SetupState =
   /** The machine doesn't have it */
   | "missing"
-  /** AgentOS copied an older one */
+  /** AgentOS copied it and the server's has changed since */
   | "update"
   /** Both have the same */
   | "same"
-  /** The machine has its own, which AgentOS leaves alone */
+  /** AgentOS copied it and the machine's owner edited it; the server's is as it was */
+  | "back"
+  /** Different on both, with nothing to say which is newer */
   | "kept";
 
 export interface SetupRow {
@@ -99,9 +101,9 @@ export const SETUP_DIR: Record<SetupKind, string | null> = {
 };
 
 /**
- * Pure: how each of the server's items stands on a machine. A copy
- * AgentOS made that the machine's owner has since changed counts as the
- * owner's ("kept").
+ * Pure: how each of the server's items stands on a machine. `placed` is
+ * the hash each copy had when AgentOS put it there: whichever side still
+ * has that hash is the side that didn't change.
  */
 export function setupDiff(
   hub: SetupItem[],
@@ -116,22 +118,30 @@ export function setupDiff(
     if (item.kind === "plugin" || mine.hash === item.hash) {
       return { item, state: "same" };
     }
-    return { item, state: placed[item.key] === mine.hash ? "update" : "kept" };
+    const base = placed[item.key];
+    if (base && base === mine.hash) return { item, state: "update" };
+    if (base && base === item.hash) return { item, state: "back" };
+    return { item, state: "kept" };
   });
   const known = new Set(hub.map((item) => item.key));
   return { rows, own: machine.filter((item) => !known.has(item.key)) };
 }
 
-/** What "keep matching" copies: missing or outdated, and not unticked */
-export function followKeys(diff: SetupDiff, skip: string[]): string[] {
+/**
+ * What "keep matching" does on its own: copies what is missing or
+ * outdated to the machine, and takes the machine's edits back. Never
+ * anything unticked, and never one that changed on both sides
+ */
+export function followKeys(
+  diff: SetupDiff,
+  skip: string[]
+): { to: string[]; back: string[] } {
   const no = new Set(skip);
-  return diff.rows
-    .filter(
-      (row) =>
-        (row.state === "missing" || row.state === "update") &&
-        !no.has(row.item.key)
-    )
-    .map((row) => row.item.key);
+  const pick = (states: SetupState[]) =>
+    diff.rows
+      .filter((row) => states.includes(row.state) && !no.has(row.item.key))
+      .map((row) => row.item.key);
+  return { to: pick(["missing", "update"]), back: pick(["back"]) };
 }
 
 /** "11 skills, 14 plugins and 3 commands" */
