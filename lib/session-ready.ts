@@ -327,11 +327,12 @@ export async function readiness(
         "-p",
         "-t",
         pane,
-        "#{pane_in_mode}\t#{pane_width}",
+        // A space, not a tab: tmux without a UTF-8 locale prints tabs as "_"
+        "#{pane_in_mode} #{pane_width}",
       ]),
       execFileAsync("tmux", ["capture-pane", "-p", "-e", "-t", pane]),
     ]);
-    const [mode, width] = info.trim().split("\t");
+    const [mode, width] = info.trim().split(" ");
     if (mode !== "0" && mode !== "1") return hold("unknown");
     const agentType = session.agent_type || "claude";
     const input: ScreenInput = {
