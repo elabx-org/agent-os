@@ -59,3 +59,29 @@ export function inShare(
   if (share.level === "none") return false;
   return !!session.project_id && share.projects.includes(session.project_id);
 }
+
+/**
+ * A machine's share with one more project in it: null when nothing would
+ * change (it already gets every project, or this one)
+ */
+export function shareWithProject(
+  share: MachineShare,
+  projectId: string
+): MachineShare | null {
+  if (share.level === "all" || share.projects.includes(projectId)) return null;
+  return cleanShare({
+    level: "some",
+    projects: [...share.projects, projectId],
+  });
+}
+
+/** Adds one project to what a machine gets; true when that changed it */
+export function addShareProject(
+  machine: Pick<MachineRow, "id" | "share">,
+  projectId: string
+): boolean {
+  const next = shareWithProject(shareOf(machine), projectId);
+  if (!next) return false;
+  setMachineShare(machine.id, next);
+  return true;
+}

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { shareSentProject } from "@/lib/backup/place";
 import { MoveNotPossible } from "@/lib/link/move";
 import { projectMoveJob, startProjectMove } from "@/lib/link/project-move";
 import { machinesOn } from "@/lib/link/server";
@@ -64,15 +65,23 @@ export async function POST(request: Request) {
     );
   }
   try {
-    return NextResponse.json(
-      startProjectMove(request, {
-        projectId: body.projectId as string | undefined,
-        projectName: body.projectName,
-        from: body.from,
-        to: body.to,
-        sessions: sessions.map((s) => ({ id: s.id, name: s.name })),
-      })
-    );
+    const job = startProjectMove(request, {
+      projectId: body.projectId as string | undefined,
+      projectName: body.projectName,
+      from: body.from,
+      to: body.to,
+      sessions: sessions.map((s) => ({ id: s.id, name: s.name })),
+    });
+    // Sent from this server to a machine: the project is on both from now
+    // on, so its chats that stay here are copied there as well
+    if (body.from === "hub" && body.to !== "hub" && body.projectId) {
+      try {
+        shareSentProject(body.to, body.projectId as string);
+      } catch (error) {
+        console.error("[share] marking a sent project:", error);
+      }
+    }
+    return NextResponse.json(job);
   } catch (error) {
     if (error instanceof MoveNotPossible) {
       return NextResponse.json({ error: error.message }, { status: 409 });

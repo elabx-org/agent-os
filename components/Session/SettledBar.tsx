@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils";
 import { followLink } from "@/lib/client/machine";
 import { HUB_TARGET } from "@/lib/machine-marker";
 import { parseMovedTo, type MovedTo } from "@/lib/session-move-types";
-import { useMachines } from "@/data/machines";
+import { useHereName, useMachines } from "@/data/machines";
 import { openContinueSheet } from "@/stores/continueSheet";
 import { useSettleActions } from "./settle-action";
 
@@ -42,6 +42,7 @@ function MovedBar({
   resuming: boolean;
 }) {
   const { data } = useMachines();
+  const here = useHereName();
   const takeover = to.takeover;
   // Continued on the server from a copy: this one may run again only once
   // the server let go of it (deleted there)
@@ -94,7 +95,9 @@ function MovedBar({
             }
             className="pill pill-secondary h-11 min-w-0 flex-1 active:opacity-80"
           >
-            <span className="truncate">Bring it back</span>
+            <span className="truncate">
+              {here ? `Work on ${here}` : "Bring it back"}
+            </span>
           </button>
         </div>
       ) : (

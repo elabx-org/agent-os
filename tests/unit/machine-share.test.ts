@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { cleanShare, inShare, parseShare } from "../../lib/backup/share";
+import {
+  cleanShare,
+  inShare,
+  parseShare,
+  shareWithProject,
+} from "../../lib/backup/share";
+import { placeText, type Place } from "../../lib/backup/share-types";
 import {
   revisionText,
   syncSummary,
@@ -97,5 +103,51 @@ test("share: what the sync check says", () => {
       online: true,
     }),
     "1 session couldn't be copied"
+  );
+});
+
+test("a sent project joins what the machine gets", () => {
+  assert.deepEqual(shareWithProject({ level: "none", projects: [] }, "p1"), {
+    level: "some",
+    projects: ["p1"],
+  });
+  assert.deepEqual(
+    shareWithProject({ level: "some", projects: ["p1"] }, "p2"),
+    { level: "some", projects: ["p1", "p2"] }
+  );
+  // Already shared, or everything is: nothing to change
+  assert.equal(
+    shareWithProject({ level: "some", projects: ["p1"] }, "p1"),
+    null
+  );
+  assert.equal(shareWithProject({ level: "all", projects: [] }, "p1"), null);
+  // Not an id a share takes
+  assert.equal(shareWithProject({ level: "none", projects: [] }, "../x"), null);
+});
+
+test("a copy's line says where it is and how old", () => {
+  const age = () => "2 minutes";
+  const place: Place = {
+    machineId: "m_000000000001",
+    name: "Mac Studio",
+    kind: "mac",
+    state: "synced",
+    syncedAt: Date.now() - 120_000,
+    entries: 4,
+    head: "abc1234",
+    unsaved: 0,
+  };
+  assert.equal(placeText(place, age), "Copy on Mac Studio, 2 minutes old.");
+  assert.equal(
+    placeText({ ...place, state: "waiting" }, age),
+    "Copy on Mac Studio, 2 minutes old. Copying what changed."
+  );
+  assert.equal(
+    placeText({ ...place, state: "waiting", syncedAt: null }, age),
+    "Copying to Mac Studio for the first time."
+  );
+  assert.equal(
+    placeText({ ...place, state: "failed", syncedAt: null }, age),
+    "The copy to Mac Studio didn't go through."
   );
 });

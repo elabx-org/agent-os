@@ -97,7 +97,7 @@ export function projectActionGroups(
 
   if (h.onContinueElsewhere)
     own.push({
-      label: "Continue on another machine",
+      label: "Work on another machine",
       icon: Laptop,
       onSelect: h.onContinueElsewhere,
     });

@@ -255,7 +255,7 @@ function MoreMenu({ shown, ...props }: MoreProps) {
               openContinueSheet(portable.sessionId, portable.name)
             }
           >
-            Continue on another machine
+            Work on another machine
           </DropdownMenuItem>
         )}
         {ownFind && (

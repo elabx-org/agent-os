@@ -98,7 +98,7 @@ export function SessionRowActions({
     portable
       ? [
           {
-            label: "Continue on another machine",
+            label: "Work on another machine",
             icon: Laptop,
             onSelect: () => openContinueSheet(session.id, title),
           },

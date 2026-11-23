@@ -89,3 +89,41 @@ export function syncSummary(view: Pick<SyncView, "rows" | "online">): string {
 
 /** A linked machine's id for its server, as the copy routes take it */
 export const HUB_PEER_ID = "hub";
+
+/** A copy of one session on the other side */
+export interface Place {
+  /** "hub" for the server */
+  machineId: string;
+  name: string;
+  kind: "mac" | "server";
+  state: SyncState;
+  syncedAt: number | null;
+  entries: number | null;
+  head: string | null;
+  unsaved: number | null;
+}
+
+/** GET /api/machines/place */
+export interface PlaceView {
+  /** The machine these sessions live on */
+  here: string;
+  places: Record<string, Place[]>;
+}
+
+/** "Copy on Mac Studio, 2 minutes old." and the like, for one copy */
+export function placeText(place: Place, age: (ms: number) => string): string {
+  const when = place.syncedAt ? age(Date.now() - place.syncedAt) : null;
+  if (place.state === "failed") {
+    return when
+      ? `Copy on ${place.name}, ${when} old: the last one didn't go through.`
+      : `The copy to ${place.name} didn't go through.`;
+  }
+  if (place.state === "waiting") {
+    return when
+      ? `Copy on ${place.name}, ${when} old. Copying what changed.`
+      : `Copying to ${place.name} for the first time.`;
+  }
+  return when
+    ? `Copy on ${place.name}, ${when} old.`
+    : `${place.name} has a copy.`;
+}

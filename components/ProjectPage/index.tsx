@@ -2,7 +2,9 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Folder, GitBranch, Laptop, MoreHorizontal, Plus } from "lucide-react";
+import { useHereName } from "@/data/machines";
 import { useProjectContinue } from "./useProjectContinue";
+import { ProjectPlaceRow } from "./ProjectPlaceRow";
 import {
   PageEmpty,
   PageHeader,
@@ -185,6 +187,7 @@ function ProjectWorkspace({
   const openChanges = openView("git");
 
   const elsewhere = useProjectContinue(project, sessions, statuses, titles);
+  const hereName = useHereName();
   const handlers = {
     onNewSession: newSession,
     onNewBackgroundAgent: newAgent,
@@ -338,6 +341,12 @@ function ProjectWorkspace({
         )}
       </div>
 
+      <ProjectPlaceRow
+        ids={elsewhere.hereIds}
+        away={elsewhere.away}
+        onOpen={elsewhere.continueElsewhere}
+      />
+
       {elsewhere.away.map((group) => (
         <div
           key={group.machine}
@@ -349,16 +358,16 @@ function ProjectWorkspace({
           />
           <p className="min-w-0 flex-1 text-[15px]">
             {group.chats.length === 1
-              ? "1 chat continued"
-              : `${group.chats.length} chats continued`}{" "}
+              ? "1 chat is live"
+              : `${group.chats.length} chats are live`}{" "}
             on {group.name}
           </p>
           <button
             type="button"
             onClick={() => elsewhere.bringBack(group)}
-            className="pill pill-secondary flex-none active:opacity-80"
+            className="pill pill-secondary max-w-[50%] flex-none active:opacity-80"
           >
-            Bring back
+            {hereName ? `Work on ${hereName}` : "Bring back"}
           </button>
         </div>
       ))}

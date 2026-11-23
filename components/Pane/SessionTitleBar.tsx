@@ -444,7 +444,7 @@ export function SessionTitleBar({
                 onSelect={() => openContinueSheet(session.id, title)}
               >
                 <Laptop className="h-4 w-4" />
-                Continue on another machine
+                Work on another machine
               </DropdownMenuItem>
             )}
             {variant === "card" && (
@@ -584,7 +584,7 @@ export function SessionTitleBar({
               onSelect={() => openContinueSheet(session.id, title)}
             >
               <Laptop className="h-4 w-4" />
-              Continue on another machine
+              Work on another machine
             </DropdownMenuItem>
           )}
         {session && (
