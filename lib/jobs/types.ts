@@ -269,6 +269,20 @@ export function parseJobRule(raw: unknown): JobRule {
 export const isDefaultJobRule = (rule: JobRule): boolean =>
   rule.send === DEFAULT_JOB_RULE.send && rule.off === DEFAULT_JOB_RULE.off;
 
+/** The user's message names the machine with @ ("@Mac Studio", any case) */
+export function namesMachine(text: string, name: string): boolean {
+  const clean = (s: string) => s.toLowerCase().replace(/[\u2018\u2019]/g, "'");
+  const want = `@${clean(name).trim()}`;
+  if (want.length < 2) return false;
+  const hay = clean(text);
+  for (let at = hay.indexOf(want); at !== -1; at = hay.indexOf(want, at + 1)) {
+    // "@Mac Studios" isn't "@Mac Studio"
+    const next = hay[at + want.length] ?? "";
+    if (!/[\p{L}\p{N}_-]/u.test(next)) return true;
+  }
+  return false;
+}
+
 /** Who chose the machine, for the job's card */
 export function sentText(job: Pick<Job, "via" | "sessionName">): string {
   const chat = job.sessionName ?? "A chat";

@@ -1083,12 +1083,6 @@ server.registerTool(
         .describe(
           "The whole task for the session that runs it. It sees the code but not this conversation"
         ),
-      named: z
-        .boolean()
-        .optional()
-        .describe(
-          "True when the user named this machine themselves (with @ or in words); false or left out when you chose it"
-        ),
       wait_seconds: z
         .number()
         .int()
@@ -1098,10 +1092,10 @@ server.registerTool(
         .describe("How long to wait for it here (default 600, max 1800)"),
     },
   },
-  tool(async ({ machine, title, task, named, wait_seconds = 600 }) => {
+  tool(async ({ machine, title, task, wait_seconds = 600 }) => {
     const { job } = await api("/api/jobs", {
       method: "POST",
-      body: { machine, title, task, named: named === true },
+      body: { machine, title, task },
     });
     return jobOut(wait_seconds > 0 ? await waitJob(job.id, wait_seconds) : job);
   })

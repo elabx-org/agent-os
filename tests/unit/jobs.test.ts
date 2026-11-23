@@ -19,6 +19,7 @@ import {
   jobModeHint,
   jobModeLine,
   jobPrompt,
+  namesMachine,
   parseJobRule,
   sentText,
   stateWord,
@@ -440,7 +441,6 @@ test("the project's rule is what a session is told to do", () => {
     usual,
     /If the machine refuses \(the user hasn't allowed it, or it is off\), tell the user what it said\./
   );
-  assert.match(usual, /pass named: true/);
   const ask = machineSection(view, true, { send: "ask", off: "actions" })!;
   assert.match(ask, /the user wants to be asked first/);
   assert.doesNotMatch(ask, /hand that piece to the machine/);
@@ -453,4 +453,17 @@ test("the project's rule is what a session is told to do", () => {
     machineSection(view, false, { send: "ask", off: "actions" })!,
     /run_job/
   );
+});
+
+test("the user's own @ names a machine; near misses don't", () => {
+  assert.ok(namesMachine("Build it on @Mac Studio please", "Mac Studio"));
+  assert.ok(namesMachine("@mac studio: run the tests", "Mac Studio"));
+  assert.ok(
+    namesMachine("run on @Elmer's Mac Studio", "Elmer\u2019s Mac Studio")
+  );
+  assert.ok(namesMachine("use @Mac Studio", "Mac Studio"));
+  assert.ok(!namesMachine("Build it on the Mac Studio", "Mac Studio"));
+  assert.ok(!namesMachine("@Mac Studios are nice", "Mac Studio"));
+  assert.ok(!namesMachine("mail me@mac studio", ""));
+  assert.ok(!namesMachine("@Old Mac", "Mac Studio"));
 });

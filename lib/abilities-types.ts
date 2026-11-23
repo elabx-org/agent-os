@@ -190,7 +190,7 @@ export function machineSection(
           rule.send === "ask"
             ? "in this project the user wants to be asked first. Say which machine has it and what you would run there, and use the run_job tool once they say yes"
             : "hand that piece to the machine that has it with the run_job tool, and say in your reply which machine you sent it to and why"
-        }. Your chat stays here; the machine gets your code as it is now, unsaved files included, and its result comes back to you. When the user writes @ and a machine's name, that is their say-so to run that request there with run_job (pass named: true). ${
+        }. Your chat stays here; the machine gets your code as it is now, unsaved files included, and its result comes back to you. When the user writes @ and a machine's name, that is their say-so to run that request there with run_job. ${
           rule.off === "actions"
             ? "If the machine is off, in this project use the project's GitHub Actions workflow for that work instead when it has one, and say that you did; if it refuses for another reason (the user hasn't allowed it), tell the user what it said."
             : "If the machine refuses (the user hasn't allowed it, or it is off), tell the user what it said."

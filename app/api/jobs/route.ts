@@ -3,6 +3,7 @@ import { agentActorSessionId } from "@/lib/agent-actions";
 import { isAgentOrigin } from "@/lib/agent-origin";
 import { ownerRead, ownerWrite } from "@/lib/backup/owner";
 import { JobRefused, createJob, jobsView, runAgain } from "@/lib/jobs/hub";
+import { userNamedMachine } from "@/lib/jobs/named";
 
 export const dynamic = "force-dynamic";
 
@@ -51,15 +52,13 @@ export async function GET(request: Request) {
   );
 }
 
-// POST /api/jobs - a session's tool: { machine, title, task, named? } hands a job to
+// POST /api/jobs - a session's tool: { machine, title, task } hands a job to
 // that machine. The user's page: { again: <job id> } runs one once more
 export async function POST(request: Request) {
   const body = (await request.json().catch(() => null)) as {
     machine?: unknown;
     title?: unknown;
     task?: unknown;
-    /** The user named the machine with @ (the chat's own word for it) */
-    named?: unknown;
     again?: unknown;
   } | null;
   try {
@@ -96,7 +95,10 @@ export async function POST(request: Request) {
       machine: body.machine,
       title: body.title,
       task: body.task,
-      via: body.named === true ? "mention" : "chat",
+      // Read from the user's own message, not taken on the chat's word
+      via: (await userNamedMachine(sessionId, body.machine))
+        ? "mention"
+        : "chat",
     });
     return NextResponse.json({ job }, { headers: noStore });
   } catch (error) {
