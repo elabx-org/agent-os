@@ -47,7 +47,7 @@ const jobs = (shared.__agentosMoveJobs ??= new Map());
 export class MoveNotPossible extends Error {}
 
 /** The machine's name, or why a session can't go to or leave it now */
-function nameOf(machine: MachineRef): string {
+export function nameOf(machine: MachineRef): string {
   if (machine === HUB_MARKER) return serverNameOr(serverName());
   const row = machineById(machine);
   if (!row || row.status !== "approved") {
@@ -446,6 +446,14 @@ const cap = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
 /** Starts a move; poll moveJob. Throws MoveNotPossible */
 export function startMove(request: Request, body: MoveRequest): MoveJob {
+  return startMoveAs(userHeaders(request), body);
+}
+
+/** startMove with the user's headers already taken (a project's chats) */
+export function startMoveAs(
+  headers: Record<string, string>,
+  body: MoveRequest
+): MoveJob {
   if (body.from === body.to) {
     throw new MoveNotPossible("It's already on that machine");
   }
@@ -469,7 +477,7 @@ export function startMove(request: Request, body: MoveRequest): MoveJob {
     }
   }
   jobs.set(job.id, job);
-  run(job, userHeaders(request)).catch((error) => {
+  run(job, headers).catch((error) => {
     console.error("[move]", error);
     job.failedAt = job.step;
     job.step = "failed";

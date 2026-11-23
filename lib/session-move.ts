@@ -31,6 +31,8 @@ import zlib from "zlib";
 import { claudeDir, projectDirFor } from "./claude-transcript";
 import { getDb, queries, type Project, type Session } from "./db";
 import { createProject } from "./projects";
+import { cardOf, createFromCard } from "./project-card";
+import { validCard, type ProjectCard } from "./project-move-types";
 import { flagOnFor } from "./flags";
 import { slugify } from "./git";
 import { isPaused } from "./handoff-types";
@@ -296,6 +298,7 @@ export async function beginMoveOut(session: Session): Promise<MoveManifest> {
         ),
       },
       snapshot,
+      project: cardOf(fresh.project_id),
     };
   } catch (error) {
     await git(["update-ref", "-d", headRef], { cwd }).catch(() => {});
@@ -495,6 +498,7 @@ export function validManifest(value: unknown): value is MoveManifest {
     (m.repo.subdir === "" || safeRepoPath(m.repo.subdir)) &&
     (m.repo.branch === null || typeof m.repo.branch === "string") &&
     (m.repo.remote === null || typeof m.repo.remote === "string") &&
+    (m.project === undefined || m.project === null || validCard(m.project)) &&
     (m.snapshot === null ||
       (SHA.test(m.snapshot.commit) &&
         SHA.test(m.snapshot.tree) &&
@@ -572,6 +576,19 @@ async function findCheckout(remote: string): Promise<string | null> {
 const cloneable = (remote: string) =>
   /^(https:\/\/|ssh:\/\/|[\w.-]+@[\w.-]+:|\/)[\w./~:@%+-]+$/.test(remote);
 
+/** The name a remote-less repository arrived under (cloneOrInit), or null */
+async function movedRepoName(top: string): Promise<string | null> {
+  try {
+    if (await originOf(top)) return null;
+    const out = await git(["config", "--get", MOVED_REPO_KEY], { cwd: top });
+    return out.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+const MOVED_REPO_KEY = "agentos.movedrepo";
+
 /**
  * Where a repository this machine doesn't know goes: a copy of it already
  * in the repositories folder, else a free folder there named after it
@@ -586,6 +603,11 @@ async function cloneTarget(
   for (let n = 2; fs.existsSync(dir); n++) {
     const top = await topOf(dir);
     if (top && remote && sameRemote(await originOf(top), remote)) {
+      return { existing: top };
+    }
+    // A repository without a remote that an earlier move made here under
+    // this name: the same one, so a project's chats share it
+    if (top && !remote && (await movedRepoName(top)) === repoName) {
       return { existing: top };
     }
     dir = path.join(base, `${name}-${n}`);
@@ -627,6 +649,9 @@ async function cloneOrInit(
   if (m.repo.remote && cloneable(m.repo.remote)) {
     await git(["remote", "add", "origin", m.repo.remote], { cwd: dir });
   }
+  if (!m.repo.remote) {
+    await git(["config", MOVED_REPO_KEY, m.repo.name], { cwd: dir });
+  }
   return { repo: fs.realpathSync(dir), mode: "empty" };
 }
 
@@ -644,6 +669,14 @@ export async function moveRepoOf(
   session: Session
 ): Promise<{ name: string; remote: string | null } | null> {
   const top = await topOf(sessionCwd(session));
+  return top ? { name: path.basename(top), remote: await originOf(top) } : null;
+}
+
+/** The repository a folder is in, for the machine its project may go to */
+export async function repoOfFolder(
+  dir: string
+): Promise<{ name: string; remote: string | null } | null> {
+  const top = await topOf(expandHome(dir));
   return top ? { name: path.basename(top), remote: await originOf(top) } : null;
 }
 
@@ -1071,8 +1104,16 @@ async function placeTranscript(inn: Arriving, folder: string): Promise<void> {
   }
 }
 
-/** The project whose folder is this repository; a new one when none is */
-function projectFor(top: string, repo: string): string {
+/**
+ * The project whose folder is this repository. When there is none, a new
+ * one: as the machine it comes from has it (`card`), else named after the
+ * folder, so the session isn't left outside every project
+ */
+export function projectFor(
+  top: string,
+  repo: string,
+  card?: ProjectCard | null
+): string {
   const real = (dir: string) => {
     try {
       return fs.realpathSync(expandHome(dir));
@@ -1086,9 +1127,8 @@ function projectFor(top: string, repo: string): string {
     const dir = real(p.working_directory);
     if (dir && wanted.has(dir)) return p.id;
   }
-  // No project for this repository here yet: one named after its folder,
-  // so the session isn't left outside every project
   try {
+    if (card) return createFromCard(repo, card);
     const name = path.basename(expandHome(repo)).slice(0, 80);
     if (name) return createProject({ name, workingDirectory: repo }).id;
   } catch (error) {
@@ -1097,7 +1137,24 @@ function projectFor(top: string, repo: string): string {
   return "uncategorized";
 }
 
-/** Removes the worktree and branch a failed arrival made here */
+/**
+ * The repository a project with no chats to carry its code lands in: a
+ * checkout this machine has, else a clone of its remote. Null when it
+ * can't be cloned here
+ */
+export async function ensureRepository(
+  name: string,
+  remote: string
+): Promise<{ repo: string; mode: "existing" | "cloned" } | null> {
+  const found = await findCheckout(remote);
+  if (found) return { repo: found, mode: "existing" };
+  const got = await cloneOrInit({ repo: { name, remote } } as MoveManifest);
+  if (got.mode !== "empty") return { repo: got.repo, mode: got.mode };
+  // Only the folder this call made, still empty but for git's own
+  await fsp.rm(got.repo, { recursive: true, force: true });
+  return null;
+}
+
 async function undoPlace(inn: Arriving, transcriptIn: string | null) {
   const made = inn.made;
   if (!made || !inn.repo) return;
@@ -1249,7 +1306,7 @@ async function runImport(inn: Arriving): Promise<MoveInResult> {
             "claude",
             0,
             0,
-            projectFor(placed.top, repo)
+            projectFor(placed.top, repo, m.project)
           );
       }
       db.prepare(

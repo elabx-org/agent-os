@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Folder, GitBranch, MoreHorizontal, Plus } from "lucide-react";
+import { Folder, GitBranch, Laptop, MoreHorizontal, Plus } from "lucide-react";
+import { useProjectContinue } from "./useProjectContinue";
 import {
   PageEmpty,
   PageHeader,
@@ -183,6 +184,7 @@ function ProjectWorkspace({
   const openFiles = openView("files");
   const openChanges = openView("git");
 
+  const elsewhere = useProjectContinue(project, sessions, statuses, titles);
   const handlers = {
     onNewSession: newSession,
     onNewBackgroundAgent: newAgent,
@@ -191,6 +193,7 @@ function ProjectWorkspace({
     onStartDevServer: uncategorized
       ? undefined
       : () => view.handleStartDevServer(project.id),
+    onContinueElsewhere: elsewhere.continueElsewhere,
     onDelete: uncategorized
       ? undefined
       : () => {
@@ -334,6 +337,31 @@ function ProjectWorkspace({
           </>
         )}
       </div>
+
+      {elsewhere.away.map((group) => (
+        <div
+          key={group.machine}
+          className="bg-card flex items-center gap-3 rounded-2xl px-4 py-2.5"
+        >
+          <Laptop
+            aria-hidden
+            className="text-muted-foreground h-5 w-5 flex-none"
+          />
+          <p className="min-w-0 flex-1 text-[15px]">
+            {group.chats.length === 1
+              ? "1 chat continued"
+              : `${group.chats.length} chats continued`}{" "}
+            on {group.name}
+          </p>
+          <button
+            type="button"
+            onClick={() => elsewhere.bringBack(group)}
+            className="pill pill-secondary flex-none active:opacity-80"
+          >
+            Bring back
+          </button>
+        </div>
+      ))}
 
       {empty && (
         <p className="text-muted-foreground px-1 text-[15px]">
