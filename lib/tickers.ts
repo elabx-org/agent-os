@@ -3,6 +3,8 @@
  * (lib/flags.ts) and AGENTOS_DISABLE_TICKERS.
  */
 
+import { startJobs } from "./jobs/hub";
+import { sweepJobs } from "./jobs/runner";
 import { startSetupFollow } from "./claude-setup/hub";
 import { getDb, queries, type Session } from "./db";
 import {
@@ -81,6 +83,11 @@ export function startTickers(): void {
   // the copied repositories daily
   if (isMachineMode()) {
     startMachineBackup();
+    // Jobs its hub's chats handed it (lib/jobs/runner.ts): each is followed
+    // to its end, and what it made is cleared afterwards
+    setInterval(() => {
+      sweepJobs().catch((error) => console.error("[tickers] jobs:", error));
+    }, 20 * 1000).unref();
     try {
       recoverTakes();
     } catch (error) {
@@ -105,6 +112,8 @@ export function startTickers(): void {
     // Machines the user shares sessions with get copies of them
     // (lib/backup/hub-send.ts)
     startHubSend();
+    // Jobs chats here hand to linked machines (lib/jobs/hub.ts)
+    startJobs();
   }
 
   // The end of a turn: Codex/Gemini post snapshots, Claude's turn journal

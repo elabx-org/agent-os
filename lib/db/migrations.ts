@@ -754,6 +754,45 @@ const migrations: Migration[] = [
       addColumnIfMissing(db, "machines", "share", "TEXT");
     }),
   },
+  {
+    id: 45,
+    name: "add_machine_jobs",
+    up: atomic((db) => {
+      // Jobs a chat hands to another machine (lib/jobs). role 'sent': asked
+      // from here, machine_id is the machine that runs it. role 'run': runs
+      // here, machine_id is who asked
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS machine_jobs (
+          id TEXT PRIMARY KEY,
+          role TEXT NOT NULL,
+          machine_id TEXT NOT NULL,
+          origin_session TEXT,
+          origin_name TEXT,
+          project_id TEXT,
+          title TEXT NOT NULL,
+          task TEXT NOT NULL,
+          state TEXT NOT NULL,
+          step TEXT,
+          question TEXT,
+          job_session TEXT,
+          repo TEXT,
+          folder TEXT,
+          cache TEXT,
+          code TEXT,
+          result TEXT,
+          changed TEXT,
+          error TEXT,
+          via TEXT,
+          created_at INTEGER NOT NULL,
+          started_at INTEGER,
+          ended_at INTEGER,
+          remove_at INTEGER
+        );
+        CREATE INDEX IF NOT EXISTS idx_machine_jobs_state ON machine_jobs(role, state);
+        CREATE INDEX IF NOT EXISTS idx_machine_jobs_origin ON machine_jobs(origin_session, created_at);
+      `);
+    }),
+  },
 ];
 
 export function runMigrations(db: Database.Database): void {

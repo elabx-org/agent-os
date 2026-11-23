@@ -8,4 +8,6 @@ export const runningStore = proxy<{
   enabled: boolean;
   /** The focused pane's session: a session's More shows what it runs */
   sessionId: string | null;
-}>({ enabled: false, sessionId: null });
+  /** A machine is linked and the tab is on the server: Runners is offered */
+  runners: boolean;
+}>({ enabled: false, sessionId: null, runners: false });

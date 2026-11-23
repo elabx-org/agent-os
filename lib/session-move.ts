@@ -529,7 +529,7 @@ export function reposDirSetting(): string {
   return DEFAULT_REPOS_DIR;
 }
 
-const reposBase = () => expandReposDir(reposDirSetting(), os.homedir());
+export const reposBase = () => expandReposDir(reposDirSetting(), os.homedir());
 
 /** The repositories folder's own folders: where the user keeps their code */
 function reposFolders(): string[] {
@@ -558,7 +558,7 @@ function knownFolders(): string[] {
   return [...dirs].filter((d) => path.isAbsolute(d) && fs.existsSync(d));
 }
 
-async function findCheckout(remote: string): Promise<string | null> {
+export async function findCheckout(remote: string): Promise<string | null> {
   const folders = knownFolders().slice(0, 280);
   const tops = await Promise.all(
     folders.map(async (dir) => {
@@ -1181,7 +1181,7 @@ async function undoPlace(inn: Arriving, transcriptIn: string | null) {
  * Claude's "trust this folder?" screen in a folder new to this machine:
  * answered when the folder it left was trusted, else reported
  */
-async function trustScreen(
+export async function trustScreen(
   session: Session,
   sourceTrusted: boolean
 ): Promise<boolean> {

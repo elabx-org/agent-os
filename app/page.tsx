@@ -104,7 +104,11 @@ import { keepPlace, restorePlace, takePlace } from "@/stores/place";
 const pageBeside = () => {
   const kind = workspacePageStore.page?.kind;
   return (
-    !!kind && kind !== "inbox" && kind !== "running" && kind !== "mocks"
+    !!kind &&
+    kind !== "inbox" &&
+    kind !== "running" &&
+    kind !== "mocks" &&
+    kind !== "runners"
   );
 };
 

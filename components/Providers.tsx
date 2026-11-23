@@ -14,6 +14,7 @@ import { MachineGate } from "@/components/Machines/MachineGate";
 import { HubOfflineBanner } from "@/components/Machines/HubOfflineBanner";
 import { ContinueOnSheetHost } from "@/components/Session/ContinueOnSheet";
 import { MachineCopiesSheetHost } from "@/components/Machines/MachineCopiesSheet";
+import { JobSheetHost } from "@/components/Jobs/JobSheet";
 import { createQueryClient } from "@/lib/query-client";
 import { THEMES } from "@/lib/theme-config";
 import {
@@ -75,6 +76,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
             <HubOfflineBanner />
             <ContinueOnSheetHost />
             <MachineCopiesSheetHost />
+            <JobSheetHost />
           </TooltipProvider>
         </ThemeClassHandler>
       </NextThemesProvider>

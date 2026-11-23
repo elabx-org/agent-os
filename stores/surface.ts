@@ -21,7 +21,8 @@ export type Surface =
   | "new"
   | "search"
   | "running"
-  | "mocks";
+  | "mocks"
+  | "runners";
 
 /** What the surface is derived from */
 export interface SurfaceInputs {
@@ -52,6 +53,7 @@ export function surfaceFor(inputs: SurfaceInputs): Surface {
   if (page === "project" || page === "projectSettings") return "project";
   if (page === "running") return "running";
   if (page === "mocks") return "mocks";
+  if (page === "runners") return "runners";
   if (page === "projects") return "projects";
   if (page === "inbox" || inputs.inboxOpen) return "needs";
   if (inputs.homeOpen && !page) return "now";

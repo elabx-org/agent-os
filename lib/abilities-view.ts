@@ -56,7 +56,8 @@ export async function machineNote(): Promise<string | null> {
       abilitiesView(),
       new Promise<null>((resolve) => setTimeout(() => resolve(null), 4000)),
     ]);
-    return view ? machineSection(view) : null;
+    // Jobs go from the server to its machines (lib/jobs/hub.ts)
+    return view ? machineSection(view, !isMachineMode()) : null;
   } catch (error) {
     console.error("[abilities] note:", error);
     return null;

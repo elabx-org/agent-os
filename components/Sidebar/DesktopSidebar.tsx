@@ -12,6 +12,7 @@ import { useSnapshot } from "valtio";
 import {
   Folder,
   GalleryVerticalEnd,
+  Laptop,
   MonitorPlay,
   Plus,
   Search,
@@ -197,7 +198,7 @@ export function DesktopSidebar({
   const { page } = useSnapshot(workspacePageStore);
   const { open: newOpen } = useSnapshot(newSurfaceStore);
   const { homeTab } = useSnapshot(mobileNavStore);
-  const { enabled: running } = useSnapshot(runningStore);
+  const { enabled: running, runners } = useSnapshot(runningStore);
   // The server renders the Mac's; others see their own once mounted
   const [findKey, setFindKey] = useState("⌘K");
   useEffect(() => {
@@ -482,6 +483,21 @@ export function DesktopSidebar({
           >
             <GalleryVerticalEnd className="text-muted-foreground h-4 w-4 flex-none" />
             <span className="min-w-0 flex-1 truncate">Mocks</span>
+          </button>
+        )}
+        {/* The linked machines and the jobs chats hand them */}
+        {!newOpen && runners && (
+          <button
+            type="button"
+            onClick={() => openPage({ kind: "runners" })}
+            aria-current={page?.kind === "runners" ? "page" : undefined}
+            className={cn(
+              "srow hover:bg-foreground/5 w-full flex-none text-left",
+              page?.kind === "runners" && "sel hover:bg-primary/20"
+            )}
+          >
+            <Laptop className="text-muted-foreground h-4 w-4 flex-none" />
+            <span className="min-w-0 flex-1 truncate">Runners</span>
           </button>
         )}
       </nav>
