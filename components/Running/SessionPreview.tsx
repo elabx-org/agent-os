@@ -8,20 +8,26 @@ import {
   previewLabel,
   previewShown,
 } from "@/lib/session-preview";
-import { useRunning } from "./data";
+import { openPage } from "@/stores/workspacePage";
+import { canStop, useRunning } from "./data";
 import { Preview } from "./index";
 
 const POLL_MS = 4000;
 
 /**
  * The Mac window's Preview: the page the session's own web server serves,
- * in place of its views. With none running it says so, and offers whatever
- * else serves on this machine.
+ * in place of its views. With none running it says so, and offers what other
+ * sessions and project scripts serve here (not every app on the machine:
+ * the Running page lists those).
  */
 export function SessionPreview({ session }: { session: Session }) {
   const { data, isLoading } = useRunning(POLL_MS);
   const choices = useMemo(
-    () => previewChoices(data ?? [], session.id),
+    () =>
+      previewChoices(
+        (data ?? []).filter((s) => s.sessionId === session.id || canStop(s)),
+        session.id
+      ),
     [data, session.id]
   );
   const [picked, setPicked] = useState<number | null>(null);
@@ -53,7 +59,7 @@ export function SessionPreview({ session }: { session: Session }) {
             {choices.others.length > 0 && (
               <div className="mt-3 flex flex-col items-center gap-2">
                 <p className="text-muted-foreground text-[13px]">
-                  Also running on this machine
+                  Started by other sessions
                 </p>
                 <ul className="flex flex-wrap justify-center gap-2">
                   {choices.others.map((server) => (
@@ -71,6 +77,13 @@ export function SessionPreview({ session }: { session: Session }) {
                 </ul>
               </div>
             )}
+            <button
+              type="button"
+              onClick={() => openPage({ kind: "running" })}
+              className="text-muted-foreground mt-2 text-[13px] underline underline-offset-2"
+            >
+              See everything running
+            </button>
           </>
         )}
       </section>
@@ -103,7 +116,7 @@ export function SessionPreview({ session }: { session: Session }) {
               </optgroup>
             )}
             {choices.others.length > 0 && (
-              <optgroup label="Also running on this machine">
+              <optgroup label="Started by other sessions">
                 {choices.others.map((server) => (
                   <option key={server.port} value={server.port}>
                     {previewLabel(server)}

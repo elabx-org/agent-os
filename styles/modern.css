@@ -484,7 +484,8 @@
     border-radius: 26px;
   }
   /* Files held over the composer: the card says it will take them */
-  .composer-dropping .composer-card {
+  .composer-dropping .composer-card,
+  .composer-dropping .composer-field {
     outline: 2px dashed hsl(var(--primary));
     outline-offset: -2px;
   }
