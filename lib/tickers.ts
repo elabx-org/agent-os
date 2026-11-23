@@ -25,6 +25,7 @@ import { startMachineBackup } from "./backup/machine";
 import { startHubSend } from "./backup/hub-send";
 import { gcRepos } from "./backup/store";
 import { recoverTakes } from "./backup/takeover";
+import { abilities } from "./abilities";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** Settled sessions keep their turn snapshots this long (M8) */
@@ -37,6 +38,9 @@ function onSomewhere(name: SessionFlagName): boolean {
 
 export function startTickers(): void {
   if (tickersDisabled()) return;
+
+  // What this machine can do, ready before the first session asks
+  void abilities().catch(() => {});
 
   // The poll runs for the queue, snapshots and modes picked mid-turn even
   // with push turned off

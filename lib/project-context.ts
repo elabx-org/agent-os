@@ -9,6 +9,7 @@ import { parseProjectHooks } from "./project-hooks";
 import { withClaudeState, type HookGroup } from "./claude-state";
 import { isClaudeModel } from "./handoff-types";
 import { proxyEnabled } from "./port-proxy-config";
+import { machineNote } from "./abilities-view";
 import { publicOrigin } from "./public-origin";
 import { isMachineMode } from "./link/machine";
 
@@ -69,7 +70,8 @@ export async function buildProjectNote(
   );
   const instructions = project.instructions?.trim();
   const proxy = proxyEnabled();
-  if (!instructions && others.length === 0 && !proxy) return null;
+  const machine = await machineNote();
+  if (!instructions && others.length === 0 && !proxy && !machine) return null;
 
   const rows = await Promise.all(
     others.map(async (s) => {
@@ -116,6 +118,8 @@ They are other Claude Code sessions on this machine, working on related code. Wh
 
 This list was written when this session started; ListAgents shows who is running now.`);
   }
+
+  if (machine) sections.push(machine);
 
   if (proxy) {
     const origin = publicOrigin();

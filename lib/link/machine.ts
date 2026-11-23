@@ -338,6 +338,10 @@ export function startMachineLink(localPort: number): LinkClient | null {
         void import("../backup/peer-taken")
           .then((m) => m.tellHubTaken())
           .catch((error) => console.error("[link] hub back:", error));
+        // And each side hears what the other machine can do
+        void import("../abilities-view")
+          .then((m) => m.swapAbilities())
+          .catch((error) => console.error("[link] abilities:", error));
       }
       // Copies just turned on: what changed is sent soon
       if (up?.backup) {
