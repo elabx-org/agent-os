@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isDefaultJobRule, parseJobRule } from "@/lib/jobs/types";
+import { requireUser } from "@/lib/user-proof";
 import {
   getProjectWithDevServers,
   updateProject,
@@ -68,6 +69,23 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       );
     }
 
+    // When its chats send work to another machine is the user's to say: a
+    // session can't loosen "ask me first" for itself
+    const rule = jobRule === undefined ? null : parseJobRule(jobRule);
+    const ruleChanged =
+      !!rule &&
+      JSON.stringify(rule) !==
+        JSON.stringify(parseJobRule(getProject(id)?.job_rule));
+    if (ruleChanged) {
+      const proof = requireUser(request);
+      if (!proof.ok) {
+        return NextResponse.json(
+          { error: "user_only", reason: proof.reason },
+          { status: 403 }
+        );
+      }
+    }
+
     if (hooks !== undefined) {
       const list = parseProjectHooks(hooks);
       const { getDb } = await import("@/lib/db");
@@ -94,8 +112,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     }
 
     // When its chats send work to another machine (Project settings)
-    if (jobRule !== undefined) {
-      const rule = parseJobRule(jobRule);
+    if (rule && ruleChanged) {
       const { getDb } = await import("@/lib/db");
       getDb()
         .prepare(

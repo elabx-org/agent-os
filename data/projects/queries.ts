@@ -4,6 +4,7 @@ import { usePendingRemoval } from "@/stores/pendingRemoval";
 import type { ProjectWithRepositories } from "@/lib/projects";
 import type { ProjectPlacement } from "@/lib/project-groups";
 import type { JobRule } from "@/lib/jobs/types";
+import { fetchAsUser } from "@/lib/client/user-fetch";
 import type { MergedPr, MergedTodayResponse } from "@/lib/merged-today";
 import { projectKeys } from "./keys";
 import { sessionKeys } from "../sessions/keys";
@@ -179,7 +180,8 @@ export function useUpdateProject() {
       hooks?: { event: string; matcher?: string; command: string }[];
       jobRule?: JobRule;
     }) => {
-      const res = await fetch(`/api/projects/${projectId}`, {
+      // The job rule is the user's alone: fetchAsUser proves it's them
+      const res = await fetchAsUser(`/api/projects/${projectId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

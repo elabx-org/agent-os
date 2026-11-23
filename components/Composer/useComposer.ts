@@ -492,7 +492,14 @@ export function useComposer({
   const atOpen = atStart !== null;
   // @ a machine: only where a chat can send jobs (stores/running.ts)
   const machinesOn = useSnapshot(runningStore).runners && claude;
-  const { data: linkedMachines } = useMachines();
+  // Fresh while the list is up: a machine turned off or disallowed says so
+  const machinesUp = machinesOn && atOpen && atTab === "machines";
+  const { data: linkedMachines, refetch: refetchMachines } = useMachines(
+    machinesUp ? 5000 : undefined
+  );
+  useEffect(() => {
+    if (machinesUp) void refetchMachines();
+  }, [machinesUp, refetchMachines]);
   const machineCan = useTargetAbilities();
   const [attachedState, setAttachedState] = useState<AttachedSession[]>([]);
   const { sessions: attachable, loading: attachableLoading } =
