@@ -672,7 +672,7 @@ do {
   equal("title: the page's without a state", ToolbarModel.title(nil, pageTitle: "Sign in").title, "Sign in")
   equal("title: the app's without either", ToolbarModel.title(nil, pageTitle: nil).title, "AgentOS")
   check("actions: every word is one the page knows", PageAction.allCases.map(\.rawValue).sorted() == [
-    "agents", "changes", "chat", "files", "find", "inspector", "new", "settings", "sidebar", "terminal",
+    "agents", "all", "changes", "chat", "files", "find", "inspector", "new", "settings", "sidebar", "terminal",
   ])
 
   let rows: [[String: Any]] = [

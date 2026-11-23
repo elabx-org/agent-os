@@ -1,7 +1,8 @@
 "use client";
 
 import { useRef } from "react";
-import { ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Columns2, Loader2 } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { DiffView, FileDiffCard } from "@/components/DiffViewer";
 import { parseDiff } from "@/lib/diff-parser";
 import { gitBadgeOf } from "@/lib/git-types";
@@ -21,6 +22,9 @@ interface FileDiffPageProps {
   onOpen: (file: AnyGitFile) => void;
   onStage: (file: AnyGitFile) => void | Promise<void>;
   onUnstage: (file: AnyGitFile) => void | Promise<void>;
+  /** The Mac window's review: side by side, with the switch in the header */
+  split?: boolean;
+  onSplit?: (split: boolean) => void;
 }
 
 const same = (a: AnyGitFile, b: AnyGitFile) =>
@@ -43,6 +47,8 @@ export function FileDiffPage({
   onOpen,
   onStage,
   onUnstage,
+  split,
+  onSplit,
 }: FileDiffPageProps) {
   const index = files.findIndex((f) => same(f, file));
   const prev = index > 0 ? files[index - 1] : undefined;
@@ -110,6 +116,20 @@ export function FileDiffPage({
       }
       actions={
         <>
+          {onSplit && (
+            <button
+              type="button"
+              aria-pressed={!!split}
+              onClick={() => onSplit(!split)}
+              className={cn(
+                "pill pill-secondary pill-sm flex-none active:opacity-80",
+                split && "!bg-primary/20"
+              )}
+            >
+              <Columns2 className="h-4 w-4" />
+              Side by side
+            </button>
+          )}
           {arrows}
           {stageButton}
         </>
@@ -145,6 +165,7 @@ export function FileDiffPage({
             path={file.path}
             badge={gitBadgeOf(file.status)}
             defaultExpanded
+            layout={split ? "split" : "unified"}
           />
         ) : (
           <p className="text-muted-foreground py-4 text-[14px]">

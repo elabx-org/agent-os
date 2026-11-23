@@ -3,7 +3,7 @@
 import { Check, ChevronDown, EyeOff } from "lucide-react";
 import type { Session } from "@/lib/db";
 import { setFocus } from "@/stores/focus";
-import { setMacInspector } from "@/stores/macHost";
+import { toggleMacInspector } from "@/hooks/useMacHost";
 import { isMacApp } from "@/lib/mac-host";
 import { BesideItems } from "@/components/BesideItems";
 import {
@@ -80,7 +80,7 @@ export function ActivityRail({
               onSelect={
                 onClose ??
                 // The Mac window's inspector button brings it back
-                (() => (isMacApp() ? setMacInspector(false) : setFocus(true)))
+                (() => (isMacApp() ? toggleMacInspector() : setFocus(true)))
               }
             >
               <EyeOff className="h-4 w-4" />

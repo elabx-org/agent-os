@@ -3,7 +3,7 @@ import Foundation
 /// What the window's toolbar sends the page: one of these words, nothing
 /// else (the page's "agentos-mac" event, lib/mac-host.ts)
 enum PageAction: String, CaseIterable, Equatable {
-  case chat, changes, terminal, files, agents, sidebar, inspector, find, new, settings
+  case chat, changes, terminal, files, agents, sidebar, inspector, find, new, settings, all
 }
 
 /// What the page says is in front (window.__agentosMac), read by the

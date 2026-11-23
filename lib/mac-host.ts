@@ -18,6 +18,17 @@ export function macChrome(userAgent: string): number {
   return match ? Number(match[1]) : 0;
 }
 
+/**
+ * Whether the inspector shows: its own choice, except over the Changes view,
+ * where it stays away until asked for
+ */
+export function inspectorShown(
+  choice: { inspector: boolean; reviewInspector: boolean },
+  viewMode: string
+): boolean {
+  return viewMode === "git" ? choice.reviewInspector : choice.inspector;
+}
+
 export function isMacApp(): boolean {
   return (
     typeof document !== "undefined" &&
@@ -37,6 +48,7 @@ export const MAC_ACTIONS = [
   "find",
   "new",
   "settings",
+  "all",
 ] as const;
 export type MacAction = (typeof MAC_ACTIONS)[number];
 
@@ -88,6 +100,8 @@ export interface MacStateInput {
   machine?: string | null;
   /** A workspace page, Settings or New covers the session */
   covered: string | null;
+  /** That page's own line ("5 on 2 machines"); the machine otherwise */
+  coverDetail?: string | null;
   viewMode: string | null;
   changes: number;
   agents: number;
@@ -106,7 +120,9 @@ export function macState(input: MacStateInput): MacState {
     ? [input.project, session?.branch, input.machine]
         .filter((part): part is string => !!part)
         .join(" · ")
-    : (input.machine ?? "");
+    : covered && input.coverDetail
+      ? input.coverDetail
+      : (input.machine ?? "");
   return {
     v: 1,
     session: front ? front.id : null,

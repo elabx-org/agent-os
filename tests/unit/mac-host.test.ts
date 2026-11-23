@@ -1,6 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { reviewTotals } from "../../lib/mac-review";
 import {
+  inspectorShown,
   MAC_ACTIONS,
   MAC_BOOT_SCRIPT,
   isMacAction,
@@ -117,4 +119,62 @@ test("the boot script marks the page before paint", () => {
   // A browser, and an older Mac app, are left alone
   assert.deepEqual(boot("Mozilla/5.0 Chrome/140 Safari/537"), {});
   assert.deepEqual(boot("Mozilla/5.0 AgentOSMac/0.4.0 MacOpaque/1"), {});
+});
+
+test("the inspector stays away over Changes until asked for", () => {
+  const choice = { inspector: true, reviewInspector: false };
+  assert.equal(inspectorShown(choice, "chat"), true);
+  assert.equal(inspectorShown(choice, "terminal"), true);
+  assert.equal(inspectorShown(choice, "git"), false);
+  assert.equal(
+    inspectorShown({ inspector: false, reviewInspector: true }, "git"),
+    true
+  );
+  assert.equal(
+    inspectorShown({ inspector: false, reviewInspector: true }, "chat"),
+    false
+  );
+});
+
+test("the review bar counts a file once and adds up its lines", () => {
+  assert.deepEqual(reviewTotals([]), { files: 0, additions: 0, deletions: 0 });
+  assert.deepEqual(
+    reviewTotals([
+      { path: "a.swift", additions: 40, deletions: 6 },
+      // The same file, part staged and part not
+      { path: "a.swift", additions: 2 },
+      // Untracked and binary files carry no counts
+      { path: "b.png" },
+    ]),
+    { files: 2, additions: 42, deletions: 6 }
+  );
+  // The same path in two repositories is two files
+  assert.equal(
+    reviewTotals(
+      [
+        { path: "README.md", repo: "/a" },
+        { path: "README.md", repo: "/b" },
+      ],
+      (f) => f.repo
+    ).files,
+    2
+  );
+});
+
+test("a page can put its own line under the window's title", () => {
+  const all = macState({
+    ...base,
+    covered: "All sessions",
+    coverDetail: "5 on 2 machines",
+  });
+  assert.equal(all.title, "All sessions");
+  assert.equal(all.detail, "5 on 2 machines");
+  assert.equal(all.session, null);
+  // Without one, and for the session itself, nothing changes
+  assert.equal(macState({ ...base, covered: "Mocks" }).detail, "Mac Studio");
+  assert.equal(
+    macState({ ...base, coverDetail: "5 on 2 machines" }).detail,
+    "fusionha-ios · main · Mac Studio"
+  );
+  assert.ok(isMacAction("all"));
 });

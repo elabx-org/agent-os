@@ -13,6 +13,7 @@ import {
   Folder,
   GalleryVerticalEnd,
   Laptop,
+  LayoutGrid,
   MonitorPlay,
   Plus,
   Search,
@@ -522,6 +523,21 @@ export function DesktopSidebar({
             )}
           </>
         )}
+        {/* Every session on every machine as tiles (the Mac window) */}
+        {!newOpen && mac && (
+          <button
+            type="button"
+            onClick={() => openPage({ kind: "all" })}
+            aria-current={page?.kind === "all" ? "page" : undefined}
+            className={cn(
+              "srow hover:bg-foreground/5 mt-2.5 w-full flex-none text-left",
+              page?.kind === "all" && "sel hover:bg-primary/20"
+            )}
+          >
+            <LayoutGrid className="text-muted-foreground h-4 w-4 flex-none" />
+            <span className="min-w-0 flex-1 truncate">All sessions</span>
+          </button>
+        )}
         {/* Labs' Running: the Duo's More has it; here, every session's */}
         {!newOpen && running && (
           <button
@@ -529,7 +545,8 @@ export function DesktopSidebar({
             onClick={() => openPage({ kind: "running" })}
             aria-current={page?.kind === "running" ? "page" : undefined}
             className={cn(
-              "srow hover:bg-foreground/5 mt-2.5 w-full flex-none text-left",
+              "srow hover:bg-foreground/5 w-full flex-none text-left",
+              !mac && "mt-2.5",
               page?.kind === "running" && "sel hover:bg-primary/20"
             )}
           >
@@ -544,7 +561,7 @@ export function DesktopSidebar({
             aria-current={page?.kind === "mocks" ? "page" : undefined}
             className={cn(
               "srow hover:bg-foreground/5 w-full flex-none text-left",
-              !running && "mt-2.5",
+              !running && !mac && "mt-2.5",
               page?.kind === "mocks" && "sel hover:bg-primary/20"
             )}
           >
