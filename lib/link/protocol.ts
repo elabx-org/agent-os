@@ -27,6 +27,13 @@ export type Headers = Record<string, string | string[] | undefined>;
 export const CAP_UP = "up1";
 /** Honours "taken": pauses a session the hub continued from its copy */
 export const CAP_TAKE = "take1";
+/** On a call the link itself vouches for (lib/link/up-guard.ts) */
+export const LINK_PROOF_HEADER = "x-agentos-link-proof";
+export const LINK_MACHINE_HEADER = "x-agentos-link-machine";
+/** Who a machine's inbox hears from: its hub */
+export const HUB_PEER = "hub";
+/** Takes copies of its hub's sessions (lib/backup/hub-send.ts) */
+export const CAP_PEER = "peer1";
 
 /** agent: a session's tool call; system: AgentOS itself (copies) */
 export type UpKind = "agent" | "system";
@@ -156,6 +163,8 @@ export type HubFrame =
       headers: Headers;
       /** The hub checked this came from the user's own browser */
       user: boolean;
+      /** The hub's own call to this machine's inbox (lib/link/own-proof.ts) */
+      own?: boolean;
     }
   | { t: "req-end"; id: number }
   | { t: "abort"; id: number }

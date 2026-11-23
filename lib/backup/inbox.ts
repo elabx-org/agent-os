@@ -1,10 +1,12 @@
 /**
  * The guard and answers shared by the copy routes on the hub
  * (app/api/link/inbox/backup/*, …/taken/*): only AgentOS on a linked
- * machine, through the link, while the user keeps its copies here.
+ * machine, through the link, while the user keeps its copies here. On a
+ * machine the same routes take its hub's copies (lib/backup/hub-send.ts).
  */
 
 import { NextResponse } from "next/server";
+import { HUB_PEER } from "../link/protocol";
 import { machinesOn } from "../link/server";
 import type { MachineRow } from "../link/store";
 import { requireLinkMachine } from "../link/up-guard";
@@ -16,13 +18,16 @@ const noStore = { "Cache-Control": "no-store" };
 export function backupMachine(
   request: Request
 ): { ok: true; machine: MachineRow } | { ok: false; response: Response } {
-  if (!machinesOn()) {
+  const link = requireLinkMachine(request);
+  // A machine takes its hub's copies whatever its own Labs switches say:
+  // sharing is the user's choice on the hub (lib/backup/share.ts)
+  const fromHub = link.ok && link.machine.id === HUB_PEER;
+  if (!fromHub && !machinesOn()) {
     return {
       ok: false,
       response: NextResponse.json({ error: "Not found" }, { status: 404 }),
     };
   }
-  const link = requireLinkMachine(request);
   if (!link.ok) return link;
   if (link.machine.backup !== 1) {
     return {

@@ -31,6 +31,8 @@ export interface MachineRow {
   backup: number;
   /** JSON string[]: what it said it can do in its last hello */
   caps: string | null;
+  /** JSON MachineShare: which of this server's sessions it gets copies of */
+  share?: string | null;
 }
 
 const clean = (value: string, max: number) =>

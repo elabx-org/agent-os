@@ -169,7 +169,8 @@ const HEAD_MS = 120_000;
  * once git has packed it
  */
 const MOVE_HEAD_MS = 45 * 60_000;
-const MOVE_PATH = /^\/api\/(session-moves\/|sessions\/[^/]+\/move-out)/;
+const MOVE_PATH =
+  /^\/api\/(session-moves\/|sessions\/[^/]+\/move-out|link\/inbox\/backup\/)/;
 /** Past this much unsent on the link, a body waits for it to drain */
 const BUFFER_HIGH = 4 * 1024 * 1024;
 const CODE_MS = 10 * 60_000;
@@ -1123,7 +1124,7 @@ export class LinkHub {
     machineId: string,
     req: IncomingMessage,
     res: ServerResponse,
-    options: { path: string; user: boolean }
+    options: { path: string; user: boolean; own?: boolean }
   ): void {
     const tunnel = this.tunnels.get(machineId);
     if (!tunnel || tunnel.ws.readyState !== WebSocket.OPEN) {
@@ -1165,6 +1166,7 @@ export class LinkHub {
       path: options.path,
       headers: requestHeadersForLink(req.headers),
       user: options.user,
+      ...(options.own ? { own: true } : {}),
     });
     req.on("data", (chunk: Buffer) => {
       if (tunnel.ws.readyState !== WebSocket.OPEN) return;

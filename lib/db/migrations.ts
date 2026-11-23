@@ -745,6 +745,15 @@ const migrations: Migration[] = [
       `);
     }),
   },
+  {
+    id: 44,
+    name: "add_machine_share",
+    up: atomic((db) => {
+      // Which of this server's sessions a linked machine gets copies of
+      // (lib/backup/share.ts): JSON { level, projects }
+      addColumnIfMissing(db, "machines", "share", "TEXT");
+    }),
+  },
 ];
 
 export function runMigrations(db: Database.Database): void {

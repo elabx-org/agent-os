@@ -22,6 +22,7 @@ import { reconcileSettled } from "./settle";
 import { onIdleEdge, pruneSettled } from "./turns";
 import { isMachineMode } from "./link/machine";
 import { startMachineBackup } from "./backup/machine";
+import { startHubSend } from "./backup/hub-send";
 import { gcRepos } from "./backup/store";
 import { recoverTakes } from "./backup/takeover";
 
@@ -76,6 +77,10 @@ export function startTickers(): void {
   // the copied repositories daily
   if (isMachineMode()) {
     startMachineBackup();
+    // The copies of its hub's sessions kept here are packed daily too
+    setInterval(() => {
+      gcRepos().catch((error) => console.error("[tickers] copies gc:", error));
+    }, DAY_MS).unref();
   } else {
     try {
       recoverTakes();
@@ -88,6 +93,9 @@ export function startTickers(): void {
     // Machines whose owner turned on "keep matching" get this server's
     // new and changed skills and plugins (lib/claude-setup)
     startSetupFollow();
+    // Machines the user shares sessions with get copies of them
+    // (lib/backup/hub-send.ts)
+    startHubSend();
   }
 
   // The end of a turn: Codex/Gemini post snapshots, Claude's turn journal

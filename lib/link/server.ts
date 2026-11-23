@@ -19,6 +19,7 @@ import { AGENT_UP_RULES } from "./up-agent-rules";
 import { BACKUP_UP_RULES } from "./up-backup-rules";
 import { announceRefusal, announceUp } from "./up-announce";
 import { linkProof } from "./up-guard";
+import { OWN_PROOF_HEADER, isOwnCall } from "./own-proof";
 import { allowStartDown, beforeUp } from "./up-policy";
 import { CHAIN_HEADER } from "./from-machine";
 import {
@@ -224,10 +225,14 @@ export function machineEntry(
 const ownSetupCall = (req: IncomingMessage, path: string) =>
   SETUP_PATH.test(path) && isSetupProof(first(req.headers[SETUP_PROOF_HEADER]));
 
+/** This server's own calls to a machine's inbox (lib/link/own-proof.ts) */
+const ownInboxCall = (req: IncomingMessage, path: string) =>
+  isOwnCall(path, first(req.headers[OWN_PROOF_HEADER]));
+
 const entryOf = (machineId: string, req: IncomingMessage, path: string) =>
   machineEntry(
     store.machineById(machineId),
-    fromBrowser(req) || ownSetupCall(req, path)
+    fromBrowser(req) || ownSetupCall(req, path) || ownInboxCall(req, path)
   );
 
 /**
@@ -304,6 +309,7 @@ export function linkRequest(
   linkHub().forwardRequest(target.machineId, req, res, {
     path: target.path,
     user: isUser(req),
+    own: ownInboxCall(req, target.path),
   });
   return true;
 }

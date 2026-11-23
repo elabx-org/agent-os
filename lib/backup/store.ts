@@ -49,7 +49,8 @@ export const BACKUP_LIMITS = {
   json: 1024 * 1024,
 };
 
-const MACHINE_ID = /^m_[0-9a-f]{12}$/;
+// A machine's id on the hub; "hub" on a machine (lib/link/up-guard.ts)
+const MACHINE_ID = /^(m_[0-9a-f]{12}|hub)$/;
 const REPO_KEY = /^[0-9a-f]{16}$/;
 const LONG_MS = 45 * 60_000;
 
