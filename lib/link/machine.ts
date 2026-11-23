@@ -28,6 +28,7 @@ import {
 import { generateMachineKey, isPublicKey, type MachineKey } from "./keys";
 import { home, readSecret, writeSecret } from "./secrets";
 import { ownSha } from "./server";
+import { linkProof } from "./up-guard";
 import { signInHeaders, type SignInConfig } from "./signin";
 
 export interface LinkConfig {
@@ -277,6 +278,7 @@ export function startMachineLink(localPort: number): LinkClient | null {
       ? () => signInHeaders(config.hubUrl, config.signIn!)
       : undefined,
     userCookie: () => `${USER_PROOF_COOKIE}=${userSecret()}`,
+    linkProof,
     onTaken,
     onUpAllowed: (up) => {
       writeState(config, client.state, upState(client));

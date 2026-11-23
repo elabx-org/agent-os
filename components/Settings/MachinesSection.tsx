@@ -50,6 +50,7 @@ import {
 import { cn } from "@/lib/utils";
 import { Chevron } from "./SettingGroup";
 import { ClaudeSetupRow } from "./ClaudeSetupRow";
+import { MachineSyncRow } from "./MachineSync";
 import { copiedWord, copyAge, sizeText } from "@/lib/backup/types";
 import { openCopies } from "@/stores/copiesSheet";
 
@@ -451,6 +452,7 @@ function LinkedRow({
         onSwitch={(on) => patch({ backup: on })}
         onDeleted={onChange}
       />
+      <MachineSyncRow id={machine.id} name={machine.name} />
       <ActivityRow machine={machine} machineName={machineName} />
       {online && <ReposFolderRow target={machine.id} name={machine.name} />}
       {online && machine.sameVersion !== false && (

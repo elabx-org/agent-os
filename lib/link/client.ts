@@ -14,6 +14,10 @@ import {
   BIN_BODY,
   BIN_UP,
   BIN_WS,
+  CAP_PEER,
+  HUB_PEER,
+  LINK_MACHINE_HEADER,
+  LINK_PROOF_HEADER,
   CAP_TAKE,
   CAP_UP,
   LINK_MAX_FRAME,
@@ -103,6 +107,8 @@ export interface LinkClientOptions {
   authHeaders?: () => Promise<Record<string, string>>;
   /** This machine's own proof-of-user cookie, added when the hub vouches */
   userCookie: () => string;
+  /** This machine's per-boot proof that a call came down the link from its hub */
+  linkProof?: () => string;
   onState?: (state: LinkState) => void;
   /** What the hub lets this machine ask, when it says; null once the link drops */
   onUpAllowed?: (up: UpAllowed | null) => void;
@@ -403,7 +409,7 @@ export class LinkClient {
         sha: this.options.sha,
         hubHost: this.hub.host,
         code: this.options.code,
-        caps: [CAP_UP, CAP_TAKE],
+        caps: [CAP_UP, CAP_TAKE, CAP_PEER],
       });
     });
 
@@ -549,17 +555,24 @@ export class LinkClient {
   /** What this machine's server sees: a same-site call on the hub's host */
   private localHeaders(
     headers: Headers,
-    user: boolean
+    user: boolean,
+    own = false
   ): http.OutgoingHttpHeaders {
     const out: http.OutgoingHttpHeaders = {};
     for (const [name, value] of Object.entries(headers ?? {})) {
       const key = name.toLowerCase();
       if (value === undefined || key === "cookie" || key === "host") continue;
       if (key.startsWith("x-forwarded-") || key === "x-real-ip") continue;
+      // Only this client says a call is the hub's own
+      if (key.startsWith("x-agentos-link")) continue;
       out[key] = value;
     }
     out.host = this.hub.host;
     if (user) out.cookie = this.options.userCookie();
+    if (own && this.options.linkProof) {
+      out[LINK_PROOF_HEADER] = this.options.linkProof();
+      out[LINK_MACHINE_HEADER] = HUB_PEER;
+    }
     return out;
   }
 
@@ -577,7 +590,11 @@ export class LinkClient {
         port: this.options.localPort,
         method: frame.method,
         path: frame.path,
-        headers: this.localHeaders(frame.headers, frame.user === true),
+        headers: this.localHeaders(
+          frame.headers,
+          frame.user === true,
+          frame.own === true
+        ),
       },
       (response) => {
         send({

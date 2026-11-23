@@ -6,11 +6,12 @@
  */
 
 import { randomBytes, timingSafeEqual } from "crypto";
+import { hubUp, isMachineMode } from "./machine";
+import { HUB_PEER, LINK_MACHINE_HEADER, LINK_PROOF_HEADER } from "./protocol";
 import { machineById, type MachineRow } from "./store";
 import { UP_ERRORS } from "./up";
 
-export const LINK_PROOF_HEADER = "x-agentos-link-proof";
-export const LINK_MACHINE_HEADER = "x-agentos-link-machine";
+export { LINK_MACHINE_HEADER, LINK_PROOF_HEADER };
 
 // server.ts and the Next route bundles are separate module graphs in one
 // process: the secret lives on globalThis so both see the same one
@@ -41,6 +42,27 @@ const refused = () =>
     { status: 403, headers: { "Cache-Control": "no-store" } }
   );
 
+/** The hub, as the row a machine's inbox keeps its copies under */
+export function hubPeerRow(): MachineRow {
+  return {
+    id: HUB_PEER,
+    name: hubUp().hubName || "the server",
+    public_key: "",
+    status: "approved",
+    platform: null,
+    sha: null,
+    signed_in_as: null,
+    created_at: 0,
+    approved_at: 0,
+    last_seen: null,
+    agents: 0,
+    uses_hub: 0,
+    backup: 1,
+    caps: null,
+    share: null,
+  };
+}
+
 /** For /api/link/inbox/*: the machine the hub's tunnel vouched for */
 export function requireLinkMachine(
   request: Request
@@ -50,6 +72,13 @@ export function requireLinkMachine(
   }
   // Re-read: it may have been removed since the request went up
   const id = request.headers.get(LINK_MACHINE_HEADER) ?? "";
+  // On a linked machine the only peer is its hub, vouched for by this
+  // machine's own link client (lib/link/client.ts localHeaders)
+  if (id === HUB_PEER) {
+    return isMachineMode()
+      ? { ok: true, machine: hubPeerRow() }
+      : { ok: false, response: refused() };
+  }
   const machine = /^m_[0-9a-f]{12}$/.test(id) ? machineById(id) : null;
   if (machine?.status !== "approved") {
     return { ok: false, response: refused() };

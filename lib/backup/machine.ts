@@ -64,7 +64,7 @@ const TAKING_MS = 30_000;
 const CLAUDE_SID = /^[0-9a-f-]{36}$/;
 
 /** What this machine last copied of a session */
-interface LocalCopy {
+export interface LocalCopy {
   claudeSessionId: string;
   bytes: number;
   head: string | null;
@@ -77,10 +77,24 @@ interface LocalCopy {
   fullNext?: boolean;
 }
 
-interface BackupState {
+/** How the last try to copy a session went (lib/backup/hub-send.ts) */
+export interface CopyStatus {
+  /** When it was last known to be the same on both sides */
+  at: number | null;
+  tried: number;
+  outcome: RunOutcome;
+  error?: string;
+  /** Lines of conversation in the copy */
+  entries?: number;
+  /** Changed files that aren't committed */
+  unsaved?: number;
+}
+
+export interface BackupState {
   /** "<hub host>|<machine id>": another hub or a new link starts over */
   key: string;
   sessions: Record<string, LocalCopy>;
+  status?: Record<string, CopyStatus>;
 }
 
 const shared = globalThis as typeof globalThis & {
@@ -178,7 +192,7 @@ export interface BackupDeps {
   tmpdir(): string;
 }
 
-const liveDeps = (): BackupDeps => ({
+export const liveDeps = (): BackupDeps => ({
   upload: uploadToHub,
   idle,
   locate: async (session) => {
@@ -208,7 +222,7 @@ const jsonInit = (method: string, p: string, body: unknown): UpInit => {
 };
 
 /** What a session looks like now, to tell whether it changed */
-async function signature(session: Session, file: string | null) {
+export async function signature(session: Session, file: string | null) {
   const size = file ? ((await fsp.stat(file).catch(() => null))?.size ?? 0) : 0;
   const tree = await readWorkingTree(sessionCwd(session)).catch(() => null);
   const files: string[] = [];
