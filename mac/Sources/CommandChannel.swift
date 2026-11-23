@@ -7,6 +7,7 @@ protocol CommandTarget: AnyObject {
   func channelHide()
   func channelOpen(session id: String)
   func channelReload()
+  func channelToolbar(_ action: PageAction)
   func channelCapture(_ name: String, done: @escaping ([String]) -> Void)
   func channelDumpState() -> [String: Any]
   func channelQuit()
@@ -20,7 +21,8 @@ protocol CommandTarget: AnyObject {
 
 /// The one way in from outside, for tests and second launches: a
 /// distributed notification `com.agentos.mac.command`. It can only show,
-/// hide, open, reload, capture or read. It never answers, replies, starts,
+/// hide, open, reload, capture, read or press a toolbar button (which shows
+/// a view or a pane, as the page's own buttons do). It never answers, replies, starts,
 /// stops or uninstalls, never runs caller-supplied script, and never brings
 /// the app in front of another app. Replies go to the test folder.
 enum CommandChannel {
@@ -161,6 +163,10 @@ enum CommandChannel {
         reply(["ok": true])
       case "reload":
         target.channelReload()
+        reply(["ok": true])
+      case "toolbar":
+        guard args.count == 1, let action = PageAction(rawValue: args[0]) else { return reply(["error": "bad action"]) }
+        target.channelToolbar(action)
         reply(["ok": true])
       case "capture":
         guard args.count == 1, CommandChannel.isCaptureName(args[0]) else { return reply(["error": "bad name"]) }

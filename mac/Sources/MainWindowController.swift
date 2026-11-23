@@ -245,6 +245,25 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     for id in [Self.sidebarItem, Self.inspectorItem, Self.newItem, Self.findItem] { set(id, shown: known) }
   }
 
+  /// What the toolbar shows now, for the state dump
+  var toolbarDump: [String: Any] {
+    let state = pane.state
+    func shown(_ id: NSToolbarItem.Identifier) -> Bool { toolbarItems[id]?.isEnabled ?? false }
+    return [
+      "known": state != nil,
+      "session": state?.session ?? NSNull() as Any,
+      "tabs": tabs.map(\.label),
+      "selected": views.selectedSegment,
+      "views": shown(Self.viewsItem),
+      "openIn": shown(Self.openInItem),
+      "panes": shown(Self.sidebarItem) && shown(Self.inspectorItem),
+      "sidebar": state?.sidebar ?? false,
+      "inspector": state?.inspector ?? false,
+      "dark": state?.dark ?? false,
+      "seeThrough": !(pane.webView.value(forKey: "drawsBackground") as? Bool ?? true),
+    ]
+  }
+
   @objc private func pickView(_ sender: NSSegmentedControl) {
     let index = sender.selectedSegment
     guard tabs.indices.contains(index) else { return }
