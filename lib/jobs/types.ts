@@ -236,6 +236,52 @@ export function jobLine(job: Job, now: number): string {
   }
 }
 
+/**
+ * A project's say on work its chats' machine can't do (Project settings,
+ * projects.job_rule as JSON; NULL is DEFAULT_JOB_RULE)
+ */
+export interface JobRule {
+  /** The chat sends it to the machine that can, or asks the user first */
+  send: "auto" | "ask";
+  /** That machine is off: tell the user and wait, or use GitHub Actions */
+  off: "wait" | "actions";
+}
+
+export const DEFAULT_JOB_RULE: JobRule = { send: "auto", off: "wait" };
+
+/** From the stored JSON or a request's body; anything else is the default */
+export function parseJobRule(raw: unknown): JobRule {
+  let value = raw;
+  if (typeof raw === "string") {
+    try {
+      value = JSON.parse(raw);
+    } catch {
+      value = null;
+    }
+  }
+  const v = (value ?? {}) as Partial<JobRule>;
+  return {
+    send: v.send === "ask" ? "ask" : "auto",
+    off: v.off === "actions" ? "actions" : "wait",
+  };
+}
+
+export const isDefaultJobRule = (rule: JobRule): boolean =>
+  rule.send === DEFAULT_JOB_RULE.send && rule.off === DEFAULT_JOB_RULE.off;
+
+/** Who chose the machine, for the job's card */
+export function sentText(job: Pick<Job, "via" | "sessionName">): string {
+  const chat = job.sessionName ?? "A chat";
+  switch (job.via) {
+    case "mention":
+      return `You named this machine with @ in ${job.sessionName ?? "a chat"}.`;
+    case "again":
+      return `You ran it again. First sent by ${job.sessionName ?? "a chat"}.`;
+    default:
+      return `${chat} chose this machine for it.`;
+  }
+}
+
 /** "3 files changed" / "No files changed" */
 export function changedText(changed: JobChanged | null): string {
   const count = changed ? changed.files.length + changed.more : 0;

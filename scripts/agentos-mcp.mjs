@@ -1068,7 +1068,7 @@ server.registerTool(
   "run_job",
   {
     description:
-      "Hand one piece of work to a linked machine while this chat stays here: a build, a test run, the iOS simulator, anything this machine can't do and that one can (\"The machine you run on\" in your notes says what each has). The machine gets this chat's code as it is now, unsaved files included, in a throwaway folder, runs the task as a session of its own, and sends back its last message plus a patch of any files it changed. Use it when the user names a machine with @, or when the work needs something only that machine has. Write the task so it stands alone: what to run, what counts as success, what to report. One job per machine runs at a time; others wait. The job's session asks the user before it runs commands (they answer in AgentOS, so a job can sit at \"needs the user\"), and this project's own Claude files (.claude, .mcp.json: settings, hooks, skills, MCP servers) are not loaded there, only what is set up on that machine. Returns once the job is over or needs the user, or after wait_seconds (then call wait_for_job).",
+      "Hand one piece of work to a linked machine while this chat stays here: a build, a test run, the iOS simulator, anything this machine can't do and that one can (\"The machine you run on\" in your notes says what each has). The machine gets this chat's code as it is now, unsaved files included, in a throwaway folder, runs the task as a session of its own, and sends back its last message plus a patch of any files it changed. Use it when the user names a machine with @, or when the work needs something only that machine has. Write the task so it stands alone: what to run, what counts as success, what to report. One job per machine runs at a time; others wait. How much the job's session may do without asking is the user's setting for that machine: by default it asks them before every command (they answer in AgentOS, so a job can sit at \"needs the user\"); if they chose otherwise it runs by itself. This project's own Claude files (.claude, .mcp.json: settings, hooks, skills, MCP servers) are not loaded there, only what is set up on that machine. Returns once the job is over or needs the user, or after wait_seconds (then call wait_for_job).",
     inputSchema: {
       machine: z
         .string()
@@ -1083,6 +1083,12 @@ server.registerTool(
         .describe(
           "The whole task for the session that runs it. It sees the code but not this conversation"
         ),
+      named: z
+        .boolean()
+        .optional()
+        .describe(
+          "True when the user named this machine themselves (with @ or in words); false or left out when you chose it"
+        ),
       wait_seconds: z
         .number()
         .int()
@@ -1092,10 +1098,10 @@ server.registerTool(
         .describe("How long to wait for it here (default 600, max 1800)"),
     },
   },
-  tool(async ({ machine, title, task, wait_seconds = 600 }) => {
+  tool(async ({ machine, title, task, named, wait_seconds = 600 }) => {
     const { job } = await api("/api/jobs", {
       method: "POST",
-      body: { machine, title, task },
+      body: { machine, title, task, named: named === true },
     });
     return jobOut(wait_seconds > 0 ? await waitJob(job.id, wait_seconds) : job);
   })

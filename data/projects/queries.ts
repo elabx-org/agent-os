@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { usePendingRemoval } from "@/stores/pendingRemoval";
 import type { ProjectWithRepositories } from "@/lib/projects";
 import type { ProjectPlacement } from "@/lib/project-groups";
+import type { JobRule } from "@/lib/jobs/types";
 import type { MergedPr, MergedTodayResponse } from "@/lib/merged-today";
 import { projectKeys } from "./keys";
 import { sessionKeys } from "../sessions/keys";
@@ -166,6 +167,7 @@ export function useUpdateProject() {
       initialPrompt,
       instructions,
       hooks,
+      jobRule,
     }: {
       projectId: string;
       name?: string;
@@ -175,6 +177,7 @@ export function useUpdateProject() {
       initialPrompt?: string | null;
       instructions?: string | null;
       hooks?: { event: string; matcher?: string; command: string }[];
+      jobRule?: JobRule;
     }) => {
       const res = await fetch(`/api/projects/${projectId}`, {
         method: "PATCH",
@@ -187,6 +190,7 @@ export function useUpdateProject() {
           initialPrompt,
           instructions,
           hooks,
+          jobRule,
         }),
       });
       if (!res.ok) throw new Error("Failed to update project");

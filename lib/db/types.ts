@@ -189,6 +189,8 @@ export interface Project {
   pinned: boolean;
   /** The user's own group on the Projects page ("iOS", "Home lab") */
   group_name: string | null;
+  /** When its chats send work to another machine (lib/jobs/types.ts JobRule, JSON) */
+  job_rule?: string | null;
   created_at: string;
   updated_at: string;
 }

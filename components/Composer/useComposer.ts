@@ -21,6 +21,10 @@ import {
 } from "@/hooks/useComposerData";
 import { useQueries } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { useSnapshot } from "valtio";
+import { useMachines, useTargetAbilities } from "@/data/machines";
+import { shortText } from "@/lib/abilities-types";
+import { runningStore } from "@/stores/running";
 import { useAttachableSessions } from "@/hooks/useAttachableSessions";
 import { sessionSummaryQuery } from "@/hooks/useSessionSummary";
 import {
@@ -63,12 +67,17 @@ export interface Suggestion {
   insert: string;
   /** A folder: stay open to pick inside it */
   keepOpen?: boolean;
+  /** A name, not a path: shown as plain text */
+  plain?: boolean;
 }
 
 export type ComposerMode = "bash" | "memory" | null;
 
-/** The @ popover's two tabs (N-Attach): files, or other sessions */
-export type AtTab = "files" | "sessions";
+/**
+ * The @ popover's tabs (N-Attach): files, other sessions, or (on a server
+ * with a linked machine) the machines a job can be sent to
+ */
+export type AtTab = "files" | "sessions" | "machines";
 
 export interface Segment {
   text: string;
@@ -481,6 +490,10 @@ export function useComposer({
     if (atStart !== null) setAtTabState("files");
   }, [atStart]);
   const atOpen = atStart !== null;
+  // @ a machine: only where a chat can send jobs (stores/running.ts)
+  const machinesOn = useSnapshot(runningStore).runners && claude;
+  const { data: linkedMachines } = useMachines();
+  const machineCan = useTargetAbilities();
   const [attachedState, setAttachedState] = useState<AttachedSession[]>([]);
   const { sessions: attachable, loading: attachableLoading } =
     useAttachableSessions(
@@ -560,6 +573,28 @@ export function useComposer({
         .slice(0, MAX_SUGGESTIONS)
         .map((c) => toItem(c));
     }
+    if (atTab === "machines") {
+      const q = pickerToken.query.toLowerCase();
+      return (linkedMachines?.machines ?? [])
+        .filter((m) => m.status === "approved")
+        .filter((m) => m.name.toLowerCase().includes(q))
+        .map((m) => {
+          const can = machineCan(m.id);
+          return {
+            key: `machine:${m.id}`,
+            label: m.name,
+            detail:
+              m.presence !== "online"
+                ? "Off right now"
+                : m.agents === false
+                  ? "Not allowed yet"
+                  : (can && shortText(can)) || "On",
+            // Plain text: the chat reads the name and sends the job
+            insert: `@${m.name} `,
+            plain: true,
+          };
+        });
+    }
     const ranked = rankFiles(files, pickerToken.query);
     return ranked.slice(0, MAX_SUGGESTIONS).map((f, i) => {
       const dir = f.path.endsWith("/");
@@ -580,7 +615,16 @@ export function useComposer({
         keepOpen: dir,
       };
     });
-  }, [pickerToken?.kind, pickerToken?.query, groups, files]);
+    // machineCan is new each render; the machines' data says when it changed
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    pickerToken?.kind,
+    pickerToken?.query,
+    groups,
+    files,
+    atTab,
+    linkedMachines,
+  ]);
 
   const [selected, setSelected] = useState(0);
   const pickerKey = pickerToken
@@ -615,11 +659,23 @@ export function useComposer({
     setSessionsOffState(off);
     if (off) setAtTabState("files");
   }, []);
+  const machinesOnRef = useRef(machinesOn);
+  machinesOnRef.current = machinesOn;
   const setAtTab = useCallback((tab: AtTab) => {
     if (tab === "sessions" && sessionsOffRef.current) return;
+    if (tab === "machines" && !machinesOnRef.current) return;
     setAtTabState(tab);
     setSelected(0);
   }, []);
+  // The tabs there are, in their order
+  const atTabs = useMemo<AtTab[]>(
+    () => [
+      "files",
+      ...(sessionsOff ? [] : (["sessions"] as const)),
+      ...(machinesOn && !sessionsOff ? (["machines"] as const) : []),
+    ],
+    [sessionsOff, machinesOn]
+  );
 
   /**
    * A Sessions row tapped: attached as a chip (the typed "@query" goes, the
@@ -897,21 +953,22 @@ export function useComposer({
             "@" &&
           el.selectionStart === el.selectionEnd &&
           el.selectionStart === pickerToken.end;
-        if (bare && e.key === "ArrowRight" && atTab === "files") {
+        const at = atTabs.indexOf(atTab);
+        if (bare && e.key === "ArrowRight" && at < atTabs.length - 1) {
           e.preventDefault();
-          setAtTab("sessions");
+          setAtTab(atTabs[at + 1]);
           return true;
         }
-        if (bare && e.key === "ArrowLeft" && atTab === "sessions") {
+        if (bare && e.key === "ArrowLeft" && at > 0) {
           e.preventDefault();
-          setAtTab("files");
+          setAtTab(atTabs[at - 1]);
           return true;
         }
-        // Tab on a tab with nothing to pick: the other one
+        // Tab on a tab with nothing to pick: the next one
         const none = sessionsTab ? !attachable.length : !suggestions.length;
-        if (e.key === "Tab" && none) {
+        if (e.key === "Tab" && none && atTabs.length > 1) {
           e.preventDefault();
-          setAtTab(sessionsTab ? "files" : "sessions");
+          setAtTab(atTabs[(at + 1) % atTabs.length]);
           return true;
         }
       }
@@ -989,6 +1046,7 @@ export function useComposer({
       selected,
       choose,
       atTab,
+      atTabs,
       setAtTab,
       attachable,
       toggleSession,
@@ -1137,6 +1195,7 @@ export function useComposer({
     choose,
     // @ sessions (N-Attach)
     atTab,
+    atTabs,
     setAtTab,
     /** No Sessions tab and no chips (a queued message being edited) */
     sessionsOff,

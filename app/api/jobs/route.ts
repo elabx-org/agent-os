@@ -51,13 +51,15 @@ export async function GET(request: Request) {
   );
 }
 
-// POST /api/jobs - a session's tool: { machine, title, task } hands a job to
+// POST /api/jobs - a session's tool: { machine, title, task, named? } hands a job to
 // that machine. The user's page: { again: <job id> } runs one once more
 export async function POST(request: Request) {
   const body = (await request.json().catch(() => null)) as {
     machine?: unknown;
     title?: unknown;
     task?: unknown;
+    /** The user named the machine with @ (the chat's own word for it) */
+    named?: unknown;
     again?: unknown;
   } | null;
   try {
@@ -94,7 +96,7 @@ export async function POST(request: Request) {
       machine: body.machine,
       title: body.title,
       task: body.task,
-      via: "chat",
+      via: body.named === true ? "mention" : "chat",
     });
     return NextResponse.json({ job }, { headers: noStore });
   } catch (error) {

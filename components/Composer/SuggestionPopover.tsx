@@ -22,17 +22,21 @@ interface SuggestionPopoverProps {
   selected: number;
   onHover: (index: number) => void;
   onChoose: (item: Suggestion) => void;
-  /** "@" only: the Files | Sessions control on top (N-Attach) */
+  /** "@" only: the Files | Sessions | Machines control on top (N-Attach) */
   tab?: AtTab;
+  /** The tabs there are; fewer than two shows none */
+  tabs?: readonly AtTab[];
   onTab?: (tab: AtTab) => void;
   /** The Sessions tab's list (SessionSuggestions), shown in its place */
   sessions?: ReactNode;
 }
 
-const TABS: [AtTab, string][] = [
-  ["files", "Files"],
-  ["sessions", "Sessions"],
-];
+const TAB_LABELS: Record<AtTab, string> = {
+  files: "Files",
+  sessions: "Sessions",
+  machines: "Machines",
+};
+const BOTH: readonly AtTab[] = ["files", "sessions"];
 
 /** Claude Code's "/" commands or "@" files, filtered as you type */
 export function SuggestionPopover({
@@ -43,10 +47,12 @@ export function SuggestionPopover({
   onHover,
   onChoose,
   tab = "files",
+  tabs = BOTH,
   onTab,
   sessions,
 }: SuggestionPopoverProps) {
-  const tabbed = kind === "at" && !!onTab;
+  const tabbed = kind === "at" && !!onTab && tabs.length > 1;
+  const machines = tabbed && tab === "machines";
   const listRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     listRef.current
@@ -62,9 +68,12 @@ export function SuggestionPopover({
           <div
             role="tablist"
             aria-label="Attach"
-            className="seg bg-foreground/[0.06] grid grid-cols-2"
+            className={cn(
+              "seg bg-foreground/[0.06] grid",
+              tabs.length > 2 ? "grid-cols-3" : "grid-cols-2"
+            )}
           >
-            {TABS.map(([value, label]) => (
+            {tabs.map((value) => (
               <button
                 key={value}
                 type="button"
@@ -76,7 +85,7 @@ export function SuggestionPopover({
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => onTab?.(value)}
               >
-                {label}
+                {TAB_LABELS[value]}
               </button>
             ))}
           </div>
@@ -89,12 +98,14 @@ export function SuggestionPopover({
           ref={listRef}
           id={id}
           role="listbox"
-          aria-label={kind === "slash" ? "Commands" : "Files"}
+          aria-label={
+            kind === "slash" ? "Commands" : machines ? "Machines" : "Files"
+          }
           className="max-h-[min(45vh,320px)] overflow-y-auto overscroll-contain"
         >
           {items.length === 0 && (
             <div className="text-muted-foreground flex min-h-11 items-center px-3.5 text-sm">
-              No files match
+              {machines ? "No machine by that name" : "No files match"}
             </div>
           )}
           {items.map((item, i) => (
@@ -117,20 +128,31 @@ export function SuggestionPopover({
                   i === selected ? "bg-primary/18" : "active:bg-muted"
                 )}
               >
-                <code
-                  className={cn(
-                    "font-mono text-sm",
-                    i === selected
-                      ? "text-[#6D28D9] dark:text-[#C4B5FD]"
-                      : "text-foreground",
-                    kind === "at"
-                      ? "min-w-0 flex-1 truncate text-left [direction:rtl]"
-                      : "min-w-[84px] shrink-0"
-                  )}
-                >
-                  {/* rtl keeps a long path's file name in view */}
-                  {kind === "at" ? <bdi>{item.label}</bdi> : item.label}
-                </code>
+                {item.plain ? (
+                  <span
+                    className={cn(
+                      "min-w-0 flex-1 truncate text-[15px]",
+                      i === selected && "text-[#6D28D9] dark:text-[#C4B5FD]"
+                    )}
+                  >
+                    {item.label}
+                  </span>
+                ) : (
+                  <code
+                    className={cn(
+                      "font-mono text-sm",
+                      i === selected
+                        ? "text-[#6D28D9] dark:text-[#C4B5FD]"
+                        : "text-foreground",
+                      kind === "at"
+                        ? "min-w-0 flex-1 truncate text-left [direction:rtl]"
+                        : "min-w-[84px] shrink-0"
+                    )}
+                  >
+                    {/* rtl keeps a long path's file name in view */}
+                    {kind === "at" ? <bdi>{item.label}</bdi> : item.label}
+                  </code>
+                )}
                 <span
                   className={cn(
                     "text-muted-foreground truncate",
@@ -147,6 +169,12 @@ export function SuggestionPopover({
               </button>
             </div>
           ))}
+          {machines && items.length > 0 && (
+            <p className="text-muted-foreground border-t border-[var(--hair)] px-3.5 py-2 text-[12px]">
+              Naming a machine asks this chat to run that part there as a job.
+              The chat itself stays here.
+            </p>
+          )}
         </div>
       )}
     </div>

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { isDefaultJobRule, parseJobRule } from "@/lib/jobs/types";
 import {
   getProjectWithDevServers,
   updateProject,
@@ -53,6 +54,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       hooks,
       pinned,
       groupName,
+      jobRule,
     } = body;
 
     if (
@@ -89,6 +91,17 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
           id
         );
       syncInstructionsFile(getProject(id));
+    }
+
+    // When its chats send work to another machine (Project settings)
+    if (jobRule !== undefined) {
+      const rule = parseJobRule(jobRule);
+      const { getDb } = await import("@/lib/db");
+      getDb()
+        .prepare(
+          "UPDATE projects SET job_rule = ?, updated_at = datetime('now') WHERE id = ? AND is_uncategorized = 0"
+        )
+        .run(isDefaultJobRule(rule) ? null : JSON.stringify(rule), id);
     }
 
     // Handle expanded toggle separately

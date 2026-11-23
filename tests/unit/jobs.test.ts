@@ -5,18 +5,27 @@ import os from "node:os";
 import path from "node:path";
 import { cleanPrepare, stripAgentConfig } from "../../lib/jobs/runner";
 import {
+  DEFAULT_JOB_RULE,
+  JOB_MODES,
   changedText,
+  cleanJobMode,
   cleanReport,
   cleanSpace,
   codeText,
   isActive,
+  isDefaultJobRule,
   isOver,
   jobLine,
+  jobModeHint,
+  jobModeLine,
   jobPrompt,
+  parseJobRule,
+  sentText,
   stateWord,
   tookText,
   type Job,
 } from "../../lib/jobs/types";
+import { machineSection } from "../../lib/abilities-types";
 import { parseStartedBy, startedByLine } from "../../lib/session-started-by";
 import { settledLine } from "../../lib/settle-types";
 
@@ -364,5 +373,84 @@ test("the job is told when the project's Claude files were left out", () => {
   assert.match(
     jobPrompt({ ...input, stripped: true }),
     /\.claude folders and \.mcp\.json.*are left out of this copy/
+  );
+});
+
+test("how much a job may do without asking: three levels, never full access", () => {
+  assert.deepEqual([...JOB_MODES], ["manual", "acceptEdits", "auto"]);
+  assert.equal(cleanJobMode("auto"), "auto");
+  assert.equal(cleanJobMode("bypassPermissions"), null);
+  assert.equal(cleanJobMode(undefined), null);
+  assert.match(
+    jobModeHint("manual", "Mac Studio"),
+    /until you answer it on Mac Studio/
+  );
+  assert.match(jobModeHint("auto", "Mac Studio"), /without waiting for you/);
+  assert.match(jobModeLine("acceptEdits"), /ask you before commands/);
+});
+
+test("who chose the machine is said on the job's card", () => {
+  const job = (via: Job["via"], sessionName: string | null = "Harbour chart") =>
+    ({ via, sessionName }) as Pick<Job, "via" | "sessionName">;
+  assert.equal(
+    sentText(job("mention")),
+    "You named this machine with @ in Harbour chart."
+  );
+  assert.equal(
+    sentText(job("chat")),
+    "Harbour chart chose this machine for it."
+  );
+  assert.equal(
+    sentText(job("chat", null)),
+    "A chat chose this machine for it."
+  );
+  assert.match(sentText(job("again")), /^You ran it again\./);
+});
+
+test("a project's rule: anything unknown is the default", () => {
+  assert.deepEqual(parseJobRule(null), DEFAULT_JOB_RULE);
+  assert.deepEqual(parseJobRule("not json"), DEFAULT_JOB_RULE);
+  assert.deepEqual(parseJobRule('{"send":"ask","off":"actions"}'), {
+    send: "ask",
+    off: "actions",
+  });
+  assert.deepEqual(parseJobRule({ send: "always", off: 1 }), DEFAULT_JOB_RULE);
+  assert.ok(isDefaultJobRule(parseJobRule({})));
+  assert.ok(!isDefaultJobRule(parseJobRule({ send: "ask" })));
+});
+
+test("the project's rule is what a session is told to do", () => {
+  const abilities = {
+    system: { os: "linux", arch: "x64", version: "6.6" },
+    found: [],
+    checkedAt: 1,
+  } as never;
+  const view = {
+    name: "Unraid",
+    abilities,
+    notes: "",
+    peers: [{ id: "m_000000000001", name: "Mac Studio", abilities: null }],
+  };
+  const usual = machineSection(view, true)!;
+  assert.match(
+    usual,
+    /hand that piece to the machine that has it with the run_job tool/
+  );
+  assert.match(
+    usual,
+    /If the machine refuses \(the user hasn't allowed it, or it is off\), tell the user what it said\./
+  );
+  assert.match(usual, /pass named: true/);
+  const ask = machineSection(view, true, { send: "ask", off: "actions" })!;
+  assert.match(ask, /the user wants to be asked first/);
+  assert.doesNotMatch(ask, /hand that piece to the machine/);
+  assert.match(
+    ask,
+    /use the project's GitHub Actions workflow for that work instead/
+  );
+  // A machine's own sessions can't send jobs: no word of them
+  assert.doesNotMatch(
+    machineSection(view, false, { send: "ask", off: "actions" })!,
+    /run_job/
   );
 });
