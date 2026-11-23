@@ -17,7 +17,8 @@ protocol CommandTarget: AnyObject {
   func channelDelivered(_ done: @escaping ([String: Any]) -> Void)
   func channelNotifyTest(_ done: @escaping ([String: Any]) -> Void)
   func channelApplyUpdate() -> [String: Any]
-  /// Shows or hides the watch panel or quick ask, without the keyboard
+  /// Shows or hides the watch panel or quick ask, or opens and closes a
+  /// chat window, without the keyboard and never in front of another app
   func channelPanel(_ name: String, show: Bool) -> Bool
 }
 
@@ -25,7 +26,7 @@ protocol CommandTarget: AnyObject {
 /// distributed notification `com.agentos.mac.command`. It can only show,
 /// hide, open, reload, capture, read, press a toolbar button (which shows
 /// a view or a pane, as the page's own buttons do) or show and hide the
-/// watch panel and quick ask. It never types, answers, replies, starts,
+/// watch panel, quick ask and a chat window. It never types, answers, replies, starts,
 /// stops or uninstalls, never runs caller-supplied script, and never brings
 /// the app in front of another app. Replies go to the test folder.
 enum CommandChannel {
@@ -193,7 +194,8 @@ enum CommandChannel {
       case "notify-test":
         target.channelNotifyTest(reply)
       case "panel":
-        guard args.count == 2, ["watch", "quick"].contains(args[0]), ["show", "hide"].contains(args[1]) else {
+        guard args.count == 2, ["watch", "quick", "chat"].contains(args[0]), ["show", "hide"].contains(args[1])
+        else {
           return reply(["error": "bad panel"])
         }
         reply(target.channelPanel(args[0], show: args[1] == "show") ? ["ok": true] : ["error": "not ready"])

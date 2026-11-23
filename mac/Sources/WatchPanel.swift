@@ -36,8 +36,10 @@ enum GlanceRows {
     return view
   }
 
+  /// `lines`: how many lines what it asks may take (the rest is cut with …)
   static func view(
-    _ row: GlanceRow, width: CGFloat, key: String? = nil, target: AnyObject, open: Selector, answer: Selector
+    _ row: GlanceRow, width: CGFloat, lines: Int = 1, key: String? = nil, target: AnyObject, open: Selector,
+    answer: Selector
   ) -> NSView {
     let name = SessionButton(title: row.name, target: target, action: open)
     name.sessionId = row.id
@@ -47,17 +49,26 @@ enum GlanceRows {
     name.lineBreakMode = .byTruncatingTail
     name.toolTip = Strings.openSessionTip
     name.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-    let line = NSTextField(labelWithString: row.line)
+    let line = lines > 1 ? NSTextField(wrappingLabelWithString: row.line) : NSTextField(labelWithString: row.line)
     line.font = NSFont.systemFont(ofSize: 11)
     line.textColor = .secondaryLabelColor
-    line.lineBreakMode = .byTruncatingTail
+    line.isSelectable = false
     line.toolTip = row.line
     line.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+    if lines > 1 {
+      line.maximumNumberOfLines = lines
+      line.cell?.truncatesLastVisibleLine = true
+      // The room left of the dot and, for one that needs the person, the button
+      line.preferredMaxLayoutWidth = width - 22 - (row.state == "waiting" ? 78 : 0)
+    } else {
+      line.lineBreakMode = .byTruncatingTail
+    }
     let text = NSStackView(views: [name, line])
     text.orientation = .vertical
     text.alignment = .leading
     text.spacing = 1
-    text.setContentHuggingPriority(.defaultLow, for: .horizontal)
+    // The text takes the room; the button and the key hint keep to the right
+    text.setContentHuggingPriority(NSLayoutConstraint.Priority(1), for: .horizontal)
     var parts: [NSView] = [dot(row.state), text]
     if row.state == "waiting" {
       let button = SessionButton(title: Strings.answerButton, target: target, action: answer)
@@ -78,6 +89,7 @@ enum GlanceRows {
     }
     let all = NSStackView(views: parts)
     all.orientation = .horizontal
+    all.distribution = .fill
     all.alignment = .centerY
     all.spacing = 8
     all.translatesAutoresizingMaskIntoConstraints = false
@@ -182,7 +194,8 @@ final class WatchPanel: NSObject, NSWindowDelegate {
     for row in rows {
       stack.addArrangedSubview(
         GlanceRows.view(
-          row, width: width, target: self, open: #selector(openRow(_:)), answer: #selector(answerRow(_:))))
+          row, width: width, lines: 2, target: self, open: #selector(openRow(_:)),
+          answer: #selector(answerRow(_:))))
     }
     if more > 0 { stack.addArrangedSubview(GlanceRows.note(Strings.andMore(more))) }
     fit()

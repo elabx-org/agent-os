@@ -134,7 +134,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WindowHost, StatusMenu
 
   /// File › Open Chat in New Window (⇧⌘N): the chat in front, or the home
   /// page, in a window of its own. More of them become its tabs.
-  @objc func openChatWindow(_ sender: Any?) {
+  @objc func openChatWindow(_ sender: Any?) { newChatWindow(activate: true) }
+
+  private func newChatWindow(activate: Bool) {
     let front = controllers.first { $0.window?.isKeyWindow == true } ?? main
     let made = makeWindow(autosaveName: "AgentOSChat", secondary: true)
     made.onClosed = { [weak self, weak made] in
@@ -142,11 +144,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WindowHost, StatusMenu
       self.chats.removeAll { $0 === made }
       self.updatePolicy()
     }
+    // A tab of the chat windows already open, also when none of them is in front
+    if let first = chats.first?.window, let window = made.window, first.isVisible {
+      first.addTabbedWindow(window, ordered: .above)
+    }
     chats.append(made)
     if let id = front?.pane.state?.session {
-      made.open(.session(id), activate: true)
+      made.open(.session(id), activate: activate)
     } else {
-      made.open(.home, activate: true)
+      made.open(.home, activate: activate)
     }
   }
 
@@ -419,6 +425,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WindowHost, StatusMenu
     case "quick":
       if show { quickPanel().show(key: false) } else { quick?.hide() }
       poller.refreshNow()
+    case "chat":
+      if show {
+        newChatWindow(activate: false)
+      } else {
+        for chat in chats { chat.window?.close() }
+      }
     default:
       return false
     }
@@ -480,6 +492,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WindowHost, StatusMenu
       "dock": Glance.dock(sessions: status.sessions(), recent: snap.recentProjects, watching: watching)
         .map { $0.isSeparator ? "---" : $0.title },
       "chatWindows": chats.count,
+      "chatTabs": chats.first?.window?.tabbedWindows?.count ?? 0,
       "login": ["wanted": StartAtLogin.wanted, "atLogin": opts.atLogin],
     ]
   }
