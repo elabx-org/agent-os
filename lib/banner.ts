@@ -4,11 +4,12 @@
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
+import { cdLine } from "./init-script";
 
 /**
  * Generate an init script that shows the AgentOS banner and configures tmux
  */
-function generateInitScript(agentCommand: string): string {
+function generateInitScript(agentCommand: string, cwd?: string): string {
   return `#!/bin/bash
 # AgentOS Session Init Script
 # Auto-generated - do not edit manually
@@ -42,16 +43,16 @@ printf "\\n"
 # Brief pause to show banner
 sleep 0.8
 
-# Start the agent
-exec ${agentCommand}
+# The session's own folder, then the agent
+${cdLine(cwd)}exec ${agentCommand}
 `;
 }
 
 /**
  * Write init script to temp file and return the command to run it
  */
-export function wrapWithBanner(agentCommand: string): string {
-  const scriptContent = generateInitScript(agentCommand);
+export function wrapWithBanner(agentCommand: string, cwd?: string): string {
+  const scriptContent = generateInitScript(agentCommand, cwd);
   const scriptPath = path.join(os.tmpdir(), `agent-os-init-${Date.now()}.sh`);
 
   fs.writeFileSync(scriptPath, scriptContent, { mode: 0o755 });

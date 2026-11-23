@@ -11,6 +11,7 @@ import {
 import { capForAgent, effectiveMode, flagsFor } from "@/lib/permission-mode";
 import { buildSummary } from "@/lib/summarize";
 import { sessionCwd } from "@/lib/transcript-locate";
+import { cdLine } from "@/lib/init-script";
 import { tmuxNameOf } from "@/lib/session-launch";
 import { sendText } from "@/lib/tmux-send";
 
@@ -143,7 +144,11 @@ export async function POST(
       const newTmuxSession = tmuxName;
 
       // Start new tmux session with Claude directly
-      const claudeCmd = ["claude", ...flagsFor("claude", newMode)].join(" ");
+      // In its folder whatever folder tmux starts the pane in (cdLine)
+      const claudeCmd =
+        cdLine(cwd).trimEnd() +
+        "; " +
+        ["claude", ...flagsFor("claude", newMode)].join(" ");
 
       await execFileAsync("tmux", [
         "new-session",
