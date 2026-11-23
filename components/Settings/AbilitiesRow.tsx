@@ -22,9 +22,12 @@ import { abilitiesKey, useAbilities } from "@/data/machines";
 export function AbilitiesRow({
   target,
   name,
+  title = "What it can do",
 }: {
   target: string;
   name: string;
+  /** The row's heading: the machine's name where two are listed together */
+  title?: string;
 }) {
   const queryClient = useQueryClient();
   const { data } = useAbilities(target);
@@ -128,7 +131,7 @@ export function AbilitiesRow({
   return (
     <div className="row flex-col items-stretch gap-2 py-3 pl-[68px]">
       <div className="min-w-0">
-        <span className="block text-[15px]">What it can do</span>
+        <span className="block text-[15px]">{title}</span>
         <span className="block text-[13px]">
           {systemText(data.abilities)}
           {found ? `: ${found}` : ""}

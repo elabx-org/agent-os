@@ -370,3 +370,142 @@ html[data-hinge] [data-spread="wide"] .activity-strip {
     font-size: 14px !important;
   }
 }
+
+/* The set-up walk's pictures (components/Machines/SetupArt.tsx) */
+@keyframes art-dash {
+  to {
+    stroke-dashoffset: -22;
+  }
+}
+@keyframes art-go {
+  0% {
+    transform: translateX(0);
+    opacity: 0;
+  }
+  12%,
+  88% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(150px);
+    opacity: 0;
+  }
+}
+@keyframes art-back {
+  0% {
+    transform: translateX(150px);
+    opacity: 0;
+  }
+  12%,
+  88% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(0);
+    opacity: 0;
+  }
+}
+@keyframes art-pop {
+  0%,
+  10% {
+    transform: scale(0);
+    opacity: 0;
+  }
+  25%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+@keyframes art-appear {
+  0%,
+  35% {
+    opacity: 0;
+  }
+  55%,
+  100% {
+    opacity: 1;
+  }
+}
+@keyframes art-dim {
+  0%,
+  20%,
+  80%,
+  100% {
+    opacity: 1;
+  }
+  35%,
+  65% {
+    opacity: 0.25;
+  }
+}
+@keyframes art-hop {
+  0%,
+  25%,
+  80%,
+  100% {
+    transform: translateX(0);
+  }
+  40%,
+  62% {
+    transform: translateX(202px);
+  }
+}
+@keyframes art-pulse {
+  0%,
+  100% {
+    r: 5;
+  }
+  50% {
+    r: 7.5;
+  }
+}
+.setup-art .a-dash {
+  animation: art-dash 1.2s linear infinite;
+}
+.setup-art .a-go {
+  animation: art-go 2.4s ease-in-out infinite;
+}
+.setup-art .a-go.d2 {
+  animation-delay: 0.5s;
+}
+.setup-art .a-go.d3 {
+  animation-delay: 1s;
+}
+.setup-art .a-back {
+  animation: art-back 2.4s ease-in-out infinite;
+  animation-delay: 1.2s;
+  opacity: 0;
+}
+.setup-art .a-pop {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: art-pop 3.2s ease-out infinite;
+}
+.setup-art .a-pop.d2 {
+  animation-delay: 0.25s;
+}
+.setup-art .a-pop.d3 {
+  animation-delay: 0.5s;
+}
+.setup-art .a-pop.d4 {
+  animation-delay: 0.75s;
+}
+.setup-art .a-appear {
+  animation: art-appear 3s ease-in-out infinite;
+}
+.setup-art .a-dim {
+  animation: art-dim 5s ease-in-out infinite;
+}
+.setup-art .a-hop {
+  animation: art-hop 5s ease-in-out infinite;
+}
+.setup-art .a-pulse {
+  animation: art-pulse 1.6s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .setup-art * {
+    animation: none !important;
+    opacity: 1 !important;
+  }
+}
