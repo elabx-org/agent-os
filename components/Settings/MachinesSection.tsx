@@ -27,6 +27,7 @@ import {
   useMachines,
   useSessionCount,
   useTabMachineId,
+  useTargetAbilities,
   type MachineView,
 } from "@/data/machines";
 import { activityLine, activitySummary } from "./machine-activity";
@@ -47,6 +48,7 @@ import {
   SERVER_NAME_MAX,
   SERVER_NAME_PREFERENCE_KEY,
   normalizeServerName,
+  serverNameOr,
 } from "@/lib/server-name";
 import { cn } from "@/lib/utils";
 import { Chevron } from "./SettingGroup";
@@ -54,6 +56,26 @@ import { ClaudeSetupRow } from "./ClaudeSetupRow";
 import { MachineSyncRow } from "./MachineSync";
 import { copiedWord, copyAge, sizeText } from "@/lib/backup/types";
 import { openCopies } from "@/stores/copiesSheet";
+import { useSnapshot } from "valtio";
+import { ABILITY_LABELS, type Abilities } from "@/lib/abilities-types";
+import { SetupWalk } from "@/components/Machines/SetupWalk";
+import {
+  closeSetupWalk,
+  openSetupWalk,
+  setupWalkStore,
+} from "@/stores/setupWalk";
+
+/** Up to two of what a machine can do, short enough for the walk's picture */
+const chips = (a: Abilities | null): string[] =>
+  (a?.found ?? [])
+    .slice(0, 2)
+    .map((f) =>
+      f.id === "simulator"
+        ? "Simulator"
+        : f.id === "gh"
+          ? "GitHub"
+          : ABILITY_LABELS[f.id]
+    );
 
 /** Polled while this screen is open, to see a Mac arrive and connect */
 const POLL_MS = 2000;
@@ -361,6 +383,10 @@ function LinkedRow({
     onChange();
   };
   const allowAgents = (allowed: boolean) => patch({ agents: allowed });
+  const walking = useSnapshot(setupWalkStore).machine === machine.id;
+  const { data: all } = useMachines();
+  const server = serverNameOr(all?.serverName, "this server");
+  const can = useTargetAbilities();
   const allowUsesHub = async (allowed: boolean) => {
     // Turning it off needs no asking
     if (allowed) {
@@ -386,6 +412,30 @@ function LinkedRow({
       />
     );
   }
+
+  // The same rows, on the page and in the set-up walk
+  const agentsRow = (
+    <AgentsRow
+      name={machine.name}
+      allowed={!!machine.agents}
+      onChange={allowAgents}
+    />
+  );
+  const usesHubRow = (
+    <UsesHubRow
+      machine={machine}
+      needsUpdate={online && machine.up === false}
+      onChange={allowUsesHub}
+    />
+  );
+  const backupRow = (
+    <BackupRow
+      machine={machine}
+      onSwitch={(on) => patch({ backup: on })}
+      onDeleted={onChange}
+    />
+  );
+  const syncRow = <MachineSyncRow id={machine.id} name={machine.name} />;
 
   return (
     <>
@@ -439,22 +489,171 @@ function LinkedRow({
           </p>
         </div>
       )}
-      <AgentsRow
-        name={machine.name}
-        allowed={!!machine.agents}
-        onChange={allowAgents}
+      <div className="row py-3 pl-[68px]">
+        <div className="min-w-0 flex-1">
+          <span className="block text-[15px]">Set-up</span>
+          <span className="text-muted-foreground block text-[13px]">
+            What it may do and share, one question at a time.
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={() => openSetupWalk(machine.id)}
+          className="pill pill-sm shrink-0"
+        >
+          Walk through
+        </button>
+      </div>
+      {agentsRow}
+      {usesHubRow}
+      {backupRow}
+      {syncRow}
+      <SetupWalk
+        open={walking}
+        onClose={closeSetupWalk}
+        server={server}
+        machine={machine.name}
+        serverChips={chips(can(HUB_TARGET))}
+        machineChips={chips(can(machine.id))}
+        steps={
+          walking
+            ? [
+                {
+                  id: "link",
+                  art: "link",
+                  title: `${machine.name} is linked`,
+                  text: `It runs its own AgentOS, so it keeps working even when ${server} is off.`,
+                  body: (
+                    <div className="row">
+                      <div className="min-w-0 flex-1">
+                        <span className="block text-[15px] font-semibold">
+                          {machine.name}
+                        </span>
+                        <span className="text-muted-foreground block text-[13px]">
+                          {detail} · approved by you
+                        </span>
+                      </div>
+                    </div>
+                  ),
+                },
+                {
+                  id: "caps",
+                  art: "caps",
+                  title: "What can it do?",
+                  text: "AgentOS looked on both. A session is told what its machine has, so it builds iOS where Xcode is without being reminded.",
+                  body: (
+                    <>
+                      {online ? (
+                        <AbilitiesRow
+                          target={machine.id}
+                          name={machine.name}
+                          title={machine.name}
+                        />
+                      ) : (
+                        <p className="text-muted-foreground row text-[13px]">
+                          {machine.name} is offline: this is checked when it is
+                          back.
+                        </p>
+                      )}
+                      <AbilitiesRow
+                        target={HUB_TARGET}
+                        name={server}
+                        title={server}
+                      />
+                    </>
+                  ),
+                },
+                {
+                  id: "agents",
+                  art: "link",
+                  title: "What may its sessions do?",
+                  text: "Separate from sharing projects: whether an agent on one machine may reach the other. Both start off, and only you can change them.",
+                  body: (
+                    <>
+                      {agentsRow}
+                      {usesHubRow}
+                    </>
+                  ),
+                },
+                {
+                  id: "setup",
+                  art: "setup",
+                  title: "Bring your Claude setup",
+                  text: `Your skills, plugins, commands and agents, so a chat behaves the same on both. ${machine.name} keeps the ones it already has.`,
+                  body:
+                    online && machine.sameVersion !== false ? (
+                      <ClaudeSetupRow id={machine.id} name={machine.name} />
+                    ) : (
+                      <p className="text-muted-foreground row text-[13px]">
+                        Ready once {machine.name} is online with the same
+                        AgentOS version. It updates itself.
+                      </p>
+                    ),
+                },
+                {
+                  id: "share",
+                  art: "share",
+                  title: "Which projects live on both?",
+                  text: "A shared project has a fresh copy on each machine: its chats, code and unsaved changes.",
+                  body: syncRow,
+                },
+                {
+                  id: "safety",
+                  art: "safety",
+                  title: "Safety net",
+                  text: "If one machine goes off, carry on from the other. When it comes back it catches up by itself, and only one copy is ever live.",
+                  body: (
+                    <>
+                      {backupRow}
+                      <p className="text-muted-foreground row text-[13px]">
+                        Never copied: your Claude sign-in, keys, and files git
+                        ignores such as .env.
+                      </p>
+                    </>
+                  ),
+                },
+                {
+                  id: "done",
+                  art: "done",
+                  title: "All set",
+                  text: `${machine.name} is ready. You can change any of this later on its page in Settings, Machines.`,
+                  body: (
+                    <>
+                      {[
+                        [
+                          `Sessions on ${server} may use ${machine.name}`,
+                          !!machine.agents,
+                        ],
+                        [
+                          `Sessions on ${machine.name} may use ${server}`,
+                          !!machine.usesHub,
+                        ],
+                        [
+                          `A copy of its sessions is kept on ${server}`,
+                          !!machine.backup,
+                        ],
+                      ].map(([label, on]) => (
+                        <div key={String(label)} className="row">
+                          <span className="min-w-0 flex-1 text-[15px]">
+                            {label}
+                          </span>
+                          <span
+                            className={cn(
+                              "text-[13px] font-semibold",
+                              on ? "text-emerald-500" : "text-muted-foreground"
+                            )}
+                          >
+                            {on ? "On" : "Off"}
+                          </span>
+                        </div>
+                      ))}
+                    </>
+                  ),
+                },
+              ]
+            : []
+        }
       />
-      <UsesHubRow
-        machine={machine}
-        needsUpdate={online && machine.up === false}
-        onChange={allowUsesHub}
-      />
-      <BackupRow
-        machine={machine}
-        onSwitch={(on) => patch({ backup: on })}
-        onDeleted={onChange}
-      />
-      <MachineSyncRow id={machine.id} name={machine.name} />
       <ActivityRow machine={machine} machineName={machineName} />
       {online && <ReposFolderRow target={machine.id} name={machine.name} />}
       {online && <AbilitiesRow target={machine.id} name={machine.name} />}
@@ -1005,6 +1204,8 @@ function PendingCard({
       return;
     }
     onChange();
+    // Newly linked: the walk through what it may do and share
+    if (kind === "approve") openSetupWalk(machine.id);
   };
   const details = [
     machine.signedInAs ? `signed in as ${machine.signedInAs}` : null,
