@@ -41,12 +41,35 @@ esac
 `;
 }
 
+const shellQuote = (value: string) => `'${value.replace(/'/g, "'\\''")}'`;
+
+/**
+ * Goes into the session's folder, whatever folder tmux started the pane in.
+ * tmux's own -c isn't enough: on macOS (tmux 3.8) a server whose starting
+ * folder has since been deleted starts every pane in that dead folder,
+ * where Claude refuses to run ("The current directory no longer exists")
+ */
+export function cdLine(cwd: string | undefined): string {
+  const dir = cwd?.replace(/^~(?=\/|$)/, os.homedir());
+  if (!dir) return "";
+  return `cd -- ${shellQuote(dir)} 2>/dev/null || cd -- "$HOME" 2>/dev/null\n`;
+}
+
+/**
+ * What tmux runs for a shell session: the user's login shell, in `cwd`
+ * (see cdLine)
+ */
+export function shellIn(cwd: string): string {
+  return `${cdLine(cwd).trimEnd()}; exec "\${SHELL:-/bin/sh}" -l`;
+}
+
 /**
  * Generate an init script that shows the AgentOS banner and configures tmux
  */
-function generateInitScript(
+export function generateInitScript(
   agentCommand: string,
-  browser: SessionBrowserEnv = { env: {}, browser: null, force: false }
+  browser: SessionBrowserEnv = { env: {}, browser: null, force: false },
+  cwd?: string
 ): string {
   return `#!/bin/bash
 # AgentOS Session Init Script
@@ -100,20 +123,39 @@ export PATH="$HOME/.local/bin:$PATH"
 
 # Sign-in links CLIs open go to Agent-OS (lib/browser-helper.ts)
 ${exportLines(browser)}
-# Start the agent
-${attachLines(agentCommand)}exec ${agentCommand}
+# The session's own folder, then the agent
+${cdLine(cwd)}${attachLines(agentCommand)}exec ${agentCommand}
 `;
 }
 
-/** Writes the init script for an agent command; returns what tmux runs */
-export function writeInitScript(agentCommand: string): string {
+/**
+ * Writes a script that opens the user's login shell in `cwd`, for a shell
+ * session the page starts by typing a tmux line (where quoting a folder's
+ * name can't be trusted); returns what tmux runs
+ */
+export function writeShellScript(cwd: string): string {
+  const scriptPath = path.join(
+    os.tmpdir(),
+    `agent-os-shell-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.sh`
+  );
+  fs.writeFileSync(scriptPath, `#!/bin/bash\n${shellIn(cwd)}\n`, {
+    mode: 0o755,
+  });
+  return `bash ${scriptPath}`;
+}
+
+/**
+ * Writes the init script for an agent command, started in `cwd`; returns
+ * what tmux runs
+ */
+export function writeInitScript(agentCommand: string, cwd?: string): string {
   const scriptPath = path.join(
     os.tmpdir(),
     `agent-os-init-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.sh`
   );
   fs.writeFileSync(
     scriptPath,
-    generateInitScript(agentCommand, sessionBrowserEnv()),
+    generateInitScript(agentCommand, sessionBrowserEnv(), cwd),
     {
       mode: 0o755,
     }

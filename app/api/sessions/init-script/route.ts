@@ -1,10 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
-import { writeInitScript } from "@/lib/init-script";
+import { writeInitScript, writeShellScript } from "@/lib/init-script";
 
-// POST /api/sessions/init-script - Create init script and return path
+// POST /api/sessions/init-script { agentCommand, cwd } - writes the script
+// tmux runs for a session and returns the command; { shell: true, cwd }
+// writes the one for a shell session
 export async function POST(request: NextRequest) {
   try {
-    const { agentCommand } = await request.json();
+    const { agentCommand, cwd, shell } = await request.json();
+
+    // A shell session: the login shell, in its folder
+    if (shell === true && typeof cwd === "string" && cwd) {
+      return NextResponse.json({ command: writeShellScript(cwd) });
+    }
 
     if (!agentCommand) {
       return NextResponse.json(
@@ -13,7 +20,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const command = writeInitScript(agentCommand);
+    // `cwd`: the session's folder, which the script goes into itself
+    const command = writeInitScript(
+      agentCommand,
+      typeof cwd === "string" && cwd ? cwd : undefined
+    );
     return NextResponse.json({
       scriptPath: command.slice("bash ".length),
       command,

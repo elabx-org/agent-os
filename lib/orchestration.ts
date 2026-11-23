@@ -214,7 +214,7 @@ export async function spawnWorker(
 
   // Create tmux session with the agent and banner
   const agentCmd = `${provider.command} ${flagsStr}`;
-  const newSessionCmd = wrapWithBanner(agentCmd);
+  const newSessionCmd = wrapWithBanner(agentCmd, cwd);
   const createCmd = `tmux new-session -d -s "${tmuxSessionName}" -c "${cwd}" "${newSessionCmd}"`;
 
   try {

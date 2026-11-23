@@ -156,12 +156,12 @@ function HomeContent() {
 
   // Helper to get init script command from API
   const getInitScriptCommand = useCallback(
-    async (agentCommand: string): Promise<string> => {
+    async (agentCommand: string, cwd: string): Promise<string> => {
       try {
         const res = await fetch("/api/sessions/init-script", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ agentCommand }),
+          body: JSON.stringify({ agentCommand, cwd }),
         });
         const data = await res.json();
         return data.command || agentCommand;
@@ -171,6 +171,21 @@ function HomeContent() {
     },
     []
   );
+
+  // A shell session's command; "" (tmux's own shell) when it can't be asked
+  const getShellCommand = useCallback(async (cwd: string): Promise<string> => {
+    try {
+      const res = await fetch("/api/sessions/init-script", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ shell: true, cwd }),
+      });
+      const data = await res.json();
+      return typeof data.command === "string" ? data.command : "";
+    } catch {
+      return "";
+    }
+  }, []);
 
   // Set CSS variable for viewport height (handles mobile keyboard)
   useViewportHeight();
@@ -258,8 +273,12 @@ function HomeContent() {
 
       // Shell sessions just open a terminal - no agent command; a paused
       // (handed-off) or settled one is never relaunched (runSessionInTerminal)
-      if (provider.id === "shell" || isEnded(session)) {
+      if (isEnded(session)) {
         return { sessionName, cwd, command: "" };
+      }
+      if (provider.id === "shell") {
+        // Its login shell, in its folder whatever folder tmux starts it in
+        return { sessionName, cwd, command: await getShellCommand(cwd) };
       }
 
       // Get parent session ID for forking
@@ -322,11 +341,11 @@ function HomeContent() {
       const flagsStr = flags.join(" ");
 
       const agentCmd = `${provider.command} ${flagsStr}`;
-      const command = await getInitScriptCommand(agentCmd);
+      const command = await getInitScriptCommand(agentCmd, cwd);
 
       return { sessionName, cwd, command };
     },
-    [sessions, getInitScriptCommand]
+    [sessions, getInitScriptCommand, getShellCommand]
   );
 
   // A new tab in the focused pane for a session (set below, once defined)

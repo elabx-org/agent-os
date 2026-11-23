@@ -5,7 +5,7 @@ import { getDb, queries, type Session } from "./db";
 import { getProvider } from "./providers";
 import { getProviderDefinition } from "./providers/registry";
 import { writeProjectContext } from "./project-context";
-import { writeInitScript } from "./init-script";
+import { shellIn, writeInitScript } from "./init-script";
 import { sessionBrowserEnv, tmuxEnvArgs } from "./browser-helper";
 import { getFlag } from "./flags";
 import type { LaunchCaps } from "./permission-mode";
@@ -30,6 +30,14 @@ export async function isRunning(session: Session): Promise<boolean> {
     return false;
   }
 }
+
+/**
+ * tmux is run from the home folder: if this call is the one that starts
+ * the tmux server, the server keeps that folder for as long as it lives,
+ * and one that is later deleted (AgentOS's own, replaced by an update)
+ * breaks every session started after (lib/init-script.ts cdLine)
+ */
+const TMUX_FROM_HOME = { cwd: os.homedir() };
 
 /** What tmux runs for a session, and where */
 export interface LaunchCommand {
@@ -112,7 +120,10 @@ export async function buildLaunchCommand(
     initialPrompt,
     worktreeName: nativeWorktreeName,
   });
-  const command = writeInitScript(`${provider.command} ${flags.join(" ")}`);
+  const command = writeInitScript(
+    `${provider.command} ${flags.join(" ")}`,
+    cwd
+  );
   return { name, cwd, command };
 }
 
@@ -138,30 +149,39 @@ export async function launchSession(
   );
 
   if (command === null) {
-    await execFileAsync("tmux", [
+    await execFileAsync(
+      "tmux",
+      [
+        "new-session",
+        "-d",
+        "-s",
+        name,
+        "-c",
+        cwd,
+        ...tmuxEnvArgs(sessionBrowserEnv(), process.env.BROWSER),
+        shellIn(cwd),
+      ],
+      TMUX_FROM_HOME
+    );
+    return true;
+  }
+
+  await execFileAsync(
+    "tmux",
+    [
       "new-session",
       "-d",
       "-s",
       name,
       "-c",
       cwd,
-      ...tmuxEnvArgs(sessionBrowserEnv(), process.env.BROWSER),
-    ]);
-    return true;
-  }
-
-  await execFileAsync("tmux", [
-    "new-session",
-    "-d",
-    "-s",
-    name,
-    "-c",
-    cwd,
-    "-x",
-    "200",
-    "-y",
-    "50",
-    command,
-  ]);
+      "-x",
+      "200",
+      "-y",
+      "50",
+      command,
+    ],
+    TMUX_FROM_HOME
+  );
   return true;
 }
