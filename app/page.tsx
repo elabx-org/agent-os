@@ -42,6 +42,7 @@ import { useViewport } from "@/hooks/useViewport";
 import { useViewportHeight } from "@/hooks/useViewportHeight";
 import { useNativeBridge } from "@/hooks/useNativeBridge";
 import { useMacHost } from "@/hooks/useMacHost";
+import { useSessionPreviewPort } from "@/hooks/useSessionPreviewPort";
 import { useSessionLinks } from "@/hooks/useSessionLinks";
 import { useOtherMachinesNow } from "@/components/Machines/useOtherMachinesNow";
 import { othersNeedCount } from "@/lib/machine-now";
@@ -623,6 +624,7 @@ function HomeContent() {
   useEffect(() => {
     runningStore.sessionId = focusedActiveTab?.sessionId ?? null;
   }, [focusedActiveTab?.sessionId]);
+  useSessionPreviewPort(focusedActiveTab?.sessionId);
   // Back's labels name the project they go back to
   useEffect(() => {
     backStore.projectNames = Object.fromEntries(

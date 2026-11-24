@@ -275,15 +275,15 @@ export function PageHeader({
 }
 
 /** Chat | Terminal (and more) as a segmented control */
-export function ViewSeg({
+export function ViewSeg<M extends string = PaneViewMode>({
   viewMode,
   onViewModeChange,
   views,
   className,
 }: {
-  viewMode: PaneViewMode;
-  onViewModeChange: (mode: PaneViewMode) => void;
-  views: { mode: PaneViewMode; label: ReactNode }[];
+  viewMode: M;
+  onViewModeChange: (mode: M) => void;
+  views: { mode: M; label: ReactNode }[];
   className?: string;
 }) {
   return (
@@ -363,8 +363,8 @@ export function agentsLabel(count: number): string {
 /**
  * The desktop session header (Desk-Chat, D-Tree): the agent's tile, the
  * title and "agent-os · Claude · main · 7 agents · Needs you", the views
- * (Chat | Terminal | Changes, and Agents once it has started any), then
- * `actions` (Open beside, ⋯)
+ * (Chat | Terminal | Changes, Agents once it has started any, and Preview
+ * once it serves a page), then `actions` (Open beside, ⋯)
  */
 export function DesktopHeader({
   info,
@@ -374,6 +374,7 @@ export function DesktopHeader({
   onViewModeChange,
   dimmed,
   agents,
+  preview,
   actions,
 }: {
   info: HeaderInfo;
@@ -388,11 +389,24 @@ export function DesktopHeader({
    * focused session's (the desktop header is the one pane's)
    */
   agents?: number;
+  /**
+   * The session serves a page (or its preview is up): the Preview tab, in
+   * front while `shown`
+   */
+  preview?: { shown: boolean; onShow: () => void };
   actions: ReactNode;
 }) {
   const { agentLive } = useSnapshot(mobileNavStore);
   const count = agents ?? agentLive;
   const agentsView = canonicalViewMode(viewMode) === "agents";
+  // The preview covers the views: none of them is the one in front then
+  const tab: PaneViewMode | "preview" = preview?.shown
+    ? "preview"
+    : agentsView
+      ? "agents"
+      : viewMode;
+  const pickTab = (mode: PaneViewMode | "preview") =>
+    mode === "preview" ? preview?.onShow() : onViewModeChange(mode);
   return (
     <header
       className={cn(
@@ -420,16 +434,16 @@ export function DesktopHeader({
       <span aria-hidden className="mac-spacer" />
       <MachineChip />
       {/* A narrow bar keeps Chat | Terminal (Changes is the ⋯'s drawer) */}
-      <ViewSeg
-        viewMode={viewMode}
-        onViewModeChange={onViewModeChange}
+      <ViewSeg<PaneViewMode | "preview">
+        viewMode={preview?.shown ? "preview" : viewMode}
+        onViewModeChange={pickTab}
         className="bg-card mac-hide @min-[640px]/bar:hidden"
         views={CHAT_TERMINAL}
       />
-      <ViewSeg
+      <ViewSeg<PaneViewMode | "preview">
         // `workers` is the agents view too
-        viewMode={agentsView ? "agents" : viewMode}
-        onViewModeChange={onViewModeChange}
+        viewMode={tab}
+        onViewModeChange={pickTab}
         className="bg-card mac-hide @max-[640px]/bar:hidden"
         views={[
           ...CHAT_TERMINAL,
@@ -446,6 +460,8 @@ export function DesktopHeader({
           ...(count > 0 || agentsView
             ? [{ mode: "agents" as const, label: "Agents" }]
             : []),
+          // The page its web server serves, while it has one
+          ...(preview ? [{ mode: "preview" as const, label: "Preview" }] : []),
         ]}
       />
       {actions}

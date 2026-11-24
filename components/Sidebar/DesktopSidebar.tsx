@@ -523,8 +523,8 @@ export function DesktopSidebar({
             )}
           </>
         )}
-        {/* Every session on every machine as tiles (the Mac window) */}
-        {!newOpen && mac && (
+        {/* Every session on every machine as tiles */}
+        {!newOpen && (
           <button
             type="button"
             onClick={() => openPage({ kind: "all" })}
@@ -546,7 +546,6 @@ export function DesktopSidebar({
             aria-current={page?.kind === "running" ? "page" : undefined}
             className={cn(
               "srow hover:bg-foreground/5 w-full flex-none text-left",
-              !mac && "mt-2.5",
               page?.kind === "running" && "sel hover:bg-primary/20"
             )}
           >
@@ -561,7 +560,6 @@ export function DesktopSidebar({
             aria-current={page?.kind === "mocks" ? "page" : undefined}
             className={cn(
               "srow hover:bg-foreground/5 w-full flex-none text-left",
-              !running && !mac && "mt-2.5",
               page?.kind === "mocks" && "sel hover:bg-primary/20"
             )}
           >

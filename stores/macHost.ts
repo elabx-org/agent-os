@@ -6,7 +6,8 @@ const SPLIT_KEY = "agentos:mac-diff-split";
 /**
  * The Mac window's own choices: the inspector (the pane on the right) shown
  * or put away, the same while reviewing changes (away unless asked for: the
- * review takes the room), and diffs side by side
+ * review takes the room), and diffs side by side. The desktop web shell
+ * shares the last one and the Preview.
  */
 export const macHostStore = proxy<{
   inspector: boolean;
@@ -14,7 +15,10 @@ export const macHostStore = proxy<{
   split: boolean;
   /** A page's own line for under the window's title ("5 on 2 machines") */
   pageDetail: string | null;
-  /** The toolbar's Preview: the page a session's server serves, over its views */
+  /**
+   * Preview (the Mac toolbar's tab, the desktop header's): the page a
+   * session's server serves, over its views
+   */
   preview: boolean;
 }>({
   inspector: true,

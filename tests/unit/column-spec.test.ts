@@ -721,6 +721,7 @@ test("moreExtras: the other view, the session's actions, Running, Mocks (21, DPD
     "settle",
     "copyId",
     "running",
+    "all",
     "mocks",
   ]);
   // Files with the bar's Chat: Terminal too
@@ -731,6 +732,7 @@ test("moreExtras: the other view, the session's actions, Running, Mocks (21, DPD
     "settle",
     "copyId",
     "running",
+    "all",
     "mocks",
   ]);
   // The closed Files column shows neither
@@ -742,7 +744,7 @@ test("moreExtras: the other view, the session's actions, Running, Mocks (21, DPD
     ids({
       session: { model: false, scripts: false, settle: false, copyId: true },
     }),
-    ["copyId", "running", "mocks"]
+    ["copyId", "running", "all", "mocks"]
   );
   // The open Duo's Now has the session beside it: its models, nothing else
   assert.deepEqual(ids({ surface: "now", wide: true }).slice(0, 1), ["model"]);
@@ -750,19 +752,23 @@ test("moreExtras: the other view, the session's actions, Running, Mocks (21, DPD
   // Off a session Running and Mocks, and neither on its own page
   assert.deepEqual(ids({ surface: "projects", viewMode: null }), [
     "running",
+    "all",
     "mocks",
   ]);
   assert.deepEqual(ids({ surface: "running", viewMode: null }), []);
   assert.deepEqual(ids({ surface: "mocks", viewMode: null }), ["running"]);
-  assert.deepEqual(ids({ running: false, surface: "now" }), ["mocks"]);
+  assert.deepEqual(ids({ running: false, surface: "now" }), ["all", "mocks"]);
+  // All sessions' own page offers neither it nor Mocks again
+  assert.deepEqual(ids({ running: false, surface: "all", viewMode: null }), []);
   assert.deepEqual(ids({ running: false, surface: "settings" }), []);
   // Shown already: not again
   assert.deepEqual(
-    ids({ running: false, surface: "now", shown: ["mocks"] }),
+    ids({ running: false, surface: "now", shown: ["all", "mocks"] }),
     []
   );
   // A machine is linked: Runners beside Mocks, and not on its own page
   assert.deepEqual(ids({ running: false, runners: true, surface: "now" }), [
+    "all",
     "mocks",
     "runners",
   ]);
@@ -774,6 +780,18 @@ test("moreExtras: the other view, the session's actions, Running, Mocks (21, DPD
     ids({ running: false, runners: true, surface: "settings" }),
     []
   );
+  // The session serves a page: Preview, with or without Labs' Running, and
+  // only from the session itself
+  assert.deepEqual(
+    ids({
+      running: false,
+      preview: true,
+      session: { model: false, scripts: false, settle: false, copyId: false },
+    }),
+    ["preview", "all", "mocks"]
+  );
+  assert.ok(!ids({ preview: true, surface: "now" }).includes("preview"));
+  assert.ok(!ids({ preview: false }).includes("preview"));
 });
 
 test("More offers a session's agents while the column leaves them out", () => {

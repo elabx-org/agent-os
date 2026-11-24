@@ -324,9 +324,14 @@ export function SessionSpread({
     roomForRail,
     reviewOpen,
   });
-  // The Mac window's inspector button puts the rail away by itself
+  // The Mac window's inspector button puts the rail away by itself. In a
+  // browser the review of changes takes the rail's room: the header's Live
+  // button brings Live activity up over it
   const showRail =
-    railWanted && !(mac && desktop && !inspectorShown(macChoice, viewMode));
+    railWanted &&
+    (mac
+      ? !(desktop && !inspectorShown(macChoice, viewMode))
+      : !(desktop && viewMode === "git"));
   // The Mac toolbar's Preview takes the pane's place
   const previewOn = mac && desktop && !!session && macChoice.preview;
   // Flat there's no gutter: the pages meet at the hinge

@@ -23,6 +23,7 @@ import {
   type GitModel,
 } from "./useGitModel";
 import { useViewport } from "@/hooks/useViewport";
+import { useIsNative } from "@/hooks/useIsNative";
 import { useLayoutMode } from "@/hooks/useLayoutMode";
 import { registerNavHandlers, registerViewBack } from "@/lib/nav-actions";
 import { setGitMenu } from "@/stores/gitMenu";
@@ -109,11 +110,16 @@ function GitPanelContent({
   const { offer } = useSnapshot(moveSheetStore);
   const movable = sessionId && offer === sessionId ? sessionId : null;
   // The closed Duo: E-Git's insets, and its column holds Pull, Push and New pull request
-  const closed = useLayoutMode() === "duo-closed";
+  const mode = useLayoutMode();
+  const closed = mode === "duo-closed";
   const columnActions = !!active && closed && narrow;
-  // The Mac window's review: the first change open at once, side by side
-  // on request, and a bar under it to commit or open the pull request
-  const macReview = useMacApp() && !narrow;
+  // The desktop's review (the Mac window's, and the desktop web shell's):
+  // the first change open at once, side by side on request, and a bar under
+  // it to commit or open the pull request. A phone and the Duo keep their
+  // own Git screens: side by side needs the width
+  const mac = useMacApp();
+  const native = useIsNative();
+  const macReview = !narrow && (mac || (mode === "desktop" && !native));
   const { split } = useSnapshot(macHostStore);
   const commitField = useRef<HTMLDivElement>(null);
 
@@ -576,7 +582,7 @@ function GitPanelContent({
 }
 
 /**
- * Under the Mac window's review: how much changed, and what to do with it.
+ * Under the desktop's review: how much changed, and what to do with it.
  * Commit goes to the message beside the list; the pull request opens as it
  * does elsewhere (or its review, once there is one)
  */

@@ -208,6 +208,18 @@ const BASE = {
     icon: "Laptop",
     label: "Runners",
   },
+  all: {
+    id: "all",
+    symbol: "square.grid.2x2",
+    icon: "LayoutGrid",
+    label: "All sessions",
+  },
+  preview: {
+    id: "preview",
+    symbol: "macwindow",
+    icon: "AppWindow",
+    label: "Preview",
+  },
   chat: {
     id: "chat",
     symbol: "bubble.left",
@@ -704,6 +716,8 @@ export interface MoreSources {
   running: boolean;
   /** A machine is linked: the Runners page has something to show */
   runners?: boolean;
+  /** The focused session started a web server: its page can be previewed */
+  preview?: boolean;
   /** Two pages (the open Duo, desktop): a session shows beside Now */
   wide?: boolean;
   /** The focused session's ⋯ (stores/sessionActions.ts) */
@@ -739,7 +753,11 @@ export function moreExtras(src: MoreSources): Base[] {
   }
   // Two or more side by side: back to the one being typed into, alone
   if (src.surface === "beside") out.push(BASE.closeAll);
+  // The page the session's own web server serves
+  if (inSession && src.preview) out.push(BASE.preview);
   if (src.running && src.surface !== "running") out.push(BASE.running);
+  // Every session as a tile, then the pages beside it
+  if (MOCKS_FROM.includes(src.surface)) out.push(BASE.all);
   if (MOCKS_FROM.includes(src.surface)) out.push(BASE.mocks);
   // Beside Mocks: the machines chats hand work to, and their jobs
   if (src.runners && MOCKS_FROM.includes(src.surface)) out.push(BASE.runners);
@@ -1085,6 +1103,7 @@ export function columnFor(
     case "running":
     case "mocks":
     case "runners":
+    case "all":
       // Its own page, not the session's: back (to the session it was
       // opened from) | More (the list has Show all itself)
       return [back(ctx), item(BASE.more, sep)];

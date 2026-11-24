@@ -35,3 +35,21 @@ export function previewShown<S extends PreviewServer>(
 export function previewLabel(server: { port: number; name: string }): string {
   return server.name ? `:${server.port} ${server.name}` : `:${server.port}`;
 }
+
+/** The port of the newest web server the session started; null with none */
+export function sessionPort(
+  servers: readonly PreviewServer[],
+  sessionId: string | null | undefined
+): number | null {
+  if (!sessionId) return null;
+  return previewChoices(servers, sessionId).mine[0]?.port ?? null;
+}
+
+/**
+ * Where a session's Preview shows: in place of its views where the desktop
+ * shell's header (or the Mac window's toolbar) holds the tab, and as the
+ * Running page's own preview on a phone, the Duo and in the iOS app
+ */
+export function previewPlace(mode: string, native: boolean): "views" | "page" {
+  return mode === "desktop" && !native ? "views" : "page";
+}
