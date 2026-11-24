@@ -26,16 +26,21 @@ enum Panels {
     c.show()
   }
 
-  static func showNewSession(host: PanelHost) {
+  /// `projectId` picks the project and `text` starts the task (a drop on
+  /// the Dock icon); `activate: false` shows the panel without bringing the
+  /// app in front of another one
+  static func showNewSession(host: PanelHost, projectId: String? = nil, text: String? = nil, activate: Bool = true) {
     // Still open, perhaps stepped aside while another app was in front
     if let c = newSessionController {
-      c.show()
+      c.prefill(projectId: projectId, text: text)
+      c.show(activate: activate)
       return
     }
     let c = NewSessionPanel(host: host)
     newSessionController = c
     newSession = c.panel
-    c.show()
+    c.prefill(projectId: projectId, text: text)
+    c.show(activate: activate)
   }
 
   static func closed(_ panel: NSPanel) {
@@ -260,6 +265,8 @@ final class NewSessionPanel: NSObject, NSWindowDelegate, NSTextViewDelegate {
   private let work = DispatchQueue(label: "agentos.panel.new")
   private var projects: [Project] = []
   private var starting = false
+  /// The project asked for before the list arrived
+  private var wantedProject: String?
 
   init(host: PanelHost) {
     self.host = host
@@ -328,9 +335,30 @@ final class NewSessionPanel: NSObject, NSWindowDelegate, NSTextViewDelegate {
     loadProjects()
   }
 
-  func show() {
-    Panels.bringForward(panel)
+  func show(activate: Bool = true) {
+    if activate {
+      Panels.bringForward(panel)
+    } else {
+      Panels.place(panel)
+      panel.orderFront(nil)
+    }
     panel.makeFirstResponder(task)
+  }
+
+  /// The project to start on and words to start the task with. The person
+  /// still reads the task and presses Start.
+  func prefill(projectId: String?, text: String?) {
+    if let projectId {
+      wantedProject = projectId
+      if let i = projects.firstIndex(where: { $0.id == projectId }) {
+        popup.selectItem(at: i)
+        projectChanged(popup)
+      }
+    }
+    if let text, !text.isEmpty {
+      task.string = text
+      task.setSelectedRange(NSRange(location: (text as NSString).length, length: 0))
+    }
   }
 
   func windowWillClose(_ notification: Notification) { Panels.closed(panel) }
@@ -371,7 +399,8 @@ final class NewSessionPanel: NSObject, NSWindowDelegate, NSTextViewDelegate {
     for p in projects { popup.addItem(withTitle: NewSessionPanel.title(p)) }
     let remembered = UserDefaults.standard.string(forKey: "lastProjectId")
     let pick =
-      projects.firstIndex { $0.id == remembered } ?? projects.firstIndex { $0.id == recent } ?? 0
+      projects.firstIndex { $0.id == wantedProject } ?? projects.firstIndex { $0.id == remembered }
+      ?? projects.firstIndex { $0.id == recent } ?? 0
     popup.selectItem(at: pick)
     projectChanged(popup)
     startButton.isEnabled = true

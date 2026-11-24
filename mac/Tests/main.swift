@@ -660,7 +660,12 @@ do {
 
   equal("tabs: none without a session", ToolbarModel.tabs(hostile).count, 0)
   equal("tabs: none without a state", ToolbarModel.tabs(nil).count, 0)
-  equal("tabs: four for a session", ToolbarModel.tabs(front).map(\.action), [.chat, .changes, .terminal, .files])
+  equal("tabs: five for a session", ToolbarModel.tabs(front).map(\.action), [.chat, .changes, .terminal, .files, .preview])
+  var previewing = front
+  previewing?.view = .preview
+  equal("tabs: Preview is selected while it shows", ToolbarModel.selected(previewing), 4)
+  check("state: the page may say the preview is in front",
+    PageState.parse(#"{"v":1,"session":"s1","title":"t","detail":"","view":"preview"}"#)?.view == .preview)
   equal("tabs: Changes carries its count", ToolbarModel.tabs(front)[1].label, "Changes 4")
   equal("tabs: the open one is selected", ToolbarModel.selected(front), 1)
   check("tabs: nothing selected without a view", ToolbarModel.selected(odd) == nil)
@@ -672,7 +677,8 @@ do {
   equal("title: the page's without a state", ToolbarModel.title(nil, pageTitle: "Sign in").title, "Sign in")
   equal("title: the app's without either", ToolbarModel.title(nil, pageTitle: nil).title, "AgentOS")
   check("actions: every word is one the page knows", PageAction.allCases.map(\.rawValue).sorted() == [
-    "agents", "all", "changes", "chat", "files", "find", "inspector", "new", "settings", "sidebar", "terminal",
+    "agents", "all", "changes", "chat", "files", "find", "inspector", "new", "preview", "settings", "sidebar",
+    "terminal",
   ])
 
   let rows: [[String: Any]] = [
@@ -693,6 +699,111 @@ do {
   equal("xcode: the one project", OpenIn.xcodeTarget(folder: "/p/", entries: ["App.xcodeproj", "Sources"]), "/p/App.xcodeproj")
   equal("xcode: two projects, the folder", OpenIn.xcodeTarget(folder: "/p", entries: ["A.xcodeproj", "B.xcodeproj"]), "/p")
   equal("xcode: none, the folder", OpenIn.xcodeTarget(folder: "/p", entries: ["Package.swift"]), "/p")
+}
+
+// MARK: Watch panel, quick ask and the Dock (Glance)
+
+do {
+  let sid = "11111111-2222-4333-8444-555555555555"
+  let sid2 = "22222222-2222-4333-8444-555555555555"
+  let sid3 = "33333333-2222-4333-8444-555555555555"
+  let bash = PermissionPrompt(
+    title: "Bash command", description: "npm test\nRuns the tests", detail: "", question: "Do you want to proceed?",
+    options: [PromptOption(index: 0, label: "Yes", kind: "allow"), PromptOption(index: 1, label: "No", kind: "deny")],
+    selected: 0)
+  let asking = MenuSession(
+    id: sid, name: "Widget tests", state: "waiting", lastLine: nil,
+    prompt: PromptReply(prompt: bash, fingerprint: "f"), context: nil)
+  let question = MenuSession(
+    id: sid2, name: "Entity picker", state: "waiting", lastLine: nil, prompt: PromptReply(prompt: nil, fingerprint: nil),
+    context: ReplyContext(
+      kind: "ask", question: nil, excerpt: nil,
+      questions: [AskQuestion(question: "Which database?", header: nil, multiSelect: false, options: [])],
+      onScreen: true, choices: nil))
+  let unread = MenuSession(id: sid2, name: "Entity picker", state: "waiting", lastLine: nil, prompt: nil, context: nil)
+  let working = MenuSession(
+    id: sid3, name: "Build", state: "running", lastLine: "  Compiling\tFeatherKit (212 of 340)  ", prompt: nil,
+    context: nil)
+  let idle = MenuSession(id: sid, name: "Old", state: "idle", lastLine: "Done", prompt: nil, context: nil)
+  equal("glance: a prompt reads as what will run", Glance.asks(asking), "Bash command: npm test")
+  equal("glance: a question reads as itself", Glance.asks(question), "Which database?")
+  equal("glance: not read yet says it needs you", Glance.asks(unread), "Needs you")
+  let hidden = MenuSession(
+    id: sid, name: "X", state: "waiting", lastLine: nil,
+    prompt: PromptReply(
+      prompt: PermissionPrompt(
+        title: "Bash command", description: "echo a\u{202E}b", detail: "", question: "", options: [], selected: 0),
+      fingerprint: "f"), context: nil)
+  check("glance: hidden characters never reach a panel", !TextSafety.hasUnsafe(Glance.asks(hidden)))
+  let glance = Glance.rows([working, idle, asking])
+  equal("glance: who needs you comes first, idle is left out", glance.rows.map(\.id), [sid, sid3])
+  equal("glance: a working row shows its last line, tidied", glance.rows[1].line, "Compiling FeatherKit (212 of 340)")
+  equal("glance: nothing left over", glance.more, 0)
+  let many = (0..<9).map { i in
+    MenuSession(
+      id: "\(i)1111111-2222-4333-8444-555555555555", name: "S\(i)", state: "running", lastLine: nil, prompt: nil,
+      context: nil)
+  }
+  equal("glance: at most six rows", Glance.rows(many).rows.count, 6)
+  equal("glance: the rest are counted", Glance.rows(many).more, 3)
+  equal("glance: a working row with no line says so", Glance.rows(many).rows[0].line, "Working")
+  let bad = MenuSession(id: "../x", name: "Bad", state: "waiting", lastLine: nil, prompt: nil, context: nil)
+  equal("glance: a row needs a real session id", Glance.rows([bad]).rows.count, 0)
+  let long = MenuSession(
+    id: sid, name: String(repeating: "n", count: 90), state: "running", lastLine: String(repeating: "l", count: 300),
+    prompt: nil, context: nil)
+  check("glance: names and lines are capped", Glance.rows([long]).rows[0].name.count <= 40
+    && Glance.rows([long]).rows[0].line.count <= 90)
+
+  func project(_ id: String, _ name: String, _ folder: String, loose: Bool = false) -> Project {
+    Project(
+      id: id, name: name, working_directory: folder, agent_type: "claude", default_model: nil,
+      is_uncategorized: FlexBool(loose))
+  }
+  let app = project("p1", "fusionha-ios", "~/AgentOS/fusionha-ios")
+  let web = project("p2", "agent-os", "/Users/me/AgentOS/agent-os")
+  let deep = project("p3", "widgets", "~/AgentOS/fusionha-ios/Widgets/")
+  let loose = project("uncategorized", "Uncategorized", "~", loose: true)
+  let uses = [
+    ProjectUse(projectId: "p2", at: "2026-11-20 10:00:00"), ProjectUse(projectId: "p1", at: "2026-11-23 09:00:00"),
+    ProjectUse(projectId: "p2", at: "2026-11-22 10:00:00"), ProjectUse(projectId: "uncategorized", at: "2026-11-24 10:00:00"),
+  ]
+  equal("recent: newest first, without the loose one", Glance.recent([web, loose, app, deep], uses: uses).map(\.id), ["p1", "p2"])
+  equal("recent: none used, the first by name", Glance.recent([web, app, loose], uses: []).map(\.id), ["p2", "p1"])
+  equal("recent: at most three", Glance.recent([web, app, deep, project("p4", "z", "/z")], uses: []).count, 3)
+
+  let dock = Glance.dock(sessions: [asking, working, idle], recent: [app], watching: true)
+  equal("dock: sessions, a new chat in a recent project, then the pages", dock.map { $0.isSeparator ? "---" : $0.title }, [
+    "Widget tests  —  Needs you", "Build  —  Working", "---", "New Chat in fusionha-ios", "New Session…", "---",
+    "All Sessions", "Watch Panel",
+  ])
+  equal("dock: a session row opens it", dock[0].action, .open(id: sid))
+  equal("dock: the project row starts there", dock[3].action, .newIn(projectId: "p1"))
+  check("dock: the watch panel shows its tick", dock.last?.checked == true)
+  equal("dock: with nothing running, no leading line", Glance.dock(sessions: [idle], recent: [], watching: false).first?.title, "New Session…")
+
+  let home = "/Users/me"
+  equal("drop: paths under home read as ~", Drops.shown(["/Users/me/AgentOS/a.swift", "/tmp/x", "/Users/me"], home: home),
+    ["~/AgentOS/a.swift", "/tmp/x", "~"])
+  equal("drop: a look-alike folder is not home", Drops.shown(["/Users/meow/a"], home: home), ["/Users/meow/a"])
+  equal("drop: relative, hidden or broken paths are dropped",
+    Drops.shown(["a/b", "/a\u{202E}b", "/a\nb", "/" + String(repeating: "x", count: 2000)], home: home), [])
+  equal("drop: the task names them", Drops.task(["/Users/me/AgentOS/a.swift", "/tmp/x"], home: home), "About ~/AgentOS/a.swift, /tmp/x: ")
+  equal("drop: more than five are counted", Drops.task((1...7).map { "/tmp/f\($0)" }, home: home),
+    "About /tmp/f1, /tmp/f2, /tmp/f3, /tmp/f4, /tmp/f5 and 2 more: ")
+  equal("drop: nothing usable, no task", Drops.task(["nope"], home: home), "")
+  equal("drop: the deepest project that holds it", Drops.project(for: "/Users/me/AgentOS/fusionha-ios/Widgets/A.swift", in: [app, web, deep, loose], home: home)?.id, "p3")
+  equal("drop: the project folder itself", Drops.project(for: "/Users/me/AgentOS/agent-os", in: [app, web], home: home)?.id, "p2")
+  check("drop: a neighbour with a longer name is not inside", Drops.project(for: "/Users/me/AgentOS/agent-os-2/a", in: [web], home: home) == nil)
+  check("drop: the loose project never claims a file", Drops.project(for: "/Users/me/notes.txt", in: [loose], home: home) == nil)
+
+  equal("quick key: ⌥Space unless chosen", QuickKey.stored(nil), .optionSpace)
+  equal("quick key: an unknown choice is ⌥Space", QuickKey.stored("f13"), .optionSpace)
+  equal("quick key: off stays off", QuickKey.stored("off"), .off)
+  check("quick key: every shortcut holds a modifier and the space bar",
+    QuickKey.allCases.filter { $0 != .off }.allSatisfy { $0.modifiers & 0x800 != 0 && $0.keyCode == 49 })
+  equal("quick key: off registers nothing", QuickKey.off.modifiers, 0)
+  equal("quick key: four choices, each its own", Set(QuickKey.allCases.map(\.title)).count, 4)
 }
 
 print("\(passed) passed, \(failed) failed")

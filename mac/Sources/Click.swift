@@ -15,13 +15,17 @@ enum Clicks {
     .leftMouseUp, .leftMouseDown, .rightMouseUp, .otherMouseUp, .keyDown,
   ]
 
-  /// A click on an item of our status menu, from a fresh real event, and
-  /// never while the command channel is running a command
+  /// A click on an item of our status menu, or of the same answers shown
+  /// under a button of the watch panel or quick ask (StatusMenu.answers,
+  /// which only StatusMenu fills), from a fresh real event, and never while
+  /// the command channel is running a command
   static func fromMenu(_ sender: Any?) -> Click? {
     guard !CommandChannel.isHandling, let item = sender as? NSMenuItem else { return nil }
     var menu = item.menu
     while let parent = menu?.supermenu { menu = parent }
-    guard let top = menu, top === StatusMenu.menu, freshEvent(in: nil) else { return nil }
+    guard let top = menu, top === StatusMenu.menu || top === StatusMenu.answers, freshEvent(in: nil) else {
+      return nil
+    }
     return Click()
   }
 

@@ -49,6 +49,7 @@ export const MAC_ACTIONS = [
   "new",
   "settings",
   "all",
+  "preview",
 ] as const;
 export type MacAction = (typeof MAC_ACTIONS)[number];
 
@@ -59,7 +60,13 @@ export function isMacAction(value: unknown): value is MacAction {
   );
 }
 
-export type MacView = "chat" | "changes" | "terminal" | "files" | "agents";
+export type MacView =
+  | "chat"
+  | "changes"
+  | "terminal"
+  | "files"
+  | "agents"
+  | "preview";
 
 /** What the Mac window's toolbar shows; read by the app, never sent */
 export interface MacState {
@@ -103,6 +110,8 @@ export interface MacStateInput {
   /** That page's own line ("5 on 2 machines"); the machine otherwise */
   coverDetail?: string | null;
   viewMode: string | null;
+  /** The Preview is over the session's views */
+  preview?: boolean;
   changes: number;
   agents: number;
   sidebar: boolean;
@@ -128,7 +137,7 @@ export function macState(input: MacStateInput): MacState {
     session: front ? front.id : null,
     title: front ? front.title : (covered ?? ""),
     detail,
-    view: front ? macView(input.viewMode) : null,
+    view: front ? (input.preview ? "preview" : macView(input.viewMode)) : null,
     changes: front ? whole(input.changes) : 0,
     agents: !!front && input.agents > 0,
     sidebar: input.sidebar,

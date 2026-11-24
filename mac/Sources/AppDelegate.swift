@@ -4,12 +4,19 @@ import WebKit
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, WindowHost, StatusMenuHost, CommandTarget, NotifierHost,
-  PanelHost, UpdaterHost
+  PanelHost, UpdaterHost, GlanceHost, NSMenuItemValidation
 {
   let opts: AppOptions
   let poller = Poller()
   private var status: StatusMenu!
   private var main: MainWindowController?
+  /// Chats opened in windows of their own (tabs of one another)
+  private var chats: [MainWindowController] = []
+  private var watch: WatchPanel?
+  /// The Dock menu as last shown (its items carry an index into it)
+  private var dockEntries: [Glance.DockEntry] = []
+  private var quick: QuickAsk?
+  private(set) var quickKey = QuickKey.stored(UserDefaults.standard.string(forKey: QuickKey.defaultsKey))
   private var listener: CommandChannel.Listener?
   private(set) var notifier: Notifier?
   private(set) var updater: AppUpdater?
@@ -47,8 +54,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WindowHost, StatusMenu
     poller.observe { [weak self] snap in self?.polled(snap) }
     poller.onEvents = { [weak self] entries, prompts in self?.notifier?.consider(entries, prompts: prompts) }
     poller.eventsSince = { [weak self] in self?.notifier?.cursor ?? 0 }
-    poller.onDetails = { [weak self] in self?.status.detailsChanged() }
+    poller.onDetails = { [weak self] in
+      self?.status.detailsChanged()
+      self?.watch?.update()
+      self?.quick?.update()
+    }
     poller.start()
+    HotKey.onPress = { [weak self] in self?.toggleQuickAsk() }
+    HotKey.set(quickKey)
+    // The watch panel comes back as the person left it
+    if UserDefaults.standard.bool(forKey: WatchPanel.defaultsKey) { setWatch(true, remember: false) }
     let listener = CommandChannel.Listener(target: self)
     listener.start()
     self.listener = listener
@@ -73,13 +88,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WindowHost, StatusMenu
   }
 
   /// The reopen Apple event was sent by the Dock
-  private func reopenIsFromDock() -> Bool {
+  private func reopenIsFromDock() -> Bool { eventSender() == "com.apple.dock" }
+
+  /// The app that sent the Apple event being handled
+  private func eventSender() -> String? {
     guard let event = NSAppleEventManager.shared().currentAppleEvent,
       let sender = event.attributeDescriptor(forKeyword: AEKeyword(keySenderPIDAttr))
-    else { return false }
+    else { return nil }
     let pid = pid_t(sender.int32Value)
-    guard pid > 0 else { return false }
-    return NSRunningApplication(processIdentifier: pid)?.bundleIdentifier == "com.apple.dock"
+    guard pid > 0 else { return nil }
+    return NSRunningApplication(processIdentifier: pid)?.bundleIdentifier
   }
 
   func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
@@ -92,8 +110,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WindowHost, StatusMenu
 
   private func window() -> MainWindowController {
     if let main { return main }
+    let made = makeWindow(autosaveName: "AgentOSMain", secondary: false)
+    main = made
+    return made
+  }
+
+  private var controllers: [MainWindowController] { [main].compactMap { $0 } + chats }
+
+  private func makeWindow(autosaveName: String, secondary: Bool) -> MainWindowController {
     let made = MainWindowController(
-      port: Backend.portNumber, persistent: true, inspectable: inspectable, autosaveName: "AgentOSMain", host: self)
+      port: Backend.portNumber, persistent: true, inspectable: inspectable, autosaveName: autosaveName, host: self,
+      secondary: secondary)
     made.pane.offlineKind = { [weak self] in self?.offlineKind() ?? .notAnswering }
     made.pane.onOverlayChange = { [weak self] kind in
       self?.poller.fast = kind != nil
@@ -102,9 +129,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WindowHost, StatusMenu
     made.pane.onTurnOn = { [weak self] in
       self?.turnOn(then: nil)
     }
-    main = made
     return made
   }
+
+  /// File › Open Chat in New Window (⇧⌘N): the chat in front, or the home
+  /// page, in a window of its own. More of them become its tabs.
+  @objc func openChatWindow(_ sender: Any?) { newChatWindow(activate: true) }
+
+  private func newChatWindow(activate: Bool) {
+    let front = controllers.first { $0.window?.isKeyWindow == true } ?? main
+    let made = makeWindow(autosaveName: "AgentOSChat", secondary: true)
+    made.onClosed = { [weak self, weak made] in
+      guard let self else { return }
+      self.chats.removeAll { $0 === made }
+      self.updatePolicy()
+    }
+    // A tab of the chat windows already open, also when none of them is in front
+    if let first = chats.first?.window, let window = made.window, first.isVisible {
+      first.addTabbedWindow(window, ordered: .above)
+    }
+    chats.append(made)
+    if let id = front?.pane.state?.session {
+      made.open(.session(id), activate: activate)
+    } else {
+      made.open(.home, activate: activate)
+    }
+  }
+
+  /// The + of the tab bar
+  @objc func newWindowForTab(_ sender: Any?) { openChatWindow(sender) }
 
   /// `activate: true` only from our menu items, the Dock and notification clicks
   func open(_ d: Destination, activate: Bool) {
@@ -120,8 +173,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WindowHost, StatusMenu
   var appIsActive: Bool { NSApp.isActive }
 
   var keyWindowSession: String? {
-    guard let main, main.window?.isKeyWindow == true else { return nil }
-    return windowShowingSession
+    controllers.first { $0.isShown && $0.window?.isKeyWindow == true }?.pane.showingSession
   }
 
   func openPanel(_ kind: PanelKind) {
@@ -142,14 +194,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WindowHost, StatusMenu
   }
 
   var windowShowingSession: String? {
-    guard let main, main.isShown else { return nil }
-    return main.pane.showingSession
+    let shown = controllers.filter(\.isShown)
+    return (shown.first { $0.window?.isKeyWindow == true } ?? shown.first)?.pane.showingSession
   }
 
   var isRegular: Bool { NSApp.activationPolicy() == .regular }
 
   func updatePolicy() {
-    AppPolicy.apply(inUse: main?.inUse ?? false)
+    AppPolicy.apply(inUse: controllers.contains { $0.inUse })
     NSApp.dockTile.badgeLabel = isRegular && poller.snapshot.waiting > 0 ? "\(poller.snapshot.waiting)" : nil
   }
 
@@ -165,8 +217,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WindowHost, StatusMenu
 
   private func polled(_ snap: Snapshot) {
     status.update(snap)
-    main?.pane.serverChanged(answering: snap.facts.answering)
+    for controller in controllers { controller.pane.serverChanged(answering: snap.facts.answering) }
     updatePolicy()
+    // The panels show what each waiting session asks: read it while they show
+    if watching || quick?.isShown == true {
+      poller.fetchDetails(snap.sessions.filter { $0.state == "waiting" }.map(\.id))
+    }
+    watch?.update()
+    quick?.update()
     notifier?.reconcile(snap, details: poller.details)
     updater?.poll()
   }
@@ -176,11 +234,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WindowHost, StatusMenu
   /// Shown, minimised or hidden with the app (⌘H): the same test as the
   /// Dock icon's, so a window the person will come back to is never lost
   /// to a swap, and a forced swap brings it back
-  var windowVisible: Bool { main?.inUse ?? false }
+  var windowVisible: Bool { controllers.contains { $0.inUse } }
   var menuIsOpen: Bool { status?.isOpen ?? false }
   var isBusy: Bool {
     // An open panel counts even while it has stepped aside for another app
-    (status?.isBusy ?? false) || Panels.reply != nil || Panels.newSession != nil
+    (status?.isBusy ?? false) || Panels.reply != nil || Panels.newSession != nil || quick?.isShown == true
       // An alert or open panel (runModal) or a sheet is up: the person's
       // answer to it would be lost to a swap
       || NSApp.modalWindow != nil || NSApp.windows.contains { $0.attachedSheet != nil }
@@ -218,6 +276,134 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WindowHost, StatusMenu
 
   @objc func showMainWindow(_ sender: Any?) { open(.home, activate: true) }
 
+  /// AgentOS › Settings… (⌘,): the page's own settings
+  @objc func showSettings(_ sender: Any?) {
+    open(.home, activate: true)
+    window().actWhenReady(.settings)
+  }
+
+  @objc func showQuickAskPanel(_ sender: Any?) { showQuickAsk() }
+
+  @objc func toggleWatchPanel(_ sender: Any?) { toggleWatch() }
+
+  func validateMenuItem(_ item: NSMenuItem) -> Bool {
+    if item.action == #selector(toggleWatchPanel(_:)) { item.state = watching ? .on : .off }
+    return true
+  }
+
+  // MARK: Watch panel and quick ask
+
+  var glanceSessions: [MenuSession] { status.sessions() }
+  var watching: Bool { watch?.isShown ?? false }
+  var quickKeyFailed: Bool { HotKey.failed }
+
+  func setQuickKey(_ key: QuickKey) {
+    quickKey = key
+    UserDefaults.standard.set(key.rawValue, forKey: QuickKey.defaultsKey)
+    HotKey.set(key)
+  }
+
+  private func quickPanel() -> QuickAsk {
+    if let quick { return quick }
+    let made = QuickAsk(host: self)
+    quick = made
+    return made
+  }
+
+  func showQuickAsk() {
+    quickPanel().show()
+    poller.refreshNow()
+  }
+
+  /// The shortcut: opens quick ask, or puts it away when it is up
+  private func toggleQuickAsk() {
+    if quick?.isShown == true { quick?.hide() } else { showQuickAsk() }
+  }
+
+  func toggleWatch() { setWatch(!watching) }
+
+  private func setWatch(_ on: Bool, remember: Bool = true) {
+    if remember { UserDefaults.standard.set(on, forKey: WatchPanel.defaultsKey) }
+    guard on else {
+      watch?.hide()
+      return
+    }
+    let panel: WatchPanel
+    if let watch {
+      panel = watch
+    } else {
+      panel = WatchPanel(host: self)
+      panel.onClose = { UserDefaults.standard.set(false, forKey: WatchPanel.defaultsKey) }
+      watch = panel
+    }
+    panel.show()
+    poller.refreshNow()
+  }
+
+  /// Answer in the watch panel or quick ask: the menu bar's own answers
+  /// for that session, read fresh, under the button
+  func answer(session id: String, under view: NSView) {
+    guard SessionLink.isValidId(id) else { return }
+    poller.refreshDetailsForMenu([id])
+    status.popUpAnswers(for: id, under: view)
+  }
+
+  // MARK: Dock
+
+  /// The Dock icon's menu: it opens a session, a new chat or a page, and
+  /// never answers anything
+  func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
+    let menu = NSMenu()
+    menu.autoenablesItems = false
+    let entries = Glance.dock(
+      sessions: status.sessions(), recent: poller.snapshot.recentProjects, watching: watching)
+    for (i, entry) in entries.enumerated() {
+      if entry.isSeparator {
+        menu.addItem(.separator())
+        continue
+      }
+      let row = NSMenuItem(title: entry.title, action: #selector(dockItem(_:)), keyEquivalent: "")
+      row.target = self
+      row.tag = i
+      row.state = entry.checked ? .on : .off
+      menu.addItem(row)
+    }
+    dockEntries = entries
+    return menu
+  }
+
+  @objc private func dockItem(_ sender: NSMenuItem) {
+    guard dockEntries.indices.contains(sender.tag), let action = dockEntries[sender.tag].action else { return }
+    switch action {
+    case .open(let id):
+      if SessionLink.isValidId(id) { open(.session(id), activate: true) }
+    case .newIn(let projectId):
+      Panels.showNewSession(host: self, projectId: projectId)
+    case .newSession:
+      Panels.showNewSession(host: self)
+    case .all:
+      open(.home, activate: true)
+      window().actWhenReady(.all)
+    case .watch:
+      toggleWatch()
+    }
+  }
+
+  /// Files or folders dropped on the Dock icon (or opened with AgentOS):
+  /// the New Session panel, on the project that holds them, with them named
+  /// in the task. Nothing starts until the person presses Start.
+  func application(_ application: NSApplication, open urls: [URL]) {
+    let paths = urls.filter(\.isFileURL).map(\.path)
+    let home = NSHomeDirectory()
+    let text = Drops.task(paths, home: home)
+    guard !text.isEmpty else { return }
+    let project = Drops.shown(paths, home: home).isEmpty
+      ? nil : paths.first.flatMap { Drops.project(for: $0, in: poller.snapshot.projects, home: home) }
+    // In front only for the person's own drop (the Dock or the Finder)
+    let own = ["com.apple.dock", "com.apple.finder"].contains(eventSender() ?? "")
+    Panels.showNewSession(host: self, projectId: project?.id, text: text, activate: own)
+  }
+
   // MARK: Command channel
 
   func channelShow() { open(.home, activate: false) }
@@ -229,6 +415,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WindowHost, StatusMenu
   func channelReload() { main?.pane.reload() }
 
   func channelToolbar(_ action: PageAction) { main?.pane.act(action) }
+
+  /// Shown without the keyboard and without coming in front of the app in
+  /// use; what the person chose for the watch panel is not changed
+  func channelPanel(_ name: String, show: Bool) -> Bool {
+    switch name {
+    case "watch":
+      setWatch(show, remember: false)
+    case "quick":
+      if show { quickPanel().show(key: false) } else { quick?.hide() }
+      poller.refreshNow()
+    case "chat":
+      if show {
+        newChatWindow(activate: false)
+      } else {
+        for chat in chats { chat.window?.close() }
+      }
+    default:
+      return false
+    }
+    return true
+  }
 
   func channelQuit() {
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { NSApp.terminate(nil) }
@@ -279,6 +486,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WindowHost, StatusMenu
         },
       ] as [String: Any],
       "update": updateState(),
+      "watch": watch?.dump ?? ["shown": false],
+      // What Answer would show for each session that needs the person
+      "answers": Dictionary(
+        uniqueKeysWithValues: snap.sessions.filter { $0.state == "waiting" }.map {
+          ($0.id, MenuModel.text(status.answerEntries($0.id)))
+        }),
+      "quick": quick?.dump ?? ["shown": false],
+      "quickKey": ["choice": quickKey.rawValue, "failed": HotKey.failed],
+      "dock": Glance.dock(sessions: status.sessions(), recent: snap.recentProjects, watching: watching)
+        .map { $0.isSeparator ? "---" : $0.title },
+      "chatWindows": chats.count,
+      "chatTabs": chats.first?.window?.tabbedWindows?.count ?? 0,
       "login": ["wanted": StartAtLogin.wanted, "atLogin": opts.atLogin],
     ]
   }
@@ -365,6 +584,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WindowHost, StatusMenu
       self.status.render()
       if let url = TestFiles.write(name: "\(name)-menu.txt", data: Data(self.status.dumpText().utf8)) {
         files.append(url.path)
+      }
+      for (panel, tag) in [(self.watch?.panel as NSWindow?, "watch"), (self.quick?.panel as NSWindow?, "quick")] {
+        // The panel's own drawing (its glass comes out flat)
+        guard let panel, panel.isVisible, let frame = panel.contentView?.superview,
+          let rep = frame.bitmapImageRepForCachingDisplay(in: frame.bounds)
+        else { continue }
+        frame.cacheDisplay(in: frame.bounds, to: rep)
+        if let png = rep.representation(using: .png, properties: [:]),
+          let url = TestFiles.write(name: "\(name)-\(tag).png", data: png)
+        {
+          files.append(url.path)
+        }
       }
       if !wasShown { controller.hide() }
       done(files)

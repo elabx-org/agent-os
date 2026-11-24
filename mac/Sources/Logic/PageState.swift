@@ -3,7 +3,7 @@ import Foundation
 /// What the window's toolbar sends the page: one of these words, nothing
 /// else (the page's "agentos-mac" event, lib/mac-host.ts)
 enum PageAction: String, CaseIterable, Equatable {
-  case chat, changes, terminal, files, agents, sidebar, inspector, find, new, settings, all
+  case chat, changes, terminal, files, agents, sidebar, inspector, find, new, settings, all, preview
 }
 
 /// What the page says is in front (window.__agentosMac), read by the
@@ -22,7 +22,7 @@ struct PageState: Equatable {
   var dark: Bool
   var needs: Int
 
-  static let views: [PageAction] = [.chat, .changes, .terminal, .files, .agents]
+  static let views: [PageAction] = [.chat, .changes, .terminal, .files, .agents, .preview]
 
   /// nil for no state, a state this app doesn't know, or anything malformed
   static func parse(_ json: String?) -> PageState? {
@@ -59,6 +59,7 @@ enum ToolbarModel {
       Tab(action: .changes, label: Strings.tabChanges(state.changes)),
       Tab(action: .terminal, label: Strings.tabTerminal),
       Tab(action: .files, label: Strings.tabFiles),
+      Tab(action: .preview, label: Strings.tabPreview),
     ]
     if state.agents || state.view == .agents { out.append(Tab(action: .agents, label: Strings.tabAgents)) }
     return out

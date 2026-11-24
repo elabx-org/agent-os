@@ -1,8 +1,9 @@
 import AppKit
 
 /// The menu bar while the window shows. Standard items go to the first
-/// responder; About, New Session… and the AgentOS window item go to `target`
-/// (selectors showAbout:, newSession:, showMainWindow:).
+/// responder; the view items go to the window in front; About, Settings…,
+/// New Session…, Quick Ask…, the chat window, the watch panel and the
+/// AgentOS window item go to `target`.
 @MainActor
 enum MainMenu {
   static func build(target: AnyObject?) -> NSMenu {
@@ -30,6 +31,8 @@ enum MainMenu {
     _ = top(Strings.appName, [
       item(Strings.aboutAgentOS, "showAbout:", to: target),
       .separator(),
+      item(Strings.settingsMenu, "showSettings:", ",", to: target),
+      .separator(),
       item(Strings.hideAgentOS, "hide:", "h"),
       item(Strings.hideOthers, "hideOtherApplications:", "h", [.command, .option]),
       item(Strings.showAll, "unhideAllApplications:"),
@@ -38,6 +41,9 @@ enum MainMenu {
     ])
     _ = top(Strings.fileMenu, [
       item(Strings.newSession, "newSession:", "n", to: target),
+      item(Strings.quickAskMenu, "showQuickAskPanel:", to: target),
+      item(Strings.newWindowMenu, "openChatWindow:", "n", [.command, .shift], to: target),
+      .separator(),
       item(Strings.closeWindow, "performClose:", "w"),
     ])
     _ = top(Strings.editMenu, [
@@ -51,11 +57,18 @@ enum MainMenu {
       item(Strings.selectAll, "selectAll:", "a"),
     ])
     _ = top(Strings.viewMenu, [
-      // These four go up the responder chain to the window's controller
+      // These go up the responder chain to the window's controller
+      item(Strings.showChat, "showChat:", "1"),
+      item(Strings.showChanges, "showChanges:", "2"),
+      item(Strings.showTerminal, "showTerminal:", "3"),
+      item(Strings.showFiles, "showFiles:", "4"),
+      item(Strings.tabPreview, "showPreview:", "5"),
+      .separator(),
       item(Strings.showSidebar, "toggleSidebarPane:", "s", [.command, .control]),
       item(Strings.showInspector, "toggleInspectorPane:", "i", [.command, .option]),
       item(Strings.findMenu, "findInPage:", "k"),
       item(Strings.allSessionsMenu, "showAllSessions:", "a", [.command, .shift]),
+      item(Strings.watchPanelMenu, "toggleWatchPanel:", "w", [.command, .option], to: target),
       .separator(),
       item(Strings.reloadPage, "reload:", "r"),
       item(Strings.back, "goBack:", "["),
@@ -67,7 +80,7 @@ enum MainMenu {
       item(Strings.minimize, "performMiniaturize:", "m"),
       item(Strings.zoom, "performZoom:"),
       .separator(),
-      item(Strings.appName, "showMainWindow:", "1", to: target),
+      item(Strings.appName, "showMainWindow:", "0", to: target),
       .separator(),
       item(Strings.bringAllToFront, "arrangeInFront:"),
     ])
