@@ -8,12 +8,15 @@ protocol UpdaterHost: AnyObject {
   var isBusy: Bool { get }
   var windowPath: String? { get }
   func updaterChanged()
+  /// The swap asked for as the app opened couldn't start: show the window
+  func swapOnOpenFailed()
 }
 
 /// The one updater (D6). The service builds the new app into
 /// ~/.agent-os/mac-app/next and writes next/ready; on each poll the app
 /// reads it and swaps itself when nobody is looking, or offers a restart in
-/// the menu. Only the app replaces itself: it re-checks the staged copy,
+/// the menu. An update that is waiting when the person opens the app goes
+/// in before its window shows. Only the app replaces itself: it re-checks the staged copy,
 /// writes swap.sh, starts it and quits; the script swaps once it has gone.
 @MainActor
 final class AppUpdater {
@@ -28,6 +31,8 @@ final class AppUpdater {
   private(set) var buildFailed = false
   private(set) var lastSwap: UpdateDecision.SwapLine?
   private(set) var swapping = false
+  /// The person is opening the app: the new copy shows the window
+  private var opening = false
   private let queue = DispatchQueue(label: "agentos.updater")
 
   init(paths: UpdatePaths = Swapper.paths()) {
@@ -65,6 +70,16 @@ final class AppUpdater {
     if d == .swapNow { swap() }
   }
 
+  /// As the app opens, before its window: swaps to the update that was
+  /// waiting. True when the swap has started (the app is about to quit and
+  /// come back as the new one, with its window).
+  func swapOnOpen() -> Bool {
+    opening = true
+    poll()
+    if !swapping { opening = false }
+    return swapping
+  }
+
   /// The menu's "Restart the app to update it" (a real click)
   func restartNow() {
     requested = true
@@ -77,7 +92,7 @@ final class AppUpdater {
     let paths = self.paths
     let input = SwapScript.Input(
       pid: getpid(), executable: exe, target: target, staged: paths.staged, paths: paths,
-      fromHash: AppInfo.sourceHash, toHash: ready, window: host?.windowVisible ?? false,
+      fromHash: AppInfo.sourceHash, toHash: ready, window: opening || (host?.windowVisible ?? false),
       path: host?.windowPath.flatMap { WindowMemory.sanitize(path: $0) }, installing: false)
     queue.async { [weak self] in
       let started = Swapper.start(input)
@@ -86,9 +101,12 @@ final class AppUpdater {
         if started {
           NSApp.terminate(nil)
         } else {
+          let wasOpening = self.opening
+          self.opening = false
           self.swapping = false
           self.requested = false
           self.poll()
+          if wasOpening { self.host?.swapOnOpenFailed() }
         }
       }
     }
