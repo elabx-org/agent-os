@@ -70,6 +70,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WindowHost, StatusMenu
     SMAppServiceCleanup.runOnce()
 
     let quiet = opts.atLogin || opts.applyUpdate || (opts.afterUpdate && !opts.restoreWindow)
+    // Opened by the person with an update waiting: it goes in first, and the
+    // new copy shows the window
+    if UpdateDecision.swapOnOpen(quiet: quiet, afterUpdate: opts.afterUpdate, hasLink: opts.openSession != nil),
+      updater.swapOnOpen()
+    {
+      return
+    }
     if !quiet {
       if opts.afterUpdate, let path = opts.restorePath, let clean = WindowMemory.sanitize(path: path) {
         window().pane.load(path: clean)
@@ -245,6 +252,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WindowHost, StatusMenu
   }
   var windowPath: String? { main?.pane.currentPath }
   func updaterChanged() { status?.render() }
+  func swapOnOpenFailed() { open(.home, activate: false) }
 
   func refreshNow() { poller.refreshNow() }
 

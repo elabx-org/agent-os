@@ -17,6 +17,14 @@ enum UpdateDecision {
     return .offer
   }
 
+  /// The person has just opened the app themselves (not at login, not put
+  /// back by an update, not through a session link): an update that was
+  /// waiting goes in before the window shows, and the new copy shows it.
+  /// Quitting and opening the app again is how people expect to get one.
+  static func swapOnOpen(quiet: Bool, afterUpdate: Bool, hasLink: Bool) -> Bool {
+    !quiet && !afterUpdate && !hasLink
+  }
+
   /// A source hash: 16 lowercase hex characters
   static func isHash(_ s: String) -> Bool {
     s.utf8.count == 16 && s.utf8.allSatisfy { ($0 >= 0x30 && $0 <= 0x39) || ($0 >= 0x61 && $0 <= 0x66) }
