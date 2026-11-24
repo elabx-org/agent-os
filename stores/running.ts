@@ -10,4 +10,9 @@ export const runningStore = proxy<{
   sessionId: string | null;
   /** A machine is linked and the tab is on the server: Runners is offered */
   runners: boolean;
-}>({ enabled: false, sessionId: null, runners: false });
+  /**
+   * The port of the newest web server the focused session started, or null:
+   * with one, its header and More offer Preview
+   */
+  previewPort: number | null;
+}>({ enabled: false, sessionId: null, runners: false, previewPort: null });

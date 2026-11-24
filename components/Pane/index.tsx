@@ -41,6 +41,8 @@ import {
   type PaneViewMode,
 } from "@/stores/mobileNav";
 import { focusStore } from "@/stores/focus";
+import { macHostStore, setMacPreview } from "@/stores/macHost";
+import { useMacApp } from "@/hooks/useMacHost";
 import {
   getSessionView,
   openingView,
@@ -65,6 +67,15 @@ import {
   attachBackgroundCommand,
   backgroundAgentOfTmux,
 } from "@/lib/background-tmux";
+
+// The page the session's web server serves, in place of its views
+const SessionPreview = dynamic(
+  () =>
+    import("@/components/Running/SessionPreview").then(
+      (mod) => mod.SessionPreview
+    ),
+  { ssr: false }
+);
 
 // Dynamic imports for client-only components with loading states
 const Terminal = dynamic(
@@ -234,6 +245,21 @@ export const Pane = memo(function Pane({
   const [deckShown, setDeckShown] = useState(false);
   // The column's Stop and working state; a header that says the activity
   const chrome = usePaneChrome({ session, isFocused, paneCount });
+  // The desktop header's Preview tab: the page the session's web server
+  // serves takes the views' place under the header (the Mac window puts it
+  // over the whole pane itself, its toolbar holding the tab)
+  const { preview } = useSnapshot(macHostStore);
+  const mac = useMacApp();
+  const previewHere =
+    preview && !mac && chrome.variant === "desktop" && !!session;
+  // Picking a view in the header leaves the preview
+  const pickViewMode = useCallback(
+    (mode: PaneViewMode) => {
+      setMacPreview(false);
+      setViewMode(mode);
+    },
+    [setViewMode]
+  );
   const showStrip =
     !!session &&
     (viewMode === "chat" || viewMode === "terminal") &&
@@ -664,7 +690,7 @@ export const Pane = memo(function Pane({
         viewMode={viewMode}
         agentCount={agentCounts.total}
         agentLive={agentCounts.live}
-        onViewModeChange={setViewMode}
+        onViewModeChange={pickViewMode}
         hasAttachedTmux={!!activeTab?.attachedTmux}
         onDetach={handleDetach}
         gitDrawerOpen={gitDrawerOpen}
@@ -803,7 +829,9 @@ export const Pane = memo(function Pane({
       ) : (
         <ResizablePanelGroup
           orientation="horizontal"
-          className="min-h-0 flex-1"
+          // Hidden, not unmounted: the terminal keeps its place (the group
+          // sets its own display, so this one has to win)
+          className={cn("min-h-0 flex-1", previewHere && "hidden!")}
         >
           {/* Left column: Main content + Shell drawer */}
           <ResizablePanel defaultSize={showGitDrawer ? 70 : 100} minSize={20}>
@@ -963,6 +991,11 @@ export const Pane = memo(function Pane({
             </>
           )}
         </ResizablePanelGroup>
+      )}
+      {previewHere && session && (
+        <div className="min-h-0 flex-1">
+          <SessionPreview session={session} />
+        </div>
       )}
       <SendMenuDim sessionId={session?.id} />
     </div>

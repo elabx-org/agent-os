@@ -22,6 +22,7 @@ import { focusStore } from "../../stores/focus";
 import { layoutStore } from "../../hooks/useLayoutMode";
 import { backStore } from "../../stores/back";
 import { runningStore } from "../../stores/running";
+import { macHostStore } from "../../stores/macHost";
 
 /** Every handler replaced by one that notes its name */
 function spyHandlers() {
@@ -50,6 +51,8 @@ function reset() {
   layoutStore.mode = "desktop";
   backStore.origin = null;
   runningStore.sessionId = null;
+  runningStore.previewPort = null;
+  macHostStore.preview = false;
 }
 
 test("every NavAction has a route, and only those", () => {
@@ -651,4 +654,84 @@ test("backTarget: two side by side on the pages close the right one", () => {
     backStore.besideName = null;
     stop();
   }
+});
+
+test("all: every session's tiles, as a page", () => {
+  reset();
+  const desk = spyHandlers();
+  runNav("all");
+  assert.deepEqual(workspacePageStore.page, { kind: "all" });
+  assert.deepEqual(desk.calls, []);
+  desk.stop();
+
+  // The open Duo: Now on the left page, unless it is there already
+  for (const mode of ["duo-open", "book"] as const) {
+    reset();
+    layoutStore.mode = mode;
+    const { calls, stop } = spyHandlers();
+    runNav("all");
+    assert.deepEqual(calls, ["openNow"], mode);
+    assert.deepEqual(workspacePageStore.page, { kind: "all" }, mode);
+    stop();
+  }
+  reset();
+  layoutStore.mode = "duo-open";
+  surfaceStore.home = true;
+  const beside = spyHandlers();
+  runNav("all");
+  assert.deepEqual(beside.calls, []);
+  assert.deepEqual(workspacePageStore.page, { kind: "all" });
+  beside.stop();
+
+  // One page: the page alone
+  reset();
+  layoutStore.mode = "duo-closed";
+  const closed = spyHandlers();
+  runNav("all");
+  assert.deepEqual(closed.calls, []);
+  closed.stop();
+  reset();
+});
+
+test("preview: over the views on the desktop, the Running page's elsewhere", () => {
+  // No session in front: nothing to preview
+  reset();
+  runNav("preview");
+  assert.equal(macHostStore.preview, false);
+  assert.equal(workspacePageStore.page, null);
+
+  // The desktop shell: in place of the session's views, pages put away
+  reset();
+  runningStore.sessionId = "s1";
+  runningStore.previewPort = 5173;
+  workspacePageStore.page = { kind: "mocks" };
+  runNav("preview");
+  assert.equal(macHostStore.preview, true);
+  assert.equal(workspacePageStore.page, null);
+
+  // A phone and the Duo: the session's server on the Running page, opened
+  for (const mode of ["phone", "duo-closed", "duo-open"] as const) {
+    reset();
+    layoutStore.mode = mode;
+    runningStore.sessionId = "s1";
+    runningStore.previewPort = 5173;
+    runNav("preview");
+    assert.equal(macHostStore.preview, false, mode);
+    assert.deepEqual(
+      workspacePageStore.page,
+      { kind: "running", sessionId: "s1", port: 5173 },
+      mode
+    );
+  }
+
+  // The server stopped since the menu was drawn: its list, which says so
+  reset();
+  layoutStore.mode = "phone";
+  runningStore.sessionId = "s1";
+  runNav("preview");
+  assert.deepEqual(workspacePageStore.page, {
+    kind: "running",
+    sessionId: "s1",
+  });
+  reset();
 });

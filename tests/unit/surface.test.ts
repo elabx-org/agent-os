@@ -51,6 +51,9 @@ test("surfaceFor: pages", () => {
   // Running is its own page, not the session's
   assert.equal(surface({ page: "running" }), "running");
   assert.equal(surface({ page: "running", paneCount: 2 }), "running");
+  // All sessions too: its column is back and More, not the session's
+  assert.equal(surface({ page: "all" }), "all");
+  assert.equal(surface({ homeOpen: true, page: "all" }), "all");
   assert.equal(surface({ inboxOpen: true }), "needs");
   assert.equal(surface({ page: "new" }), "new");
   assert.equal(surface({ newOpen: true }), "new");

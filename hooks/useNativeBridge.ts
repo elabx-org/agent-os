@@ -148,6 +148,8 @@ export function useNativeBridge({ waitingCount }: NativeBridgeOptions) {
             subscribeKey(settingsPageStore, "returnTo", report),
             subscribe(backStore, report),
             subscribeKey(runningStore, "sessionId", report),
+            // More's Preview, once the session has a web server
+            subscribeKey(runningStore, "previewPort", report),
             subscribeKey(layoutStore, "mode", report),
             subscribe(columnOrderStore, report),
             // More's Scripts, Settle and Copy session ID

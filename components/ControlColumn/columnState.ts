@@ -242,6 +242,7 @@ export function nativeColumn(): {
         shown: items.map((it) => it.id),
         running: runningStore.enabled,
         runners: runningStore.runners,
+        preview: runningStore.previewPort !== null,
         wide: WIDE.includes(mode),
         session: {
           model: sessionActionsStore.model,

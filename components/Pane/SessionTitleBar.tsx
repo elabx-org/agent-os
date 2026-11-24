@@ -33,6 +33,8 @@ import {
   GalleryVerticalEnd,
   MonitorPlay,
   Search,
+  LayoutGrid,
+  AppWindow,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -58,6 +60,7 @@ import { useSurface } from "@/stores/surface";
 import { shortColumn } from "@/lib/column-spec";
 import { useShortScreen } from "@/hooks/useShortScreen";
 import { runningStore } from "@/stores/running";
+import { macHostStore } from "@/stores/macHost";
 import { useBackLabel } from "@/components/ControlColumn/columnState";
 import { DesktopLiveButton } from "./DesktopViewSwitch";
 import { BesideItems } from "@/components/BesideItems";
@@ -267,7 +270,13 @@ export function SessionTitleBar({
   // A phone on its side has no bar under the session (phoneBar): its
   // views and places are here
   const short = useShortScreen();
-  const { enabled: running, runners } = useSnapshot(runningStore);
+  const { enabled: running, runners, previewPort } = useSnapshot(runningStore);
+  // The focused pane's session serves a page, or its preview is up
+  const { preview: previewShown } = useSnapshot(macHostStore);
+  const previewTab =
+    isFocused && (previewPort !== null || previewShown)
+      ? { shown: previewShown, onShow: () => runNav("preview") }
+      : undefined;
 
   const variant = headerVariant({
     hasSession: !!session,
@@ -507,6 +516,10 @@ export function SessionTitleBar({
                 Running
               </DropdownMenuItem>
             )}
+            <DropdownMenuItem onSelect={() => runNav("all")}>
+              <LayoutGrid className="h-4 w-4" />
+              All sessions
+            </DropdownMenuItem>
             <DropdownMenuItem onSelect={() => runNav("mocks")}>
               <GalleryVerticalEnd className="h-4 w-4" />
               Mocks
@@ -560,6 +573,17 @@ export function SessionTitleBar({
             {shellDrawerOpen ? "Hide shell drawer" : "Shell drawer"}
           </DropdownMenuItem>
         )}
+        {/* A narrow desktop bar keeps Chat | Terminal alone; a phone on its
+            side has no bar with More under the session */}
+        {session &&
+          previewTab &&
+          !previewTab.shown &&
+          (variant === "desktop" || barless) && (
+            <DropdownMenuItem onSelect={() => runNav("preview")}>
+              <AppWindow className="h-4 w-4" />
+              Preview
+            </DropdownMenuItem>
+          )}
         {/* The phone's classic header has no chip; a narrow desktop bar hides it */}
         {session &&
           switchable &&
@@ -653,6 +677,7 @@ export function SessionTitleBar({
           viewMode={viewMode}
           onViewModeChange={onViewModeChange}
           dimmed={wide && !isFocused}
+          preview={previewTab}
           actions={
             <>
               {session && switchable && (

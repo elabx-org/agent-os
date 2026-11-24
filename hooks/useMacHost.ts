@@ -115,9 +115,8 @@ export function useMacHost({
   });
   const branch = git?.branch ?? session?.branch_name;
 
-  useEffect(() => {
-    if (mac) loadMacHost();
-  }, [mac]);
+  // The desktop web shell keeps one of its choices too (diffs side by side)
+  useEffect(loadMacHost, []);
 
   // The Preview covers the session's views: another session, or anything
   // that asks for one of its views (a card's "open the terminal"), ends it

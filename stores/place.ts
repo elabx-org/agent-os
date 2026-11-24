@@ -38,6 +38,7 @@ const PAGE_KINDS = new Set<string>([
   "running",
   "mocks",
   "runners",
+  "all",
 ]);
 
 function pageOf(value: unknown): WorkspacePage | null {

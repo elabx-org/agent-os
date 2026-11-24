@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { ChevronLeft } from "lucide-react";
 import { StateDot } from "@/components/a/StateDot";
 import { NeedsYouCard } from "@/components/Chat/NeedsYouCard";
+import { PAGE_BARS } from "@/components/ControlColumn/columnState";
 import { openOnMachine } from "@/components/Machines/useOtherMachinesNow";
 import type { PageProps } from "@/components/WorkspacePage/pages";
 import {
@@ -12,6 +14,8 @@ import {
   useMachines,
   useTabMachineId,
 } from "@/data/machines";
+import { useIsNative } from "@/hooks/useIsNative";
+import { useLayoutMode } from "@/hooks/useLayoutMode";
 import { useMacApp, useMacHereName } from "@/hooks/useMacHost";
 import { displayTitle, useListTitles } from "@/hooks/useSessionTitles";
 import { timeAgo } from "@/lib/agent-state";
@@ -24,6 +28,8 @@ import {
   type TileFilter,
   type TileSource,
 } from "@/lib/all-sessions";
+import { nativeCaps } from "@/lib/native-bridge";
+import { runNav } from "@/lib/nav-actions";
 import { cn } from "@/lib/utils";
 import { setMacPageDetail } from "@/stores/macHost";
 
@@ -40,6 +46,10 @@ export function AllSessionsPage({ view, onOpenSession }: PageProps<"all">) {
   const macName = useMacHereName();
   const plainName = useHereName();
   const hereName = (mac ? macName : plainName) ?? "This machine";
+  const mode = useLayoutMode();
+  const native = useIsNative();
+  // Where no column holds back, the title does (a phone, tabletop)
+  const back = PAGE_BARS.includes(mode) || (native && !nativeCaps().column);
 
   const { data: machines } = useMachines();
   const mine = useTabMachineId();
@@ -80,7 +90,27 @@ export function AllSessionsPage({ view, onOpenSession }: PageProps<"all">) {
       : onOpenSession(tile.session);
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto overscroll-contain px-6 pt-5 pb-6">
+    <div
+      className={cn(
+        "flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto overscroll-contain",
+        mode === "desktop"
+          ? "px-6 pt-5 pb-6"
+          : "pb-[calc(1.5rem+env(safe-area-inset-bottom))]",
+        // The closed Duo's column stands on the right
+        mode === "duo-closed" && "pt-[18px] pr-2 pl-5",
+        mode !== "desktop" && mode !== "duo-closed" && "px-5 pt-5"
+      )}
+    >
+      {back && (
+        <button
+          type="button"
+          onClick={() => runNav("back")}
+          aria-label="Back"
+          className="text-muted-foreground active:bg-accent -mb-2 -ml-2 flex h-[44px] w-[44px] flex-none items-center justify-center rounded-full"
+        >
+          <ChevronLeft className="h-5 w-5" />
+        </button>
+      )}
       <header className="flex flex-none flex-wrap items-end gap-x-4 gap-y-3">
         <div className="mr-auto flex min-w-0 flex-col">
           <h1 className="t-large">All sessions</h1>

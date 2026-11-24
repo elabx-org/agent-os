@@ -3,7 +3,9 @@ import assert from "node:assert/strict";
 import {
   previewChoices,
   previewLabel,
+  previewPlace,
   previewShown,
+  sessionPort,
 } from "../../lib/session-preview";
 
 const server = (
@@ -56,4 +58,25 @@ test("nothing of the session's: nothing shows by itself", () => {
 test("a server reads as its port and what serves it", () => {
   assert.equal(previewLabel(server(5173, null)), ":5173 node");
   assert.equal(previewLabel(server(8000, null, null, "")), ":8000");
+});
+
+test("a session's port is its newest server's, or none", () => {
+  const servers = [
+    server(8080, "other", 300),
+    server(5173, "s1", 100),
+    server(4321, "s1", 200),
+  ];
+  assert.equal(sessionPort(servers, "s1"), 4321);
+  assert.equal(sessionPort(servers, "other"), 8080);
+  assert.equal(sessionPort(servers, "s2"), null);
+  assert.equal(sessionPort(servers, null), null);
+  assert.equal(sessionPort([], "s1"), null);
+});
+
+test("the preview takes the views' place on the desktop, a page elsewhere", () => {
+  assert.equal(previewPlace("desktop", false), "views");
+  // The iOS app is never the desktop shell, whatever its width
+  assert.equal(previewPlace("desktop", true), "page");
+  for (const mode of ["phone", "tabletop", "duo-closed", "duo-open", "book"])
+    assert.equal(previewPlace(mode, false), "page", mode);
 });

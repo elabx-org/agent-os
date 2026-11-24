@@ -23,6 +23,8 @@ import {
   type WorkspacePage,
 } from "@/stores/workspacePage";
 import { runningStore } from "@/stores/running";
+import { setMacPreview } from "@/stores/macHost";
+import { previewPlace } from "@/lib/session-preview";
 import { closeNew, newSurfaceStore } from "@/stores/newSurface";
 import { openProjectSettings } from "@/stores/projectSettings";
 import { openScripts } from "@/stores/scriptsSheet";
@@ -84,6 +86,8 @@ export const NAV_ACTIONS = [
   "running",
   "mocks",
   "runners",
+  "all",
+  "preview",
   "settle",
   "copyId",
   "model",
@@ -367,6 +371,8 @@ function surfaceName(surface: Surface): string {
       return "Mocks";
     case "runners":
       return "Runners";
+    case "all":
+      return "All sessions";
     case "now":
     case "search":
       return "Now";
@@ -655,6 +661,33 @@ export const NAV_ROUTES: Record<NavAction, (leftPage: boolean) => void> = {
     const sessionId =
       (surface === "session" || surface === "beside") && runningStore.sessionId;
     openPage(sessionId ? { kind: "runners", sessionId } : { kind: "runners" });
+  },
+  // Every session on every machine, as tiles. On the open Duo they take the
+  // right page, and Now keeps the left one rather than leave it empty
+  all: () => {
+    const mode = layoutStore.mode;
+    if ((mode === "duo-open" || mode === "book") && !surfaceStore.home)
+      navStore.openNow();
+    openPage({ kind: "all" });
+  },
+  // The page the focused session's web server serves: in place of its
+  // views on the desktop, the Running page's own preview elsewhere
+  preview: () => {
+    const sessionId = runningStore.sessionId;
+    if (!sessionId) return;
+    const where = previewPlace(layoutStore.mode, isNative());
+    if (where === "views") {
+      closeSettings();
+      closePage();
+      setMacPreview(true);
+      return;
+    }
+    const port = runningStore.previewPort;
+    openPage({
+      kind: "running",
+      sessionId,
+      ...(port !== null && { port }),
+    });
   },
 };
 
