@@ -64,6 +64,7 @@ import {
 } from "@/components/BackgroundAgents";
 import { InBackgroundBanner } from "@/components/Session/InBackground";
 import { WHEEL_BINDINGS } from "@/lib/tmux-wheel";
+import { useReattachRestarted } from "./useReattachRestarted";
 import {
   attachBackgroundCommand,
   backgroundAgentOfTmux,
@@ -492,6 +493,13 @@ export const Pane = memo(function Pane({
   // cleared with the pane
   const paneDataRef = useRef(paneData);
   paneDataRef.current = paneData;
+  // A session restarted from elsewhere comes back in its tab by itself
+  useReattachRestarted({
+    paneDataRef,
+    terminals: terminalRefs,
+    sessions,
+    tmuxSetup,
+  });
   const startTimers = useRef(new Set<ReturnType<typeof setTimeout>>());
   useEffect(() => {
     const timers = startTimers.current;

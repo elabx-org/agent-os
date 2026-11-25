@@ -24,17 +24,29 @@ interface SessionStatusResponse {
   recentLines?: string[];
   claudeSessionId?: string | null;
   agentType?: AgentType;
+  /** When its tmux session began, in seconds (lib/reattach.ts) */
+  started?: number;
 }
 
-async function getTmuxSessions(): Promise<string[]> {
+/** Each tmux session, and when it began (a restart begins a new one) */
+async function getTmuxSessions(): Promise<Map<string, number | undefined>> {
+  const found = new Map<string, number | undefined>();
   try {
     const { stdout } = await execAsync(
-      "tmux list-sessions -F '#{session_name}' 2>/dev/null || true"
+      "tmux list-sessions -F '#{session_created} #{session_name}' 2>/dev/null || true"
     );
-    return stdout.trim().split("\n").filter(Boolean);
+    for (const line of stdout.trim().split("\n").filter(Boolean)) {
+      const at = line.indexOf(" ");
+      const started = Number(line.slice(0, at));
+      found.set(
+        line.slice(at + 1),
+        Number.isFinite(started) && started > 0 ? started : undefined
+      );
+    }
   } catch {
-    return [];
+    /* no tmux server */
   }
+  return found;
 }
 
 async function getTmuxSessionCwd(sessionName: string): Promise<string | null> {
@@ -173,10 +185,12 @@ function getAgentTypeFromSessionName(sessionName: string): AgentType {
 
 export async function GET() {
   try {
-    const sessions = await getTmuxSessions();
+    const tmuxSessions = await getTmuxSessions();
 
     // Get status for agent-os managed sessions
-    const managedSessions = sessions.filter((s) => UUID_PATTERN.test(s));
+    const managedSessions = [...tmuxSessions.keys()].filter((s) =>
+      UUID_PATTERN.test(s)
+    );
 
     // Use the new status detector
     const statusMap: Record<string, SessionStatusResponse> = {};
@@ -230,6 +244,7 @@ export async function GET() {
         recentLines,
         claudeSessionId,
         agentType,
+        started: tmuxSessions.get(sessionName),
       };
     }
 

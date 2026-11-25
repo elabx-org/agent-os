@@ -10,6 +10,8 @@ export interface SessionStatus {
   /** The pane's last few non-empty lines, oldest first */
   recentLines?: string[];
   claudeSessionId?: string | null;
+  /** When its tmux session began, in seconds: a restart begins a new one */
+  started?: number;
 }
 
 export interface ViewProps {

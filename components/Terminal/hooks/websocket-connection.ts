@@ -1,6 +1,7 @@
 "use client";
 
 import type { Terminal as XTerm } from "@xterm/xterm";
+import { TERMINAL_ENDED_EVENT, TMUX_ENDED } from "@/lib/reattach";
 import { WS_RECONNECT_BASE_DELAY, WS_RECONNECT_MAX_DELAY } from "../constants";
 import { typingElsewhere } from "@/lib/typing-elsewhere";
 import { clientLog } from "@/lib/client-log";
@@ -209,6 +210,12 @@ export function createWebSocketConnection(
         const wasAtBottom = scrollYBefore >= buffer.baseY;
 
         term.write(msg.data);
+        // tmux's word that the session a terminal showed has ended: a pane
+        // looks sooner for it running again (lib/reattach.ts). Only a
+        // hint, so the same text in a program's output does no harm
+        if (typeof msg.data === "string" && msg.data.includes(TMUX_ENDED)) {
+          window.dispatchEvent(new Event(TERMINAL_ENDED_EVENT));
+        }
 
         // After write, check if scroll jumped to top unexpectedly
         requestAnimationFrame(() => {

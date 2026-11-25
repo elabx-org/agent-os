@@ -143,9 +143,10 @@ export function useTerminalConnection({
   }, []);
 
   // A tmux attach or agent launch: the server types it only at the shell's
-  // prompt (leave: first out of tmux). False when it didn't
+  // prompt (leave: first out of tmux; clear: a half-typed line goes
+  // first). False when it didn't
   const sendShellCommand = useCallback(
-    (command: string, leave = false): Promise<boolean> => {
+    (command: string, leave = false, clear = false): Promise<boolean> => {
       // Another session in this terminal: not this one's history
       historyRef.current?.close();
       return new Promise((resolve) => {
@@ -173,7 +174,13 @@ export function useTerminalConnection({
         };
         ws.addEventListener("message", handler);
         ws.send(
-          JSON.stringify({ type: "shell-command", data: command, leave, id })
+          JSON.stringify({
+            type: "shell-command",
+            data: command,
+            leave,
+            clear,
+            id,
+          })
         );
       });
     },
