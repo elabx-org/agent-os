@@ -87,6 +87,7 @@ export function PermissionCard({
 }: PermissionCardProps) {
   const { tool, prompt } = permission;
   const card = variant === "card";
+  const menu = !!prompt?.menu;
   const { answer, answering, error } = useAnswerPrompt(session.id);
 
   const [lookback] = useState(() => Date.now() - LOOKBACK_MS);
@@ -104,7 +105,8 @@ export function PermissionCard({
     (mode.state?.pending === "bypassPermissions"
       ? fullAccessNote({ appliedNow: false, needsRestart: true }, claude)
       : null);
-  const canSwitch = !note && mode.state?.mode !== "bypassPermissions";
+  // Full access doesn't skip Claude Code's own menu
+  const canSwitch = !menu && !note && mode.state?.mode !== "bypassPermissions";
 
   const choose = async (option: PromptOption) => {
     if (!(await answer(option))) return;
@@ -282,6 +284,11 @@ export function PermissionCard({
 
   return (
     <div className="@container grid gap-2.5">
+      {menu && prompt?.title && (
+        <p className={cn("text-sm font-medium", card && "line-clamp-2")}>
+          {prompt.title}
+        </p>
+      )}
       {!card && prompt?.description && (
         <p className="text-muted-foreground line-clamp-4 text-sm whitespace-pre-line">
           {prompt.description}
@@ -311,11 +318,16 @@ export function PermissionCard({
         </p>
       )}
 
+      {/* Claude Code's own menu allows nothing: it only has to be answered */}
       <p className="bg-foreground/[0.04] text-muted-foreground flex items-start gap-2 rounded-xl px-2.5 py-2 text-[13px] leading-snug">
         <Lock className="mt-px h-4 w-4 shrink-0 text-amber-400" />
-        {card
-          ? "Only you can allow this."
-          : "Only you can allow this. Agents can answer questions, not permission requests."}
+        {menu
+          ? card
+            ? "Only you can answer this."
+            : "Only you can answer this. It is Claude Code's own menu; its other keys are in the terminal."
+          : card
+            ? "Only you can allow this."
+            : "Only you can allow this. Agents can answer questions, not permission requests."}
       </p>
 
       {prompt && split ? (

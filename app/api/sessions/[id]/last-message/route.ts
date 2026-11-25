@@ -44,7 +44,8 @@ export async function POST(
       if (inMode) await tmux("send-keys", "-t", target, "-X", "cancel");
       return NextResponse.json({ found: true });
     }
-    await tmux("copy-mode", "-t", target);
+    // -e: scrolling back down to the bottom leaves it, as a wheel's does
+    await tmux("copy-mode", "-e", "-t", target);
     await tmux("send-keys", "-t", target, "-X", "goto-line", String(up));
     return NextResponse.json({ found: true });
   } catch {

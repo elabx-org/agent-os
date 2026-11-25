@@ -35,6 +35,7 @@ import {
   Search,
   LayoutGrid,
   AppWindow,
+  RotateCcw,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -43,7 +44,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { cn } from "@/lib/utils";
+import { afterMenuCloses, cn } from "@/lib/utils";
+import { restartSession } from "@/lib/restart-session";
 import type { Session, Project } from "@/lib/db";
 import type { PaneViewMode } from "@/stores/mobileNav";
 import { mobileNavStore } from "@/stores/mobileNav";
@@ -599,6 +601,19 @@ export function SessionTitleBar({
             Settle
           </DropdownMenuItem>
         )}
+        {/* The desktop sidebar's row has it too; the Mac window lists no
+            row for a session that isn't asking, so it is here as well */}
+        {session &&
+          variant === "desktop" &&
+          session.agent_type === "claude" &&
+          !isEnded(session) && (
+            <DropdownMenuItem
+              onSelect={() => afterMenuCloses(() => restartSession(session))}
+            >
+              <RotateCcw className="h-4 w-4" />
+              Restart
+            </DropdownMenuItem>
+          )}
         {session &&
           movable &&
           (variant === "classic" || variant === "desktop") && (
