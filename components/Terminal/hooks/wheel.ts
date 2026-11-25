@@ -2,34 +2,23 @@
 
 import type { Terminal as XTerm } from "@xterm/xterm";
 import type { RefObject } from "react";
+import { createWheelCounter } from "@/lib/wheel-rows";
 
 // Wheel events per wheel turn at most, so a fast trackpad can't flood
 const MAX_EVENTS = 20;
-// A mouse wheel's notch, as terminals scroll it
-const NOTCH_ROWS = 3;
 
 /**
  * A mouse wheel or trackpad over the terminal while tmux (or an app) reads
  * the mouse: one wheel event per row of travel, where xterm sends one per
  * turn of the wheel whatever its size. tmux scrolls a row per event
  * (lib/init-script.ts), so the history moves as far as the page would.
+ * lib/wheel-rows.ts says how many rows an event is.
  */
-/**
- * A mouse wheel's click rather than a trackpad's glide: Chromium and Safari
- * report a notch as a multiple of 120 in the legacy wheelDeltaY (a trackpad
- * gives other values). Its pixels (about 100) have nothing to do with the
- * rows on screen, so a notch is NOTCH_ROWS whatever the row height
- */
-function isNotch(ev: WheelEvent): boolean {
-  const legacy = (ev as WheelEvent & { wheelDeltaY?: number }).wheelDeltaY;
-  return !!legacy && legacy % 120 === 0 && Math.abs(ev.deltaY) >= 50;
-}
-
 export function setupWheel(
   term: XTerm,
   wsRef: RefObject<WebSocket | null>
 ): () => void {
-  let carry = 0;
+  const rowsOf = createWheelCounter();
   term.attachCustomWheelEventHandler((ev) => {
     // xterm's own scrollback (no tmux): xterm scrolls it
     if (term.modes.mouseTrackingMode === "none" || ev.deltaY === 0) return true;
@@ -37,17 +26,7 @@ export function setupWheel(
     const ws = wsRef.current;
     if (!screen || !ws || ws.readyState !== WebSocket.OPEN) return true;
     const rowPx = screen.offsetHeight / term.rows || 16;
-    const rows =
-      ev.deltaMode === WheelEvent.DOM_DELTA_LINE
-        ? ev.deltaY
-        : ev.deltaMode === WheelEvent.DOM_DELTA_PAGE
-          ? ev.deltaY * term.rows
-          : isNotch(ev)
-            ? Math.sign(ev.deltaY) * NOTCH_ROWS
-            : ev.deltaY / rowPx;
-    carry += rows;
-    const n = Math.trunc(carry);
-    carry -= n;
+    const n = rowsOf(ev, rowPx, term.rows, performance.now());
     ev.preventDefault();
     if (n === 0) return false;
     // At the pointer, so it scrolls the tmux pane under it
