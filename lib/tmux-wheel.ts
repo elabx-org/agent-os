@@ -12,10 +12,20 @@
 const DOWN =
   "if-shell -F '#{scroll_position}' 'send-keys -X scroll-down' 'send-keys -X cancel'";
 
+/**
+ * The wheel up that begins a scroll-back moves a row too. tmux's own
+ * binding only begins it, so the first click of a wheel that sends one
+ * event a click (macOS, turned slowly) showed nothing move. The rest is
+ * tmux's: an app that reads the mouse, or a full-screen one, gets the event.
+ */
+const BEGIN =
+  "if-shell -F '#{||:#{alternate_on},#{||:#{pane_in_mode},#{mouse_any_flag}}}' 'send-keys -M' 'copy-mode -e ; send-keys -X scroll-up'";
+
 /** The tmux commands (without `tmux`), in the order they are set */
-export const WHEEL_BINDINGS: string[] = ["copy-mode", "copy-mode-vi"].flatMap(
-  (table) => [
+export const WHEEL_BINDINGS: string[] = [
+  `bind-key -T root WheelUpPane ${BEGIN}`,
+  ...["copy-mode", "copy-mode-vi"].flatMap((table) => [
     `bind-key -T ${table} WheelUpPane send-keys -X scroll-up`,
     `bind-key -T ${table} WheelDownPane ${DOWN}`,
-  ]
-);
+  ]),
+];
