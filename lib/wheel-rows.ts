@@ -38,17 +38,13 @@ function isNotch(ev: WheelLike): boolean {
  * a tenth when the wheel turns slowly, and the browser makes a line 40px:
  * 4px, a fifth of a row, so five clicks moved one row and a few moved
  * nothing. The fraction comes out of fixed point a hair off a whole pixel
- * (3.99963, 7.99988), which a trackpad's whole pixels never are. Pinching
- * (ctrl) and a zoomed page give fractions too, so this alone is not enough:
- * see CLICK_GAP_MS.
+ * (3.99963 in WebKit, 4.00024 in Chromium), which a trackpad's whole pixels
+ * never are, nor the plain fractions a zoomed page or a pinch (ctrl) gives.
  */
 export function isFineClick(ev: WheelLike): boolean {
-  return (
-    !ev.ctrlKey &&
-    ev.deltaMode === 0 &&
-    ev.deltaY !== 0 &&
-    !Number.isInteger(ev.deltaY * 2)
-  );
+  if (ev.ctrlKey || ev.deltaMode !== 0) return false;
+  const off = Math.abs(ev.deltaY - Math.round(ev.deltaY));
+  return off > 0 && off < 0.01;
 }
 
 /** The rows of travel the event's own numbers say, fractions included */
@@ -68,8 +64,9 @@ export function wheelTravel(
  * trackpad moves the terminal as far as the fingers went. A wheel's click
  * is never less than a row.
  *
- * `now` is when the event came, in ms (not the event's own time stamp,
- * which some sources leave at 0).
+ * `now` is when the wheel moved, in ms: the event's own time stamp where it
+ * has one, so clicks a busy page handles late and all at once still count
+ * as the clicks they were.
  */
 export function createWheelCounter(): (
   ev: WheelLike,

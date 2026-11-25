@@ -26,7 +26,9 @@ export function setupWheel(
     const ws = wsRef.current;
     if (!screen || !ws || ws.readyState !== WebSocket.OPEN) return true;
     const rowPx = screen.offsetHeight / term.rows || 16;
-    const n = rowsOf(ev, rowPx, term.rows, performance.now());
+    // When the wheel moved, not when the page got to it
+    const when = ev.timeStamp > 0 ? ev.timeStamp : performance.now();
+    const n = rowsOf(ev, rowPx, term.rows, when);
     ev.preventDefault();
     if (n === 0) return false;
     // At the pointer, so it scrolls the tmux pane under it
