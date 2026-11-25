@@ -10,6 +10,7 @@
 #   signin          sign in again
 #   remove          disconnect for good and forget the key
 #   run             (the service) run the server in the foreground
+#   host            whether macOS names AgentOS or node for what runs here
 #   update <sha>    (the server) switch to the hub's version, with rollback
 #   app [update]    build the menu bar app from this copy and swap it in
 #   app check       whether the app is current, out of date or missing
@@ -378,6 +379,84 @@ cmd_app() {
   esac
 }
 
+# --- The host app ---------------------------------------------------------
+# macOS asks its privacy questions (Accessibility, Automation, the Documents
+# folder, ...) in the name of the program that started whatever asks. With
+# the service a bare `node`, the question and System Settings said "node",
+# with a path into Homebrew, and allowing it allowed every script that Node
+# starts by itself. The service starts under a small app of its own instead
+# (scripts/mac-host), so they say AgentOS.
+#
+# The app is signed here, without a certificate: what the person allowed is
+# tied to this exact build. So it is built once and again only when its
+# source changes, and macOS then asks again.
+#
+# A file named no-host in ~/.agent-os starts the service the old way.
+HOST_SRC="$REPO_DIR/scripts/mac-host"
+HOST_DIR="$AGENT_OS_HOME/host"
+HOST_APP="$HOST_DIR/AgentOS.app"
+HOST_BIN="$HOST_APP/Contents/MacOS/agentos-host"
+
+host_want_hash() {
+  [ -f "$HOST_SRC/main.c" ] && [ -f "$HOST_SRC/Info.plist" ] || return 1
+  cat "$HOST_SRC/main.c" "$HOST_SRC/Info.plist" | shasum -a 256 | cut -c1-16
+}
+
+host_works() {
+  [ -x "$HOST_BIN" ] || return 1
+  codesign --verify --strict "$HOST_APP" 2>/dev/null || return 1
+  [ "$(plist_get "$HOST_APP" CFBundleIdentifier)" = com.agentos.host ] || return 1
+  "$HOST_BIN" --selftest >/dev/null 2>&1
+}
+
+host_build() { # hash
+  xcrun -f cc >/dev/null 2>&1 || { echo "no Xcode tools: no host app"; return 1; }
+  local tmp="$HOST_DIR/build.$$" app s d
+  app="$tmp/AgentOS.app"
+  rm -rf "$tmp"
+  mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources" || return 1
+  if ! xcrun cc -O2 -o "$app/Contents/MacOS/agentos-host" "$HOST_SRC/main.c"; then
+    rm -rf "$tmp"
+    return 1
+  fi
+  cp "$HOST_SRC/Info.plist" "$app/Contents/Info.plist"
+  # The icon, from the web app's: System Settings shows it beside the name
+  if (
+    set -e
+    mkdir "$tmp/AppIcon.iconset"
+    for s in 16 32 128 256 512; do
+      sips -z $s $s "$REPO_DIR/public/icon-512.png" --out "$tmp/AppIcon.iconset/icon_${s}x${s}.png" >/dev/null
+      d=$((s * 2))
+      sips -z $d $d "$REPO_DIR/public/icon-512.png" --out "$tmp/AppIcon.iconset/icon_${s}x${s}@2x.png" >/dev/null
+    done
+    iconutil -c icns "$tmp/AppIcon.iconset" -o "$app/Contents/Resources/AppIcon.icns"
+  ) 2>/dev/null; then :; else
+    echo "couldn't make the host app's icon; building without it"
+    rm -f "$app/Contents/Resources/AppIcon.icns"
+  fi
+  if ! codesign --force --sign - "$app" 2>/dev/null; then
+    rm -rf "$tmp"
+    return 1
+  fi
+  rm -rf "$HOST_APP"
+  mv "$app" "$HOST_APP" && printf '%s\n' "$1" >"$HOST_DIR/source"
+  rm -rf "$tmp"
+  host_works
+}
+
+# True when the service can start under the host app. An earlier build
+# that still works is kept when a new one can't be made.
+host_ready() {
+  is_mac || return 1
+  [ -f "$AGENT_OS_HOME/no-host" ] && return 1
+  local want
+  want=$(host_want_hash) || return 1
+  if [ "$(cat "$HOST_DIR/source" 2>/dev/null)" != "$want" ] || [ ! -x "$HOST_BIN" ]; then
+    mkdir -p "$HOST_DIR" && host_build "$want" || echo "the host app wasn't built"
+  fi
+  host_works
+}
+
 cmd_run() {
   [ -d "$REPO_DIR" ] || die "AgentOS isn't installed in $REPO_DIR"
   mkdir -p "$LOG_DIR"
@@ -386,6 +465,12 @@ cmd_run() {
   cd "$REPO_DIR" || exit 1
   export DB_PATH="${DB_PATH:-$AGENT_OS_HOME/agent-os.db}"
   export NODE_ENV=production PORT
+  # A host app that can't be started leaves the service as it always ran
+  shopt -s execfail
+  if host_ready; then
+    echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) starting under the host app (macOS names AgentOS, not node)"
+    exec "$HOST_BIN" -- node_modules/.bin/tsx server.ts
+  fi
   exec node_modules/.bin/tsx server.ts
 }
 
@@ -489,7 +574,8 @@ case "${1:-}" in
   signin) link_cli signin && service_restart ;;
   remove) cmd_remove ;;
   run) cmd_run ;;
+  host) if host_ready; then say "AgentOS ($HOST_APP)"; else say "node (no host app)"; fi ;;
   update) shift; cmd_update "$@" ;;
   app) shift; cmd_app "$@" ;;
-  *) sed -n '3,21p' "$0"; exit 1 ;;
+  *) sed -n '3,22p' "$0"; exit 1 ;;
 esac

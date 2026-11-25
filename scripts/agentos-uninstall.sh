@@ -572,6 +572,8 @@ remove_app_data() {
   local d
   [ "$OS" = Darwin ] || return 0
   run defaults delete "$DEFAULTS_DOMAIN" >/dev/null 2>&1 || true
+  # What the person allowed AgentOS in Privacy & Security goes with it
+  run tccutil reset All com.agentos.host >/dev/null 2>&1 || true
   for d in "Library/WebKit/com.agentos.mac" "Library/Caches/com.agentos.mac" \
     "Library/HTTPStorages/com.agentos.mac" "Library/Saved Application State/com.agentos.mac.savedState"; do
     [ -e "$HOME/$d" ] || continue

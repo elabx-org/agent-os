@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleIdentifier</key><string>com.agentos.host</string>
+  <key>CFBundleName</key><string>AgentOS</string>
+  <key>CFBundleDisplayName</key><string>AgentOS</string>
+  <key>CFBundleExecutable</key><string>agentos-host</string>
+  <key>CFBundleIconFile</key><string>AppIcon</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
+  <key>CFBundleShortVersionString</key><string>1</string>
+  <key>CFBundleVersion</key><string>1</string>
+  <key>LSMinimumSystemVersion</key><string>13.0</string>
+  <key>LSUIElement</key><true/>
+  <key>NSAppleEventsUsageDescription</key><string>A session in AgentOS wants to control another app.</string>
+  <key>NSAppleMusicUsageDescription</key><string>A session in AgentOS wants to use your music and media library.</string>
+  <key>NSAudioCaptureUsageDescription</key><string>A session in AgentOS wants to record this Mac's sound.</string>
+  <key>NSBluetoothAlwaysUsageDescription</key><string>A session in AgentOS wants to use Bluetooth.</string>
+  <key>NSCalendarsFullAccessUsageDescription</key><string>A session in AgentOS wants to use your calendars.</string>
+  <key>NSCalendarsUsageDescription</key><string>A session in AgentOS wants to use your calendars.</string>
+  <key>NSCameraUsageDescription</key><string>A session in AgentOS wants to use the camera.</string>
+  <key>NSContactsUsageDescription</key><string>A session in AgentOS wants to use your contacts.</string>
+  <key>NSDesktopFolderUsageDescription</key><string>A session in AgentOS wants to use files in your Desktop folder.</string>
+  <key>NSDocumentsFolderUsageDescription</key><string>A session in AgentOS wants to use files in your Documents folder.</string>
+  <key>NSDownloadsFolderUsageDescription</key><string>A session in AgentOS wants to use files in your Downloads folder.</string>
+  <key>NSFileProviderDomainUsageDescription</key><string>A session in AgentOS wants to use files kept by a cloud storage app.</string>
+  <key>NSFocusStatusUsageDescription</key><string>A session in AgentOS wants to know whether a Focus is on.</string>
+  <key>NSLocalNetworkUsageDescription</key><string>A session in AgentOS wants to reach devices on your local network.</string>
+  <key>NSLocationUsageDescription</key><string>A session in AgentOS wants to know where this Mac is.</string>
+  <key>NSLocationWhenInUseUsageDescription</key><string>A session in AgentOS wants to know where this Mac is.</string>
+  <key>NSMicrophoneUsageDescription</key><string>A session in AgentOS wants to use the microphone.</string>
+  <key>NSMotionUsageDescription</key><string>A session in AgentOS wants to use motion data.</string>
+  <key>NSNetworkVolumesUsageDescription</key><string>A session in AgentOS wants to use files on a network volume.</string>
+  <key>NSPhotoLibraryUsageDescription</key><string>A session in AgentOS wants to use your photos.</string>
+  <key>NSRemindersFullAccessUsageDescription</key><string>A session in AgentOS wants to use your reminders.</string>
+  <key>NSRemindersUsageDescription</key><string>A session in AgentOS wants to use your reminders.</string>
+  <key>NSRemovableVolumesUsageDescription</key><string>A session in AgentOS wants to use files on a removable volume.</string>
+  <key>NSSpeechRecognitionUsageDescription</key><string>A session in AgentOS wants to use speech recognition.</string>
+  <key>NSSystemAdministrationUsageDescription</key><string>A session in AgentOS wants to change this Mac's settings.</string>
+</dict>
+</plist>
