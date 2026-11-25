@@ -1,6 +1,7 @@
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
+import { WHEEL_BINDINGS } from "./tmux-wheel";
 import {
   exportLines,
   sessionBrowserEnv,
@@ -87,11 +88,9 @@ tmux set-option -g mouse on 2>/dev/null
 tmux set-option -sg escape-time 10 2>/dev/null
 tmux set-option -g history-limit 50000 2>/dev/null
 # A row per wheel event: the page sends one per row of finger or wheel
-# travel (components/Terminal/hooks/touch-scroll.ts, wheel.ts)
-tmux bind-key -T copy-mode WheelUpPane send-keys -X scroll-up 2>/dev/null
-tmux bind-key -T copy-mode WheelDownPane send-keys -X scroll-down 2>/dev/null
-tmux bind-key -T copy-mode-vi WheelUpPane send-keys -X scroll-up 2>/dev/null
-tmux bind-key -T copy-mode-vi WheelDownPane send-keys -X scroll-down 2>/dev/null
+# travel (components/Terminal/hooks/touch-scroll.ts, wheel.ts), and a wheel
+# down at the bottom leaves the scroll-back (lib/tmux-wheel.ts)
+${WHEEL_BINDINGS.map((b) => `tmux ${b} 2>/dev/null`).join("\n")}
 # No status line: AgentOS's header already names the session, and on a phone
 # the keyboard leaves few enough rows
 tmux set-option status off 2>/dev/null

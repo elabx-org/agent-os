@@ -2,6 +2,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import { getFlag } from "./flags";
+import { stableNodePath } from "./node-path";
 
 /*
  * Claude Code's own view of a session, recorded as it runs: every Claude
@@ -175,7 +176,7 @@ export function claudeStateSettings(sessionId: string): {
 } {
   if (!SESSION_ID.test(sessionId)) throw new Error("Bad session id");
   const scripts = installScripts();
-  const node = quote(process.execPath);
+  const node = quote(stableNodePath());
   const dir = quote(stateDir(sessionId));
 
   // Refreshing on a timer redraws the footer, which the status detector

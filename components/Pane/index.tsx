@@ -63,6 +63,7 @@ import {
   useParkedAgent,
 } from "@/components/BackgroundAgents";
 import { InBackgroundBanner } from "@/components/Session/InBackground";
+import { WHEEL_BINDINGS } from "@/lib/tmux-wheel";
 import {
   attachBackgroundCommand,
   backgroundAgentOfTmux,
@@ -479,10 +480,7 @@ export const Pane = memo(function Pane({
     `tmux set-option -g window-size latest`,
     `tmux set-window-option -g aggressive-resize on`,
     // A row per wheel event: the page sends one per row of travel
-    `tmux bind-key -T copy-mode WheelUpPane send-keys -X scroll-up`,
-    `tmux bind-key -T copy-mode WheelDownPane send-keys -X scroll-down`,
-    `tmux bind-key -T copy-mode-vi WheelUpPane send-keys -X scroll-up`,
-    `tmux bind-key -T copy-mode-vi WheelDownPane send-keys -X scroll-down`,
+    ...WHEEL_BINDINGS.map((b) => `tmux ${b}`),
     // Tmux menu
     `tmux bind-key m display-menu -T "Tmux" -x R -y P "Copy Mode" c copy-mode "Paste Buffer" p paste-buffer "" "" "" "Split Horizontal" h 'split-window -h' "Split Vertical" v 'split-window -v'`,
   ].map(c => `${c} 2>/dev/null`).join("; ") +

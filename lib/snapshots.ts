@@ -10,6 +10,7 @@
 
 import { execFile } from "child_process";
 import path from "path";
+import { stableNodePath } from "./node-path";
 
 export type SnapshotPoint = "pre" | "post";
 
@@ -40,7 +41,8 @@ export async function snapshot(
   return new Promise((resolve) => {
     // The script keeps its own deadline; this one is the backstop
     execFile(
-      process.execPath,
+      // Not process.execPath: an upgrade of Node removes the file it names
+      stableNodePath(),
       args,
       { timeout: timeoutMs + 2000, killSignal: "SIGKILL" },
       (error, stdout) => {

@@ -13,6 +13,7 @@ import { machineNote } from "./abilities-view";
 import { parseJobRule } from "./jobs/types";
 import { publicOrigin } from "./public-origin";
 import { isMachineMode } from "./link/machine";
+import { stableNodePath } from "./node-path";
 
 export { parseProjectHooks } from "./project-hooks";
 
@@ -244,7 +245,7 @@ export function writeMcpConfig(
     fs.rmSync(file, { force: true });
     return null;
   }
-  const command = fs.existsSync(process.execPath) ? process.execPath : "node";
+  const command = stableNodePath();
   const config = {
     mcpServers: {
       "agent-os": {

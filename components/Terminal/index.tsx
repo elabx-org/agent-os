@@ -487,7 +487,10 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
         : sessionStatus === "running"
           ? "working"
           : promptOptions > 0
-            ? "asks"
+            ? // Claude's own menu has no numbered rows: arrows, not digits
+              askPrompt?.menu
+              ? "menu"
+              : "asks"
             : "idle";
     const keyboardUp = keyboard.height > 0 || nativeKeyboard;
     // Slide, don't resize: with the keyboard up the terminal keeps its rows
@@ -592,6 +595,28 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(
 
     const composerOn = showKeybar && composerEnabled;
     composerOnRef.current = composerOn;
+
+    // A keyboard's keys go to the terminal as soon as it is the view shown:
+    // choosing Terminal (the header's tab, the Mac window's toolbar) leaves
+    // the focus on the page, and Claude's own menus are worked with the
+    // arrow keys. Not on touch, where focus brings the keyboard up, and
+    // never out of a field or a dialog the person is in.
+    const wasActiveRef = useRef(active);
+    useEffect(() => {
+      const became = active && !wasActiveRef.current;
+      wasActiveRef.current = active;
+      if (!became || showKeybar) return;
+      const frame = requestAnimationFrame(() => {
+        const at = document.activeElement;
+        const typing =
+          at instanceof HTMLElement &&
+          (at.isContentEditable ||
+            ["INPUT", "TEXTAREA", "SELECT"].includes(at.tagName));
+        if (typing || document.querySelector('[role="dialog"]')) return;
+        focus();
+      });
+      return () => cancelAnimationFrame(frame);
+    }, [active, showKeybar, focus]);
 
     // With the composer on, tapping the terminal (scroll, select) shouldn't
     // open the keyboard: xterm's textarea gets inputmode="none"

@@ -167,7 +167,7 @@ export function NeedsYouCard({
           text={
             sheet
               ? "Waiting for your answer"
-              : permission
+              : permission && !permission.prompt?.menu
                 ? pending
                   ? `${name} wants to use ${pending.tool_name}`
                   : `${name} needs permission`

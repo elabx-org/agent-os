@@ -9,7 +9,11 @@
  * same row (ios/App/KeyboardBar.swift has the same flicks).
  */
 
-export type AdaptiveState = "working" | "asks" | "idle" | "shell";
+/**
+ * "menu": one of Claude Code's own menus is up (lib/permission-prompt.ts).
+ * Its rows have no numbers: the arrows choose and change them
+ */
+export type AdaptiveState = "working" | "asks" | "menu" | "idle" | "shell";
 
 export interface Flick {
   label: string;
@@ -79,6 +83,15 @@ export function adaptiveIds(state: AdaptiveState, options = 0): string[] {
       );
       return [...digits, "esc", "enter"];
     }
+    case "menu":
+      return [
+        "arrow-up",
+        "arrow-down",
+        "arrow-left",
+        "arrow-right",
+        "esc",
+        "enter",
+      ];
     case "shell":
       return ["tab", "arrow-up", "arrow-down", "enter", "ctrl-c"];
     // Working keeps the idle row, so nothing moves when Claude starts. No ↵:
@@ -109,6 +122,17 @@ export function barSpecs(state: AdaptiveState, options = 0): string[] {
       );
       return [...tools, ...digits, "esc/ctrl-c/", "enter/newline/", "more"];
     }
+    case "menu":
+      return [
+        ...tools,
+        "arrow-up/page-up/repeat",
+        "arrow-down/page-down/repeat",
+        "arrow-left//repeat",
+        "arrow-right//repeat",
+        "esc/ctrl-c/",
+        "enter/newline/",
+        "more",
+      ];
     case "shell":
       return [
         ...tools,

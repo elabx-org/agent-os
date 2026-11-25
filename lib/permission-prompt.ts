@@ -34,14 +34,38 @@ export interface PermissionPrompt {
   options: PromptOption[];
   /** Index of the option under the ❯ cursor */
   selected: number;
+  /**
+   * Claude Code's own menu (its settings, not a tool it wants to use):
+   * nothing is being allowed, and full access doesn't skip it
+   */
+  menu?: true;
 }
 
-const FOOTER = /(Esc to cancel|Enter to confirm)/;
+// Claude Code's own menus (2.1.330's "We recommend compacting earlier")
+// write theirs in lower case, without "to": "enter confirm · esc not now"
+const OWN_MENU = /(^|·\s)enter confirm(\s·|\s*$)/;
+const FOOTER = new RegExp(
+  `(Esc to cancel|Enter to confirm|${OWN_MENU.source})`
+);
 const RULE = /^\s*─{10,}\s*$/;
 const DASHED = /^\s*╌{10,}\s*$/;
 const CURSOR = "❯";
 /** Option rows start their text at column 3 (" ❯ " or "   ") */
 const OPTION_INDENT = 3;
+
+/**
+ * A menu set in from the edge ("  ❯ Keep auto") starts its rows a column
+ * deeper: the row under the cursor says where
+ */
+function optionIndent(block: string[]): number {
+  for (let i = block.length - 1; i >= 0; i--) {
+    const at = block[i].indexOf(CURSOR);
+    if (at < 0 || block[i].slice(0, at).trim() !== "") continue;
+    if (block[i][at + 1] !== " ") continue;
+    return at <= 3 ? Math.max(OPTION_INDENT, at + 2) : OPTION_INDENT;
+  }
+  return OPTION_INDENT;
+}
 const NUMBERED = /^(\d+)\.\s+/;
 const MAX_DETAIL = 600;
 
@@ -87,6 +111,7 @@ export function parsePermissionPrompt(
   const block = lines.slice(start, footer);
 
   // Options: walk up from the footer while rows are indented like options
+  const optionAt = optionIndent(block);
   const optionRows: { text: string; cursor: boolean }[] = [];
   let pending: string[] = [];
   let i = block.length - 1;
@@ -94,11 +119,11 @@ export function parsePermissionPrompt(
     const line = block[i];
     if (line.trim() === "") continue;
     const indent = indentOf(line);
-    if (indent > OPTION_INDENT) {
+    if (indent > optionAt) {
       pending.unshift(line);
       continue;
     }
-    if (indent === OPTION_INDENT) {
+    if (indent === optionAt) {
       optionRows.unshift({
         text: joinWrapped([line, ...pending], width),
         cursor: line.includes(CURSOR),
@@ -164,6 +189,7 @@ export function parsePermissionPrompt(
     question,
     options,
     selected,
+    ...(OWN_MENU.test(lines[footer].trim()) ? { menu: true as const } : {}),
   };
 }
 
