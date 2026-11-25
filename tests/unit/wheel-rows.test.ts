@@ -75,17 +75,36 @@ test("a trackpad still moves as far as the fingers went", () => {
 });
 
 test("fractions that are not a wheel's clicks add up as travel", () => {
-  // A zoomed page's trackpad glide: only the event that begins it can be
-  // taken for a click
-  const zoomed = Array(30).fill({ deltaY: 2.7272727, deltaMode: 0 });
-  assert.equal(sum(run(zoomed, 16)), 1 + Math.trunc((29 * 2.7272727) / ROW));
+  // A zoomed page's trackpad: plain fractions, glided or one at a time
+  const zoomed = { deltaY: 2.7272727, deltaMode: 0 };
+  assert.equal(isFineClick(zoomed), false);
+  assert.equal(
+    sum(run(Array(30).fill(zoomed), 16)),
+    Math.trunc((30 * 2.7272727) / ROW)
+  );
+  assert.equal(sum(run(Array(5).fill(zoomed), 100)), 0);
+  assert.equal(isFineClick({ deltaY: 0.5, deltaMode: 0 }), false);
   // Pinching
   assert.equal(
-    isFineClick({ deltaY: 1.37, deltaMode: 0, ctrlKey: true }),
+    isFineClick({ deltaY: 3.9996337890625, deltaMode: 0, ctrlKey: true }),
     false
   );
+  // Chromium's slow click on a Mac
+  assert.equal(isFineClick({ deltaY: 4.000244140625, deltaMode: 0 }), true);
+  // Two of a Mac's clicks the browser handed over as one
+  assert.equal(isFineClick({ deltaY: 7.999267578125, deltaMode: 0 }), true);
   // Mac clicks that come faster than clicks do
   assert.equal(sum(run(Array(10).fill(macClick(0.1)), 10)), 2);
+});
+
+test("clicks handled late and together count by when the wheel moved", () => {
+  const rowsOf = createWheelCounter();
+  // Three clicks 150ms apart, whatever the moment the page got to them
+  const moved = [5000, 5150, 5300];
+  assert.deepEqual(
+    moved.map((at) => rowsOf(macClick(0.1), ROW, ROWS, at)),
+    [1, 1, 1]
+  );
 });
 
 test("a notch elsewhere is three rows, and lines and pages are their own", () => {
