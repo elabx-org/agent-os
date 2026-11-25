@@ -114,8 +114,13 @@ export type { TerminalScrollState };
 export interface TerminalHandle {
   sendCommand: (command: string) => void;
   /** A tmux attach or agent launch, typed only at the shell's prompt (with
-      leave, after leaving tmux there). Resolves false when it wasn't */
-  sendShellCommand: (command: string, leave?: boolean) => Promise<boolean>;
+      leave, after leaving tmux there; with clear, after clearing a
+      half-typed line). Resolves false when it wasn't */
+  sendShellCommand: (
+    command: string,
+    leave?: boolean,
+    clear?: boolean
+  ) => Promise<boolean>;
   sendInput: (data: string) => void;
   sendPaste: (data: string) => void;
   /** A file's path from elsewhere (the share sheet): into the composer as

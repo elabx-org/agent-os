@@ -184,12 +184,15 @@ async function settle(session: PtySession): Promise<void> {
 // Type a tmux attach or agent launch line, but only at the shell's prompt:
 // typed into tmux or a running agent it would be the user's prompt. With
 // `leave`, first leave tmux or a shown background agent (switching what
-// the terminal shows) and clear a half-typed line. Commands queue per PTY,
+// the terminal shows) and clear a half-typed line. With `clear`, only the
+// half-typed line goes: what runs in front stays (an attach after the
+// session restarted elsewhere, lib/reattach.ts). Commands queue per PTY,
 // so a second can't land in the tmux the first one attached.
 function runInShell(
   session: PtySession,
   command: string,
-  leave: boolean
+  leave: boolean,
+  clear = false
 ): Promise<boolean> {
   const run = async () => {
     const front = foreground(session);
@@ -204,7 +207,7 @@ function runInShell(
         return false;
       }
     }
-    if (leave) {
+    if (leave || clear) {
       // Only zsh waits (other shells, bash in the container, don't)
       if (session.zsh && !front.shell) await zshEditing(session, edits);
       const cleared = session.zleStarts;
@@ -298,7 +301,14 @@ function attachSession(
           session.pty.write(msg.data + "\r");
           break;
         case "shell-command":
-          runInShell(session, String(msg.data), !!msg.leave).then((ok) => {
+          runInShell(session, String(msg.data), !!msg.leave, !!msg.clear).then((ok) => {
+            // A session picked that didn't open: say why in the log
+            if (!ok && msg.leave) {
+              const front = foreground(session);
+              console.log(
+                `[pty] ${session.id}: attach not typed, in front: ${front.shell ? "the shell" : front.args[0] || "unknown"}`
+              );
+            }
             if (ws.readyState === WebSocket.OPEN) {
               ws.send(JSON.stringify({ type: "shell-command-result", id: msg.id, ok }));
             }

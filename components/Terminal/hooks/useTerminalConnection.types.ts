@@ -34,7 +34,11 @@ export interface UseTerminalConnectionReturn {
   sendInput: (data: string) => void;
   sendPaste: (data: string) => void;
   sendCommand: (command: string) => void;
-  sendShellCommand: (command: string, leave?: boolean) => Promise<boolean>;
+  sendShellCommand: (
+    command: string,
+    leave?: boolean,
+    clear?: boolean
+  ) => Promise<boolean>;
   execViaWs: (command: string) => Promise<string>;
   /** Rows the touch history was scrolled up when select mode opened */
   historyOffsetRef: RefObject<number | null>;
