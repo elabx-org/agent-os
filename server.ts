@@ -349,8 +349,15 @@ function attachSession(
     }
   });
 
-  ws.on("close", () => detachSession(session));
-  ws.on("error", () => detachSession(session));
+  // Only the socket the terminal is on now: a page that reconnects opens
+  // its new socket before the old one has finished closing, and the old
+  // one's close must not take the terminal from the new one (its output
+  // would stop, and the PTY be ended after the grace period)
+  const gone = () => {
+    if (session.ws === ws) detachSession(session);
+  };
+  ws.on("close", gone);
+  ws.on("error", gone);
 }
 
 function createPtySession(ws: WebSocket): PtySession | null {
