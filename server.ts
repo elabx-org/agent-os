@@ -23,6 +23,7 @@ import {
   parseTpgid,
 } from "./lib/pty-foreground";
 import { isDarwin, terminalForeground } from "./lib/proc-darwin";
+import { typedLine } from "./lib/typed-line";
 import {
   authConfig,
   deny,
@@ -217,7 +218,8 @@ function runInShell(
       if (session.zsh) await zshEditing(session, cleared);
       if (!foreground(session).shell) return false;
     }
-    session.pty.write(command + "\r");
+    // A long line would be cut off by the terminal: it runs from a file
+    session.pty.write(typedLine(command) + "\r");
     return true;
   };
   const result = session.shellQueue.then(run).catch(() => false);
@@ -298,7 +300,8 @@ function attachSession(
           claimTmuxWindow(session);
           break;
         case "command":
-          session.pty.write(msg.data + "\r");
+          // The shell drawer's line (a script's): the same limit applies
+          session.pty.write(typedLine(String(msg.data)) + "\r");
           break;
         case "shell-command":
           runInShell(session, String(msg.data), !!msg.leave, !!msg.clear).then((ok) => {
